@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
@@ -8,7 +9,7 @@ from apex_fpl.config import Settings
 from apex_fpl.data.airsenal import AIrsenalProjectionAdapter, validate_airsenal_forecast
 from apex_fpl.data.core_insights import FPLCoreClient
 from apex_fpl.data.http import CachedHttp
-from apex_fpl.data.news import collect_feed_headlines, load_manual_signals
+from apex_fpl.data.news import collect_news_sources, load_manual_signals
 from apex_fpl.data.odds import OddsAdapter
 from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.data.tactical import load_tactical_roles
@@ -26,7 +27,12 @@ from apex_fpl.services.news_signals import infer_news_signals
 from apex_fpl.services.provenance import SourceStatus, load_upstream_pins
 from apex_fpl.services.safety import SafetyAssessment, assess_safety
 from apex_fpl.services.snapshots import write_official_snapshot
-from apex_fpl.services.team_state import load_team_state
+from apex_fpl.services.team_state import (
+    TeamStateResolution,
+    persist_initial_prices,
+    resolve_team_state,
+    write_team_state_report,
+)
 
 
 @dataclass
@@ -41,6 +47,7 @@ class PipelineOutput:
     gameweeks: list[int]
     safety: SafetyAssessment
     snapshot: dict
+    team_state: TeamStateResolution | None = None
 
 
 def _official_ep(players: pd.DataFrame, gameweeks: list[int]) -> pd.DataFrame:
@@ -66,6 +73,28 @@ def _status(
         configured=configured,
         version=version,
     )
+
+
+def _decision_gameweeks(events: pd.DataFrame, horizon: int) -> list[int]:
+    """Return the next Gameweeks whose deadlines are still actionable.
+
+    The old unfinished-event rule could optimise transfers for a Gameweek whose
+    deadline had already passed. For a decision engine the correct horizon starts
+    at the next open deadline, while pre-GW1 naturally starts at GW1.
+    """
+    if not events.empty and "deadline_time" in events.columns:
+        deadlines = pd.to_datetime(events["deadline_time"], utc=True, errors="coerce")
+        now = pd.Timestamp.now(tz="UTC")
+        open_ids = (
+            events.loc[deadlines > now, "id"]
+            .dropna()
+            .astype(int)
+            .sort_values()
+            .tolist()
+        )
+        if open_ids:
+            return open_ids[:horizon]
+    return next_gameweeks(events, horizon)
 
 
 def _summarise_horizons(proj: pd.DataFrame, gws: list[int]) -> pd.DataFrame:
@@ -106,6 +135,37 @@ def run_pipeline(
             version=official.bootstrap_sha256[:12],
         )
     )
+
+    # Capture the pre-GW1 official price universe while it is still possible. It
+    # allows later public-entry runs to reconstruct the correct FPL selling price
+    # for players retained from the initial squad.
+    persist_initial_prices(
+        official.players,
+        official.events,
+        settings.cache_dir,
+    )
+
+    team_resolution: TeamStateResolution | None = None
+    if plan_transfers or settings.fpl_entry_id:
+        team_resolution = resolve_team_state(
+            http=http,
+            players=official.players,
+            events=official.events,
+            cache_dir=settings.cache_dir,
+            current_squad_path=settings.current_squad_path,
+            team_state_path=settings.team_state_path,
+            entry_id=settings.fpl_entry_id,
+            force=force,
+        )
+        write_team_state_report(settings.report_dir, team_resolution)
+        sources.append(
+            _status(
+                "team_state",
+                team_resolution.ok,
+                team_resolution.detail,
+                configured=team_resolution.configured,
+            )
+        )
 
     core = pd.DataFrame(columns=["player_id"])
     friendlies = pd.DataFrame()
@@ -241,15 +301,22 @@ def run_pipeline(
     news_audit = pd.DataFrame()
     if settings.news_feeds:
         try:
-            headlines = collect_feed_headlines(settings.news_feeds)
+            collection = collect_news_sources(settings.news_feeds)
+            headlines = collection.items
             news_signal, news_audit = infer_news_signals(players, headlines)
             if not news_signal.empty:
                 players = players.merge(news_signal, on="player_id", how="left")
+            failed_detail = (
+                f"; {len(collection.failed)} source(s) failed but healthy evidence retained"
+                if collection.failed
+                else ""
+            )
             sources.append(
                 _status(
                     "news_feeds",
                     True,
-                    f"{len(headlines)} headlines; {len(news_audit)} player matches",
+                    f"{len(headlines)} headlines; {len(news_audit)} player matches; "
+                    f"{len(collection.succeeded)} source(s) healthy{failed_detail}",
                 )
             )
         except Exception as exc:
@@ -265,9 +332,9 @@ def run_pipeline(
     for col in profile.columns:
         players[col] = profile[col]
 
-    gws = next_gameweeks(official.events, horizon)
+    gws = _decision_gameweeks(official.events, horizon)
     if not gws:
-        raise RuntimeError("Official FPL API returned no future gameweeks")
+        raise RuntimeError("Official FPL API returned no future actionable gameweeks")
 
     core_elos = pd.DataFrame()
     if core_client is not None:
@@ -444,34 +511,19 @@ def run_pipeline(
         )
 
     transfer_plan: TransferPlan | None = None
-    if plan_transfers:
-        team_state = load_team_state(
-            settings.current_squad_path,
-            settings.team_state_path,
+    if plan_transfers and team_resolution is not None and team_resolution.state is not None:
+        team_state = team_resolution.state
+        transfer_plan = optimise_transfer_plan(
+            ranked,
+            proj,
+            gws,
+            team_state.squad,
+            bank=team_state.bank,
+            free_transfers=team_state.free_transfers,
+            max_per_team=settings.max_per_team,
+            decay=settings.fixture_decay,
+            selling_prices=team_state.selling_prices,
         )
-        if team_state is not None:
-            transfer_plan = optimise_transfer_plan(
-                ranked,
-                proj,
-                gws,
-                team_state.squad,
-                bank=team_state.bank,
-                free_transfers=team_state.free_transfers,
-                max_per_team=settings.max_per_team,
-                decay=settings.fixture_decay,
-            )
-            sources.append(
-                _status("team_state", True, "manual current squad loaded")
-            )
-        else:
-            sources.append(
-                _status(
-                    "team_state",
-                    True,
-                    "not configured; initial-squad mode",
-                    configured=False,
-                )
-            )
 
     safety = assess_safety(
         official,
@@ -546,4 +598,5 @@ def run_pipeline(
         gws,
         safety,
         manifest,
+        team_resolution,
     )
