@@ -56,7 +56,7 @@ class Settings:
     cache_dir: Path = Path("data/cache")
     snapshot_dir: Path = Path("data/snapshots")
     report_dir: Path = Path("reports")
-    airsenal_csv: str | None = None
+    airsenal_csv: str | None = "data/generated/airsenal.csv"
     odds_api_key: str | None = None
     odds_api_url: str | None = None
     news_feeds: list[str] = field(default_factory=list)
@@ -91,7 +91,13 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         cache_dir=Path(os.getenv("APEX_CACHE_DIR", "data/cache")),
         snapshot_dir=Path(os.getenv("APEX_SNAPSHOT_DIR", "data/snapshots")),
         report_dir=Path(os.getenv("APEX_REPORT_DIR", "reports")),
-        airsenal_csv=os.getenv("AIRSENAL_PROJECTIONS_CSV") or None,
+        airsenal_csv=(
+            os.getenv(
+                "AIRSENAL_PROJECTIONS_CSV",
+                str(raw.get("airsenal_csv", default.airsenal_csv or "")),
+            )
+            or None
+        ),
         odds_api_key=os.getenv("ODDS_API_KEY") or None,
         odds_api_url=os.getenv("ODDS_API_URL") or None,
         news_feeds=_configured_news_feeds(raw),
