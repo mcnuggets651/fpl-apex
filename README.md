@@ -1,89 +1,173 @@
 # Apex FPL
 
-**Apex FPL** is a reproducible Fantasy Premier League intelligence and optimisation engine for the 2026/27 season. It is designed to answer one practical question as well as possible: **which legal FPL decisions maximise expected points given the information available now?**
+**Apex FPL** is a reproducible 2026/27 Fantasy Premier League intelligence and optimisation engine. Its job is to answer one question as rigorously as possible:
 
-The engine combines live official FPL data with statistical enrichment, preseason evidence, expected minutes, fixture strength, the 2026/27 defensive-contribution rules, optional AIrsenal projections, optional market priors, availability/news signals and mathematical optimisation.
+> Given the live FPL player pool, fixtures, projected returns, expected minutes, tactical/availability risk, current news and future flexibility, which legal decision maximises expected FPL points?
 
-## The non-negotiable rule
+Apex deliberately separates a **mathematical result** from a **full recommendation safe to act on**. If a required production source is missing, stale or inconsistent, the engine can still produce a diagnostic squad but writes `safe_to_act=false` rather than pretending confidence.
 
-**Official FPL is the canonical source for identity.** Player ID, club, FPL position, price, status and fixtures come from the live official FPL API. Auxiliary sources may enrich a player, but they cannot silently move him to a different club or position. Conflicts are written to `reports/integrity.csv` and the official value wins.
+## Non-negotiable source-of-truth rule
 
-That rule exists specifically to prevent stale-transfer errors from contaminating recommendations.
+**Official FPL is canonical for player identity.** Official FPL controls:
+- player ID;
+- club;
+- FPL position;
+- price;
+- availability/status fields;
+- fixtures and Gameweeks.
 
-## What is implemented
+FPL Core, AIrsenal, news, tactical evidence and external solvers may enrich or challenge a projection, but they cannot silently move a player to a different club/position or invent a new price. Conflicts are logged in `reports/integrity.csv`; official FPL wins.
 
-### Live data and integrity
-- Official FPL `bootstrap-static` and fixtures.
-- FPL Core Insights 2026/27 `playerstats.csv` enrichment.
-- FPL Core preseason/friendly player-match data under Gameweek 0.
-- Source-health and provenance output on every run.
-- Canonical identity reconciliation with conflict reporting.
-- Disk caching and explicit force-refresh mode.
+## Apex stack
 
-### Player modelling
-- Expected-minutes model using established minutes, preseason starts/minutes, official availability, manual verified overrides and optional news signals.
-- xG/90 and xA/90 attacking projection with conservative preseason blending.
-- Fixture attack/defence multipliers.
-- Explicit Blank Gameweek zeroing and Double Gameweek multi-fixture summation.
-- 2026/27 defensive-contribution model: defender CBIT and midfielder/forward CBIRT thresholds.
-- Goalkeeper save-point contribution when a valid saves/90 signal exists.
-- Set-piece and penalty-order context.
-- Capped bonus-points prior rather than pretending future BPS can be known exactly.
-- Per-player uncertainty and configurable risk adjustment.
+| Layer | Production role |
+|---|---|
+| Official FPL API | Live canonical player/team/fixture truth |
+| FPL Core Insights | xG/xA/xGI, player/match stats, preseason GW0, team-strength and defensive-contribution enrichment |
+| AIrsenal | Genuine independent multi-GW expected-points expert |
+| Apex model | Expected minutes, fixture-adjusted xP, tactical/set-piece/bonus/DC context and uncertainty |
+| Trusted news / verified context | Injury, transfer, manager and likely-minutes evidence |
+| Apex SciPy/HiGHS MILP | Primary legal squad / XI / captain / transfer optimiser |
+| Pinned open-fpl-solver | Independent optimisation cross-check on the same official-ID Apex xP |
+| FPL Optimization Tools | Pinned formulation/HiGHS reference |
+| OpenFPL Scout AI | Ensemble-architecture reference only unless a season-current export is revalidated |
+| FPL-MCP | Live-query/tooling architecture reference, not a forecast expert |
+| Vaastav FPL history | Historical/backtesting context only |
 
-### Projection ensemble
-A row-by-row expert blend can use:
-- Official FPL immediate `ep_next`.
-- Apex transparent expected-points model.
-- Optional AIrsenal export.
-- Optional market expected-points prior.
+Exact upstream commits and roles live in `upstreams.lock.json` and `docs/UPSTREAMS.md`.
 
-Missing experts are **not** replaced with made-up numbers. The weights automatically re-normalise over the evidence that is actually available.
+## What the model includes
 
-### Initial squad optimisation
-A SciPy/HiGHS mixed-integer optimiser selects:
-- legal 15-player squad;
-- legal starting XI;
-- captain;
-- bench;
-- maximum three players per club;
+### Live and historical evidence
+- official FPL bootstrap and fixtures;
+- official set-piece/penalty order fields where published;
+- FPL Core current-season underlying statistics;
+- preseason friendly starts/minutes/xG/xA when published;
+- defensive-contribution data for the 2026/27 rules;
+- optional market prior;
+- trusted RSS/Atom football news plus verified manual overrides;
+- immutable official-FPL snapshots and source provenance.
+
+### Expected minutes
+Apex models:
+- start probability;
+- appearance probability;
+- expected minutes;
+- probability of 60+ minutes;
+- probability of 80+ minutes;
+- minutes confidence.
+
+Inputs include established usage, preseason usage, official FPL availability, verified role evidence, injuries and conservative news signals. Expected minutes are kept separate from xP so rotation/availability can be audited and calibrated independently.
+
+### Expected points
+Per fixture, the transparent Apex model includes:
+- appearance points;
+- xG/xA attacking value;
+- home/away and opponent-strength adjustment;
+- clean-sheet probability;
+- defensive-contribution value;
+- goalkeeper saves where supported;
+- capped bonus/BPS prior;
+- set-piece and penalty role;
+- tactical-role multiplier;
+- model uncertainty.
+
+Blank Gameweeks are zeroed explicitly. Double Gameweeks are calculated fixture-by-fixture and summed.
+
+### Ensemble and uncertainty
+The row-level ensemble can combine:
+- official FPL immediate `ep_next`;
+- Apex transparent xP;
+- genuine AIrsenal xP;
+- optional market xP.
+
+Missing experts are never fabricated. Weights re-normalise over available evidence for diagnostics, while the production safety gate separately decides whether the result is complete enough to act on.
+
+Outputs include:
+- 1/3/5/8-GW xP;
+- projection standard deviation;
+- model disagreement;
+- 80% floor/ceiling;
+- projection confidence;
+- risk-adjusted xP.
+
+## Genuine AIrsenal integration
+
+AIrsenal is an independent expert, not the master database. A critical identity detail is enforced: AIrsenal's `player_prediction.player_id` is an **internal AIrsenal key**. `scripts/export_airsenal.py` joins through the AIrsenal `player` table and exports `player.fpl_api_id` only.
+
+Before an AIrsenal file enters the ensemble, Apex verifies:
+- every ID exists in the current official FPL pool;
+- every requested Gameweek is present;
+- sufficient player coverage exists for each GW;
+- `generated_at` is recent;
+- `source_version` exactly matches the pinned AIrsenal commit;
+- one prediction tag generated the file.
+
+The scheduled `.github/workflows/airsenal.yml` worker:
+1. checks out the exact pinned AIrsenal commit;
+2. caches its database;
+3. updates the live season;
+4. produces the next eight GWs of genuine forecasts;
+5. exports official FPL IDs;
+6. validates them inside Apex;
+7. commits `data/generated/airsenal.csv` only after validation.
+
+The first worker run is heavier because the AIrsenal database must be created. If upstream AIrsenal cannot complete a valid 2026/27 run, the safety gate stays red; Apex does not replace it with synthetic values and call them AIrsenal.
+
+## News, transfer and manager evidence
+
+`config/news_sources.yaml` includes a trusted baseline football feed and can be extended with stable official-club RSS/Atom feeds. Headline matching is conservative and auditable:
+- injury / ruled-out language reduces expected minutes;
+- manager/line-up doubt is classified separately;
+- transfer uncertainty can reduce expected minutes;
+- return-to-training/start-positive evidence is recorded but cannot push a player above the underlying usage model;
+- no headline can alter canonical club/position/price.
+
+Every match is written to `reports/news_audit.csv`. Official FPL availability and verified official-club evidence remain stronger than a general media headline.
+
+## Mathematical optimisation
+
+### Initial squad
+The primary SciPy/HiGHS MILP enforces:
 - £100.0m budget;
-- position constraints;
+- 15 players;
+- 2 GK / 5 DEF / 5 MID / 3 FWD;
+- maximum three per club;
+- legal starting XI formation;
+- captain and vice-captain;
 - locked/banned players.
 
-Built-in scenario runs:
-- unrestricted optimum;
+Built-in scenarios:
+- unrestricted;
 - Haaland locked;
 - Haaland banned.
 
-### Multi-Gameweek transfer optimisation
-When an exact current squad is supplied, Apex jointly optimises over the configured horizon:
+The Haaland/no-Haaland runs are solved independently rather than being a simple one-player swap.
+
+### Multi-GW transfer planning
+With an exact current squad, Apex jointly optimises over the horizon:
 - squad by Gameweek;
 - XI by Gameweek;
-- captain by Gameweek;
+- captain/vice;
 - transfers in/out;
 - bank;
-- rolled free transfers from 1 to 5;
-- four-point transfer hits;
+- rolled free transfers up to five;
+- four-point hits;
 - discounted future xP.
 
-The rolled-free-transfer state is modelled explicitly rather than approximated. Current prices are held static during the horizon so the engine does not invent future price movements.
+Fixed Wildcard, Bench Boost and Triple Captain weeks are supported. Free Hit remains a separate temporary-squad scenario because its reversion semantics differ from permanent transfers.
 
-The optimisation code also supports fixed Wildcard, Bench Boost and Triple Captain weeks. Free Hit is kept conceptually separate from permanent squad planning because its one-week squad-reversion rule is different.
+## Independent solver parity
 
-### Availability/news layer
-- Optional verified manual availability overrides.
-- Configurable RSS/Atom feeds.
-- Conservative player-name/headline matching for obvious injury/return language.
-- Full `news_audit.csv` output so headline-derived adjustments are inspectable.
-- News never changes player identity and remains weaker than official availability evidence.
+`.github/workflows/solver-parity.yml` exports the same official-ID, risk-adjusted Apex xP to the pinned `solioanalytics/open-fpl-solver`, runs its independent optimiser and records:
+- 15-player squad overlap;
+- XI overlap;
+- captain agreement;
+- players selected by only one solver.
 
-### Reliability and calibration
-- Unit tests for identity integrity, expected minutes, ensemble weighting, legal squad optimisation, multi-GW transfer rules, blanks and doubles.
-- Historical backtest helper with MAE, RMSE, bias and rank correlation.
-- GitHub Actions tests on push/PR.
-- Scheduled live pipeline every six hours.
-- Docker deployment for Oracle Cloud or any Linux host.
+This does **not** let the external solver override official truth or the safety gate. It is a quantified robustness check against optimisation-formulation mistakes.
+
+The pinned external solver states personal/educational/non-commercial use is permitted and commercial use requires its commercial licence. Apex therefore keeps it isolated and does not vendor its source.
 
 ## Quick start
 
@@ -95,189 +179,99 @@ cp .env.example .env
 apex-fpl run --scenario both --horizon 8
 ```
 
-The first run needs no private FPL credentials when building a GW1 squad.
-
-## Main commands
+Main commands:
 
 ```bash
-# Full live run: refresh -> project -> optimise -> report
 apex-fpl run --scenario both --horizon 8
-
-# Force fresh public-source downloads
 apex-fpl refresh
-
-# Projection/ranking run
 apex-fpl project --horizon 8
-
-# Initial squad scenario
-apex-fpl optimise --scenario unrestricted --horizon 8
 apex-fpl optimise --scenario haaland --horizon 8
 apex-fpl optimise --scenario no-haaland --horizon 8
-
-# Multi-GW transfer plan once an exact current squad is supplied
 apex-fpl plan-transfers --horizon 8
-
-# Historical calibration
 apex-fpl backtest historical_predictions.csv
 ```
 
-## Current squad input
+## Current team input
 
-Before the season starts, transfers are unlimited and the initial-squad optimiser is the correct mode. After the season starts, create:
+Before GW1, use the initial-squad optimiser. After the season starts, create `data/manual/current_squad.csv` with exactly 15 official FPL IDs and `data/manual/team_state.yaml` with bank/free-transfer state. Examples live in `data/manual/`.
 
-`data/manual/current_squad.csv`
+Apex intentionally does not guess your unrevealed future-deadline transfers from public team history.
 
-```csv
-player_id
-123
-456
-...
-```
+## Production safety gate
 
-It must contain exactly 15 unique official FPL IDs.
+Every full run emits `safe_to_act` and `full_apex_ready` in `reports/latest.json` and `reports/latest.md`.
 
-`data/manual/team_state.yaml`
+The default full gate requires healthy:
+- official FPL;
+- FPL Core Insights;
+- genuine current AIrsenal forecasts;
+- configured/current news feed layer;
+- legal optimal squad scenarios.
 
-```yaml
-bank: 0.5
-free_transfers: 2
-```
+A diagnostic squad can exist while the gate is red. That squad must not be described as the full Apex recommendation.
 
-This is intentionally explicit. Public FPL picks do not reveal transfers made for a future deadline before that deadline, so Apex will not pretend an old public team is your current team.
+## GitHub automation
 
-## AIrsenal integration
+Three workflows are included:
 
-AIrsenal is treated as an **independent expert**, not as the master database. This makes the system resilient when AIrsenal's season migration or dependencies lag the official FPL launch.
+### `apex.yml`
+- tests on every push / pull request;
+- verifies pinned upstream commits;
+- scheduled live run every six hours;
+- requires the full production safety gate;
+- always uploads diagnostics even if the gate is red.
 
-Install the optional dependency when the upstream project supports the live season:
+### `airsenal.yml`
+- daily genuine AIrsenal worker;
+- exact pinned commit;
+- cached model database;
+- next-eight-GW forecast;
+- official-ID export and strict validation;
+- commits the validated forecast for lightweight Apex runs.
 
-```bash
-pip install -e '.[airsenal]'
-```
+### `solver-parity.yml`
+- daily independent `open-fpl-solver` cross-check;
+- runs from the same Apex projection table;
+- uploads quantified solver-agreement evidence.
 
-Expose an AIrsenal projection export with `AIRSENAL_PROJECTIONS_CSV`. Apex accepts either:
-
-```text
-player_id,gw,xp
-```
-
-or a wide table:
-
-```text
-player_id,GW1,GW2,GW3
-```
-
-If the export is absent, the run remains valid and the ensemble re-normalises its remaining expert weights. Apex does not label a projection “AIrsenal” unless actual AIrsenal output was supplied.
-
-## FPL Core Insights integration
-
-Apex reads the pinned 2026/27 FPL Core Insights commit from `upstreams.lock.json`, including the preseason `By Tournament/Friendlies/GW0/playermatchstats.csv` file. It uses those fields for statistical context only; official FPL identity always wins.
+This makes Oracle optional. Oracle can later host the same container if persistent services, a database/API or richer orchestration are wanted.
 
 ## Reports
 
-Each full run writes:
-- `reports/latest.md` — readable decision report.
-- `reports/latest.json` — machine-readable report.
-- `reports/players.csv` — ranked player table.
-- `reports/projections.csv` — player/Gameweek expert and ensemble projections.
-- `reports/integrity.csv` — source conflicts.
-- `reports/sources.csv` — source-health/provenance table.
-- `reports/news_audit.csv` — matched headlines and inferred advisory signals.
+Each run writes, where applicable:
+- `reports/latest.md`;
+- `reports/latest.json`;
+- `reports/players.csv`;
+- `reports/projections.csv`;
+- `reports/integrity.csv`;
+- `reports/sources.csv`;
+- `reports/news_audit.csv`;
+- `reports/solver_parity.json` from the parity workflow.
 
-If a current squad is configured, the report also includes the multi-Gameweek transfer plan.
-
-## GitHub Actions
-
-`.github/workflows/apex.yml`:
-- tests every push and pull request;
-- runs the live Apex pipeline every six hours;
-- can be run manually;
-- uploads `reports/` as a workflow artifact.
-
-This means the modelling engine can operate without Oracle Cloud. Oracle remains useful if you want a continuously managed service, custom APIs, a database, or more frequent orchestration.
-
-## Docker / Oracle Cloud
-
-```bash
-docker compose build
-docker compose run --rm apex run --scenario both --horizon 8
-```
-
-See `docs/OPERATIONS.md`.
-
-## Design philosophy
-
-Apex does **not** claim football can be predicted perfectly. A “10/10” Apex recommendation means the decision pipeline is using the intended evidence, rules and constraints cleanly—not that a player cannot blank or get injured after the deadline.
-
-The system therefore prioritises:
-1. correct live identity;
-2. secured/minutes-weighted opportunity;
-3. expected points rather than last-match points;
-4. reproducible mathematical constraints;
-5. source provenance;
-6. calibrated uncertainty;
-7. graceful degradation when optional sources are absent.
+The official snapshot manifest records input hashes so a recommendation can be reconstructed.
 
 ## Repository map
 
 ```text
 src/apex_fpl/
-  data/             official FPL, FPL Core, AIrsenal, news, odds
-  models/           minutes, fixtures, DC, xP, ensemble, backtest
-  optimisation/     initial squad and multi-GW transfer MILPs
-  services/         orchestration, integrity, enrichment, news, team state
-  reporting/        JSON/CSV/Markdown report generation
-config/              model and news configuration
-data/manual/         explicit private/manual inputs (not committed by default)
-docs/                architecture, model, sources and operations
-.github/workflows/   test + scheduled live pipeline
-tests/               deterministic unit tests
+  data/              official FPL, FPL Core, AIrsenal, news, odds
+  models/            minutes, fixtures, DC, xP, ensemble, calibration
+  optimisation/      initial squad and multi-GW transfer MILPs
+  services/          orchestration, integrity, snapshots, news, team state
+  reporting/         JSON/CSV/Markdown outputs
+scripts/              upstream/export/parity helpers
+config/               model and source configuration
+data/generated/       validated lightweight worker outputs
+data/manual/          explicit private/manual inputs
+.github/workflows/    tests, live pipeline, AIrsenal worker, solver parity
+docs/                 architecture, model, sources and operations
+tests/                deterministic regression/unit tests
 ```
 
-## Upstream acknowledgements
+## Design philosophy
 
-Apex uses public outputs or optional adapters around:
-- The Alan Turing Institute's **AIrsenal** project.
-- **FPL Core Insights** by olbauday.
-- Public FPL optimisation research/tutorials including **FPL Optimization Tools**.
-
-Apex does not vendor those codebases. Its own optimiser and data-contract layer are independent so each upstream source can evolve without becoming a single point of failure.
+Apex cannot make football certain. A high Apex rating means the **decision process** is current, validated, mathematically legal, uncertainty-aware and reproducible. It does not mean a player cannot blank, be rotated unexpectedly or get injured after the deadline.
 
 ## Licence
 
-MIT. See `LICENSE`.
-
-## Production decision gate (v0.2)
-
-Apex now separates **a mathematical result** from **a recommendation safe to act on**.
-Every run writes an immutable official-FPL snapshot with SHA256 checksums and emits
-`safe_to_act` / `full_apex_ready`. By default the full gate requires healthy Official
-FPL, FPL Core, a genuine AIrsenal forecast export covering the requested horizon, and
-a configured news feed. Missing optional inputs can still produce a diagnostic squad,
-but it is explicitly blocked from being described as the full Apex recommendation.
-
-Projection output now includes expected minutes, start/appearance/60+ probabilities,
-model disagreement, projection standard deviation, 80% floor/ceiling and a distinct
-confidence score. Tactical roles use verified official-ID overrides only; they are never
-inferred from stale transfer information.
-
-### Pinned upstream workers / references
-
-Exact commits live in `upstreams.lock.json`. Core runtime roles are intentionally
-replaceable: AIrsenal is a forecast worker, FPL Core enriches features, and
-open-fpl-solver is an independent optimisation reference/next-stage planning worker.
-OpenFPL Scout AI is an optional forecast reference, FPL-MCP informs query/interface
-patterns, and Vaastav is historical/backtest-only rather than live truth.
-
-### Genuine AIrsenal contract
-
-Apex will not relabel `ep_next` or synthetic values as AIrsenal. Run the pinned AIrsenal
-worker, then export its returned prediction tag:
-
-```bash
-airsenal_setup_initial_db
-airsenal_update_db
-airsenal_run_prediction --gameweek_start 1 --gameweek_end 8
-python scripts/export_airsenal.py /path/to/airsenal.db TAG data/generated/airsenal.csv
-```
-
+Apex itself is MIT. External workers retain their own licences and are not vendored into this repository.
