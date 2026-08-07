@@ -25,6 +25,16 @@ def _records(path: Path, limit: int | None = None) -> list[dict]:
     return json.loads(df.to_json(orient="records"))
 
 
+def _json(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
 def main() -> None:
     report_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("reports")
     output_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("data/generated")
@@ -54,7 +64,7 @@ def main() -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
     published = {
-        "contract": "apex-fpl-production-snapshot-v1",
+        "contract": "apex-fpl-production-snapshot-v2-personalised",
         "published_at": datetime.now(timezone.utc).isoformat(),
         "generated_at": report.get("generated_at"),
         "gameweeks": report.get("gameweeks", []),
@@ -67,6 +77,7 @@ def main() -> None:
         "scenarios": report.get("scenarios", {}),
         "risk_report": report.get("risk_report", []),
         "transfer_plan": report.get("transfer_plan"),
+        "personal_team": _json(report_dir / "team_state.json"),
         # Enough ranked alternatives for ChatGPT to answer most player-vs-player
         # questions without forcing the large per-fixture projection table into git.
         "top_players": _records(report_dir / "players.csv", limit=150),
@@ -87,9 +98,15 @@ def main() -> None:
         latest_md.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
+    team = (published.get("personal_team") or {}).get("team_state", {})
+    team_label = (
+        f"entry={team.get('entry_id')} GW{team.get('published_gw')}"
+        if team.get("entry_id") and team.get("published_gw")
+        else "pre-GW1/initial-squad mode"
+    )
     print(
         f"Published green Apex snapshot: {len(published['top_players'])} ranked players, "
-        f"scenarios={list(published['scenarios'])}"
+        f"scenarios={list(published['scenarios'])}, personal={team_label}"
     )
 
 
