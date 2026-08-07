@@ -137,8 +137,6 @@ class OfficialEntryClient:
     ) -> PublicEntryState | None:
         now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
         summary = self.summary(force=force)
-        history = self.history(force=force)
-        transfers = self.transfers(force=force)
 
         eligible: list[int] = []
         if not events.empty:
@@ -147,6 +145,8 @@ class OfficialEntryClient:
                 if deadline is not None and deadline <= now:
                     eligible.append(int(row["id"]))
         if not eligible:
+            # Before GW1 this is the expected result. The entry summary alone is
+            # enough to prove the configured ID exists; there is no public draft.
             return None
 
         payload: dict[str, Any] | None = None
@@ -163,6 +163,16 @@ class OfficialEntryClient:
                 break
         if payload is None or published_gw is None:
             return None
+
+        # History/transfer calls are only needed once a public deadline squad
+        # actually exists. This keeps the pre-GW1 sync minimal and robust.
+        history = self.history(force=force)
+        try:
+            transfers = self.transfers(force=force)
+        except Exception:
+            # Transfer history improves selling-price reconstruction but is not
+            # necessary to identify the manager's published 15-player squad.
+            transfers = []
 
         picks = payload.get("picks", [])
         squad = {int(row["element"]) for row in picks if row.get("element") is not None}
