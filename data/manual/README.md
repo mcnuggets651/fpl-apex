@@ -35,5 +35,10 @@ player_id,availability_multiplier,confidence,reason
 
 The multiplier changes expected minutes. The official FPL status/chance remains part of the calculation, so this is an additional evidence layer rather than an identity override.
 
-## `player_context.csv`
-Optional verified context keyed by official FPL `player_id`. Copy `player_context.example.csv` to `player_context.csv`. It supports tactical role, role attack/assist multipliers, start probability, expected-minutes override, rotation/injury/transfer risk, penalty share, set-piece share, manager confidence, reason, source URL and timestamp. Canonical club/position/price/name fields are forbidden.
+
+## Tactical roles
+
+Copy `tactical_roles.example.csv` to `tactical_roles.csv` only for roles you have
+verified from current tactical evidence. `role_multiplier` is capped to 0.80–1.20 and
+defaults to 1.0. Apex does not silently infer a player's current role from an old club,
+last season's position, or transfer rumour.

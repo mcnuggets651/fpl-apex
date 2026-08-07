@@ -92,7 +92,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e .
 cp .env.example .env
-apex-fpl run --scenario both --horizon 6
+apex-fpl run --scenario both --horizon 8
 ```
 
 The first run needs no private FPL credentials when building a GW1 squad.
@@ -101,21 +101,21 @@ The first run needs no private FPL credentials when building a GW1 squad.
 
 ```bash
 # Full live run: refresh -> project -> optimise -> report
-apex-fpl run --scenario both --horizon 6
+apex-fpl run --scenario both --horizon 8
 
 # Force fresh public-source downloads
 apex-fpl refresh
 
 # Projection/ranking run
-apex-fpl project --horizon 6
+apex-fpl project --horizon 8
 
 # Initial squad scenario
-apex-fpl optimise --scenario unrestricted --horizon 6
-apex-fpl optimise --scenario haaland --horizon 6
-apex-fpl optimise --scenario no-haaland --horizon 6
+apex-fpl optimise --scenario unrestricted --horizon 8
+apex-fpl optimise --scenario haaland --horizon 8
+apex-fpl optimise --scenario no-haaland --horizon 8
 
 # Multi-GW transfer plan once an exact current squad is supplied
-apex-fpl plan-transfers --horizon 6
+apex-fpl plan-transfers --horizon 8
 
 # Historical calibration
 apex-fpl backtest historical_predictions.csv
@@ -167,11 +167,11 @@ or a wide table:
 player_id,GW1,GW2,GW3
 ```
 
-If the export is absent, a diagnostic mathematical run can still be generated, but **strict Apex mode sets `safe_to_act=false`**. The ensemble may re-normalise its remaining experts for inspection; Apex does not call that a final Apex recommendation and never labels synthetic/FPL values as AIrsenal.
+If the export is absent, the run remains valid and the ensemble re-normalises its remaining expert weights. Apex does not label a projection “AIrsenal” unless actual AIrsenal output was supplied.
 
 ## FPL Core Insights integration
 
-Apex reads the current `data/2026-2027/` outputs from FPL Core Insights, including the preseason `By Tournament/Friendlies/GW0/playermatchstats.csv` file. It uses those fields for statistical context only; official FPL identity always wins.
+Apex reads the pinned 2026/27 FPL Core Insights commit from `upstreams.lock.json`, including the preseason `By Tournament/Friendlies/GW0/playermatchstats.csv` file. It uses those fields for statistical context only; official FPL identity always wins.
 
 ## Reports
 
@@ -200,7 +200,7 @@ This means the modelling engine can operate without Oracle Cloud. Oracle remains
 
 ```bash
 docker compose build
-docker compose run --rm apex run --scenario both --horizon 6
+docker compose run --rm apex run --scenario both --horizon 8
 ```
 
 See `docs/OPERATIONS.md`.
@@ -236,18 +236,48 @@ tests/               deterministic unit tests
 
 ## Upstream acknowledgements
 
-Apex uses public outputs, pinned worker contracts and/or design validation from:
-- The Alan Turing Institute's **AIrsenal**.
+Apex uses public outputs or optional adapters around:
+- The Alan Turing Institute's **AIrsenal** project.
 - **FPL Core Insights** by olbauday.
-- **open-fpl-solver** and **FPL Optimization Tools** for optimisation/reference parity.
-- **OpenFPL-Scout-AI** as a secondary ensemble architecture reference.
-- **FPL-MCP** as a live-query/tooling architecture reference.
-- **vaastav/Fantasy-Premier-League** for historical/backtest context only.
-
-Exact upstream commits and roles are in `upstreams.lock.json` and `docs/UPSTREAMS.md`.
+- Public FPL optimisation research/tutorials including **FPL Optimization Tools**.
 
 Apex does not vendor those codebases. Its own optimiser and data-contract layer are independent so each upstream source can evolve without becoming a single point of failure.
 
 ## Licence
 
 MIT. See `LICENSE`.
+
+## Production decision gate (v0.2)
+
+Apex now separates **a mathematical result** from **a recommendation safe to act on**.
+Every run writes an immutable official-FPL snapshot with SHA256 checksums and emits
+`safe_to_act` / `full_apex_ready`. By default the full gate requires healthy Official
+FPL, FPL Core, a genuine AIrsenal forecast export covering the requested horizon, and
+a configured news feed. Missing optional inputs can still produce a diagnostic squad,
+but it is explicitly blocked from being described as the full Apex recommendation.
+
+Projection output now includes expected minutes, start/appearance/60+ probabilities,
+model disagreement, projection standard deviation, 80% floor/ceiling and a distinct
+confidence score. Tactical roles use verified official-ID overrides only; they are never
+inferred from stale transfer information.
+
+### Pinned upstream workers / references
+
+Exact commits live in `upstreams.lock.json`. Core runtime roles are intentionally
+replaceable: AIrsenal is a forecast worker, FPL Core enriches features, and
+open-fpl-solver is an independent optimisation reference/next-stage planning worker.
+OpenFPL Scout AI is an optional forecast reference, FPL-MCP informs query/interface
+patterns, and Vaastav is historical/backtest-only rather than live truth.
+
+### Genuine AIrsenal contract
+
+Apex will not relabel `ep_next` or synthetic values as AIrsenal. Run the pinned AIrsenal
+worker, then export its returned prediction tag:
+
+```bash
+airsenal_setup_initial_db
+airsenal_update_db
+airsenal_run_prediction --gameweek_start 1 --gameweek_end 8
+python scripts/export_airsenal.py /path/to/airsenal.db TAG data/generated/airsenal.csv
+```
+

@@ -1,5 +1,5 @@
 season: "2026-2027"
-horizon: 6
+horizon: 8
 budget: 100.0
 max_per_team: 3
 weights:
@@ -10,6 +10,12 @@ weights:
 fixture_decay: 0.90
 bench_weights: [0.15, 0.08, 0.04, 0.02]
 risk_penalty: 0.15
+max_official_age_hours: 26
+required_sources:
+  - official_fpl
+  - fpl_core_playerstats
+  - airsenal
+  - news_feeds
 source_confidence:
   official_fpl: 1.00
   official_club: 0.95
@@ -17,7 +23,3 @@ source_confidence:
   trusted_media: 0.78
   market_odds: 0.82
   manual: 0.70
-
-strict_apex: true
-require_airsenal: true
-require_core: true

@@ -52,13 +52,18 @@ def project_players(players: pd.DataFrame, fixture_mult: pd.DataFrame, gameweeks
         em = _num(d, "expected_minutes", 70)
         min_share = np.clip(em / 90.0, 0, 1)
         p_app, p60 = _appearance_probabilities(em)
+        if "appearance_probability" in d.columns:
+            p_app = np.clip(_num(d, "appearance_probability", 0.8), 0, 1).to_numpy(float)
+        if "minutes_60_plus_probability" in d.columns:
+            p60 = np.minimum(p_app, np.clip(_num(d, "minutes_60_plus_probability", 0.6), 0, 1).to_numpy(float))
+        role_multiplier = np.clip(_num(d, "role_multiplier", 1.0), 0.80, 1.20)
         premins = _num(d, "preseason_minutes", 0)
         xg90 = _blend_rate(
             _num(d, "expected_goals_per_90", 0), _num(d, "preseason_xg90", 0), premins
-        ) * np.clip(_num(d, "role_attack_multiplier", 1.0), 0.55, 1.55)
+        )
         xa90 = _blend_rate(
             _num(d, "expected_assists_per_90", 0), _num(d, "preseason_xa90", 0), premins
-        ) * np.clip(_num(d, "role_assist_multiplier", 1.0), 0.55, 1.55)
+        )
         dc90 = _blend_rate(
             _num(d, "defensive_contribution_per_90", 0),
             _num(d, "preseason_defcon90", 0),
@@ -69,7 +74,7 @@ def project_players(players: pd.DataFrame, fixture_mult: pd.DataFrame, gameweeks
         clean_pts = pos.map({"GK": 4, "DEF": 4, "MID": 1, "FWD": 0}).fillna(0)
 
         appearance = p_app + p60
-        attack = min_share * d["attack_multiplier"] * (xg90 * goal_pts + xa90 * 3.0)
+        attack = min_share * d["attack_multiplier"] * role_multiplier * (xg90 * goal_pts + xa90 * 3.0)
         # FPL clean-sheet points require 60+ minutes, so use p60 rather than a
         # simple minutes fraction.
         if "clean_sheet_prob" in d.columns:
@@ -91,28 +96,17 @@ def project_players(players: pd.DataFrame, fixture_mult: pd.DataFrame, gameweeks
         bonus_proxy = min_share * np.clip(
             (_num(d, "bps", 0) / np.maximum(_num(d, "minutes", 1), 1)) * 3.2, 0, 1.0
         )
-        official_pen = (_num(d, "penalties_order", 99) == 1).astype(float)
-        official_set = np.maximum(
-            (_num(d, "corners_and_indirect_freekicks_order", 99) == 1).astype(float),
-            (_num(d, "direct_freekicks_order", 99) == 1).astype(float),
-        )
-        raw_penalty = pd.to_numeric(d.get("penalty_share", pd.Series(np.nan, index=d.index)), errors="coerce")
-        raw_set_piece = pd.to_numeric(d.get("set_piece_share", pd.Series(np.nan, index=d.index)), errors="coerce")
-        penalty_share = np.where(np.isfinite(raw_penalty), np.clip(raw_penalty.fillna(0), 0, 1), official_pen)
-        set_piece_share = np.where(np.isfinite(raw_set_piece), np.clip(raw_set_piece.fillna(0), 0, 1), official_set)
-        set_piece = (0.35 * penalty_share + 0.20 * set_piece_share) * min_share
+        set_piece = (
+            (_num(d, "penalties_order", 99) == 1).astype(float) * 0.35
+            + (_num(d, "corners_and_indirect_freekicks_order", 99) == 1).astype(float) * 0.18
+            + (_num(d, "direct_freekicks_order", 99) == 1).astype(float) * 0.12
+        ) * min_share * role_multiplier
 
         fixture = d["has_fixture"].to_numpy(float)
         xp = (appearance + attack + clean + defensive + save_points + bonus_proxy + set_piece) * fixture
-        contextual_risk = (
-            0.60 * np.clip(_num(d, "rotation_risk", 0), 0, 1)
-            + 0.55 * np.clip(_num(d, "injury_risk", 0), 0, 1)
-            + 0.35 * np.clip(_num(d, "transfer_risk", 0), 0, 1)
-            + 0.30 * (1 - np.clip(_num(d, "manager_confidence", 1.0), 0, 1))
-        )
         variance = np.where(
             fixture > 0,
-            np.maximum(0.8, 0.45 * xp + (1 - min_share) * 2.2 + contextual_risk * 2.0),
+            np.maximum(0.8, 0.45 * xp + (1 - min_share) * 2.2),
             0.01,
         )
         for idx, r in d.reset_index(drop=True).iterrows():

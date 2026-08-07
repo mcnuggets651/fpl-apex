@@ -1,27 +1,25 @@
 # Upstream integration policy
 
-Apex is a **meta-engine**, not a copy of one FPL repository. Every upstream is pinned in `upstreams.lock.json`, has one explicit job, and can be replaced without changing the official player identity layer.
+Apex does **not** copy several FPL projects into one fragile monolith. Each upstream has a
+clear contract and exact pinned commit in `upstreams.lock.json`. Official FPL is always the
+identity/price/position/club/fixture authority.
 
-## Runtime hierarchy
+| Upstream | Apex role | Runtime authority |
+|---|---|---|
+| Alan Turing Institute AIrsenal | Independent multi-GW expected-points worker | Forecast only; never identity |
+| FPL Core Insights | xG/xA/xGI, player/match, preseason, team-strength enrichment | Statistical enrichment only |
+| Solio `open-fpl-solver` | Independent transfer/chip optimisation reference | Cross-check / future worker |
+| `ratisil/FPL-Optimization-Tools` | Optimisation formulation reference | Cross-check / future worker |
+| OpenFPL Scout AI | Optional ensemble forecast reference when season-compatible | Optional expert only |
+| FPL-MCP | API/query interface patterns | No modelling authority |
+| Vaastav Fantasy-Premier-League | Historical/backtesting data | Historical only, not live truth |
 
-1. **Official FPL API — canonical truth**: player ID, club, position, price, status, fixtures, deadlines and official set-piece order fields.
-2. **FPL Core Insights — statistical enrichment**: xG, xA, xGI, team strength/Elo context, player-match detail, preseason GW0, defensive contributions and non-league workload where published.
-3. **AIrsenal — independent forecast expert**: genuine AIrsenal player/Gameweek projections imported by official FPL ID. Apex never substitutes `ep_next` or synthetic values and calls them AIrsenal.
-4. **Apex transparent model — independent forecast expert**: expected minutes, underlying rates, fixture strength, defensive contributions, set pieces, bonus prior and quantified risk.
-5. **Market prior — optional expert**: only from an explicitly configured lawful endpoint.
-6. **News/availability layer**: official status plus verified player context and auditable trusted-feed headlines. News can change expected minutes/risk, never identity.
-7. **Optimisation layer**: Apex's SciPy/HiGHS MILP is the production solver. `open-fpl-solver` and `FPL-Optimization-Tools` are pinned references/workers for parity testing, transfer/chip strategy ideas and future cross-solver validation.
+## Why this design
 
-## Secondary references
+An upstream package can lag a new season, change a player's position mapping, or refresh on a
+different cadence. Apex therefore reconciles everything through official FPL IDs and fails
+safely instead of allowing an auxiliary source to overwrite a current club, position or price.
 
-- **OpenFPL-Scout-AI** informs heterogeneous ensemble architecture, but is not trusted as 2026/27 live truth without a validated current-season official-ID export.
-- **FPL-MCP** informs live-query/tool design; it is not a projection expert.
-- **vaastav/Fantasy-Premier-League** is used only for historical/backtest context. It cannot override current official FPL facts.
-
-## Why we do not vendor everything
-
-Blindly merging upstream code would reduce reliability: different projects can lag a season, use different IDs, stale positions or incompatible dependency stacks. Apex consumes validated outputs/contracts and preserves provenance, gaining the useful signal without making any one upstream a single point of failure.
-
-## Reproducibility
-
-`upstreams.lock.json` records exact commits. `scripts/bootstrap_upstreams.sh` checks out the four primary external workers/references at those commits. Every production report records source health. Missing evidence is reported; it is never fabricated.
+The core optimiser is implemented locally with SciPy/HiGHS so a recommendation remains
+reproducible. External solvers are used as independent formulation references and can be
+added as workers without changing the canonical data model.

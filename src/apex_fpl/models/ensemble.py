@@ -4,27 +4,60 @@ import numpy as np
 import pandas as pd
 
 
+EXPERT_COLUMNS = {
+    "official_ep": "official_xp",
+    "apex_model": "apex_xp",
+    "airsenal": "airsenal_xp",
+    "market": "market_xp",
+}
+
+
 def blend_projection(base: pd.DataFrame, weights: dict[str, float], risk_penalty: float) -> pd.DataFrame:
-    """Blend experts row-by-row and renormalise when an expert is absent for a GW."""
-    cols = {
-        "official_ep": "official_xp",
-        "apex_model": "apex_xp",
-        "airsenal": "airsenal_xp",
-        "market": "market_xp",
-    }
+    """Blend experts with missing-source reweighting and quantified uncertainty."""
     out = base.copy()
-    numerator = np.zeros(len(out), dtype=float)
-    denominator = np.zeros(len(out), dtype=float)
-    for key, col in cols.items():
+    n = len(out)
+    numerator = np.zeros(n, dtype=float)
+    denominator = np.zeros(n, dtype=float)
+    sumsq = np.zeros(n, dtype=float)
+    total_configured_weight = sum(max(float(weights.get(k, 0)), 0) for k in EXPERT_COLUMNS) or 1.0
+    expert_count = np.zeros(n, dtype=int)
+
+    values: dict[str, np.ndarray] = {}
+    for key, col in EXPERT_COLUMNS.items():
         if col not in out.columns:
             continue
         v = pd.to_numeric(out[col], errors="coerce").to_numpy(float)
+        values[key] = v
         mask = np.isfinite(v)
-        w = float(weights.get(key, 0))
+        w = max(float(weights.get(key, 0)), 0.0)
         numerator[mask] += v[mask] * w
+        sumsq[mask] += (v[mask] ** 2) * w
         denominator[mask] += w
+        expert_count[mask] += 1
+
     fallback = pd.to_numeric(out.get("apex_xp", 0), errors="coerce").fillna(0).to_numpy(float)
-    out["xp"] = np.where(denominator > 0, numerator / np.maximum(denominator, 1e-12), fallback)
-    sd = pd.to_numeric(out.get("apex_sd", 0), errors="coerce").fillna(0)
-    out["risk_adjusted_xp"] = np.maximum(out["xp"] - risk_penalty * sd, 0)
+    mean = np.where(denominator > 0, numerator / np.maximum(denominator, 1e-12), fallback)
+    weighted_second = np.where(denominator > 0, sumsq / np.maximum(denominator, 1e-12), mean**2)
+    disagreement_var = np.maximum(weighted_second - mean**2, 0)
+    disagreement_sd = np.sqrt(disagreement_var)
+    model_sd = pd.to_numeric(out.get("apex_sd", 0), errors="coerce").fillna(0).to_numpy(float)
+    total_sd = np.sqrt(model_sd**2 + disagreement_sd**2)
+    coverage = np.clip(denominator / total_configured_weight, 0, 1)
+    agreement = np.exp(-disagreement_sd / 3.0)
+    min_src = out["minutes_confidence"] if "minutes_confidence" in out else pd.Series(0.65, index=out.index)
+    role_src = out["role_confidence"] if "role_confidence" in out else pd.Series(0.65, index=out.index)
+    min_conf = pd.to_numeric(min_src, errors="coerce").fillna(0.65).to_numpy(float)
+    role_conf = pd.to_numeric(role_src, errors="coerce").fillna(0.65).to_numpy(float)
+    confidence = np.clip(coverage * agreement * (0.55 + 0.30 * min_conf + 0.15 * role_conf), 0.05, 0.99)
+
+    out["xp"] = mean
+    out["expert_count"] = expert_count
+    out["expert_coverage"] = coverage
+    out["expert_disagreement_sd"] = disagreement_sd
+    out["projection_sd"] = total_sd
+    out["projection_confidence"] = confidence
+    penalty_scale = 1.15 - 0.30 * confidence
+    out["risk_adjusted_xp"] = np.maximum(mean - risk_penalty * total_sd * penalty_scale, 0)
+    out["projection_floor_80"] = np.maximum(mean - 1.2816 * total_sd, 0)
+    out["projection_ceiling_80"] = mean + 1.2816 * total_sd
     return out

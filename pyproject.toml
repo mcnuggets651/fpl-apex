@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.2,<9", "pytest-cov>=5,<7", "ruff>=0.6,<1"]
-airsenal = ["airsenal @ git+https://github.com/alan-turing-institute/AIrsenal.git@main"]
+airsenal = ["airsenal @ git+https://github.com/alan-turing-institute/AIrsenal.git@8c7e18eba1488dd5a7d4bdb00d4da0a75e895717"]
 
 [project.scripts]
 apex-fpl = "apex_fpl.cli:app"

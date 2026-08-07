@@ -30,4 +30,8 @@ htmlcov/
 /data/manual/current_squad.csv
 /data/manual/team_state.yaml
 /data/manual/availability.csv
-/data/manual/player_context.csv
+data/snapshots/*
+!data/snapshots/.gitkeep
+data/generated/*
+!data/generated/.gitkeep
+/data/manual/tactical_roles.csv

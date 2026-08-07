@@ -1,2 +1,0 @@
-player_id,tactical_role,role_attack_multiplier,role_assist_multiplier,start_probability,expected_minutes_override,rotation_risk,injury_risk,transfer_risk,penalty_share,set_piece_share,manager_confidence,context_confidence,context_reason,source,source_url,updated_at
-25,central striker,1.05,0.95,0.92,82,0.08,0.02,0.00,0.80,0.05,0.90,0.90,Example only - replace with verified current evidence,official club,https://example.com,2026-08-07T07:00:00Z

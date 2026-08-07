@@ -34,18 +34,15 @@ def _run(scenario: str, horizon: int, force: bool, plan_transfers: bool = True):
         table.add_row(name, sol.status, str(cap), f"{sol.objective:.2f}")
     console.print(table)
 
-    if out.safety.safe_to_act:
-        console.print(f"[green]SAFE TO ACT: YES ({out.safety.confidence:.0%})[/green]")
-    else:
-        console.print(f"[red]SAFE TO ACT: NO ({out.safety.confidence:.0%})[/red]")
-        for blocker in out.safety.blockers:
-            console.print(f"[red]- {blocker}[/red]")
-
     if out.transfer_plan is not None:
         console.print(
             f"Transfer plan: [bold]{out.transfer_plan.status}[/bold] "
             f"({len(out.transfer_plan.weeks)} GW horizon)"
         )
+    console.print(f"Decision gate: safe_to_act={out.safety.safe_to_act} | full_apex_ready={out.safety.full_apex_ready}")
+    if out.safety.blockers:
+        for blocker in out.safety.blockers:
+            console.print(f"[red]BLOCKER: {blocker}[/red]")
     console.print(f"Reports: {settings.report_dir.resolve()}")
     failed = [s for s in out.sources if not s.ok]
     if failed:
@@ -59,7 +56,7 @@ def _run(scenario: str, horizon: int, force: bool, plan_transfers: bool = True):
 @app.command()
 def run(
     scenario: str = typer.Option("both"),
-    horizon: int = typer.Option(6),
+    horizon: int = typer.Option(8),
     force: bool = typer.Option(False),
 ):
     """Refresh data, project, optimise, optionally plan transfers, and write reports."""
@@ -73,19 +70,19 @@ def refresh(force: bool = typer.Option(True)):
 
 
 @app.command()
-def project(horizon: int = typer.Option(6), force: bool = typer.Option(False)):
+def project(horizon: int = typer.Option(8), force: bool = typer.Option(False)):
     """Run the projection pipeline and write the ranked player table."""
     _run("unrestricted", horizon, force, False)
 
 
 @app.command("optimise")
-def optimise(scenario: str = typer.Option("unrestricted"), horizon: int = typer.Option(6)):
+def optimise(scenario: str = typer.Option("unrestricted"), horizon: int = typer.Option(8)):
     """Run initial-squad optimisation for a named scenario."""
     _run(scenario, horizon, False, False)
 
 
 @app.command("plan-transfers")
-def plan_transfers(horizon: int = typer.Option(6), force: bool = typer.Option(False)):
+def plan_transfers(horizon: int = typer.Option(8), force: bool = typer.Option(False)):
     """Run the multi-GW transfer planner using data/manual/current_squad.csv."""
     settings = load_settings()
     if not settings.current_squad_path.exists():
