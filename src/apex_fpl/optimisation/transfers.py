@@ -37,26 +37,37 @@ def optimise_transfer_plan(
     bench_boost_gw: int | None = None,
     triple_captain_gw: int | None = None,
     candidate_limit: int = 110,
+    selling_prices: dict[int, float] | None = None,
 ) -> TransferPlan:
     """Multi-period FPL transfer MILP with exact rolled-FT state transitions.
 
     The model plans squad, XI, captain, transfers, bank and transfer hits over a
-    horizon. Prices are held at the current snapshot, which keeps the model
-    reproducible; future price-change forecasting belongs in a separate risk
-    layer rather than being silently guessed here.
+    horizon. Purchase prices are held at the current official snapshot. For the
+    manager's existing squad, ``selling_prices`` can provide the actual FPL cash
+    realised on a sale rather than incorrectly assuming every player sells at the
+    current market price.
 
     Supported fixed chips: Wildcard, Bench Boost and Triple Captain. Free Hit is
     intentionally evaluated as a separate one-week scenario because its squad
     reversion semantics are different from permanent transfer planning.
     """
     locked, banned = locked or set(), banned or set()
+    selling_prices = selling_prices or {}
     if not gameweeks:
         return TransferPlan("Infeasible", float("nan"), [])
 
     base = players.drop_duplicates("player_id").copy()
     base = base[base["position"].isin(SQUAD_COUNTS)].copy()
-    px = projections[projections["gw"].isin(gameweeks)][["player_id", "gw", "risk_adjusted_xp"]].copy()
-    matrix = px.pivot_table(index="player_id", columns="gw", values="risk_adjusted_xp", aggfunc="sum", fill_value=0.0)
+    px = projections[projections["gw"].isin(gameweeks)][
+        ["player_id", "gw", "risk_adjusted_xp"]
+    ].copy()
+    matrix = px.pivot_table(
+        index="player_id",
+        columns="gw",
+        values="risk_adjusted_xp",
+        aggfunc="sum",
+        fill_value=0.0,
+    )
     for gw in gameweeks:
         if gw not in matrix.columns:
             matrix[gw] = 0.0
@@ -69,14 +80,31 @@ def optimise_transfer_plan(
     top = set(base.nlargest(candidate_limit, "plan_xp")["player_id"].astype(int))
     d = base[base["player_id"].astype(int).isin(top | must_keep)].reset_index(drop=True)
     if not current_squad.issubset(set(d["player_id"].astype(int))):
-        return TransferPlan("Infeasible: current squad IDs missing from player pool", float("nan"), [])
+        return TransferPlan(
+            "Infeasible: current squad IDs missing from player pool",
+            float("nan"),
+            [],
+        )
     if len(current_squad) != 15:
-        return TransferPlan("Infeasible: current squad must contain 15 players", float("nan"), [])
+        return TransferPlan(
+            "Infeasible: current squad must contain 15 players",
+            float("nan"),
+            [],
+        )
 
     n, T = len(d), len(gameweeks)
     pids = d["player_id"].astype(int).tolist()
     by_id = {pid: i for i, pid in enumerate(pids)}
-    prices = pd.to_numeric(d["price"], errors="coerce").fillna(0).to_numpy(float)
+    buy_prices = pd.to_numeric(d["price"], errors="coerce").fillna(0).to_numpy(float)
+    sell_prices = np.array(
+        [
+            float(selling_prices.get(pid, buy_prices[i]))
+            if pid in current_squad
+            else float(buy_prices[i])
+            for i, pid in enumerate(pids)
+        ],
+        dtype=float,
+    )
     xpv = np.zeros((n, T), dtype=float)
     for i, pid in enumerate(pids):
         if pid in matrix.index:
@@ -103,7 +131,7 @@ def optimise_transfer_plan(
 
     objective = np.zeros(m, dtype=float)
     for t, gw in enumerate(gameweeks):
-        disc = decay ** t
+        disc = decay**t
         for i in range(n):
             # Small squad value rewards playable bench; XI and captain dominate.
             objective[q(S0, i, t)] += 0.08 * xpv[i, t] * disc
@@ -124,7 +152,9 @@ def optimise_transfer_plan(
     upper: list[float] = []
 
     def add(coeffs: dict[int, float], lo: float, hi: float):
-        rows.append(coeffs); lower.append(lo); upper.append(hi)
+        rows.append(coeffs)
+        lower.append(lo)
+        upper.append(hi)
 
     for t, gw in enumerate(gameweeks):
         add({q(S0, i, t): 1 for i in range(n)}, 15, 15)
@@ -147,9 +177,26 @@ def optimise_transfer_plan(
             prev = 1.0 if pids[i] in current_squad else 0.0
             if t == 0:
                 # s_t = s_initial + in - out
-                add({q(S0, i, t): 1, q(IN0, i, t): -1, q(OUT0, i, t): 1}, prev, prev)
+                add(
+                    {
+                        q(S0, i, t): 1,
+                        q(IN0, i, t): -1,
+                        q(OUT0, i, t): 1,
+                    },
+                    prev,
+                    prev,
+                )
             else:
-                add({q(S0, i, t): 1, q(S0, i, t-1): -1, q(IN0, i, t): -1, q(OUT0, i, t): 1}, 0, 0)
+                add(
+                    {
+                        q(S0, i, t): 1,
+                        q(S0, i, t - 1): -1,
+                        q(IN0, i, t): -1,
+                        q(OUT0, i, t): 1,
+                    },
+                    0,
+                    0,
+                )
 
         # Every permanent transfer is one in + one out.
         balance = {q(IN0, i, t): 1 for i in range(n)}
@@ -157,30 +204,43 @@ def optimise_transfer_plan(
         add(balance, 0, 0)
 
         # Exactly one (FT state, transfer-count) action pair per GW.
-        add({y(t, ft, k): 1 for ft in range(1, F+1) for k in range(K)}, 1, 1)
+        add(
+            {y(t, ft, k): 1 for ft in range(1, F + 1) for k in range(K)},
+            1,
+            1,
+        )
         # Transfer count links to transfer-ins.
         coeff = {q(IN0, i, t): 1 for i in range(n)}
-        coeff.update({y(t, ft, k): -k for ft in range(1, F+1) for k in range(K)})
+        coeff.update(
+            {y(t, ft, k): -k for ft in range(1, F + 1) for k in range(K)}
+        )
         add(coeff, 0, 0)
         if t == 0:
             add({y(t, free_transfers, k): 1 for k in range(K)}, 1, 1)
         else:
             # The FT state at t must equal the deterministic transition from t-1.
-            for ft_now in range(1, F+1):
+            for ft_now in range(1, F + 1):
                 lhs = {y(t, ft_now, k): 1 for k in range(K)}
-                for ft_prev in range(1, F+1):
+                for ft_prev in range(1, F + 1):
                     for k_prev in range(K):
                         previous_gw = gameweeks[t - 1]
-                        next_state = ft_prev if wildcard_gw == previous_gw else _next_ft(ft_prev, k_prev)
+                        next_state = (
+                            ft_prev
+                            if wildcard_gw == previous_gw
+                            else _next_ft(ft_prev, k_prev)
+                        )
                         if next_state == ft_now:
-                            lhs[y(t-1, ft_prev, k_prev)] = lhs.get(y(t-1, ft_prev, k_prev), 0) - 1
+                            lhs[y(t - 1, ft_prev, k_prev)] = (
+                                lhs.get(y(t - 1, ft_prev, k_prev), 0) - 1
+                            )
                 add(lhs, 0, 0)
 
-        # Bank cash flow at static snapshot prices.
+        # Bank cash flow. Existing players use their manager-specific selling
+        # prices; new purchases use the live official market price.
         cash = {BANK0 + t: 1}
         for i in range(n):
-            cash[q(IN0, i, t)] = cash.get(q(IN0, i, t), 0) + prices[i]
-            cash[q(OUT0, i, t)] = cash.get(q(OUT0, i, t), 0) - prices[i]
+            cash[q(IN0, i, t)] = cash.get(q(IN0, i, t), 0) + buy_prices[i]
+            cash[q(OUT0, i, t)] = cash.get(q(OUT0, i, t), 0) - sell_prices[i]
         if t == 0:
             add(cash, bank, bank)
         else:
@@ -192,9 +252,9 @@ def optimise_transfer_plan(
     integrality = np.ones(m, dtype=int)
     # Bank is continuous and nonnegative, with a generous upper bound.
     for t in range(T):
-        lb[BANK0+t] = 0
-        ub[BANK0+t] = 100
-        integrality[BANK0+t] = 0
+        lb[BANK0 + t] = 0
+        ub[BANK0 + t] = 100
+        integrality[BANK0 + t] = 0
 
     for pid in locked:
         if pid in by_id:
@@ -223,42 +283,71 @@ def optimise_transfer_plan(
     sol = res.x
     weeks: list[dict] = []
     for t, gw in enumerate(gameweeks):
-        squad_i = [i for i in range(n) if sol[q(S0, i, t)] > .5]
-        xi_i = [i for i in range(n) if sol[q(X0, i, t)] > .5]
-        cap_i = [i for i in range(n) if sol[q(C0, i, t)] > .5]
+        squad_i = [i for i in range(n) if sol[q(S0, i, t)] > 0.5]
+        xi_i = [i for i in range(n) if sol[q(X0, i, t)] > 0.5]
+        cap_i = [i for i in range(n) if sol[q(C0, i, t)] > 0.5]
         vice_pool = [i for i in xi_i if i not in cap_i]
         vice_i = [max(vice_pool, key=lambda i: xpv[i, t])] if vice_pool else []
-        in_i = [i for i in range(n) if sol[q(IN0, i, t)] > .5]
-        out_i = [i for i in range(n) if sol[q(OUT0, i, t)] > .5]
+        in_i = [i for i in range(n) if sol[q(IN0, i, t)] > 0.5]
+        out_i = [i for i in range(n) if sol[q(OUT0, i, t)] > 0.5]
         chosen_state = next(
-            ((ft, k) for ft in range(1, F+1) for k in range(K) if sol[y(t, ft, k)] > .5),
+            (
+                (ft, k)
+                for ft in range(1, F + 1)
+                for k in range(K)
+                if sol[y(t, ft, k)] > 0.5
+            ),
             (1, len(in_i)),
         )
         ft, k = chosen_state
-        hit = 0 if wildcard_gw == gw else int(max(0, k-ft) * TRANSFER_HIT_COST)
+        hit = (
+            0
+            if wildcard_gw == gw
+            else int(max(0, k - ft) * TRANSFER_HIT_COST)
+        )
 
         def records(indices: list[int]) -> list[dict]:
-            cols = [c for c in ["player_id", "web_name", "team_name", "position", "price"] if c in d.columns]
+            cols = [
+                col
+                for col in [
+                    "player_id",
+                    "web_name",
+                    "team_name",
+                    "position",
+                    "price",
+                ]
+                if col in d.columns
+            ]
             out = d.loc[indices, cols].copy()
             out["xp"] = [xpv[i, t] for i in indices]
             return out.to_dict("records")
 
-        weeks.append({
-            "gw": int(gw),
-            "free_transfers_before": int(ft),
-            "transfers": int(k),
-            "hit_cost": hit,
-            "bank_after": round(float(sol[BANK0+t]), 2),
-            "chip": (
-                "wildcard" if wildcard_gw == gw else
-                "bench_boost" if bench_boost_gw == gw else
-                "triple_captain" if triple_captain_gw == gw else None
-            ),
-            "transfers_in": records(in_i),
-            "transfers_out": records(out_i),
-            "captain": records(cap_i),
-            "vice_captain": records(vice_i),
-            "xi": records(xi_i),
-            "squad": records(squad_i),
-        })
+        transfer_out_records = records(out_i)
+        for record, i in zip(transfer_out_records, out_i):
+            record["selling_price"] = round(float(sell_prices[i]), 1)
+
+        weeks.append(
+            {
+                "gw": int(gw),
+                "free_transfers_before": int(ft),
+                "transfers": int(k),
+                "hit_cost": hit,
+                "bank_after": round(float(sol[BANK0 + t]), 2),
+                "chip": (
+                    "wildcard"
+                    if wildcard_gw == gw
+                    else "bench_boost"
+                    if bench_boost_gw == gw
+                    else "triple_captain"
+                    if triple_captain_gw == gw
+                    else None
+                ),
+                "transfers_in": records(in_i),
+                "transfers_out": transfer_out_records,
+                "captain": records(cap_i),
+                "vice_captain": records(vice_i),
+                "xi": records(xi_i),
+                "squad": records(squad_i),
+            }
+        )
     return TransferPlan("Optimal", float(-res.fun), weeks)
