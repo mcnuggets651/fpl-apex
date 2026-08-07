@@ -192,7 +192,6 @@ def write_reports(
         ]
 
     for name, sol in scenarios.items():
-        annotated_squad = _annotate(sol.squad, drivers, risks)
         annotated_xi = _annotate(sol.xi, drivers, risks)
         annotated_cap = _annotate(sol.captain, drivers, risks)
         annotated_vice = _annotate(sol.vice_captain, drivers, risks)

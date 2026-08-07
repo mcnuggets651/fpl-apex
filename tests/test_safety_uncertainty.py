@@ -36,7 +36,10 @@ def test_full_apex_gate_blocks_unconfigured_required_sources():
         SourceStatus("airsenal", True, configured=False), SourceStatus("news_feeds", True, configured=False),
     ]
     projection = pd.DataFrame({"player_id": [1], "projection_confidence": [.8]})
-    class Sol: status = "Optimal"
+
+    class Sol:
+        status = "Optimal"
+
     out = assess_safety(snap, sources, pd.DataFrame(), projection, {"x": Sol()}, ["official_fpl", "fpl_core_playerstats", "airsenal", "news_feeds"])
     assert not out.safe_to_act
     assert not out.full_apex_ready

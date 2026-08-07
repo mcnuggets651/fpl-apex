@@ -50,6 +50,11 @@ def _projection_table(players, a, b):
                 xp = 10.0 if gw == 1 else 0.0
             elif pid == b:
                 xp = 6.0
+            elif players.loc[players.player_id == pid, "position"].iloc[0] == "DEF":
+                # Keep the four dominant defenders genuinely automatic on the
+                # projection surface solved by the horizon optimiser. The only
+                # remaining DEF slot must then choose the spike or horizon asset.
+                xp = 7.0
             else:
                 xp = 3.0
             rows.append({"player_id": int(pid), "gw": gw, "risk_adjusted_xp": xp})

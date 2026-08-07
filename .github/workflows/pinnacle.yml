@@ -7,37 +7,6 @@ on:
     - cron: "47 */6 * * *"
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/pinnacle.yml"
-      - "scripts/run_pinnacle.py"
-      - "scripts/assert_pinnacle.py"
-      - "scripts/update_learning_archive.py"
-      - "src/apex_fpl/models/ensemble.py"
-      - "src/apex_fpl/models/scenarios.py"
-      - "src/apex_fpl/optimisation/cvar.py"
-      - "src/apex_fpl/optimisation/initial_horizon.py"
-      - "src/apex_fpl/optimisation/mechanics.py"
-      - "src/apex_fpl/optimisation/stability.py"
-      - "src/apex_fpl/optimisation/transfer_views.py"
-      - "src/apex_fpl/services/chips.py"
-      - "src/apex_fpl/services/learning.py"
-      - "src/apex_fpl/services/pinnacle_readiness.py"
-      - "src/apex_fpl/services/strategy.py"
-      - "src/apex_fpl/services/team_state.py"
-      - "src/apex_fpl/data/entry.py"
-      - "tests/test_chips.py"
-      - "tests/test_dgw_expert_allocation.py"
-      - "tests/test_expected_value_surface.py"
-      - "tests/test_learning_archive.py"
-      - "tests/test_mechanics.py"
-      - "tests/test_pinnacle_readiness.py"
-      - "tests/test_pinnacle_stress.py"
-      - "tests/test_pre_gw1_price_capture.py"
-      - "tests/test_scenario_persistence.py"
-      - "tests/test_selection_regret.py"
-      - "tests/test_stochastic_pinnacle.py"
-      - "tests/test_strategy.py"
-      - "tests/test_transfer_candidate_pool.py"
 
 permissions:
   contents: write

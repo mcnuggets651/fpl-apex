@@ -159,7 +159,13 @@ def _parse_html(content: bytes, url: str) -> list[NewsItem]:
 
 def parse_news_document(content: bytes, url: str, content_type: str = "") -> list[NewsItem]:
     """Parse RSS/Atom, with a narrow official-news HTML fallback."""
-    looks_xml = "xml" in content_type.casefold() or content.lstrip().startswith((b"<?xml", b"<rss", b"<feed"))
+    media_type = content_type.partition(";")[0].strip().casefold()
+    if media_type in {"text/html", "application/xhtml+xml"}:
+        return _parse_html(content, url)
+
+    looks_xml = "xml" in media_type or content.lstrip().startswith(
+        (b"<?xml", b"<rss", b"<feed")
+    )
     if looks_xml:
         try:
             return _parse_xml(content, url)
