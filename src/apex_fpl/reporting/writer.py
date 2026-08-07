@@ -25,6 +25,7 @@ def _scenario_payload(sol) -> dict[str, Any]:
         "squad": _records(sol.squad),
         "xi": _records(sol.xi),
         "captain": _records(sol.captain),
+        "vice_captain": _records(sol.vice_captain),
         "bench": _records(sol.bench),
     }
 
@@ -93,7 +94,10 @@ def write_reports(
         payload["scenarios"][name] = _scenario_payload(sol)
         lines += [f"## {name}", f"Status: **{sol.status}**", f"Objective: **{sol.objective:.2f}**", ""]
         if not sol.captain.empty:
-            lines += [f"Captain: **{sol.captain.iloc[0].get('web_name', sol.captain.iloc[0]['player_id'])}**", ""]
+            lines += [f"Captain: **{sol.captain.iloc[0].get('web_name', sol.captain.iloc[0]['player_id'])}**"]
+            if not sol.vice_captain.empty:
+                lines += [f"Vice-captain: **{sol.vice_captain.iloc[0].get('web_name', sol.vice_captain.iloc[0]['player_id'])}**"]
+            lines.append("")
         if not sol.xi.empty:
             lines += ["### XI", "", sol.xi.to_markdown(index=False), "", "### Bench", "", sol.bench.to_markdown(index=False), ""]
 
@@ -110,7 +114,8 @@ def write_reports(
             ins = ", ".join(str(x.get("web_name", x["player_id"])) for x in week["transfers_in"]) or "None"
             outs = ", ".join(str(x.get("web_name", x["player_id"])) for x in week["transfers_out"]) or "None"
             captain = week["captain"][0].get("web_name") if week["captain"] else "-"
-            lines += [f"Transfers in: {ins}", f"Transfers out: {outs}", f"Captain: **{captain}**", ""]
+            vice = week.get("vice_captain", [{}])[0].get("web_name", "-") if week.get("vice_captain") else "-"
+            lines += [f"Transfers in: {ins}", f"Transfers out: {outs}", f"Captain: **{captain}**", f"Vice-captain: **{vice}**", ""]
 
     (report_dir / "latest.json").write_text(json.dumps(payload, indent=2, default=str))
     (report_dir / "latest.md").write_text("\n".join(lines))
