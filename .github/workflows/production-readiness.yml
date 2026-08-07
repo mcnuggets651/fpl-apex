@@ -44,10 +44,11 @@ jobs:
           AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
         run: |
           if [ ! -s "$AIRSENAL_DB_FILE" ]; then
-            airsenal_setup_initial_db
-          else
-            airsenal_update_db
+            # AIrsenal requires a positive ID only to initialise its schema.
+            # Apex never uses this manager's transactions for forecasts.
+            airsenal_setup_initial_db --fpl_team_id 1
           fi
+          python scripts/update_airsenal_worker.py
           python scripts/run_airsenal_worker.py \
             --db "$AIRSENAL_DB_FILE" \
             --horizon 8 \
