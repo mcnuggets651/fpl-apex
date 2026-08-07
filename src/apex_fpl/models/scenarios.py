@@ -20,7 +20,7 @@ class ProjectionScenarios:
     gameweeks: np.ndarray
     values: np.ndarray
     seed: int
-    model_version: str = "apex-correlated-forecast-v2-player-persistence"
+    model_version: str = "apex-correlated-forecast-v3-epistemic-persistence"
 
     @property
     def n_scenarios(self) -> int:
@@ -75,9 +75,12 @@ def generate_projection_scenarios(
     a new signing is actually first choice should affect several future Gameweeks,
     not disappear independently after each fixture.
 
-    Marginal volatility comes from ``projection_sd`` and is expressed as a positive
-    log-normal perturbation. Coefficients are explicit robustness priors and remain
-    flagged as uncalibrated until enough genuine 2026/27 deadline outcomes exist.
+    Marginal volatility comes from ``forecast_uncertainty_sd`` and is expressed as
+    a positive log-normal perturbation. Match-outcome variance in ``projection_sd``
+    is deliberately excluded: these scenarios represent uncertainty in the latent
+    forecast surface, not random realised scores. Older callers without the new
+    column retain ``projection_sd`` as a compatibility fallback. Coefficients are
+    explicit priors until genuine 2026/27 deadline outcomes permit calibration.
     """
     gws = np.asarray([int(gw) for gw in gameweeks], dtype=int)
     if len(gws) == 0:
@@ -117,7 +120,9 @@ def generate_projection_scenarios(
     base = np.nan_to_num(base, nan=0.0, posinf=0.0, neginf=0.0)
     base = np.maximum(base, 0.0)
 
-    sd = _numeric(d, "projection_sd", np.nan)
+    sd = _numeric(d, "forecast_uncertainty_sd", np.nan)
+    legacy_sd = _numeric(d, "projection_sd", np.nan)
+    sd = np.where(np.isfinite(sd) & (sd > 0), sd, legacy_sd)
     fallback_sd = np.sqrt(np.maximum(0.55 * base, 0.35))
     sd = np.where(np.isfinite(sd) & (sd > 0), sd, fallback_sd)
     sd = np.maximum(sd * float(marginal_sd_scale), 0.05)

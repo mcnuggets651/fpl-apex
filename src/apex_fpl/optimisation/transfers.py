@@ -38,6 +38,7 @@ def optimise_transfer_plan(
     triple_captain_gw: int | None = None,
     candidate_limit: int = 110,
     selling_prices: dict[int, float] | None = None,
+    captain_eligible: set[int] | None = None,
 ) -> TransferPlan:
     """Multi-period FPL transfer MILP with exact rolled-FT state transitions.
 
@@ -52,6 +53,9 @@ def optimise_transfer_plan(
     reversion semantics are different from permanent transfer planning.
     """
     locked, banned = locked or set(), banned or set()
+    captain_eligible = (
+        None if captain_eligible is None else {int(pid) for pid in captain_eligible}
+    )
     selling_prices = selling_prices or {}
     if not gameweeks:
         return TransferPlan("Infeasible", float("nan"), [])
@@ -77,6 +81,8 @@ def optimise_transfer_plan(
     # Keep all existing/locked players plus the best candidates. This preserves
     # exact legality while preventing a needlessly huge branch-and-bound model.
     must_keep = set(map(int, current_squad)) | set(map(int, locked))
+    if captain_eligible is not None:
+        must_keep |= captain_eligible
     top = set(base.nlargest(candidate_limit, "plan_xp")["player_id"].astype(int))
     d = base[base["player_id"].astype(int).isin(top | must_keep)].reset_index(drop=True)
     if not current_squad.issubset(set(d["player_id"].astype(int))):
@@ -160,6 +166,9 @@ def optimise_transfer_plan(
         add({q(S0, i, t): 1 for i in range(n)}, 15, 15)
         add({q(X0, i, t): 1 for i in range(n)}, 11, 11)
         add({q(C0, i, t): 1 for i in range(n)}, 1, 1)
+        if captain_eligible is not None:
+            eligible_idx = [i for i, pid in enumerate(pids) if pid in captain_eligible]
+            add({q(X0, i, t): 1 for i in eligible_idx}, 2, np.inf)
 
         for pos, count in SQUAD_COUNTS.items():
             idx = [i for i in range(n) if d.loc[i, "position"] == pos]
@@ -264,6 +273,11 @@ def optimise_transfer_plan(
         if pid in by_id:
             for t in range(T):
                 ub[q(S0, by_id[pid], t)] = 0
+    if captain_eligible is not None:
+        for i, pid in enumerate(pids):
+            if pid not in captain_eligible:
+                for t in range(T):
+                    ub[q(C0, i, t)] = 0
 
     A = lil_matrix((len(rows), m), dtype=float)
     for r, coeffs in enumerate(rows):
@@ -286,7 +300,12 @@ def optimise_transfer_plan(
         squad_i = [i for i in range(n) if sol[q(S0, i, t)] > 0.5]
         xi_i = [i for i in range(n) if sol[q(X0, i, t)] > 0.5]
         cap_i = [i for i in range(n) if sol[q(C0, i, t)] > 0.5]
-        vice_pool = [i for i in xi_i if i not in cap_i]
+        vice_pool = [
+            i
+            for i in xi_i
+            if i not in cap_i
+            and (captain_eligible is None or pids[i] in captain_eligible)
+        ]
         vice_i = [max(vice_pool, key=lambda i: xpv[i, t])] if vice_pool else []
         in_i = [i for i in range(n) if sol[q(IN0, i, t)] > 0.5]
         out_i = [i for i in range(n) if sol[q(OUT0, i, t)] > 0.5]

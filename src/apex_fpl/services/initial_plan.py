@@ -22,6 +22,7 @@ def build_initial_squad_contingencies(
     budget: float,
     max_per_team: int,
     decay: float,
+    captain_eligible: set[int] | None = None,
 ) -> dict:
     """Plan GW2-GW5 from the selected GW1 squad without pre-committing moves."""
     future = [int(gw) for gw in gameweeks[1:5]]
@@ -61,6 +62,7 @@ def build_initial_squad_contingencies(
         decay=decay,
         selling_prices={pid: float(prices.get(pid, 0.0) or 0.0) for pid in squad_ids},
         candidate_limit=180,
+        captain_eligible=captain_eligible,
     )
     return {
         "status": plan.status,

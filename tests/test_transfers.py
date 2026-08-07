@@ -55,3 +55,36 @@ def test_multiweek_transfer_plan_is_legal():
         assert week["vice_captain"][0]["player_id"] != week["captain"][0]["player_id"]
         assert (squad.groupby("team_name").size() <= 3).all()
         assert squad.position.value_counts().to_dict() == {"MID": 5, "DEF": 5, "FWD": 3, "GK": 2}
+
+
+def test_transfer_plan_never_captains_ineligible_projection_outlier():
+    players = _pool()
+    current = set()
+    for pos, need in {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3}.items():
+        current.update(
+            players[players.position == pos].head(need).player_id.astype(int)
+        )
+    outlier = int(players.player_id.max())
+    projections = pd.DataFrame(
+        [
+            {
+                "player_id": int(pid),
+                "gw": 1,
+                "risk_adjusted_xp": 100.0 if int(pid) == outlier else 3.0,
+            }
+            for pid in players.player_id
+        ]
+    )
+    eligible = set(players.player_id.astype(int)) - {outlier}
+    plan = optimise_transfer_plan(
+        players,
+        projections,
+        [1],
+        current,
+        bank=20.0,
+        candidate_limit=60,
+        captain_eligible=eligible,
+    )
+    assert plan.status == "Optimal"
+    assert plan.weeks[0]["captain"][0]["player_id"] in eligible
+    assert plan.weeks[0]["vice_captain"][0]["player_id"] in eligible

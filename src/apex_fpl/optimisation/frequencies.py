@@ -25,6 +25,7 @@ def estimate_decision_frequencies(
     max_per_team: int = 3,
     decay: float = 0.90,
     max_solves: int = 24,
+    captain_eligible: set[int] | None = None,
 ) -> DecisionFrequencies:
     """Re-solve plausible forecast surfaces and count decision persistence.
 
@@ -70,6 +71,7 @@ def estimate_decision_frequencies(
             budget=budget,
             max_per_team=max_per_team,
             decay=decay,
+            captain_eligible=captain_eligible,
             projection_col="xp",
         )
         if solution.status != "Optimal":
@@ -89,6 +91,7 @@ def estimate_decision_frequencies(
             solution.xi,
             gw1_xp,
             appearance,
+            captain_eligible=captain_eligible,
         )
         for pid in squad_ids:
             counters[pid]["squad"] += 1

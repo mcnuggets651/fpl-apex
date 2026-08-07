@@ -3,6 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from apex_fpl.services.decision_eligibility import (
+    MIN_CAPTAIN_APPEARANCE_PROBABILITY,
+    MIN_CAPTAIN_EXPECTED_MINUTES,
+    MIN_CAPTAIN_PROJECTION_CONFIDENCE,
+    MIN_CAPTAIN_START_PROBABILITY,
+)
+
 
 REQUIRED_SCENARIOS = ("unrestricted", "haaland", "no-haaland")
 REQUIRED_SOURCES = (
@@ -13,14 +20,9 @@ REQUIRED_SOURCES = (
     "news_feeds",
 )
 
-# Conservative publication floors while the 2026/27 expected-minutes and
-# ensemble layers are still prospective rather than outcome-calibrated. They are
-# blockers, not optimiser overrides: Apex must repair the evidence instead of
-# silently substituting a supposedly safer captain.
-MIN_CAPTAIN_EXPECTED_MINUTES = 60.0
-MIN_CAPTAIN_START_PROBABILITY = 0.50
-MIN_CAPTAIN_APPEARANCE_PROBABILITY = 0.75
-MIN_CAPTAIN_PROJECTION_CONFIDENCE = 0.40
+MIN_PUBLISHED_CAPTAIN_FREQUENCY = 0.50
+MIN_ROBUST_SQUAD_OVERLAP = 12
+MIN_ROBUST_XI_OVERLAP = 9
 
 
 @dataclass(frozen=True)
@@ -135,6 +137,14 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         elif row.get("ok") is not True or row.get("configured") is not True:
             blockers.append(f"required source not healthy/configured: {name}")
 
+    gameweeks = payload.get("gameweeks") or []
+    if gameweeks and int(gameweeks[0]) == 1:
+        previous = sources.get("fpl_core_previous_season")
+        if previous is None:
+            blockers.append("pre-GW1 prior-season evidence source is absent")
+        elif previous.get("ok") is not True or previous.get("configured") is not True:
+            blockers.append("pre-GW1 prior-season evidence source is not healthy/configured")
+
     snapshot = payload.get("official_snapshot") or {}
     for field in ("snapshot_id", "retrieved_at", "bootstrap_sha256", "fixtures_sha256"):
         if not snapshot.get(field):
@@ -147,6 +157,8 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         blockers.append("fewer than 128 stochastic projection scenarios")
     if decision.get("exact_gw_mechanics") is not True:
         blockers.append("exact captain/vice/autosub mechanics are not active")
+    if decision.get("captain_eligibility_enforced_in_all_solves") is not True:
+        blockers.append("captain/vice evidence floors are not enforced in every solve")
     if decision.get("receding_horizon_transfers") is not True:
         blockers.append("receding-horizon transfer policy is not active")
     if decision.get("empirical_decision_frequency") is not True:
@@ -195,18 +207,32 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             frequency = _number(captain_row, "captain_frequency")
             if frequency is None:
                 blockers.append("published captain frequency is missing")
-            elif frequency < 0.50:
-                warnings.append(
-                    f"published captain appears in only {frequency:.0%} of uncertainty re-solves"
+            elif frequency < MIN_PUBLISHED_CAPTAIN_FREQUENCY:
+                blockers.append(
+                    f"published captain appears in only {frequency:.0%} of uncertainty "
+                    f"re-solves; production floor is {MIN_PUBLISHED_CAPTAIN_FREQUENCY:.0%}"
                 )
 
     robust_compare = payload.get("robustness_comparison") or {}
     unrestricted = robust_compare.get("unrestricted") or {}
     overlap = unrestricted.get("squad_overlap")
-    if overlap is not None and int(overlap) < 12:
-        warnings.append(
-            f"deterministic/CVaR unrestricted squads overlap only {overlap}/15; decision is structurally sensitive"
+    if overlap is None:
+        blockers.append("deterministic/CVaR unrestricted squad comparison is missing")
+    elif int(overlap) < MIN_ROBUST_SQUAD_OVERLAP:
+        blockers.append(
+            f"deterministic/CVaR unrestricted squads overlap only {overlap}/15; "
+            f"production floor is {MIN_ROBUST_SQUAD_OVERLAP}/15"
         )
+    xi_overlap = unrestricted.get("xi_overlap")
+    if xi_overlap is None:
+        blockers.append("deterministic/CVaR unrestricted XI comparison is missing")
+    elif int(xi_overlap) < MIN_ROBUST_XI_OVERLAP:
+        blockers.append(
+            f"deterministic/CVaR unrestricted XIs overlap only {xi_overlap}/11; "
+            f"production floor is {MIN_ROBUST_XI_OVERLAP}/11"
+        )
+    if unrestricted.get("captain_agrees") is not True:
+        blockers.append("deterministic/CVaR unrestricted captains disagree")
 
     decision_calibrated = decision.get("covariance_coefficients_walk_forward_calibrated")
     if decision_calibrated is not True:
@@ -234,6 +260,13 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     parity = payload.get("solver_parity")
     if parity is None:
         warnings.append("independent solver parity snapshot is not embedded in this run")
+    elif isinstance(parity, dict) and parity.get("comparison_surface") is not None:
+        if parity.get("comparison_surface") != "pinnacle_ev":
+            blockers.append("independent solver parity was not computed on Pinnacle EV")
+        if int(parity.get("squad_overlap", 0) or 0) < MIN_ROBUST_SQUAD_OVERLAP:
+            blockers.append("independent solver squad parity is below 12/15")
+        if parity.get("captain_agrees") is not True:
+            blockers.append("independent solver captain parity failed")
 
     return PinnacleReadiness(
         ready=not blockers,
