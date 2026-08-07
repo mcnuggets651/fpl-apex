@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import importlib.util
+import json
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -123,3 +125,95 @@ def test_exporter_maps_airsenal_internal_id_to_official_fpl_id(tmp_path: Path):
     assert out.iloc[0]["xp"] == pytest.approx(6.5)
     assert out.iloc[0]["source_version"] == PIN
     assert out.iloc[0]["prediction_tag"] == "real-tag"
+
+
+def _worker_module():
+    path = Path(__file__).parents[1] / "scripts" / "run_airsenal_worker.py"
+    spec = importlib.util.spec_from_file_location("run_airsenal_worker", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_worker_resolves_live_unfinished_horizon(monkeypatch):
+    worker = _worker_module()
+    payload = {
+        "events": [
+            {"id": 4, "finished": True},
+            {"id": 5, "finished": False},
+            {"id": 6, "finished": False},
+        ],
+        "elements": [{"id": 101}, {"id": 202}],
+    }
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return json.dumps(payload).encode()
+
+    monkeypatch.setattr(worker.urllib.request, "urlopen", lambda request, timeout: Response())
+    assert worker._official_horizon(8) == (5, 12, {101, 202})
+
+
+def test_worker_rejects_non_official_export_ids(tmp_path: Path):
+    worker = _worker_module()
+    output = tmp_path / "airsenal.csv"
+    pd.DataFrame([{"player_id": 7, "gw": 1, "xp": 3.0}]).to_csv(output, index=False)
+    with pytest.raises(SystemExit, match="unknown official FPL IDs"):
+        worker._assert_official_ids(output, {1, 2, 3})
+
+
+def test_worker_reads_the_pinned_airsenal_revision():
+    assert _worker_module()._airsenal_pin() == PIN
+
+
+def test_worker_runs_prediction_then_official_id_export(tmp_path: Path, monkeypatch):
+    worker = _worker_module()
+    db_path = tmp_path / "airsenal.db"
+    db_path.write_bytes(b"database")
+    output = tmp_path / "airsenal.csv"
+    calls = []
+
+    monkeypatch.setattr(worker, "_official_horizon", lambda horizon: (3, 10, {999}))
+
+    def fake_run(command, *, check, env):
+        calls.append((command, check, env))
+        if command[0] == sys.executable:
+            pd.DataFrame([{"player_id": 999, "gw": 3, "xp": 6.5}]).to_csv(
+                output, index=False
+            )
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_airsenal_worker.py",
+            "--db",
+            str(db_path),
+            "--horizon",
+            "8",
+            "--output",
+            str(output),
+        ],
+    )
+    worker.main()
+
+    assert calls[0][0] == [
+        "airsenal_run_prediction",
+        "--gameweek_start",
+        "3",
+        "--gameweek_end",
+        "10",
+    ]
+    assert calls[1][0][1].endswith("scripts/export_airsenal.py")
+    assert calls[1][0][2:] == [str(db_path), "LATEST", str(output)]
+    assert calls[0][1] is True and calls[1][1] is True
+    assert calls[0][2]["AIRSENAL_DB_FILE"] == str(db_path.resolve())
+    assert calls[0][2]["AIRSENAL_SOURCE_VERSION"] == PIN
