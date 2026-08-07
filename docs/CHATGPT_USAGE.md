@@ -1,35 +1,35 @@
-# Using Apex directly from ChatGPT
+# Using Apex Pinnacle directly from ChatGPT
 
-The repository publishes a compact production snapshot so ChatGPT can answer FPL questions from the current validated engine without needing an always-on server.
+ChatGPT is the intended user interface for the decision engine. GitHub Actions performs the reproducible computation; compact repository snapshots are the durable contract between the workers and ChatGPT. No separate app is required.
 
 ## Files ChatGPT should read first
 
-When asked for an Apex recommendation, inspect these repository files in this order:
+For a current recommendation, inspect in this order:
 
-1. `data/generated/apex_latest.json`
-   - current production gate;
-   - official snapshot provenance;
-   - source health and pinned versions;
-   - Haaland / no-Haaland / unrestricted scenarios;
-   - current risk report;
-   - top ranked player alternatives;
-   - personalised FPL entry state when published;
-   - transfer plan when a deadline squad is available;
-   - independent solver parity when available.
-2. `data/generated/apex_latest.md`
-   - human-readable explanation of the same run.
-3. `data/generated/solver_parity.json`
-   - latest direct Apex-vs-open-fpl-solver squad/XI/captain comparison.
-4. `data/generated/airsenal.csv`
-   - genuine pinned AIrsenal player/Gameweek forecast evidence.
-5. `upstreams.lock.json`
+1. `data/generated/pinnacle_latest.json`
+   - deterministic full-horizon unrestricted / Haaland / no-Haaland solutions;
+   - covariance-aware CVaR robustness solutions;
+   - deterministic-vs-robust overlap;
+   - exact force/ban selection regret;
+   - scenario downside / median / upside summaries;
+   - current personalised team/transfer state when public;
+   - source health and official-snapshot provenance.
+2. `data/generated/pinnacle_latest.md`
+   - human-readable version of the enhanced decision run.
+3. `data/generated/apex_latest.json`
+   - latest production-green core fallback if the Pinnacle snapshot is not yet published.
+4. `data/generated/solver_parity.json`
+   - independent Apex-vs-open-fpl-solver mathematical parity evidence.
+5. `data/generated/airsenal.csv`
+   - genuine pinned AIrsenal player/Gameweek projection evidence.
+6. `upstreams.lock.json`
    - exact upstream revisions used by the pipeline.
 
-Do not answer from a remembered historical team when these files are available.
+Never answer a current team question from remembered historical picks when repository decision files are available.
 
-## Safety rule
+## Decision gate
 
-A result is a **full Apex recommendation** only if `apex_latest.json` says both:
+A current Pinnacle recommendation requires at minimum:
 
 ```json
 {
@@ -38,53 +38,71 @@ A result is a **full Apex recommendation** only if `apex_latest.json` says both:
 }
 ```
 
-If either flag is false or the file is missing/stale, report the blocker and refresh the pipeline instead of presenting an old squad as current.
+Then inspect the deterministic-vs-CVaR agreement and selection-regret margins. A legally optimal squad with weak source health or near-zero regret margins should not be presented as a high-confidence pick.
+
+If `pinnacle_latest.json` is missing, stale or blocked, use the latest green `apex_latest.json` only as the core fallback and say that the enhanced stress layer is not currently published.
 
 ## Personal FPL entry
 
 The 2026/27 pipeline is configured for FPL entry **63984**.
 
-Before the GW1 deadline the public FPL API does not expose the manager's live draft, so Apex correctly remains in initial-squad mode and builds the best team from scratch.
+Before GW1 the public FPL API cannot reveal the live unpublished draft, so Pinnacle correctly builds the strongest initial squad from scratch.
 
-After each deadline, Apex automatically reads the latest published 15-player squad for entry 63984, bank, captain/vice-captain, transfer/chip history and available free transfers. The decision horizon starts at the next open deadline rather than the already-locked Gameweek.
+After each deadline the engine reads the latest public 15-player squad, bank, captain/vice, transfer/chip history and available free transfers. It then optimises from the next open deadline over the requested horizon.
 
-The repository snapshot includes this under `personal_team` and the current multi-Gameweek recommendation under `transfer_plan`.
+Public entry state is a deadline snapshot. If a transfer has already been made privately after that deadline, tell ChatGPT the change; the explicit/manual state must override the older public snapshot.
 
-Public FPL state is a deadline snapshot. It cannot be assumed to include a transfer the manager has already made privately for the next deadline. Therefore:
+The pipeline captures the pre-GW1 official price universe and combines it with later public purchase prices to reconstruct manager-specific selling values under FPL's half-profit rule.
 
-- if the user asks **before making transfers**, use the public entry state directly;
-- if the user says they have already made a transfer after the latest deadline, use the stated change/manual override rather than silently analysing the older public squad.
+## Natural interaction
 
-The pipeline also reconstructs FPL selling prices from the captured pre-GW1 price universe plus public transfer purchase costs where possible. The team-state report says whether those selling prices are exact or partly approximate.
+You can use plain language. Examples:
 
-## Typical prompts
-
-After the published snapshot exists, useful requests become simple:
-
-- `Give me the latest Apex team.`
+- `Run Pinnacle now. Give me the strongest 15.`
+- `Give me the final GW1 team and stress-test every pick.`
+- `Compare Haaland vs no Haaland with expected-value gaps.`
+- `Do the deterministic and CVaR squads agree?`
+- `Which picks are fragile and what is their replacement regret?`
 - `What is my best transfer this week?`
-- `Should I roll my free transfer?`
-- `Give me the best 3-GW transfer path.`
-- `Should I take a -4?`
-- `Should I wildcard now or wait?`
-- `Compare my current squad with the unrestricted Apex optimum.`
-- `Compare the current Haaland and no-Haaland structures.`
-- `Why is player X ahead of player Y?`
+- `Roll or transfer? Show the 1-GW, 3-GW and 5-GW maths.`
+- `Is a -4 mathematically justified?`
+- `Give me the best transfer path for the next 5 Gameweeks.`
+- `Should I wildcard now or preserve it?`
 - `Who should I captain and vice-captain?`
-- `What changed since the previous Apex run?`
-- `Does the independent solver agree with our team?`
+- `Why is Player X above Player Y?`
+- `What new information would make Player Y optimal?`
+- `Does the independent solver agree with the decision?`
 
-For player-vs-player questions, use the current top-player records, xP horizons, expected minutes, tactical role, role confidence, set-piece shares, source health and risk flags. Avoid choosing solely from raw total xP.
+For player-vs-player analysis, use expected minutes, appearance/start probabilities, xG/xA/xGI, fixture context, tactical role, set-piece shares, defensive/bonus potential, projection disagreement, CVaR/downside and exact regret rather than a single headline xP number.
+
+## GitHub interaction
+
+To force a fresh enhanced run manually:
+
+1. open the repository **Actions** tab;
+2. choose **Apex Pinnacle**;
+3. choose **Run workflow** on `main`;
+4. after the workflow completes, ChatGPT should read `data/generated/pinnacle_latest.json`.
+
+The core command-line equivalents are:
+
+```bash
+apex-fpl run --scenario both --horizon 8 --force
+apex-fpl sync-team
+apex-fpl plan-transfers --horizon 8 --force
+python scripts/run_pinnacle.py --horizon 8 --force
+```
 
 ## Freshness cadence
 
-The GitHub automation is designed around:
+The repository is designed around:
 
-- FPL Core current-data pin refresh every six hours;
-- full personalised Apex refresh/publish every six hours;
+- FPL Core data-pin refresh every six hours;
+- normal personalised Apex publish every six hours;
+- Apex Pinnacle full-horizon + 256-scenario CVaR run every six hours;
 - genuine AIrsenal refresh inside production runs;
-- independent solver parity on its own validation cadence;
+- independent solver parity on its validation cadence;
 - a dedicated final pre-GW1 run on 21 August 2026 morning;
-- manual reruns before a deadline after important press conferences or late injury news.
+- manual reruns close to deadlines after important press conferences, injuries or transfer news.
 
-The latest repository snapshot is therefore the durable interface between the model workers and ChatGPT.
+The goal is not to create the most complicated model possible. It is to create the most **defensible decision** possible: current data, independent forecasts, transparent uncertainty, legal hard optimisation, robustness checks and explicit expected-value trade-offs.
