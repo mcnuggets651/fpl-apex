@@ -59,6 +59,7 @@ def analyse_receding_horizon(
     decay: float = 0.90,
     projection_col: str = "xp",
     candidate_limit: int = 160,
+    captain_eligible: set[int] | None = None,
 ) -> RecedingHorizonStrategy:
     """Return the one action Pinnacle should execute at the next deadline.
 
@@ -87,6 +88,7 @@ def analyse_receding_horizon(
         decay=decay,
         selling_prices=team_state.selling_prices,
         candidate_limit=candidate_limit,
+        captain_eligible=captain_eligible,
     )
     plan = ev_plan if ev_plan.status == "Optimal" else optimal_plan
     if plan is None or plan.status != "Optimal" or not plan.weeks:
@@ -104,6 +106,7 @@ def analyse_receding_horizon(
         max_per_team=max_per_team,
         decay=1.0,
         locked=set(team_state.squad),
+        captain_eligible=captain_eligible,
         projection_col=projection_col,
     )
     if current_week.status != "Optimal":
@@ -128,6 +131,7 @@ def analyse_receding_horizon(
             decay=decay,
             selling_prices=team_state.selling_prices,
             candidate_limit=candidate_limit,
+            captain_eligible=captain_eligible,
         )
         if future.status == "Optimal":
             roll_objective += float(decay) * float(future.objective)

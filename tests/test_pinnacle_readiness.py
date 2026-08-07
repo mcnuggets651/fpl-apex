@@ -48,12 +48,14 @@ def _payload():
                 "fixture_model",
                 "airsenal",
                 "news_feeds",
+                "fpl_core_previous_season",
             )
         ],
         "decision_layer": {
             "stochastic_covariance_layer": True,
             "stochastic_scenarios": 256,
             "exact_gw_mechanics": True,
+            "captain_eligibility_enforced_in_all_solves": True,
             "receding_horizon_transfers": True,
             "empirical_decision_frequency": True,
             "decision_frequency_solves": 24,
@@ -72,7 +74,13 @@ def _payload():
                 "vice_captain_frequency": 0.10,
             }
         ],
-        "robustness_comparison": {"unrestricted": {"squad_overlap": 14}},
+        "robustness_comparison": {
+            "unrestricted": {
+                "squad_overlap": 14,
+                "xi_overlap": 10,
+                "captain_agrees": True,
+            }
+        },
         "personal_team": None,
         "initial_squad_contingencies": {
             "status": "Optimal",
@@ -135,3 +143,43 @@ def test_unsupported_low_start_low_confidence_captain_blocks_pinnacle():
     assert any("captain Unsupported" in blocker for blocker in result.blockers)
     assert any("start probability" in blocker for blocker in result.blockers)
     assert any("projection confidence" in blocker for blocker in result.blockers)
+
+
+def test_low_captain_frequency_blocks_publication():
+    payload = _payload()
+    payload["decision_frequencies"][0]["captain_frequency"] = 0.49
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("uncertainty re-solves" in blocker for blocker in result.blockers)
+
+
+def test_robust_captain_disagreement_blocks_publication():
+    payload = _payload()
+    payload["robustness_comparison"]["unrestricted"]["captain_agrees"] = False
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("captains disagree" in blocker for blocker in result.blockers)
+
+
+def test_pre_gw1_prior_season_failure_blocks_publication():
+    payload = _payload()
+    previous = next(
+        row for row in payload["sources"] if row["name"] == "fpl_core_previous_season"
+    )
+    previous["ok"] = False
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("prior-season evidence" in blocker for blocker in result.blockers)
+
+
+def test_failed_embedded_solver_parity_blocks_publication():
+    payload = _payload()
+    payload["solver_parity"] = {
+        "comparison_surface": "pinnacle_ev",
+        "squad_overlap": 11,
+        "captain_agrees": False,
+    }
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("solver squad parity" in blocker for blocker in result.blockers)
+    assert any("solver captain parity" in blocker for blocker in result.blockers)

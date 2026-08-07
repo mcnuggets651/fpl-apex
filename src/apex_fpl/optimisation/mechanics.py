@@ -70,6 +70,7 @@ def best_captain_vice(
     appearance: dict[int, float],
     *,
     captain_multiplier: int = 2,
+    captain_eligible: set[int] | None = None,
 ) -> tuple[int, int, float]:
     """Choose captain/vice using the exact FPL no-show fallback expectation.
 
@@ -80,8 +81,13 @@ def best_captain_vice(
       (multiplier-1) * [xP(c) + P(c no-show) * xP(v)].
     """
     ids = [int(x) for x in pd.to_numeric(xi["player_id"], errors="coerce").dropna()]
+    if captain_eligible is not None:
+        eligible = {int(pid) for pid in captain_eligible}
+        ids = [pid for pid in ids if pid in eligible]
     if len(ids) < 2:
-        raise ValueError("captain/vice optimisation requires at least two XI players")
+        raise ValueError(
+            "captain/vice optimisation requires at least two eligible XI players"
+        )
     copies = max(int(captain_multiplier) - 1, 1)
     best: tuple[int, int, float] | None = None
     for captain in ids:
@@ -202,6 +208,7 @@ def optimise_gameweek_mechanics(
     appearance: dict[int, float],
     *,
     captain_multiplier: int = 2,
+    captain_eligible: set[int] | None = None,
 ) -> GameweekMechanics:
     """Optimise captain/vice and bench order for a fixed legal XI/squad."""
     squad_ids = set(
@@ -247,6 +254,7 @@ def optimise_gameweek_mechanics(
         xp,
         appearance,
         captain_multiplier=captain_multiplier,
+        captain_eligible=captain_eligible,
     )
     xi_points = sum(max(float(xp.get(pid, 0.0)), 0.0) for pid in xi_ids)
     return GameweekMechanics(

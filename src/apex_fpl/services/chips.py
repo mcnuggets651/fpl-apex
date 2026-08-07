@@ -141,6 +141,7 @@ def evaluate_chip_window(
     max_per_team: int = 3,
     decay: float = 0.90,
     projection_col: str = "xp",
+    captain_eligible: set[int] | None = None,
 ) -> ChipWindow:
     """Quantify the value of each chip at the next deadline.
 
@@ -175,12 +176,19 @@ def evaluate_chip_window(
             max_per_team=max_per_team,
             decay=1.0,
             locked=set(team_state.squad),
+            captain_eligible=captain_eligible,
         )
         if current.status != "Optimal":
             raise RuntimeError("could not optimise the current squad for chip analysis")
         squad, xi, hit = current.squad, current.xi, 0
 
-    mechanics = optimise_gameweek_mechanics(squad, xi, xp, appearance)
+    mechanics = optimise_gameweek_mechanics(
+        squad,
+        xi,
+        xp,
+        appearance,
+        captain_eligible=captain_eligible,
+    )
     baseline_net = float(mechanics.expected_total_points - hit)
     available = chip_availability(team_state, next_gw)
     options: dict[str, dict] = {}
@@ -218,9 +226,16 @@ def evaluate_chip_window(
             budget=liquidation_budget,
             max_per_team=max_per_team,
             decay=1.0,
+            captain_eligible=captain_eligible,
         )
         if fh.status == "Optimal":
-            fh_mechanics = optimise_gameweek_mechanics(fh.squad, fh.xi, xp, appearance)
+            fh_mechanics = optimise_gameweek_mechanics(
+                fh.squad,
+                fh.xi,
+                xp,
+                appearance,
+                captain_eligible=captain_eligible,
+            )
             fh_points = float(fh_mechanics.expected_total_points)
             options["free_hit"] = {
                 "available": True,
@@ -247,6 +262,7 @@ def evaluate_chip_window(
             budget=liquidation_budget,
             max_per_team=max_per_team,
             decay=decay,
+            captain_eligible=captain_eligible,
         )
         base_horizon = (
             float(transfer_plan.objective)

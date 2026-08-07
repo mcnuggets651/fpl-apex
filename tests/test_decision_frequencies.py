@@ -49,3 +49,27 @@ def test_decision_frequencies_re_solve_scenario_surfaces():
     assert out.rows["xi_frequency"].sum() == 11
     assert out.rows["captain_frequency"].sum() == 1
     assert out.rows["vice_captain_frequency"].sum() == 1
+
+
+def test_decision_frequencies_never_captain_ineligible_scenario_outlier():
+    players = _players()
+    pids = players["player_id"].to_numpy(int)
+    values = np.full((4, len(pids), 1), 3.0)
+    values[:, 17, 0] = 100.0  # player_id=18, deliberately ineligible
+    scenarios = ProjectionScenarios(
+        player_ids=pids,
+        gameweeks=np.asarray([1]),
+        values=values,
+        seed=9,
+    )
+    out = estimate_decision_frequencies(
+        players,
+        scenarios,
+        budget=100.0,
+        max_solves=4,
+        captain_eligible={4, 11},
+    )
+    captain_rows = out.rows[out.rows["captain_frequency"] > 0]
+    vice_rows = out.rows[out.rows["vice_captain_frequency"] > 0]
+    assert set(captain_rows["player_id"]).issubset({4, 11})
+    assert set(vice_rows["player_id"]).issubset({4, 11})

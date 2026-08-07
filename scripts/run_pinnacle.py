@@ -20,6 +20,7 @@ from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.mechanics import optimise_gameweek_mechanics
 from apex_fpl.optimisation.stability import selection_regret_analysis
 from apex_fpl.services.chips import evaluate_chip_window
+from apex_fpl.services.decision_eligibility import captain_eligible_ids
 from apex_fpl.services.initial_plan import (
     build_initial_squad_contingencies,
     initial_chip_policy,
@@ -154,8 +155,15 @@ def _mechanics_payload(
     xp: dict[int, float],
     appearance: dict[int, float],
     players: pd.DataFrame,
+    captain_eligible: set[int],
 ) -> dict:
-    mechanics = optimise_gameweek_mechanics(sol.squad, sol.xi, xp, appearance)
+    mechanics = optimise_gameweek_mechanics(
+        sol.squad,
+        sol.xi,
+        xp,
+        appearance,
+        captain_eligible=captain_eligible,
+    )
     result = mechanics.to_dict()
     names = {
         int(row.player_id): str(row.web_name)
@@ -211,6 +219,12 @@ def main() -> None:
     )
     if decision_players["team"].isna().any():
         raise SystemExit("Pinnacle player universe contains missing official team IDs")
+    captain_eligible = captain_eligible_ids(decision_players)
+    if len(captain_eligible) < 2:
+        raise SystemExit(
+            "Pinnacle has fewer than two players who satisfy the production "
+            "captain/vice evidence floors"
+        )
 
     common = dict(
         players=decision_players,
@@ -219,6 +233,7 @@ def main() -> None:
         budget=settings.budget,
         max_per_team=settings.max_per_team,
         decay=settings.fixture_decay,
+        captain_eligible=captain_eligible,
         projection_col="xp",
     )
     deterministic = {"unrestricted": optimise_initial_horizon(**common)}
@@ -252,6 +267,7 @@ def main() -> None:
         decay=settings.fixture_decay,
         cvar_alpha=args.cvar_alpha,
         cvar_weight=args.cvar_weight,
+        captain_eligible=captain_eligible,
     )
     robust = {"unrestricted": optimise_initial_cvar(**robust_common)}
     if haaland_id is not None:
@@ -274,6 +290,7 @@ def main() -> None:
         max_per_team=settings.max_per_team,
         decay=settings.fixture_decay,
         alternative_limit=args.alternatives,
+        captain_eligible=captain_eligible,
     )
     legacy_compare = {
         name: _comparison(out.scenarios[name], sol)
@@ -293,6 +310,7 @@ def main() -> None:
         max_per_team=settings.max_per_team,
         decay=settings.fixture_decay,
         max_solves=24,
+        captain_eligible=captain_eligible,
     )
     if frequencies.completed_solves < 16:
         raise SystemExit(
@@ -320,7 +338,13 @@ def main() -> None:
     central_xp = _xp_map(projections, gws[0], "xp")
     appearance = _appearance_map(decision_players)
     gw1_mechanics = {
-        name: _mechanics_payload(sol, central_xp, appearance, decision_players)
+        name: _mechanics_payload(
+            sol,
+            central_xp,
+            appearance,
+            decision_players,
+            captain_eligible,
+        )
         for name, sol in deterministic.items()
     }
     robust_gw1_values = np.mean(scenario_surface.values[:, :, 0], axis=0)
@@ -329,9 +353,22 @@ def main() -> None:
         for pid, value in zip(scenario_surface.player_ids, robust_gw1_values)
     }
     robust_gw1_mechanics = {
-        name: _mechanics_payload(sol, robust_xp, appearance, decision_players)
+        name: _mechanics_payload(
+            sol,
+            robust_xp,
+            appearance,
+            decision_players,
+            captain_eligible,
+        )
         for name, sol in robust.items()
     }
+    for name, row in robust_compare.items():
+        if name in gw1_mechanics and name in robust_gw1_mechanics:
+            row["captain_agrees"] = (
+                gw1_mechanics[name]["captain_id"]
+                == robust_gw1_mechanics[name]["captain_id"]
+            )
+            row["captain_comparison"] = "exact_gw1_mechanics"
 
     personal_team = _load_json(report_dir / "team_state.json")
     weekly_strategy = None
@@ -348,6 +385,7 @@ def main() -> None:
             max_per_team=settings.max_per_team,
             decay=settings.fixture_decay,
             projection_col="xp",
+            captain_eligible=captain_eligible,
         ).to_dict()
         chip_window = evaluate_chip_window(
             decision_players,
@@ -358,6 +396,7 @@ def main() -> None:
             max_per_team=settings.max_per_team,
             decay=settings.fixture_decay,
             projection_col="xp",
+            captain_eligible=captain_eligible,
         ).to_dict()
     elif gws[0] == 1:
         initial_contingencies = build_initial_squad_contingencies(
@@ -368,6 +407,7 @@ def main() -> None:
             budget=settings.budget,
             max_per_team=settings.max_per_team,
             decay=settings.fixture_decay,
+            captain_eligible=captain_eligible,
         )
 
     chip_policy = initial_chip_policy(gws)
@@ -395,6 +435,7 @@ def main() -> None:
             "empirical_decision_frequency": True,
             "decision_frequency_solves": frequencies.completed_solves,
             "exact_gw_mechanics": True,
+            "captain_eligibility_enforced_in_all_solves": True,
             "captain_vice_rule": "expected no-show fallback value",
             "provisional_captain_safety_floor": {
                 "expected_minutes": 60,

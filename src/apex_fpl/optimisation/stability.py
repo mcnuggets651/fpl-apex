@@ -22,6 +22,7 @@ def selection_regret_analysis(
     banned: set[int] | None = None,
     alternative_limit: int = 12,
     projection_col: str = "xp",
+    captain_eligible: set[int] | None = None,
 ) -> pd.DataFrame:
     """Measure exact objective regret from forcing/excluding individual players.
 
@@ -66,6 +67,7 @@ def selection_regret_analysis(
         max_per_team=max_per_team,
         decay=decay,
         bench_weight=bench_weight,
+        captain_eligible=captain_eligible,
         projection_col=projection_col,
     )
 

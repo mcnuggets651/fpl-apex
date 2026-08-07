@@ -62,6 +62,30 @@ def test_correlated_scenario_generator_links_team_attack_and_opponent_clean_shee
     assert abs(values[:, 0].mean() - 6.0) < 0.35
 
 
+def test_scenarios_prefer_forecast_uncertainty_over_outcome_variance():
+    players = pd.DataFrame([{"player_id": 1, "team": 1}])
+    projections = pd.DataFrame(
+        [
+            {
+                "player_id": 1,
+                "gw": 1,
+                "xp": 6.0,
+                "apex_xp": 6.0,
+                "projection_sd": 20.0,
+                "forecast_uncertainty_sd": 0.10,
+            }
+        ]
+    )
+    scenarios = generate_projection_scenarios(
+        players,
+        projections,
+        [1],
+        n_scenarios=2048,
+        seed=44,
+    )
+    assert np.std(scenarios.values[:, 0, 0]) < 0.20
+
+
 def _robust_pool():
     rows = []
     pid = 1
@@ -179,3 +203,20 @@ def test_cvar_changes_decision_when_higher_mean_asset_has_bad_downside():
     assert safe in set(robust.squad.player_id)
     assert risky not in set(robust.squad.player_id)
     assert robust.lower_tail_cvar > mean_only.lower_tail_cvar
+
+
+def test_cvar_never_captains_an_ineligible_projection_outlier():
+    players, risky, safe = _robust_pool()
+    scenarios = _manual_scenarios(players, risky, safe)
+    scenarios.values[:, scenarios.player_ids == risky, :] = 50.0
+    eligible = set(players["player_id"].astype(int)) - {risky}
+    solution = optimise_initial_cvar(
+        players,
+        scenarios,
+        budget=100.0,
+        decay=1.0,
+        cvar_weight=0.0,
+        captain_eligible=eligible,
+    )
+    assert solution.status == "Optimal"
+    assert risky not in set(solution.captain["player_id"].astype(int))

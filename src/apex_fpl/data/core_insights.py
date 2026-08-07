@@ -61,6 +61,28 @@ class FPLCoreClient:
             )
             if col in prior_stats.columns
         ]
+        # FPL Core playerstats.csv is a longitudinal table: cumulative player
+        # snapshots are appended once per Gameweek. Joining it directly to the
+        # one-row player identity table creates 38 matches per established player.
+        # Select the latest published snapshot per official prior-season ID and
+        # reject genuinely ambiguous duplicate snapshots instead of silently
+        # aggregating or double-counting them.
+        if prior_stats["player_id"].duplicated().any():
+            if "gw" not in prior_stats.columns:
+                raise ValueError(
+                    "FPL Core longitudinal playerstats.csv lacks a Gameweek column"
+                )
+            stats = prior_stats[["player_id", "gw", *available]].copy()
+            stats["gw"] = pd.to_numeric(stats["gw"], errors="coerce")
+            if stats[["player_id", "gw"]].isna().any().any():
+                raise ValueError("FPL Core playerstats.csv contains invalid player/GW keys")
+            if stats.duplicated(["player_id", "gw"]).any():
+                raise ValueError(
+                    "FPL Core playerstats.csv contains ambiguous duplicate player/GW snapshots"
+                )
+            prior_stats = stats.sort_values(["player_id", "gw"]).drop_duplicates(
+                "player_id", keep="last"
+            )
         previous_rows = prior_players[["player_code", "player_id"]].merge(
             prior_stats[["player_id", *available]],
             on="player_id",

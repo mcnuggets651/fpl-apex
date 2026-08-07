@@ -67,3 +67,24 @@ def test_mechanics_returns_legal_bench_order_and_pair():
     assert set(out.outfield_bench_order) == {6, 7, 12}
     assert out.bench_gk_id == 2
     assert out.expected_total_points > out.expected_xi_points
+
+
+def test_mechanics_restricts_captain_and_vice_to_evidence_eligible_players():
+    squad = _squad()
+    xi_ids = [1, 3, 4, 5, 8, 9, 10, 11, 13, 14, 15]
+    xi = squad[squad.player_id.isin(xi_ids)].copy()
+    xp = {int(pid): 3.0 for pid in squad.player_id}
+    xp[13] = 30.0
+    xp[14] = 20.0
+    xp[8] = 8.0
+    xp[9] = 7.0
+    appearance = {int(pid): 0.95 for pid in squad.player_id}
+    out = optimise_gameweek_mechanics(
+        squad,
+        xi,
+        xp,
+        appearance,
+        captain_eligible={8, 9},
+    )
+    assert out.captain_id == 8
+    assert out.vice_captain_id == 9

@@ -117,6 +117,17 @@ def blend_projection(
     out["expert_count"] = expert_count
     out["expert_coverage"] = coverage
     out["expert_disagreement_sd"] = disagreement_sd
+    # ``projection_sd`` includes the transparent model's match-outcome variance.
+    # That is useful for points-distribution reporting, but it is not uncertainty
+    # about the latent expected-points forecast and must not drive decision
+    # stability re-solves. Keep a separate epistemic scale built from expert
+    # disagreement and an explicit evidence-gap allowance.
+    evidence_gap_sd = np.maximum(mean, 0.0) * (
+        0.05 + 0.25 * (1.0 - confidence)
+    )
+    out["forecast_uncertainty_sd"] = np.sqrt(
+        disagreement_sd**2 + evidence_gap_sd**2
+    )
     out["projection_sd"] = total_sd
     out["projection_confidence"] = confidence
     penalty_scale = 1.15 - 0.30 * confidence

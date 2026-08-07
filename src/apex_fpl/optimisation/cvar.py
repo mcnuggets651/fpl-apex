@@ -40,6 +40,7 @@ def optimise_initial_cvar(
     cvar_weight: float = 0.20,
     locked: set[int] | None = None,
     banned: set[int] | None = None,
+    captain_eligible: set[int] | None = None,
 ) -> RobustSquadSolution:
     """Solve a legal initial FPL squad against correlated forecast scenarios.
 
@@ -53,6 +54,9 @@ def optimise_initial_cvar(
     so the optimiser does not receive impossible perfect foresight.
     """
     locked, banned = set(locked or set()), set(banned or set())
+    captain_eligible = (
+        None if captain_eligible is None else {int(pid) for pid in captain_eligible}
+    )
     alpha = float(cvar_alpha)
     risk_weight = float(cvar_weight)
     if not 0.01 <= alpha <= 0.50:
@@ -148,6 +152,9 @@ def optimise_initial_cvar(
     for t in range(t_count):
         add({xv(i, t): 1.0 for i in range(n)}, 11, 11)
         add({cv(i, t): 1.0 for i in range(n)}, 1, 1)
+        if captain_eligible is not None:
+            eligible_idx = [i for i, pid in enumerate(pids) if pid in captain_eligible]
+            add({xv(i, t): 1.0 for i in eligible_idx}, 2, np.inf)
         for pos in SQUAD_COUNTS:
             idx = [i for i in range(n) if d.loc[i, "position"] == pos]
             add({xv(i, t): 1.0 for i in idx}, XI_MIN[pos], XI_MAX[pos])
@@ -190,6 +197,11 @@ def optimise_initial_cvar(
     for pid in banned:
         if int(pid) in by_id:
             ub[sv(by_id[int(pid)])] = 0.0
+    if captain_eligible is not None:
+        for i, pid in enumerate(pids):
+            if pid not in captain_eligible:
+                for t in range(t_count):
+                    ub[cv(i, t)] = 0.0
 
     result = milp(
         c=-maximise,
@@ -254,7 +266,12 @@ def optimise_initial_cvar(
     cap_df = d.loc[capt, cols]
 
     captain_idx = capt[0] if capt else None
-    vice_pool = [i for i in lineup if i != captain_idx]
+    vice_pool = [
+        i
+        for i in lineup
+        if i != captain_idx
+        and (captain_eligible is None or pids[i] in captain_eligible)
+    ]
     if vice_pool:
         appearance = pd.to_numeric(
             d.get("appearance_probability", pd.Series(1.0, index=d.index)),
