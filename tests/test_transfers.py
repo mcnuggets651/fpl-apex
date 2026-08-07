@@ -50,5 +50,8 @@ def test_multiweek_transfer_plan_is_legal():
         xi = pd.DataFrame(week["xi"])
         assert len(squad) == 15
         assert len(xi) == 11
+        assert len(week["captain"]) == 1
+        assert len(week["vice_captain"]) == 1
+        assert week["vice_captain"][0]["player_id"] != week["captain"][0]["player_id"]
         assert (squad.groupby("team_name").size() <= 3).all()
         assert squad.position.value_counts().to_dict() == {"MID": 5, "DEF": 5, "FWD": 3, "GK": 2}
