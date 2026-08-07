@@ -4,6 +4,7 @@ from apex_fpl.config import Settings
 from apex_fpl.data.official import OfficialSnapshot, OfficialFPLClient
 from apex_fpl.data.core_insights import FPLCoreClient
 from apex_fpl.services.pipeline import run_pipeline
+from apex_fpl.services.pipeline import _decision_gameweeks
 
 
 def _snapshot():
@@ -97,3 +98,13 @@ def test_pipeline_end_to_end_without_network(monkeypatch, tmp_path):
     assert (tmp_path / "reports" / "sources.csv").exists()
     assert (tmp_path / "reports" / "scenario_comparison.json").exists()
     assert len(out.players) > 15
+
+
+def test_decision_gameweeks_never_fabricates_past_season_end():
+    events = pd.DataFrame(
+        [
+            {"id": 37, "finished": True},
+            {"id": 38, "finished": False},
+        ]
+    )
+    assert _decision_gameweeks(events, 8) == [38]

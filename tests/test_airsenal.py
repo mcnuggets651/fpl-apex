@@ -158,7 +158,18 @@ def test_worker_resolves_live_unfinished_horizon(monkeypatch):
             return json.dumps(payload).encode()
 
     monkeypatch.setattr(worker.urllib.request, "urlopen", lambda request, timeout: Response())
-    assert worker._official_horizon(8) == (5, 12, {101, 202})
+    assert worker._official_horizon(8) == ([5, 6], {101, 202})
+
+
+def test_worker_uses_open_deadlines_and_stops_at_season_boundary():
+    worker = _worker_module()
+    now = datetime(2027, 5, 20, tzinfo=timezone.utc)
+    events = [
+        {"id": 36, "finished": False, "deadline_time": "2027-05-18T10:00:00Z"},
+        {"id": 37, "finished": False, "deadline_time": "2027-05-21T10:00:00Z"},
+        {"id": 38, "finished": False, "deadline_time": "2027-05-25T10:00:00Z"},
+    ]
+    assert worker._actionable_gameweeks(events, 8, now=now) == [37, 38]
 
 
 def test_worker_rejects_non_official_export_ids(tmp_path: Path):
@@ -166,7 +177,15 @@ def test_worker_rejects_non_official_export_ids(tmp_path: Path):
     output = tmp_path / "airsenal.csv"
     pd.DataFrame([{"player_id": 7, "gw": 1, "xp": 3.0}]).to_csv(output, index=False)
     with pytest.raises(SystemExit, match="unknown official FPL IDs"):
-        worker._assert_official_ids(output, {1, 2, 3})
+        worker._assert_export_contract(output, {1, 2, 3}, [1])
+
+
+def test_worker_rejects_export_with_truncated_horizon(tmp_path: Path):
+    worker = _worker_module()
+    output = tmp_path / "airsenal.csv"
+    pd.DataFrame([{"player_id": 1, "gw": 1, "xp": 3.0}]).to_csv(output, index=False)
+    with pytest.raises(SystemExit, match=r"missing requested Gameweeks: \[2\]"):
+        worker._assert_export_contract(output, {1}, [1, 2])
 
 
 def test_worker_reads_the_pinned_airsenal_revision():
@@ -180,12 +199,14 @@ def test_worker_runs_prediction_then_official_id_export(tmp_path: Path, monkeypa
     output = tmp_path / "airsenal.csv"
     calls = []
 
-    monkeypatch.setattr(worker, "_official_horizon", lambda horizon: (3, 10, {999}))
+    monkeypatch.setattr(worker, "_official_horizon", lambda horizon: (list(range(3, 11)), {999}))
 
     def fake_run(command, *, check, env):
         calls.append((command, check, env))
         if command[0] == sys.executable:
-            pd.DataFrame([{"player_id": 999, "gw": 3, "xp": 6.5}]).to_csv(
+            pd.DataFrame(
+                [{"player_id": 999, "gw": gw, "xp": 6.5} for gw in range(3, 11)]
+            ).to_csv(
                 output, index=False
             )
 
@@ -210,7 +231,7 @@ def test_worker_runs_prediction_then_official_id_export(tmp_path: Path, monkeypa
         "--gameweek_start",
         "3",
         "--gameweek_end",
-        "10",
+        "11",
     ]
     assert calls[1][0][1].endswith("scripts/export_airsenal.py")
     assert calls[1][0][2:] == [str(db_path), "LATEST", str(output)]
