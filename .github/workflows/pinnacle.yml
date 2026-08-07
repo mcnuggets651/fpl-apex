@@ -10,15 +10,25 @@ on:
     paths:
       - ".github/workflows/pinnacle.yml"
       - "scripts/run_pinnacle.py"
+      - "scripts/assert_pinnacle.py"
       - "src/apex_fpl/models/scenarios.py"
       - "src/apex_fpl/optimisation/cvar.py"
       - "src/apex_fpl/optimisation/initial_horizon.py"
+      - "src/apex_fpl/optimisation/mechanics.py"
       - "src/apex_fpl/optimisation/stability.py"
+      - "src/apex_fpl/services/chips.py"
+      - "src/apex_fpl/services/pinnacle_readiness.py"
+      - "src/apex_fpl/services/strategy.py"
       - "src/apex_fpl/services/team_state.py"
+      - "src/apex_fpl/data/entry.py"
+      - "tests/test_chips.py"
+      - "tests/test_mechanics.py"
+      - "tests/test_pinnacle_readiness.py"
       - "tests/test_pinnacle_stress.py"
       - "tests/test_selection_regret.py"
       - "tests/test_pre_gw1_price_capture.py"
       - "tests/test_stochastic_pinnacle.py"
+      - "tests/test_strategy.py"
 
 permissions:
   contents: write
@@ -79,7 +89,7 @@ jobs:
             --horizon 8 \
             --output data/generated/airsenal.csv
 
-      - name: Generate enhanced full-horizon + CVaR decision
+      - name: Generate final Pinnacle decision
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
@@ -95,6 +105,7 @@ jobs:
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
             --force
+          python scripts/assert_pinnacle.py data/generated/pinnacle_latest.json
 
       - name: Commit latest green Pinnacle snapshot
         shell: bash
