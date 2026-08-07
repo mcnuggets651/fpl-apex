@@ -11,17 +11,16 @@ class ProjectionScenarios:
     """Correlated player/Gameweek projection scenarios.
 
     ``values`` has shape ``(scenario, player, gameweek)`` and represents plausible
-    *forecast surfaces*, not simulated final FPL match scores. The distinction is
-    important: the purpose is to stress the squad decision against uncertainty in
-    minutes, team strength and attacking/defensive expectation rather than pretend
-    that the exact distribution of every football event is known.
+    forecast surfaces, not simulated final match scores. The purpose is to stress
+    decisions against uncertainty in minutes, role and team strength without
+    pretending the exact distribution of every football event is known.
     """
 
     player_ids: np.ndarray
     gameweeks: np.ndarray
     values: np.ndarray
     seed: int
-    model_version: str = "apex-correlated-forecast-v1"
+    model_version: str = "apex-correlated-forecast-v2-player-persistence"
 
     @property
     def n_scenarios(self) -> int:
@@ -63,19 +62,22 @@ def generate_projection_scenarios(
 ) -> ProjectionScenarios:
     """Generate covariance-aware forecast scenarios around the Apex ensemble.
 
-    Correlation is introduced through shared Gameweek and team attack/defence
-    shocks. A high attack shock for one club is also a negative clean-sheet shock
-    for the opponent, so attacker-vs-opposing-defender exposure is not treated as
-    independent. Remaining uncertainty is idiosyncratic.
+    Correlation comes from five transparent sources:
 
-    The marginal volatility comes from ``projection_sd`` and is converted to a
-    positive log-normal perturbation. This preserves the ensemble mean in
-    expectation before finite-sample noise while keeping scenario xP non-negative.
+    1. a shared Gameweek forecast shock;
+    2. club attack shocks;
+    3. club defence shocks;
+    4. opposing-team interactions (attack versus clean-sheet expectation);
+    5. a persistent player shock across the horizon, weighted by minutes/role
+       uncertainty, plus a smaller fixture-specific residual.
 
-    The correlation coefficients are transparent priors, not fitted 2026/27
-    parameters. They should be walk-forward calibrated once enough deadline data
-    exists; until then the layer is a robustness stress model rather than a claim
-    of exact football covariance.
+    The persistent player term matters for FPL squad construction: uncertainty that
+    a new signing is actually first choice should affect several future Gameweeks,
+    not disappear independently after each fixture.
+
+    Marginal volatility comes from ``projection_sd`` and is expressed as a positive
+    log-normal perturbation. Coefficients are explicit robustness priors and remain
+    flagged as uncalibrated until enough genuine 2026/27 deadline outcomes exist.
     """
     gws = np.asarray([int(gw) for gw in gameweeks], dtype=int)
     if len(gws) == 0:
@@ -87,7 +89,9 @@ def generate_projection_scenarios(
     player_table["player_id"] = pd.to_numeric(
         player_table["player_id"], errors="raise"
     ).astype(int)
-    player_table["team"] = pd.to_numeric(player_table["team"], errors="raise").astype(int)
+    player_table["team"] = pd.to_numeric(
+        player_table["team"], errors="raise"
+    ).astype(int)
     pids = np.sort(player_table["player_id"].unique())
     pid_index = {int(pid): i for i, pid in enumerate(pids)}
     gw_index = {int(gw): i for i, gw in enumerate(gws)}
@@ -100,7 +104,9 @@ def generate_projection_scenarios(
     d = d.merge(player_table, on="player_id", how="left", validate="many_to_one")
     if d["team"].isna().any():
         missing = sorted(d.loc[d["team"].isna(), "player_id"].unique())[:10]
-        raise ValueError(f"scenario rows contain players without official team IDs: {missing}")
+        raise ValueError(
+            f"scenario rows contain players without official team IDs: {missing}"
+        )
     d["team"] = d["team"].astype(int)
 
     base = _numeric(d, "xp", np.nan)
@@ -137,10 +143,16 @@ def generate_projection_scenarios(
         attack_share[too_large] *= scale
         defence_share[too_large] *= scale
 
+    minutes_conf = np.clip(_numeric(d, "minutes_confidence", 0.65), 0.0, 1.0)
+    role_conf = np.clip(_numeric(d, "role_confidence", 0.65), 0.0, 1.0)
+    evidence_conf = 0.65 * minutes_conf + 0.35 * role_conf
+    persistent_uncertainty = np.clip(1.0 - evidence_conf, 0.05, 0.65)
+
     opponent_raw = _numeric(d, "opponent", np.nan)
     opponents = np.where(np.isfinite(opponent_raw), opponent_raw, -1).astype(int)
     teams = d["team"].to_numpy(int)
     row_gw = d["gw"].to_numpy(int)
+    row_pid = d["player_id"].to_numpy(int)
 
     unique_teams = np.sort(player_table["team"].unique())
     team_index = {int(team): i for i, team in enumerate(unique_teams)}
@@ -152,6 +164,7 @@ def generate_projection_scenarios(
     global_gw = rng.standard_normal((s_count, t_count))
     attack_shock = rng.standard_normal((s_count, t_count, club_count))
     defence_shock = rng.standard_normal((s_count, t_count, club_count))
+    player_persistent = rng.standard_normal((s_count, len(pids)))
     idio = rng.standard_normal((s_count, len(d)))
 
     row_values = np.zeros((s_count, len(d)), dtype=float)
@@ -159,6 +172,7 @@ def generate_projection_scenarios(
         gw_i = gw_index[int(row_gw[r])]
         team_i = team_index[int(teams[r])]
         opp_i = team_index.get(int(opponents[r]))
+        player_i = pid_index[int(row_pid[r])]
         a_share = float(attack_share[r])
         d_share = float(defence_share[r])
 
@@ -167,12 +181,20 @@ def generate_projection_scenarios(
         c_opp_defence = -0.28 * a_share
         c_team_defence = 0.70 * d_share
         c_opp_attack = -0.35 * d_share
-        c_idio = 0.58
+        c_player = 0.72 * float(persistent_uncertainty[r])
+        c_idio = 0.50
 
         z = c_global * global_gw[:, gw_i]
         z = z + c_team_attack * attack_shock[:, gw_i, team_i]
         z = z + c_team_defence * defence_shock[:, gw_i, team_i]
-        variance = c_global**2 + c_team_attack**2 + c_team_defence**2 + c_idio**2
+        z = z + c_player * player_persistent[:, player_i]
+        variance = (
+            c_global**2
+            + c_team_attack**2
+            + c_team_defence**2
+            + c_player**2
+            + c_idio**2
+        )
         if opp_i is not None:
             z = z + c_opp_defence * defence_shock[:, gw_i, opp_i]
             z = z + c_opp_attack * attack_shock[:, gw_i, opp_i]
