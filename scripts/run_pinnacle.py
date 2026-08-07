@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Apex Pinnacle decision snapshot.
-
-Pinnacle sits above the normal production pipeline. Source truth and projections are
-validated once, then the same evidence is passed through independent deterministic,
-stochastic/CVaR and sensitivity views. Personal-team runs additionally publish a
-receding-horizon first action and quantified chip-window analysis.
-"""
+"""Generate the final Apex Pinnacle decision snapshot."""
 from __future__ import annotations
 
 import argparse
@@ -124,11 +118,18 @@ def _scenario_player_summary(players, scenario_surface, decay: float) -> pd.Data
     )
 
 
-def _xp_map(projections: pd.DataFrame, gw: int) -> dict[int, float]:
+def _xp_map(
+    projections: pd.DataFrame,
+    gw: int,
+    projection_col: str = "xp",
+) -> dict[int, float]:
     d = projections[projections["gw"] == int(gw)]
     if d.empty:
         return {}
-    grouped = d.groupby("player_id")["risk_adjusted_xp"].sum()
+    col = projection_col if projection_col in d.columns else "risk_adjusted_xp"
+    if col not in d.columns:
+        raise ValueError(f"projection table lacks {projection_col!r} and risk_adjusted_xp")
+    grouped = d.groupby("player_id")[col].sum()
     return {int(pid): float(value) for pid, value in grouped.items()}
 
 
@@ -143,15 +144,24 @@ def _appearance_map(players: pd.DataFrame) -> dict[int, float]:
     }
 
 
-def _mechanics_payload(sol, xp: dict[int, float], appearance: dict[int, float], players: pd.DataFrame) -> dict:
+def _mechanics_payload(
+    sol,
+    xp: dict[int, float],
+    appearance: dict[int, float],
+    players: pd.DataFrame,
+) -> dict:
     mechanics = optimise_gameweek_mechanics(sol.squad, sol.xi, xp, appearance)
     result = mechanics.to_dict()
     names = {
         int(row.player_id): str(row.web_name)
-        for row in players[["player_id", "web_name"]].drop_duplicates("player_id").itertuples(index=False)
+        for row in players[["player_id", "web_name"]]
+        .drop_duplicates("player_id")
+        .itertuples(index=False)
     }
     result["captain_name"] = names.get(mechanics.captain_id, str(mechanics.captain_id))
-    result["vice_captain_name"] = names.get(mechanics.vice_captain_id, str(mechanics.vice_captain_id))
+    result["vice_captain_name"] = names.get(
+        mechanics.vice_captain_id, str(mechanics.vice_captain_id)
+    )
     result["bench_gk_name"] = names.get(mechanics.bench_gk_id, str(mechanics.bench_gk_id))
     result["outfield_bench_order_names"] = [
         names.get(pid, str(pid)) for pid in mechanics.outfield_bench_order
@@ -185,17 +195,13 @@ def main() -> None:
         raise SystemExit(f"Pinnacle runner blocked by Apex production gate: {blockers}")
 
     gws = out.gameweeks
-    players = out.players
     projections = out.projections
     if not gws:
         raise SystemExit("Pinnacle runner has no actionable future Gameweeks")
 
-    # Rejoin official numeric team ID once for every advanced optimiser. The compact
-    # published player table keeps team_name for humans, while covariance and some
-    # mathematical constraints benefit from the canonical numeric club key.
     official = OfficialFPLClient(CachedHttp(settings.cache_dir)).snapshot(force=False)
     team_ids = official.players[["player_id", "team"]].drop_duplicates("player_id")
-    decision_players = players.drop(columns=["team"], errors="ignore").merge(
+    decision_players = out.players.drop(columns=["team"], errors="ignore").merge(
         team_ids, on="player_id", how="left", validate="one_to_one"
     )
     if decision_players["team"].isna().any():
@@ -208,8 +214,8 @@ def main() -> None:
         budget=settings.budget,
         max_per_team=settings.max_per_team,
         decay=settings.fixture_decay,
+        projection_col="xp",
     )
-
     deterministic = {"unrestricted": optimise_initial_horizon(**common)}
     haaland = decision_players[
         decision_players["web_name"].astype(str).str.casefold().eq("haaland")
@@ -222,12 +228,9 @@ def main() -> None:
         deterministic["no-haaland"] = optimise_initial_horizon(
             **common, banned={haaland_id}
         )
-
     bad = [name for name, sol in deterministic.items() if sol.status != "Optimal"]
     if bad:
-        raise SystemExit(
-            "Pinnacle horizon optimiser failed scenarios: " + ", ".join(bad)
-        )
+        raise SystemExit("Pinnacle EV optimiser failed: " + ", ".join(bad))
 
     scenario_surface = generate_projection_scenarios(
         decision_players,
@@ -257,18 +260,16 @@ def main() -> None:
     if bad_robust:
         raise SystemExit("Pinnacle CVaR optimiser failed: " + ", ".join(bad_robust))
 
-    baseline = deterministic["unrestricted"]
     regret = selection_regret_analysis(
         decision_players,
         projections,
         gws,
-        baseline,
+        deterministic["unrestricted"],
         budget=settings.budget,
         max_per_team=settings.max_per_team,
         decay=settings.fixture_decay,
         alternative_limit=args.alternatives,
     )
-
     legacy_compare = {
         name: _comparison(out.scenarios[name], sol)
         for name, sol in deterministic.items()
@@ -292,13 +293,14 @@ def main() -> None:
         report_dir / "pinnacle_scenario_player_summary.csv", index=False
     )
 
-    central_xp = _xp_map(projections, gws[0])
+    # The final deadline mechanics use the same raw ensemble mean xP as the
+    # deterministic maximum-EV optimiser. Risk is assessed separately by CVaR.
+    central_xp = _xp_map(projections, gws[0], "xp")
     appearance = _appearance_map(decision_players)
     gw1_mechanics = {
         name: _mechanics_payload(sol, central_xp, appearance, decision_players)
         for name, sol in deterministic.items()
     }
-
     robust_gw1_values = np.mean(scenario_surface.values[:, :, 0], axis=0)
     robust_xp = {
         int(pid): float(value)
@@ -322,6 +324,7 @@ def main() -> None:
             out.transfer_plan,
             max_per_team=settings.max_per_team,
             decay=settings.fixture_decay,
+            projection_col="xp",
         ).to_dict()
         chip_window = evaluate_chip_window(
             decision_players,
@@ -335,7 +338,6 @@ def main() -> None:
 
     production_report = _load_json(report_dir / "latest.json") or {}
     solver_parity = _load_json(output_dir / "solver_parity.json")
-
     payload = {
         "contract": "apex-pinnacle-v3-final",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -344,9 +346,8 @@ def main() -> None:
         "safe_to_act": True,
         "full_apex_ready": True,
         "decision_layer": {
-            "deterministic_initial_squad": (
-                "full-horizon legal MILP with per-GW XI/captain"
-            ),
+            "deterministic_initial_squad": "full-horizon maximum-EV MILP with per-GW XI/captain",
+            "deterministic_projection_surface": "ensemble mean xp",
             "stochastic_covariance_layer": True,
             "stochastic_model": scenario_surface.model_version,
             "stochastic_scenarios": scenario_surface.n_scenarios,
@@ -357,12 +358,13 @@ def main() -> None:
             "sensitivity": "exact force/ban objective regret",
             "exact_gw_mechanics": True,
             "captain_vice_rule": "expected no-show fallback value",
-            "autosub_rule": "exact 8192-state outfield appearance enumeration plus GK fallback",
+            "autosub_rule": "exact appearance-state enumeration with legal FPL formation",
             "receding_horizon_transfers": True,
+            "weekly_transfer_projection_surface": "ensemble mean xp",
             "chip_rules": "2026/27 two chip sets; one of each chip per half; max one active chip per GW",
             "decision_rule": (
-                "use deterministic expected-value optimum as baseline; use CVaR, exact "
-                "mechanics, selection regret and independent solver evidence to expose fragility"
+                "maximise expected points first; use CVaR, exact mechanics, selection "
+                "regret and independent solver evidence to expose fragility"
             ),
         },
         "official_snapshot": out.snapshot,
@@ -386,6 +388,7 @@ def main() -> None:
                 "status": out.transfer_plan.status,
                 "objective": out.transfer_plan.objective,
                 "weeks": out.transfer_plan.weeks,
+                "surface": "legacy risk_adjusted_xp",
             }
             if out.transfer_plan is not None
             else None
@@ -416,6 +419,7 @@ def main() -> None:
         f"- pinnacle_ready: `{str(readiness.ready).lower()}`",
         "- base safe_to_act: `true`",
         "- base full_apex_ready: `true`",
+        "- deterministic surface: ensemble mean xP",
         f"- covariance-aware scenarios: {scenario_surface.n_scenarios}",
         f"- lower-tail CVaR alpha: {args.cvar_alpha:.0%}",
         f"- CVaR objective weight: {args.cvar_weight:.0%}",
@@ -433,7 +437,7 @@ def main() -> None:
     for name, sol in deterministic.items():
         mechanics = gw1_mechanics[name]
         lines += [
-            f"## Deterministic {name}",
+            f"## Maximum-EV {name}",
             "",
             f"Objective: **{sol.objective:.2f}**",
             f"GW1 captain: **{mechanics['captain_name']}**",
@@ -453,7 +457,7 @@ def main() -> None:
             f"Blended objective: **{sol.objective:.2f}**",
             f"Scenario mean: **{sol.mean_points:.2f}**",
             f"Lower-tail CVaR: **{sol.lower_tail_cvar:.2f}**",
-            f"Deterministic/robust squad overlap: **{robust_compare[name]['squad_overlap']}/15**",
+            f"Maximum-EV/robust squad overlap: **{robust_compare[name]['squad_overlap']}/15**",
             "",
             sol.squad.to_markdown(index=False),
             "",
@@ -467,7 +471,7 @@ def main() -> None:
             f"Hit now: **-{weekly_strategy['recommended_hit']}**",
             f"Value lost by forcing a roll: **{weekly_strategy['roll_regret']:.2f}**",
             "",
-            "Future transfers in the model are contingent and must be re-solved after the next deadline.",
+            "Future moves are contingencies and must be re-solved after the next deadline.",
             "",
         ]
     if chip_window:
@@ -479,18 +483,11 @@ def main() -> None:
             "",
         ]
     if not regret.empty:
-        lines += [
-            "## Selection-regret stress test",
-            "",
-            regret.to_markdown(index=False),
-            "",
-        ]
+        lines += ["## Selection-regret stress test", "", regret.to_markdown(index=False), ""]
     output_md.write_text("\n".join(lines), encoding="utf-8")
 
     if not readiness.ready:
-        raise SystemExit(
-            "PINNACLE GATE BLOCKED: " + "; ".join(readiness.blockers)
-        )
+        raise SystemExit("PINNACLE GATE BLOCKED: " + "; ".join(readiness.blockers))
     print(f"PINNACLE GATE READY: snapshot written to {output_json}")
 
 
