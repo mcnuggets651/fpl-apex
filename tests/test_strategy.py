@@ -16,6 +16,7 @@ def _pool():
                         "player_id": pid,
                         "web_name": f"P{pid}",
                         "team_name": f"T{team}",
+                        "team": team,
                         "position": pos,
                         "price": 4.5,
                         "horizon_xp": 20 + pid / 10,
@@ -27,50 +28,46 @@ def _pool():
 
 
 def _current(players):
-    # Explicit legal 15: no club has more than three players.
     ids = {1, 7, 2, 3, 8, 9, 14, 16, 17, 22, 23, 28, 24, 30, 36}
     assert len(ids) == 15
     assert set(ids).issubset(set(players.player_id.astype(int)))
     return ids
 
 
-def test_receding_horizon_exposes_only_first_action_as_actionable():
+def test_receding_horizon_recomputes_first_action_on_explicit_surface():
     players = _pool()
     current = _current(players)
     projections = pd.DataFrame(
         [
-            {"player_id": int(pid), "gw": 1, "risk_adjusted_xp": 3.0 + int(pid) / 100}
+            {
+                "player_id": int(pid),
+                "gw": 1,
+                "xp": 3.0 + int(pid) / 100,
+                "risk_adjusted_xp": 2.0,
+            }
             for pid in players.player_id
         ]
     )
-    plan = TransferPlan(
+    stale_plan = TransferPlan(
         status="Optimal",
-        objective=80.0,
-        weeks=[
-            {
-                "gw": 1,
-                "transfers": 1,
-                "hit_cost": 0,
-                "transfers_in": [{"player_id": 40}],
-                "transfers_out": [{"player_id": 1}],
-            },
-            {"gw": 2, "transfers": 1, "hit_cost": 0},
-        ],
+        objective=1.0,
+        weeks=[{"gw": 1, "transfers": 0, "hit_cost": 0}],
     )
     state = TeamState(squad=current, bank=5.0, free_transfers=1)
-    out = analyse_receding_horizon(players, projections, [1], state, plan)
+    out = analyse_receding_horizon(players, projections, [1], state, stale_plan)
     assert out.status == "optimal"
-    assert out.recommended_action == "one_free_transfer"
     assert out.action_now["gw"] == 1
-    assert out.contingent_future[0]["gw"] == 2
+    assert out.projection_col == "xp"
+    assert out.optimal_objective != stale_plan.objective
     assert out.roll_objective is not None
     assert out.roll_regret is not None
+    assert out.contingent_future == []
 
 
-def test_receding_horizon_handles_missing_plan():
+def test_receding_horizon_handles_empty_gameweek_list_without_projection_table():
     players = _pool()
     current = _current(players)
     state = TeamState(squad=current)
-    out = analyse_receding_horizon(players, pd.DataFrame(), [1], state, None)
+    out = analyse_receding_horizon(players, pd.DataFrame(), [], state, None)
     assert out.status == "unavailable"
     assert out.recommended_action == "none"
