@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pandas as pd
 import typer
@@ -16,6 +19,12 @@ from apex_fpl.services.team_state import resolve_team_state, write_team_state_re
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
+
+
+def _repo_root() -> Path:
+    # Editable installs are the supported operational mode for the GitHub decision
+    # engine. cli.py lives in <repo>/src/apex_fpl/cli.py.
+    return Path(__file__).resolve().parents[2]
 
 
 def _run(scenario: str, horizon: int, force: bool, plan_transfers: bool = True):
@@ -88,7 +97,10 @@ def project(horizon: int = typer.Option(8), force: bool = typer.Option(False)):
 
 
 @app.command("optimise")
-def optimise(scenario: str = typer.Option("unrestricted"), horizon: int = typer.Option(8)):
+def optimise(
+    scenario: str = typer.Option("unrestricted"),
+    horizon: int = typer.Option(8),
+):
     """Run initial-squad optimisation for a named scenario."""
     _run(scenario, horizon, False, False)
 
@@ -118,7 +130,10 @@ def sync_team(force: bool = typer.Option(True)):
 
 
 @app.command("plan-transfers")
-def plan_transfers(horizon: int = typer.Option(8), force: bool = typer.Option(False)):
+def plan_transfers(
+    horizon: int = typer.Option(8),
+    force: bool = typer.Option(False),
+):
     """Run a personalised multi-GW transfer plan from FPL ID or manual override."""
     settings = load_settings()
     if not settings.fpl_entry_id and not settings.current_squad_path.exists():
@@ -126,6 +141,71 @@ def plan_transfers(horizon: int = typer.Option(8), force: bool = typer.Option(Fa
             "No team state configured. Set FPL_ENTRY_ID or provide current_squad.csv."
         )
     _run("unrestricted", horizon, force, True)
+
+
+@app.command("pinnacle")
+def pinnacle(
+    horizon: int = typer.Option(8, help="Gameweeks in the decision horizon."),
+    force: bool = typer.Option(True, help="Refresh live source data."),
+    scenarios: int = typer.Option(256, help="Correlated projection scenarios."),
+    cvar_alpha: float = typer.Option(0.10, help="Lower-tail CVaR quantile."),
+    cvar_weight: float = typer.Option(0.20, help="Weight of lower-tail robustness."),
+):
+    """Run the complete maximum-EV + CVaR Apex Pinnacle decision engine."""
+    script = _repo_root() / "scripts" / "run_pinnacle.py"
+    if not script.exists():
+        raise typer.BadParameter(f"Pinnacle runner not found at {script}")
+    command = [
+        sys.executable,
+        str(script),
+        "--horizon",
+        str(horizon),
+        "--stochastic-scenarios",
+        str(scenarios),
+        "--cvar-alpha",
+        str(cvar_alpha),
+        "--cvar-weight",
+        str(cvar_weight),
+    ]
+    if force:
+        command.append("--force")
+    completed = subprocess.run(command, cwd=_repo_root(), check=False)
+    if completed.returncode != 0:
+        raise typer.Exit(completed.returncode)
+    console.print(
+        "[bold green]Apex Pinnacle complete.[/bold green] "
+        "Read data/generated/pinnacle_latest.md or run apex-fpl pinnacle-status."
+    )
+
+
+@app.command("pinnacle-status")
+def pinnacle_status():
+    """Show the latest repository-local Pinnacle gate and headline decisions."""
+    path = _repo_root() / "data" / "generated" / "pinnacle_latest.json"
+    if not path.exists():
+        console.print("[red]No Pinnacle snapshot exists yet.[/red]")
+        raise typer.Exit(1)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    table = Table(title="Apex Pinnacle status")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("generated_at", str(payload.get("generated_at", "-")))
+    table.add_row("FPL entry", str(payload.get("fpl_entry_id", "-")))
+    table.add_row("safe_to_act", str(payload.get("safe_to_act", False)))
+    table.add_row("full_apex_ready", str(payload.get("full_apex_ready", False)))
+    table.add_row("pinnacle_ready", str(payload.get("pinnacle_ready", False)))
+    strategy = payload.get("weekly_strategy") or {}
+    if strategy:
+        table.add_row("weekly action", str(strategy.get("recommended_action", "-")))
+        table.add_row("roll regret", str(strategy.get("roll_regret", "-")))
+    console.print(table)
+    gate = payload.get("pinnacle_gate") or {}
+    for blocker in gate.get("blockers", []):
+        console.print(f"[red]BLOCKER: {blocker}[/red]")
+    for warning in gate.get("warnings", []):
+        console.print(f"[yellow]WARNING: {warning}[/yellow]")
+    if payload.get("pinnacle_ready") is not True:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -136,7 +216,9 @@ def backtest(
 ):
     """Score a historical prediction CSV with MAE/RMSE/bias/rank correlation."""
     df = pd.read_csv(file)
-    metrics = score_predictions(df, prediction_col=prediction_col, actual_col=actual_col)
+    metrics = score_predictions(
+        df, prediction_col=prediction_col, actual_col=actual_col
+    )
     table = Table(title="Apex backtest")
     table.add_column("Metric")
     table.add_column("Value", justify="right")
