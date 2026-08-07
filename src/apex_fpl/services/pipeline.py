@@ -47,7 +47,9 @@ def _official_ep(players: pd.DataFrame, gameweeks: list[int]) -> pd.DataFrame:
     if not gameweeks:
         return pd.DataFrame(columns=["player_id", "gw", "official_xp"])
     ep = pd.to_numeric(players.get("ep_next", np.nan), errors="coerce")
-    return pd.DataFrame({"player_id": players["player_id"], "gw": gameweeks[0], "official_xp": ep})
+    return pd.DataFrame(
+        {"player_id": players["player_id"], "gw": gameweeks[0], "official_xp": ep}
+    )
 
 
 def _status(
@@ -70,7 +72,11 @@ def _summarise_horizons(proj: pd.DataFrame, gws: list[int]) -> pd.DataFrame:
     pids = proj[["player_id"]].drop_duplicates().copy()
     for horizon in (1, 3, 5, 8):
         chosen = gws[: min(horizon, len(gws))]
-        vals = proj[proj["gw"].isin(chosen)].groupby("player_id")["weighted_xp"].sum()
+        vals = (
+            proj[proj["gw"].isin(chosen)]
+            .groupby("player_id")["weighted_xp"]
+            .sum()
+        )
         pids[f"xpts_{horizon}"] = pids["player_id"].map(vals).fillna(0)
     conf = proj.groupby("player_id")["projection_confidence"].mean()
     pids["projection_confidence"] = pids["player_id"].map(conf).fillna(0)
@@ -103,12 +109,18 @@ def run_pipeline(
 
     core = pd.DataFrame(columns=["player_id"])
     friendlies = pd.DataFrame()
+    core_client: FPLCoreClient | None = None
     core_pin = str(pins.get("fpl_core_insights", {}).get("commit", ""))
     try:
         core_client = FPLCoreClient(http, settings.season, ref=core_pin or "main")
         core = core_client.playerstats(force=force)
         sources.append(
-            _status("fpl_core_playerstats", True, f"{len(core)} rows", version=core_pin)
+            _status(
+                "fpl_core_playerstats",
+                True,
+                f"{len(core)} rows",
+                version=core_pin,
+            )
         )
         try:
             friendlies = core_client.preseason_friendlies(force=force)
@@ -121,17 +133,18 @@ def run_pipeline(
                 )
             )
         except Exception as exc:
-            sources.append(_status("fpl_core_preseason", False, str(exc), version=core_pin))
+            sources.append(
+                _status("fpl_core_preseason", False, str(exc), version=core_pin)
+            )
     except Exception as exc:
-        sources.append(_status("fpl_core_playerstats", False, str(exc), version=core_pin))
+        sources.append(
+            _status("fpl_core_playerstats", False, str(exc), version=core_pin)
+        )
 
     players, integrity = reconcile(official.players, core)
     players = coalesce_context(players)
     players = add_preseason_features(players, friendlies)
 
-    # Automated role inference is a weak, data-driven prior. Verified tactical
-    # evidence can override it below, but an absent manual file no longer means
-    # every defender/midfielder/forward is treated as tactically identical.
     inferred_roles = infer_tactical_roles(players)
     players = players.merge(inferred_roles, on="player_id", how="left")
     sources.append(
@@ -148,7 +161,12 @@ def run_pipeline(
         sources.append(_status("manual_availability", True, f"{len(manual)} rows"))
     else:
         sources.append(
-            _status("manual_availability", True, "not configured", configured=False)
+            _status(
+                "manual_availability",
+                True,
+                "not configured",
+                configured=False,
+            )
         )
 
     tactical = load_tactical_roles(settings.tactical_roles_path)
@@ -160,11 +178,20 @@ def run_pipeline(
             )
         players = players.merge(tactical, on="player_id", how="left")
         sources.append(
-            _status("tactical_roles", True, f"{len(tactical)} verified role overrides")
+            _status(
+                "tactical_roles",
+                True,
+                f"{len(tactical)} verified role/set-piece overrides",
+            )
         )
     else:
         sources.append(
-            _status("tactical_roles", True, "no verified overrides", configured=False)
+            _status(
+                "tactical_roles",
+                True,
+                "no verified overrides",
+                configured=False,
+            )
         )
 
     manual_role_mult = (
@@ -183,22 +210,32 @@ def run_pipeline(
         else pd.Series(pd.NA, index=players.index, dtype="string")
     )
     inferred_mult = pd.to_numeric(
-        players.get("inferred_role_multiplier", pd.Series(1.0, index=players.index)),
+        players.get(
+            "inferred_role_multiplier",
+            pd.Series(1.0, index=players.index),
+        ),
         errors="coerce",
     ).fillna(1.0)
     inferred_conf = pd.to_numeric(
-        players.get("inferred_role_confidence", pd.Series(0.45, index=players.index)),
+        players.get(
+            "inferred_role_confidence",
+            pd.Series(0.45, index=players.index),
+        ),
         errors="coerce",
     ).fillna(0.45)
     inferred_label = players.get(
         "inferred_tactical_role",
         pd.Series("unknown", index=players.index, dtype="string"),
     ).astype("string")
-    players["role_multiplier"] = manual_role_mult.fillna(inferred_mult).clip(0.80, 1.20)
+    players["role_multiplier"] = manual_role_mult.fillna(inferred_mult).clip(
+        0.80, 1.20
+    )
     players["role_confidence"] = manual_role_conf.fillna(inferred_conf).clip(0, 1)
     players["tactical_role"] = manual_role_label.fillna(inferred_label)
     players["tactical_role_source"] = np.where(
-        manual_role_label.notna(), "verified_override", "statistical_inference"
+        manual_role_label.notna(),
+        "verified_override",
+        "statistical_inference",
     )
 
     news_audit = pd.DataFrame()
@@ -216,9 +253,13 @@ def run_pipeline(
                 )
             )
         except Exception as exc:
-            sources.append(_status("news_feeds", False, str(exc), configured=True))
+            sources.append(
+                _status("news_feeds", False, str(exc), configured=True)
+            )
     else:
-        sources.append(_status("news_feeds", True, "not configured", configured=False))
+        sources.append(
+            _status("news_feeds", True, "not configured", configured=False)
+        )
 
     profile = minutes_profile(players)
     for col in profile.columns:
@@ -227,15 +268,44 @@ def run_pipeline(
     gws = next_gameweeks(official.events, horizon)
     if not gws:
         raise RuntimeError("Official FPL API returned no future gameweeks")
-    fx = fixture_multipliers(official.fixtures, official.teams, gws)
+
+    core_elos = pd.DataFrame()
+    if core_client is not None:
+        try:
+            core_elos = core_client.fixture_elos(gws, force=force)
+            sources.append(
+                _status(
+                    "fpl_core_elo",
+                    not core_elos.empty,
+                    f"{len(core_elos)} team-fixture Elo rows"
+                    if not core_elos.empty
+                    else "no reconciled Elo rows for requested horizon",
+                    version=core_pin,
+                )
+            )
+        except Exception as exc:
+            sources.append(_status("fpl_core_elo", False, str(exc), version=core_pin))
+
+    fx = fixture_multipliers(
+        official.fixtures,
+        official.teams,
+        gws,
+        core_elos=core_elos,
+    )
     apex = project_players(players, fx, gws)
-    projection_context = players[["player_id", "minutes_confidence", "role_confidence"]]
-    proj = apex.merge(projection_context, on="player_id", how="left").merge(
-        _official_ep(players, gws), on=["player_id", "gw"], how="left"
+    projection_context = players[
+        ["player_id", "minutes_confidence", "role_confidence"]
+    ]
+    proj = apex.merge(
+        projection_context,
+        on="player_id",
+        how="left",
+    ).merge(
+        _official_ep(players, gws),
+        on=["player_id", "gw"],
+        how="left",
     )
 
-    # Genuine AIrsenal is an independent expert, but it is only allowed into the
-    # ensemble when official-ID, pinned-version, freshness and horizon checks pass.
     air_adapter = AIrsenalProjectionAdapter(settings.airsenal_csv)
     air_pin = str(pins.get("airsenal", {}).get("commit", ""))
     try:
@@ -292,13 +362,22 @@ def run_pipeline(
         )
 
     try:
-        odds = OddsAdapter(http, settings.odds_api_url, settings.odds_api_key).load(force=force)
+        odds = OddsAdapter(
+            http,
+            settings.odds_api_url,
+            settings.odds_api_key,
+        ).load(force=force)
         if not odds.empty:
             proj = proj.merge(odds, on="player_id", how="left")
             sources.append(_status("market_odds", True, f"{len(odds)} rows"))
         else:
             sources.append(
-                _status("market_odds", True, "optional endpoint not configured", configured=False)
+                _status(
+                    "market_odds",
+                    True,
+                    "optional endpoint not configured",
+                    configured=False,
+                )
             )
     except Exception as exc:
         sources.append(_status("market_odds", False, str(exc), configured=True))
@@ -311,9 +390,9 @@ def run_pipeline(
     horizon_vals = proj.groupby("player_id", as_index=False).agg(
         horizon_xp=("weighted_xp", "sum")
     )
-    first = proj[proj["gw"] == gws[0]][["player_id", "risk_adjusted_xp"]].rename(
-        columns={"risk_adjusted_xp": "gw1_xp"}
-    )
+    first = proj[proj["gw"] == gws[0]][
+        ["player_id", "risk_adjusted_xp"]
+    ].rename(columns={"risk_adjusted_xp": "gw1_xp"})
     ranked = (
         players.merge(horizon_vals, on="player_id", how="left")
         .merge(first, on="player_id", how="left")
@@ -328,18 +407,27 @@ def run_pipeline(
         "xpts_8",
         "projection_confidence",
     ]:
-        ranked[col] = pd.to_numeric(ranked.get(col, 0), errors="coerce").fillna(0)
+        ranked[col] = pd.to_numeric(
+            ranked.get(col, 0),
+            errors="coerce",
+        ).fillna(0)
 
     scenarios = {}
     if scenario in {"unrestricted", "both"}:
         scenarios["unrestricted"] = optimise_squad(
-            ranked, settings.budget, settings.max_per_team
+            ranked,
+            settings.budget,
+            settings.max_per_team,
         )
 
     haaland_rows = ranked[
         ranked["web_name"].astype(str).str.casefold().eq("haaland")
     ]
-    haaland_id = int(haaland_rows.iloc[0]["player_id"]) if not haaland_rows.empty else None
+    haaland_id = (
+        int(haaland_rows.iloc[0]["player_id"])
+        if not haaland_rows.empty
+        else None
+    )
     if scenario in {"haaland", "both"} and haaland_id is not None:
         scenarios["haaland"] = optimise_squad(
             ranked,
@@ -357,7 +445,10 @@ def run_pipeline(
 
     transfer_plan: TransferPlan | None = None
     if plan_transfers:
-        team_state = load_team_state(settings.current_squad_path, settings.team_state_path)
+        team_state = load_team_state(
+            settings.current_squad_path,
+            settings.team_state_path,
+        )
         if team_state is not None:
             transfer_plan = optimise_transfer_plan(
                 ranked,
@@ -369,7 +460,9 @@ def run_pipeline(
                 max_per_team=settings.max_per_team,
                 decay=settings.fixture_decay,
             )
-            sources.append(_status("team_state", True, "manual current squad loaded"))
+            sources.append(
+                _status("team_state", True, "manual current squad loaded")
+            )
         else:
             sources.append(
                 _status(
@@ -407,6 +500,10 @@ def run_pipeline(
         "tactical_role_source",
         "role_multiplier",
         "role_confidence",
+        "penalty_share",
+        "corners_share",
+        "direct_freekick_share",
+        "indirect_freekick_share",
         "tactical_attack_index",
         "tactical_defence_index",
         "preseason_minutes",
@@ -422,7 +519,7 @@ def run_pipeline(
         "projection_confidence",
     ]
     ranked_out = ranked[
-        [c for c in ranked_cols if c in ranked]
+        [col for col in ranked_cols if col in ranked]
     ].sort_values("horizon_xp", ascending=False)
     write_reports(
         settings.report_dir,
