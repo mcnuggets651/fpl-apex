@@ -38,6 +38,18 @@ def _configured_news_feeds(raw: dict[str, Any]) -> list[str]:
     return urls
 
 
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed = int(text)
+    if parsed <= 0:
+        raise ValueError("FPL entry ID must be a positive integer")
+    return parsed
+
+
 @dataclass
 class Settings:
     season: str = "2026-2027"
@@ -60,6 +72,7 @@ class Settings:
     odds_api_key: str | None = None
     odds_api_url: str | None = None
     news_feeds: list[str] = field(default_factory=list)
+    fpl_entry_id: int | None = None
     current_squad_path: Path = Path("data/manual/current_squad.csv")
     team_state_path: Path = Path("data/manual/team_state.yaml")
     tactical_roles_path: Path = Path("data/manual/tactical_roles.csv")
@@ -101,6 +114,9 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         odds_api_key=os.getenv("ODDS_API_KEY") or None,
         odds_api_url=os.getenv("ODDS_API_URL") or None,
         news_feeds=_configured_news_feeds(raw),
+        fpl_entry_id=_optional_int(
+            os.getenv("FPL_ENTRY_ID", raw.get("fpl_entry_id", default.fpl_entry_id))
+        ),
         current_squad_path=Path(os.getenv("APEX_CURRENT_SQUAD", "data/manual/current_squad.csv")),
         team_state_path=Path(os.getenv("APEX_TEAM_STATE", "data/manual/team_state.yaml")),
         tactical_roles_path=Path(os.getenv("APEX_TACTICAL_ROLES", "data/manual/tactical_roles.csv")),
