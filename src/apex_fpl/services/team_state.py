@@ -178,8 +178,8 @@ def _public_selling_prices(
             continue
         purchase = latest_buy.get(pid, initial_price.get(pid))
         if purchase is None:
-            # Safe public fallback: current price cannot overstate cash realised for
-            # a falling player, but may overstate a risen player's selling price.
+            # Safe public fallback: current price is exact for a player whose price
+            # has not risen, but can overstate realised cash for a risen player.
             selling[pid] = current
             exact = False
         else:
@@ -197,6 +197,11 @@ def resolve_team_state(
     entry_id: int | None,
     force: bool = False,
 ) -> TeamStateResolution:
+    # Capture the complete official GW1 price universe *before* the first deadline,
+    # even though public entry picks do not exist yet. This is required later to
+    # reconstruct exact selling prices for players owned from the original squad.
+    initial_prices = persist_initial_prices(players, events, cache_dir)
+
     manual = load_team_state(current_squad_path, team_state_path)
     if manual is not None:
         return TeamStateResolution(
@@ -229,20 +234,19 @@ def resolve_team_state(
 
     entry_name = str(summary.get("name", f"Entry {entry_id}"))
     if public is None:
+        captured = "pre-GW1 price universe captured" if initial_prices else "pre-GW1 price capture unavailable"
         return TeamStateResolution(
             state=None,
             configured=True,
             ok=True,
             detail=(
                 f"FPL entry {entry_id} ({entry_name}) connected; no 15-player public "
-                "deadline squad is published yet, so Apex remains in initial-squad mode"
+                f"deadline squad is published yet, so Apex remains in initial-squad mode; {captured}"
             ),
             metadata={"entry_id": int(entry_id), "entry_name": entry_name},
         )
 
-    initial_prices = persist_initial_prices(players, events, cache_dir)
-    # If the first deadline has passed, use a previously cached pre-GW1 file when
-    # available. Scheduled Actions restore this cache between runs.
+    # If the first deadline has passed, use the previously cached pre-GW1 file.
     if initial_prices is None:
         cached = _initial_price_path(cache_dir)
         initial_prices = cached if cached.exists() else None
