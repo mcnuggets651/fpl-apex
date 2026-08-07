@@ -91,9 +91,17 @@ jobs:
           mkdir -p "$AIRSENAL_HOME"
           cd workers/airsenal
           if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            # The upstream setup CLI requires a positive team ID. Before GW1 it
+            # explicitly skips initial-squad transactions. If this cache ever has
+            # to be rebuilt after GW1, team 1 is used only to satisfy that setup
+            # interface; Apex forecasts never consume its transaction table.
             uv run airsenal_setup_initial_db --fpl_team_id 1
           fi
-          uv run airsenal_update_db --fpl_team_id 1
+
+          # Reuse AIrsenal's exact current-season update functions while skipping
+          # manager-specific transfer-history updates. This makes the forecasting
+          # worker independent of any arbitrary FPL manager team throughout season.
+          uv run python "$GITHUB_WORKSPACE/scripts/update_airsenal_worker.py"
 
           # AIrsenal issue #827: the pinned revision can leave historical
           # PlayerAttributes.position empty. Patch only those historical DB rows
