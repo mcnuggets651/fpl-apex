@@ -14,7 +14,7 @@ from apex_fpl.data.odds import OddsAdapter
 from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.data.tactical import load_tactical_roles
 from apex_fpl.models.ensemble import blend_projection
-from apex_fpl.models.fixtures import fixture_multipliers, next_gameweeks
+from apex_fpl.models.fixtures import fixture_multipliers
 from apex_fpl.models.minutes import minutes_profile
 from apex_fpl.models.projection import project_players
 from apex_fpl.models.tactical import infer_tactical_roles
@@ -94,7 +94,16 @@ def _decision_gameweeks(events: pd.DataFrame, horizon: int) -> list[int]:
         )
         if open_ids:
             return open_ids[:horizon]
-    return next_gameweeks(events, horizon)
+    if not events.empty and {"id", "finished"}.issubset(events.columns):
+        return (
+            events.loc[events["finished"] == False, "id"]  # noqa: E712
+            .dropna()
+            .astype(int)
+            .sort_values()
+            .head(horizon)
+            .tolist()
+        )
+    return []
 
 
 def _summarise_horizons(proj: pd.DataFrame, gws: list[int]) -> pd.DataFrame:
