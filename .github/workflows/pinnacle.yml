@@ -1,0 +1,105 @@
+name: Apex Pinnacle
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run after the core pin refresh / normal live pipeline cadence.
+    - cron: "47 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apex-pinnacle
+  cancel-in-progress: true
+
+jobs:
+  pinnacle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Apex + genuine AIrsenal worker
+        run: pip install -e '.[dev,airsenal]'
+
+      - name: Run deterministic and adversarial stress tests
+        run: |
+          pytest -q
+          ruff check src tests scripts
+          python scripts/check_upstreams.py
+
+      - name: Restore runtime cache
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: apex-pinnacle-runtime-2627-${{ github.run_id }}
+          restore-keys: |
+            apex-pinnacle-runtime-2627-
+            apex-runtime-2627-
+
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/airsenal.db
+          key: airsenal-2627-${{ runner.os }}-v3
+
+      - name: Refresh genuine AIrsenal forecasts
+        env:
+          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
+        run: |
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            airsenal_setup_initial_db
+          else
+            airsenal_update_db
+          fi
+          python scripts/run_airsenal_worker.py \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output data/generated/airsenal.csv
+
+      - name: Generate enhanced full-horizon decision
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: python scripts/run_pinnacle.py --horizon 8 --force
+
+      - name: Commit latest green Pinnacle snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f \
+            data/generated/pinnacle_latest.json \
+            data/generated/pinnacle_latest.md
+          if git diff --cached --quiet; then
+            echo "Pinnacle decision unchanged"
+            exit 0
+          fi
+          git commit -m "data: publish Apex Pinnacle decision [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apex-pinnacle-${{ github.run_id }}
+          path: |
+            reports/
+            data/generated/pinnacle_latest.json
+            data/generated/pinnacle_latest.md
+            data/generated/airsenal.csv
+          retention-days: 30
