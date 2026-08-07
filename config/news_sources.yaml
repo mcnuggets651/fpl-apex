@@ -1,3 +1,7 @@
-# Add official club RSS/Atom feeds and trusted sources here when available.
-# The engine never treats a media feed as stronger than the official FPL player/team identity.
-feeds: []
+# Baseline trusted-media feed used by the automated availability/news layer.
+# Official FPL status/chance fields and verified official-club evidence remain stronger.
+# Add official club RSS/Atom feeds here when a club publishes a stable feed.
+feeds:
+  - name: BBC Sport Football
+    url: https://feeds.bbci.co.uk/sport/football/rss.xml
+    tier: trusted_media
