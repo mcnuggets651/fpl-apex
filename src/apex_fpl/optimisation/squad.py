@@ -42,17 +42,22 @@ def optimise_squad(
         return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
 
     # Variable indices: squad [0:n], xi [n:2n], captain [2n:3n]
-    def s(i: int) -> int: return i
-    def x(i: int) -> int: return n + i
-    def c(i: int) -> int: return 2 * n + i
+    def s(i: int) -> int:
+        return i
+
+    def x(i: int) -> int:
+        return n + i
+
+    def c(i: int) -> int:
+        return 2 * n + i
 
     horizon = pd.to_numeric(d["horizon_xp"], errors="coerce").fillna(0).to_numpy(float)
     gw1 = pd.to_numeric(d.get("gw1_xp", d["horizon_xp"]), errors="coerce").fillna(0).to_numpy(float)
     objective = np.zeros(3 * n)
     # Maximise horizon squad value + decisive weight on starting XI and captain.
     objective[:n] = 0.18 * horizon
-    objective[n:2*n] = gw1
-    objective[2*n:3*n] = gw1
+    objective[n : 2 * n] = gw1
+    objective[2 * n : 3 * n] = gw1
     cvec = -objective  # scipy.milp minimises
 
     rows: list[dict[int, float]] = []
@@ -60,7 +65,9 @@ def optimise_squad(
     upper: list[float] = []
 
     def add(coeffs: dict[int, float], lo: float, hi: float):
-        rows.append(coeffs); lower.append(lo); upper.append(hi)
+        rows.append(coeffs)
+        lower.append(lo)
+        upper.append(hi)
 
     add({s(i): 1 for i in range(n)}, 15, 15)
     add({x(i): 1 for i in range(n)}, 11, 11)
@@ -108,12 +115,33 @@ def optimise_squad(
         return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
 
     sol = res.x
-    chosen = [i for i in range(n) if sol[s(i)] > .5]
-    lineup = [i for i in range(n) if sol[x(i)] > .5]
-    capt = [i for i in range(n) if sol[c(i)] > .5]
+    chosen = [i for i in range(n) if sol[s(i)] > 0.5]
+    lineup = [i for i in range(n) if sol[x(i)] > 0.5]
+    capt = [i for i in range(n) if sol[c(i)] > 0.5]
     benched = [i for i in chosen if i not in lineup]
-    cols = [col for col in ["player_id", "web_name", "team_name", "position", "price", "gw1_xp", "horizon_xp"] if col in d.columns]
-    squad_df = d.loc[chosen, cols].sort_values(["position", "horizon_xp"], ascending=[True, False])
+    detail_columns = [
+        "player_id",
+        "web_name",
+        "team_name",
+        "position",
+        "price",
+        "expected_minutes",
+        "start_probability",
+        "appearance_probability",
+        "tactical_role",
+        "tactical_role_source",
+        "role_confidence",
+        "gw1_xp",
+        "xpts_3",
+        "xpts_5",
+        "xpts_8",
+        "horizon_xp",
+        "projection_confidence",
+    ]
+    cols = [col for col in detail_columns if col in d.columns]
+    squad_df = d.loc[chosen, cols].sort_values(
+        ["position", "horizon_xp"], ascending=[True, False]
+    )
     xi_df = d.loc[lineup, cols].sort_values("gw1_xp", ascending=False)
     cap_df = d.loc[capt, cols]
     captain_idx = capt[0] if capt else None
@@ -121,11 +149,24 @@ def optimise_squad(
     if vice_pool:
         # Vice-captain is a fallback decision: favour expected return and the chance
         # of actually appearing rather than ownership or reputation.
-        appearance = pd.to_numeric(d.get("appearance_probability", pd.Series(1.0, index=d.index)), errors="coerce").fillna(1.0)
-        vice_score = {i: float(gw1[i]) * float(appearance.iloc[i]) for i in vice_pool}
+        appearance_prob = pd.to_numeric(
+            d.get("appearance_probability", pd.Series(1.0, index=d.index)),
+            errors="coerce",
+        ).fillna(1.0)
+        vice_score = {
+            i: float(gw1[i]) * float(appearance_prob.iloc[i]) for i in vice_pool
+        }
         vice_idx = max(vice_pool, key=lambda i: vice_score[i])
         vice_df = d.loc[[vice_idx], cols]
     else:
         vice_df = d.iloc[0:0][cols]
     bench_df = d.loc[benched, cols].sort_values("gw1_xp", ascending=False)
-    return SquadSolution("Optimal", float(-res.fun), squad_df, xi_df, cap_df, vice_df, bench_df)
+    return SquadSolution(
+        "Optimal",
+        float(-res.fun),
+        squad_df,
+        xi_df,
+        cap_df,
+        vice_df,
+        bench_df,
+    )
