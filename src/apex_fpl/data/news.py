@@ -20,6 +20,13 @@ class NewsItem:
     link: str
 
 
+@dataclass
+class NewsCollectionResult:
+    items: list[NewsItem]
+    succeeded: list[str]
+    failed: dict[str, str]
+
+
 def load_manual_signals(path: str | Path = "data/manual/availability.csv") -> pd.DataFrame:
     p = Path(path)
     if not p.exists():
@@ -164,18 +171,41 @@ def parse_news_document(content: bytes, url: str, content_type: str = "") -> lis
         return _parse_html(content, url)
 
 
-def collect_feed_headlines(urls: list[str]) -> list[NewsItem]:
-    """Collect official/trusted news from RSS/Atom and supported HTML pages."""
+def collect_news_sources(urls: list[str]) -> NewsCollectionResult:
+    """Collect each configured source independently and preserve outage details.
+
+    One broken media feed must not throw away healthy official/trusted evidence.
+    The caller still receives explicit failed-source provenance and can decide how
+    strict the production gate should be.
+    """
     items: list[NewsItem] = []
+    succeeded: list[str] = []
+    failed: dict[str, str] = {}
     seen: set[tuple[str, str]] = set()
     for url in urls:
-        response = requests.get(url, timeout=20, headers={"User-Agent": "apex-fpl/0.1"})
-        response.raise_for_status()
-        parsed = parse_news_document(response.content, url, response.headers.get("content-type", ""))
-        for item in parsed:
-            key = (item.title.casefold().strip(), item.link)
-            if not item.title.strip() or key in seen:
-                continue
-            seen.add(key)
-            items.append(item)
-    return items
+        try:
+            response = requests.get(url, timeout=20, headers={"User-Agent": "apex-fpl/0.1"})
+            response.raise_for_status()
+            parsed = parse_news_document(
+                response.content,
+                url,
+                response.headers.get("content-type", ""),
+            )
+            succeeded.append(url)
+            for item in parsed:
+                key = (item.title.casefold().strip(), item.link)
+                if not item.title.strip() or key in seen:
+                    continue
+                seen.add(key)
+                items.append(item)
+        except Exception as exc:
+            failed[url] = f"{type(exc).__name__}: {exc}"
+    if not succeeded:
+        details = "; ".join(f"{url}: {err}" for url, err in failed.items())
+        raise RuntimeError(f"all configured news sources failed: {details}")
+    return NewsCollectionResult(items=items, succeeded=succeeded, failed=failed)
+
+
+def collect_feed_headlines(urls: list[str]) -> list[NewsItem]:
+    """Backwards-compatible convenience wrapper."""
+    return collect_news_sources(urls).items
