@@ -4,7 +4,7 @@
 
 ## Current state
 
-The repository has a production-green Apex core and a new **Apex Pinnacle** decision layer now being bootstrapped and stress-tested.
+The repository has a production-green Apex core and an enhanced **Apex Pinnacle** decision layer now being bootstrapped and stress-tested.
 
 Validated core capabilities:
 
@@ -26,14 +26,16 @@ Validated core capabilities:
 
 ## Stress-test findings and upgrades
 
-The 7 August pinnacle audit found two material issues in the previous design and both have been addressed in code:
+The 7 August pinnacle audit found material weaknesses in the previous decision layer and they have been addressed in new code:
 
-1. **Initial-squad horizon heuristic:** the legacy initial MILP used GW1 XI/captain plus a fixed fraction of aggregate horizon xP. An adversarial case can make this prefer a GW1 spike over a clearly superior multi-GW rotation asset. A new `optimise_initial_horizon` MILP fixes the 15-player squad while optimising a legal XI and captain separately for every Gameweek in the horizon.
-2. **Pre-GW1 selling-price baseline:** the original public-entry flow returned before persisting the initial price universe when no public GW1 picks existed. That would make later selling prices for original GW1 players partly approximate. The price universe is now captured before the first deadline even while entry 63984 remains in initial-squad mode.
+1. **Initial-squad horizon heuristic:** the legacy initial MILP used GW1 XI/captain plus a fixed fraction of aggregate horizon xP. An adversarial case can make this prefer a GW1 spike over a clearly superior multi-GW rotation asset. `optimise_initial_horizon` now fixes the 15-player squad while optimising a legal XI and captain separately for every Gameweek.
+2. **Independent-player risk assumption:** the original risk adjustment did not model shared team/opponent uncertainty. The Pinnacle scenario generator now creates correlated forecast surfaces and a new MILP maximises a blend of mean value and lower-tail **CVaR**.
+3. **Pre-GW1 selling-price baseline:** the original public-entry flow could return before persisting the initial price universe when no public GW1 picks existed. The price universe is now captured before the first deadline even while entry 63984 remains in initial-squad mode.
+4. **Near-tie visibility:** exact force/ban objective-regret analysis now quantifies how much value is lost when selected players are removed or alternatives are forced.
 
-The new Pinnacle layer also adds exact **force/ban objective-regret analysis**. This quantifies how much expected objective value is lost when a selected player is removed or an alternative is forced, separating robust picks from near-ties.
+The stochastic layer models common Gameweek shocks, shared team attack/defence uncertainty and negative attacker-vs-opposing-clean-sheet linkage. Its covariance coefficients are transparent priors and are not yet claimed to be walk-forward calibrated 2026/27 parameters. It is therefore used as robustness evidence alongside the deterministic expected-value optimum, not as a magic replacement for it.
 
-New adversarial regression tests cover these cases.
+Adversarial regression tests cover the full-horizon and CVaR failure modes.
 
 ## Pinnacle interface
 
@@ -41,6 +43,16 @@ Once the bootstrap workflow completes successfully, ChatGPT should prefer:
 
 - `data/generated/pinnacle_latest.json`
 - `data/generated/pinnacle_latest.md`
+
+The Pinnacle snapshot contains:
+
+- deterministic full-horizon unrestricted / Haaland / no-Haaland solutions;
+- covariance-aware CVaR versions of the same scenarios;
+- deterministic-vs-robust overlap;
+- exact selection-regret sensitivity;
+- scenario downside/median/upside summaries;
+- current personalised transfer plan when the public team is available;
+- source and official-snapshot provenance.
 
 The existing validated core interface remains:
 
@@ -58,22 +70,22 @@ Current workers include:
 
 - FPL Core pin refresh — every six hours;
 - normal full Apex publish — every six hours;
-- **Apex Pinnacle** full-horizon/stress run — every six hours and manually dispatchable;
+- **Apex Pinnacle** full-horizon + correlated 256-scenario CVaR stress run — every six hours and manually dispatchable;
 - genuine AIrsenal refresh inside production runs;
 - independent solver parity on its validation cadence;
 - dedicated final pre-GW1 recommendation on 21 August 2026 morning.
 
 ## Remaining mathematical upgrades before the theoretical ceiling
 
-The deterministic Pinnacle layer is materially stronger, but a strict theoretical pinnacle still benefits from:
+The strongest remaining improvements are now narrower:
 
-1. covariance-aware scenario simulation for correlated player/team outcomes;
-2. stochastic optimisation using downside CVaR / expected regret;
-3. explicit captain-no-show -> vice-captain fallback value;
-4. stochastic bench/autosub ordering;
-5. two-stage/receding-horizon transfer recourse for future information;
-6. a calibrated future price-change timing model;
-7. configured market-implied goal / clean-sheet / scorer priors from a reliable odds feed.
+1. walk-forward calibration of the scenario covariance coefficients and stochastic risk weight;
+2. explicit captain-no-show -> vice-captain fallback value inside the objective;
+3. stochastic bench/autosub ordering and formation-safe substitutions;
+4. two-stage/receding-horizon transfer recourse for future information;
+5. a calibrated future price-change timing model;
+6. configured market-implied goal / clean-sheet / scorer priors from a reliable odds feed;
+7. empirical selection/captain frequency across calibrated projection perturbations.
 
 These should be added only with transparent calibration and backtesting rather than arbitrary complexity.
 
@@ -83,5 +95,6 @@ For a future recommendation:
 
 1. read `data/generated/pinnacle_latest.json` first;
 2. require `safe_to_act=true` and `full_apex_ready=true`;
-3. if unavailable, inspect the latest green `apex_latest.json` and disclose that the Pinnacle layer is not yet published;
-4. never reconstruct a team from conversation memory when repository decision files are available.
+3. inspect deterministic-vs-CVaR agreement and selection regret before calling a pick high confidence;
+4. if Pinnacle is unavailable, inspect the latest green `apex_latest.json` and disclose that the enhanced layer is not yet published;
+5. never reconstruct a team from conversation memory when repository decision files are available.
