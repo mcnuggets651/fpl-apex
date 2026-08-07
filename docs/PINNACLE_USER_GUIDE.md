@@ -25,122 +25,103 @@ If any flag is false, the correct output is the blocker — not an old squad.
 3. **Genuine pinned AIrsenal** — independent multi-Gameweek projection expert, mapped through official FPL IDs.
 4. **Apex transparent xP** — expected minutes, xG/xA/xGI, fixture strength, tactical role, clean sheets, saves, defensive contributions, set pieces, penalties and 2026/27 bonus/BPS.
 5. **Trusted news/availability layer** — injuries, return dates, transfer uncertainty and manager/line-up evidence. It cannot overwrite Official FPL identity.
-6. **Ensemble** — combines available projection experts, reports disagreement, standard deviation, floors/ceilings and confidence.
-7. **Maximum-EV full-horizon MILP** — fixed initial 15, legal XI and captain optimised separately in every Gameweek over the horizon. This uses ensemble mean xP, not a hidden risk penalty.
-8. **Correlated scenario model** — team attack/defence, opponent and player uncertainty are stressed jointly rather than pretending assets are independent.
-9. **CVaR MILP** — a second solution balances mean return with lower-tail robustness. It is evidence about fragility, not an instruction to blindly choose the safest team.
-10. **Exact selection regret** — every selected player is removed and the problem is re-solved; strong alternatives are forced and re-solved. This quantifies how costly a change really is.
-11. **Exact deadline mechanics** — captain/vice no-show fallback and the optimal outfield bench order are evaluated explicitly. Autosubs enumerate the relevant binary appearance states subject to legal FPL formation rules.
-12. **Independent solver parity** — the pinned open-fpl-solver checks whether an independent formulation agrees with the same Apex projection surface.
-13. **Personal weekly strategy** — after a public deadline squad exists for entry 63984, Apex reads the squad/bank/FT state and uses receding-horizon transfer planning: execute only the first action, then re-solve after new information arrives.
-14. **Chip window** — current Wildcard, Free Hit, Bench Boost and Triple Captain opportunity values are quantified under the 2026/27 chip rules. Positive current value is not enough by itself to burn a chip; future opportunity cost is retained.
+6. **Ensemble** — combines available projection experts, reports disagreement, standard deviation, floors/ceilings and confidence. Full-Gameweek experts are allocated exactly once across DGW fixture rows so they cannot be silently doubled.
+7. **Maximum-EV full-horizon MILP** — fixed initial 15, legal XI and captain optimised separately in every Gameweek. The primary objective uses ensemble mean `xp`; uncertainty is not silently double-counted as a risk penalty.
+8. **Correlated scenario model** — shared Gameweek/team attack/team defence/opponent shocks plus persistent player minutes/role uncertainty across the horizon.
+9. **CVaR MILP** — a second solution balances mean return with lower-tail robustness. It exposes fragility rather than automatically preferring the safest squad.
+10. **Exact selection regret** — selected players are banned and strong alternatives are forced, then the full problem is re-solved on the same maximum-EV surface.
+11. **Exact deadline mechanics** — captain/vice no-show fallback and the best outfield bench order are evaluated explicitly. Autosubs enumerate the relevant appearance states subject to legal FPL formation rules.
+12. **Independent solver parity** — pinned `open-fpl-solver` receives the same ensemble-mean xP used by Pinnacle and checks the independent mathematical formulation.
+13. **Personal weekly strategy** — entry 63984 supplies the published squad/bank/FT/selling-price state. The Pinnacle transfer candidate pool protects cheap enablers, positional alternatives, price-band options, Pareto-efficient players and short-term fixture punts from naive global top-N pruning.
+14. **Receding-horizon transfer policy** — optimise several weeks, execute only `action_now`, quantify the exact value lost by forcing a roll, then refresh and re-solve next deadline.
+15. **Chip window** — Wildcard, Free Hit, Bench Boost and Triple Captain opportunity values are quantified under the 2026/27 rules. Positive current value is evidence, not an automatic instruction to spend a scarce chip.
+16. **No-hindsight learning archive** — the freshest green pre-deadline player forecasts are archived before each lock, official FPL outcomes are attached only after the event is finished, and walk-forward expert/calibration reports are rebuilt from genuine historical decision-time data.
 
 ## The primary decision rule
 
 The default objective is **maximum expected FPL points**.
 
-Pinnacle does not lower the expected-value target simply to make a team look safer. The deterministic full-horizon MILP is the main answer. The CVaR solution, exact regret, source confidence and solver parity tell us whether that answer is robust.
+The deterministic full-horizon MILP is the main answer. CVaR, exact regret, expected-minutes/role confidence, source health and independent solver parity tell us how robust the answer is.
 
-A pick is strongest when:
+A pick is strongest when it appears in both the maximum-EV and robust solutions, banning it causes material objective regret, expected minutes/role evidence are strong, model disagreement is low and the independent formulation agrees.
 
-- it appears in the deterministic optimum;
-- it also appears in the CVaR optimum;
-- banning it creates material objective regret;
-- expected minutes and role confidence are high;
-- model disagreement is low;
-- independent solver evidence agrees.
-
-A pick with near-zero regret should be treated as a near-tie and can legitimately change after one new press conference, price move or role update.
+A near-zero regret pick is a genuine near-tie. It should be allowed to change when new price, role, injury or press-conference information arrives.
 
 ## Before GW1
 
 The public FPL API cannot reveal an unpublished draft. Pinnacle therefore works in initial-squad mode.
 
-Run:
+Easiest local command:
+
+```bash
+apex-fpl pinnacle --horizon 8
+apex-fpl pinnacle-status
+```
+
+Equivalent explicit runner:
 
 ```bash
 python scripts/run_pinnacle.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
 python scripts/assert_pinnacle.py data/generated/pinnacle_latest.json
 ```
 
-The final output contains:
-
-- unrestricted maximum-EV squad;
-- Haaland-locked squad;
-- no-Haaland squad;
-- robust CVaR versions;
-- expected-value/robust overlap;
-- exact selection regret;
-- GW1 XI;
-- exact captain and vice-captain recommendation;
-- exact outfield bench order;
-- projection uncertainty and source health.
+The final output contains unrestricted, Haaland and no-Haaland maximum-EV squads, robust CVaR versions, exact sensitivity/regret, GW1 XI, captain, vice-captain, bench order, uncertainty and source/provenance evidence.
 
 A dedicated final run is scheduled for the morning of **21 August 2026**.
 
 ## After each deadline
 
-Entry 63984 is automatically synchronised from the public FPL endpoints. Apex records:
+Entry 63984 is automatically synchronised from the public FPL endpoints. Apex records the latest published 15, bank, team value, captain/vice, rolled FTs, transfer history, chip history and manager-specific selling prices.
 
-- latest published 15;
-- bank;
-- team value;
-- captain and vice;
-- available rolled free transfers;
-- transfer history;
-- chip history;
-- reconstructed manager-specific selling prices.
-
-The public API is a deadline snapshot. It cannot see a transfer you privately make after the latest deadline. Therefore the ideal workflow is to ask Apex **before** making the transfer. If you already made one, provide the change as a manual override before relying on the recommendation.
+The public API is a deadline snapshot. It cannot see a transfer privately made after the latest deadline. The ideal workflow is therefore to ask Pinnacle **before** making the transfer. If a transfer was already made, provide the change as a manual override before relying on the public-state recommendation.
 
 ## Weekly operating routine
 
-The preferred routine is:
-
-1. Wait for the latest injury/manager information available before the deadline.
+1. Let the latest injury/manager information arrive.
 2. Run Apex Pinnacle or use the newest green published snapshot.
-3. Inspect `weekly_strategy.action_now`.
-4. Compare `weekly_strategy.roll_regret` to the recommended transfer.
-5. Check the deterministic/CVaR agreement and selection regret for players involved.
-6. Check `chip_window`, but spend a chip only when its current advantage also makes sense against future opportunity cost.
+3. Read `weekly_strategy.action_now`.
+4. Compare `weekly_strategy.roll_regret` against doing nothing.
+5. Inspect maximum-EV/CVaR agreement and exact regret for the players involved.
+6. Inspect `chip_window`; do not spend a chip just because its immediate gain is positive.
 7. Execute only the current action.
-8. After the deadline, refresh the model and re-solve. Future transfers in the previous plan were contingencies, not commitments.
+8. After the deadline, refresh everything and solve again. Later transfers from the old plan were contingencies, not commitments.
 
-## Easiest way to use it: ChatGPT
+## Easiest interface: ChatGPT
 
-Ask naturally. Examples:
+Ask naturally:
 
 - `Give me the latest Apex Pinnacle team.`
 - `Stress-test Haaland vs no Haaland and choose the final structure.`
-- `Which three picks are most fragile?`
+- `Which picks are mathematically fragile?`
 - `What is my best transfer this week?`
-- `Should I roll the transfer? Show the exact value of rolling.`
+- `Should I roll? Show the exact expected-value cost of rolling.`
 - `Is a -4 justified?`
-- `Give me the best action now and the contingent 3-GW path.`
+- `Give me the action now and the contingent 3-GW path.`
 - `Who should I captain and vice-captain?`
 - `What is the exact bench order?`
 - `Should I wildcard now or wait?`
-- `What are the current Bench Boost / Triple Captain / Free Hit opportunity values?`
+- `What are the current chip opportunity values?`
 - `Why is Player A ahead of Player B?`
 - `What changed since the last green run?`
-- `Does CVaR or the independent solver disagree with the maximum-EV team?`
+- `Does CVaR or the independent solver disagree with maximum EV?`
+- `How has the model performed in the completed Gameweeks?`
 
-ChatGPT should read `data/generated/pinnacle_latest.json` first. It should never reconstruct a remembered squad when a current repository snapshot is available.
+ChatGPT should read `data/generated/pinnacle_latest.json` first and should never reconstruct a remembered historical squad when a current repository snapshot exists.
 
 ## GitHub-only use
 
-To force a fresh cloud run without installing anything locally:
+To force a cloud run without installing anything:
 
-1. Open the repository on GitHub.
+1. Open `mcnuggets651/fpl-apex` on GitHub.
 2. Open **Actions**.
 3. Select **Apex Pinnacle**.
-4. Choose **Run workflow** on `main`.
-5. Wait for the workflow to finish green.
-6. Read `data/generated/pinnacle_latest.md` or ask ChatGPT for the latest recommendation.
+4. Click **Run workflow** and choose `main`.
+5. Only use the result after the workflow finishes green.
+6. Read `data/generated/pinnacle_latest.md` or ask ChatGPT for the latest Pinnacle recommendation.
 
-The workflow also runs every six hours.
+The full Pinnacle workflow also runs every six hours. Independent same-surface solver parity runs on its validation cadence and is embedded back into the repository snapshot.
 
-## Local use
+## Local setup
 
 ```bash
 python -m venv .venv
@@ -150,39 +131,43 @@ pip install -e '.[dev,airsenal]'
 export FPL_ENTRY_ID=63984
 export AIRSENAL_PROJECTIONS_CSV=data/generated/airsenal.csv
 
-python scripts/run_pinnacle.py --horizon 8 --force
-python scripts/assert_pinnacle.py
+apex-fpl pinnacle --horizon 8
+apex-fpl pinnacle-status
 ```
 
 Optional environment variables:
 
-- `APEX_NEWS_FEEDS` — comma-separated additional trusted/official sources;
-- `ODDS_API_URL` / `ODDS_API_KEY` — optional market-xP feed using the documented adapter contract;
+- `APEX_NEWS_FEEDS` — additional trusted/official news sources;
+- `ODDS_API_URL` / `ODDS_API_KEY` — optional market-xP feed;
 - `APEX_HORIZON` — planning horizon;
 - `FPL_ENTRY_ID` — personal entry (63984 in production).
 
-## Main files to inspect
+## Main files
 
 - `data/generated/pinnacle_latest.json` — machine-readable final Pinnacle decision.
-- `data/generated/pinnacle_latest.md` — human-readable final Pinnacle decision.
-- `data/generated/apex_latest.json` — validated underlying production Apex snapshot.
-- `data/generated/solver_parity.json` — independent optimiser agreement.
+- `data/generated/pinnacle_latest.md` — human-readable decision.
+- `data/generated/apex_latest.json` — validated underlying production Apex state.
+- `data/generated/solver_parity.json` — independent same-surface optimiser agreement.
 - `data/generated/airsenal.csv` — genuine AIrsenal evidence.
+- `data/generated/calibration_report.json` — season learning/backtest status.
+- `data/history/deadlines/gwXX_forecast.csv` — genuine pre-deadline forecasts plus official outcomes after completion.
 - `reports/pinnacle_selection_regret.csv` — exact decision sensitivity.
 - `reports/pinnacle_scenario_player_summary.csv` — scenario mean/SD/P10/P50/P90.
 - `reports/team_state.json` — latest personal FPL state after the season begins.
-- `upstreams.lock.json` — exact upstream source versions.
+- `upstreams.lock.json` — exact upstream revisions.
 
-## What still learns during the season
+## The learning loop
 
-No pre-season model can calibrate itself against future 2026/27 outcomes that do not exist yet. The covariance coefficients are therefore transparent priors initially and are reported as such. As genuine deadline/outcome history accumulates, the existing walk-forward calibration framework can update expert weights and validate covariance assumptions without using hindsight-contaminated features.
+No pre-season model can train against future 2026/27 outcomes that do not yet exist. Pinnacle does not invent that evidence.
 
-This is a **known-data limitation**, not a missing GW1 input that can be solved by inventing numbers.
+Within 30 hours of each deadline, the scheduled green run writes/refreshes the target Gameweek archive. Once Official FPL marks the Gameweek finished, the archive is completed with official points. `calibration_report.json` then reports expert error/rank metrics, a constrained candidate ensemble calibration once enough data exists, and a latest-GW walk-forward holdout check.
+
+Weights are **not auto-promoted from one lucky sample**. Calibration remains advisory until repeated genuine out-of-sample holdouts establish a stable improvement. The same standard applies to covariance coefficients, which begin as transparent priors and can be validated as 2026/27 evidence accumulates.
 
 ## Interpretation standard
 
-Pinnacle optimises the quality of the decision process; it cannot make football deterministic. A player can still be injured in the warm-up, a penalty can be missed and a 0.2 xG shot can go in.
+Pinnacle optimises the quality of the decision process; it cannot make football deterministic. Injuries, red cards, penalties and finishing variance remain real.
 
-The correct standard is therefore:
+The standard is:
 
-> Use every defensible current signal, enforce the rules exactly, maximise expected points, quantify uncertainty and regret, cross-check the optimiser, and refuse to act when the production gate is not green.
+> Use every defensible current signal, preserve Official FPL truth, enforce the rules, maximise expected points, model correlated uncertainty, quantify regret and fallback mechanics, cross-check the optimiser, learn only from genuine pre-deadline history, and refuse to act when the gate is not green.
