@@ -17,6 +17,7 @@ class SquadSolution:
     squad: pd.DataFrame
     xi: pd.DataFrame
     captain: pd.DataFrame
+    vice_captain: pd.DataFrame
     bench: pd.DataFrame
 
 
@@ -38,7 +39,7 @@ def optimise_squad(
     n = len(d)
     if n == 0:
         empty = d.iloc[0:0]
-        return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty)
+        return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
 
     # Variable indices: squad [0:n], xi [n:2n], captain [2n:3n]
     def s(i: int) -> int: return i
@@ -104,7 +105,7 @@ def optimise_squad(
     )
     if not res.success or res.x is None:
         empty = d.iloc[0:0]
-        return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty)
+        return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
 
     sol = res.x
     chosen = [i for i in range(n) if sol[s(i)] > .5]
@@ -115,5 +116,16 @@ def optimise_squad(
     squad_df = d.loc[chosen, cols].sort_values(["position", "horizon_xp"], ascending=[True, False])
     xi_df = d.loc[lineup, cols].sort_values("gw1_xp", ascending=False)
     cap_df = d.loc[capt, cols]
+    captain_idx = capt[0] if capt else None
+    vice_pool = [i for i in lineup if i != captain_idx]
+    if vice_pool:
+        # Vice-captain is a fallback decision: favour expected return and the chance
+        # of actually appearing rather than ownership or reputation.
+        appearance = pd.to_numeric(d.get("appearance_probability", pd.Series(1.0, index=d.index)), errors="coerce").fillna(1.0)
+        vice_score = {i: float(gw1[i]) * float(appearance.iloc[i]) for i in vice_pool}
+        vice_idx = max(vice_pool, key=lambda i: vice_score[i])
+        vice_df = d.loc[[vice_idx], cols]
+    else:
+        vice_df = d.iloc[0:0][cols]
     bench_df = d.loc[benched, cols].sort_values("gw1_xp", ascending=False)
-    return SquadSolution("Optimal", float(-res.fun), squad_df, xi_df, cap_df, bench_df)
+    return SquadSolution("Optimal", float(-res.fun), squad_df, xi_df, cap_df, vice_df, bench_df)
