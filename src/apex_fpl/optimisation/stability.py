@@ -21,16 +21,14 @@ def selection_regret_analysis(
     locked: set[int] | None = None,
     banned: set[int] | None = None,
     alternative_limit: int = 12,
+    projection_col: str = "xp",
 ) -> pd.DataFrame:
     """Measure exact objective regret from forcing/excluding individual players.
 
-    This is a deterministic sensitivity analysis on the *same* projection surface.
-    For every selected player we re-solve with that player banned. For the strongest
-    unselected alternatives we re-solve with the player forced into the squad.
-
-    A large positive regret means the baseline decision is structurally robust;
-    a regret close to zero means the pick sits inside a near-optimal cluster and
-    should be treated as fragile to small projection/news changes.
+    Every stress solve uses the exact same projection surface as the baseline. The
+    unselected alternative shortlist is also ranked from that surface rather than
+    from a precomputed risk-adjusted summary, preventing a strong maximum-EV
+    alternative from being omitted before the exact force test is run.
     """
     columns = [
         "player_id",
@@ -48,29 +46,40 @@ def selection_regret_analysis(
     locked = set(locked or set())
     banned = set(banned or set())
     baseline_obj = float(baseline.objective)
-    selected_ids = set(pd.to_numeric(baseline.squad["player_id"], errors="coerce").dropna().astype(int))
+    selected_ids = set(
+        pd.to_numeric(baseline.squad["player_id"], errors="coerce")
+        .dropna()
+        .astype(int)
+    )
+    name_cols = [c for c in ["player_id", "web_name"] if c in players.columns]
     names = {
         int(row.player_id): str(getattr(row, "web_name", row.player_id))
-        for row in players[[c for c in ["player_id", "web_name"] if c in players.columns]].itertuples(index=False)
+        for row in players[name_cols].itertuples(index=False)
     }
 
     rows: list[dict] = []
+    common = dict(
+        players=players,
+        projections=projections,
+        gameweeks=gameweeks,
+        budget=budget,
+        max_per_team=max_per_team,
+        decay=decay,
+        bench_weight=bench_weight,
+        projection_col=projection_col,
+    )
 
     for pid in sorted(selected_ids):
         if pid in locked:
             continue
         stressed = optimise_initial_horizon(
-            players,
-            projections,
-            gameweeks,
-            budget=budget,
-            max_per_team=max_per_team,
-            decay=decay,
-            bench_weight=bench_weight,
+            **common,
             locked=locked,
             banned=banned | {pid},
         )
-        constrained = float(stressed.objective) if stressed.status == "Optimal" else math.nan
+        constrained = (
+            float(stressed.objective) if stressed.status == "Optimal" else math.nan
+        )
         regret = baseline_obj - constrained if math.isfinite(constrained) else math.inf
         rows.append(
             {
@@ -85,29 +94,50 @@ def selection_regret_analysis(
             }
         )
 
-    candidates = players[~players["player_id"].astype(int).isin(selected_ids | banned)].copy()
-    sort_col = "horizon_xp" if "horizon_xp" in candidates.columns else "gw1_xp"
-    if sort_col in candidates.columns:
-        candidates[sort_col] = pd.to_numeric(candidates[sort_col], errors="coerce").fillna(0.0)
-        candidates = candidates.nlargest(max(int(alternative_limit), 0), sort_col)
+    candidates = players[
+        ~players["player_id"].astype(int).isin(selected_ids | banned)
+    ].copy()
+    value_col = (
+        projection_col
+        if projection_col in projections.columns
+        else "risk_adjusted_xp"
+    )
+    if value_col in projections.columns and gameweeks:
+        px = projections[projections["gw"].isin(gameweeks)][
+            ["player_id", "gw", value_col]
+        ].copy()
+        gw_weight = {
+            int(gw): float(decay) ** idx for idx, gw in enumerate(gameweeks)
+        }
+        px["_weight"] = px["gw"].map(gw_weight).fillna(0.0)
+        px["_value"] = (
+            pd.to_numeric(px[value_col], errors="coerce").fillna(0.0)
+            * px["_weight"]
+        )
+        scores = px.groupby("player_id")["_value"].sum()
+        candidates["_stress_score"] = (
+            candidates["player_id"].map(scores).fillna(0.0)
+        )
+        candidates = candidates.nlargest(
+            max(int(alternative_limit), 0), "_stress_score"
+        )
     else:
         candidates = candidates.head(max(int(alternative_limit), 0))
 
-    for pid in pd.to_numeric(candidates.get("player_id", pd.Series(dtype=float)), errors="coerce").dropna().astype(int):
+    candidate_ids = pd.to_numeric(
+        candidates.get("player_id", pd.Series(dtype=float)), errors="coerce"
+    ).dropna().astype(int)
+    for pid in candidate_ids:
         if pid in banned:
             continue
         stressed = optimise_initial_horizon(
-            players,
-            projections,
-            gameweeks,
-            budget=budget,
-            max_per_team=max_per_team,
-            decay=decay,
-            bench_weight=bench_weight,
+            **common,
             locked=locked | {int(pid)},
             banned=banned,
         )
-        constrained = float(stressed.objective) if stressed.status == "Optimal" else math.nan
+        constrained = (
+            float(stressed.objective) if stressed.status == "Optimal" else math.nan
+        )
         regret = baseline_obj - constrained if math.isfinite(constrained) else math.inf
         rows.append(
             {
