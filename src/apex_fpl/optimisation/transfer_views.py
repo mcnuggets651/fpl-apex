@@ -21,51 +21,51 @@ def _pinnacle_candidate_ids(
 
     A simple global top-N xP cut can silently remove goalkeepers, defenders or cheap
     enablers because premium attackers naturally dominate absolute xP. Pinnacle
-    instead preserves multiple complementary candidate classes:
-
-    - the current squad;
-    - top horizon xP within every FPL position;
-    - top assets inside every £0.5m price band/position;
-    - each position's price/xP Pareto frontier;
-    - top short-term punts by position in every individual Gameweek.
-
-    The resulting pool stays computationally manageable while being materially less
-    likely to prune the true budget-constrained optimum.
+    preserves the current squad, positional leaders, price-band leaders, each
+    position's price/xP Pareto frontier and short-term Gameweek punts.
     """
     d = players.drop_duplicates("player_id").copy()
     d = d[d["position"].isin(SQUAD_COUNTS)].copy()
-    value_col = projection_col
     px = projections[projections["gw"].isin(gameweeks)][
-        ["player_id", "gw", value_col]
+        ["player_id", "gw", projection_col]
     ].copy()
-    px[value_col] = pd.to_numeric(px[value_col], errors="coerce").fillna(0.0)
-    horizon = px.groupby("player_id")[value_col].sum()
+    px[projection_col] = pd.to_numeric(
+        px[projection_col], errors="coerce"
+    ).fillna(0.0)
+    horizon = px.groupby("player_id")[projection_col].sum()
     d["_plan_xp"] = d["player_id"].map(horizon).fillna(0.0)
     d["_price"] = pd.to_numeric(d["price"], errors="coerce").fillna(99.0)
     d["_price_band"] = (d["_price"] * 2.0).round() / 2.0
 
     keep: set[int] = set(map(int, current_squad))
-    per_position = max(18, int(math.ceil(target_size / max(len(SQUAD_COUNTS), 1))))
+    per_position = max(
+        18, int(math.ceil(target_size / max(len(SQUAD_COUNTS), 1)))
+    )
     for pos in SQUAD_COUNTS:
         part = d[d["position"] == pos].copy()
-        keep.update(part.nlargest(per_position, "_plan_xp")["player_id"].astype(int))
+        keep.update(
+            part.nlargest(per_position, "_plan_xp")["player_id"].astype(int)
+        )
 
-        # Budget enablers / same-price alternatives.
         for _, band in part.groupby("_price_band"):
             keep.update(band.nlargest(4, "_plan_xp")["player_id"].astype(int))
 
-        # Pareto frontier: not dominated by a cheaper player with at least as much xP.
-        frontier = part.sort_values(["_price", "_plan_xp"], ascending=[True, False])
+        frontier = part.sort_values(
+            ["_price", "_plan_xp"], ascending=[True, False]
+        )
         best = float("-inf")
-        for row in frontier.itertuples(index=False):
-            value = float(row._plan_xp)
+        for _, row in frontier.iterrows():
+            value = float(row["_plan_xp"])
             if value > best + 1e-9:
-                keep.add(int(row.player_id))
+                keep.add(int(row["player_id"]))
                 best = value
 
-        # One-week upside can be hidden by a horizon aggregate.
         for gw in gameweeks:
-            gw_values = px[px["gw"] == int(gw)].groupby("player_id")[value_col].sum()
+            gw_values = (
+                px[px["gw"] == int(gw)]
+                .groupby("player_id")[projection_col]
+                .sum()
+            )
             gw_part = part[["player_id"]].copy()
             gw_part["_gw"] = gw_part["player_id"].map(gw_values).fillna(0.0)
             keep.update(gw_part.nlargest(10, "_gw")["player_id"].astype(int))
@@ -111,7 +111,9 @@ def optimise_transfer_plan_view(
             projection_col="risk_adjusted_xp",
             target_size=candidate_limit,
         )
-        player_view = players[players["player_id"].astype(int).isin(ids)].copy()
+        player_view = players[
+            players["player_id"].astype(int).isin(ids)
+        ].copy()
         view = view[view["player_id"].astype(int).isin(ids)].copy()
         effective_limit = max(len(player_view), effective_limit)
 
