@@ -27,9 +27,10 @@ def _pool():
 
 
 def _current(players):
-    ids = set()
-    for pos, need in {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3}.items():
-        ids.update(players[players.position == pos].head(need).player_id.astype(int))
+    # Explicit legal 15: no club has more than three players.
+    ids = {1, 7, 2, 3, 8, 9, 14, 16, 17, 22, 23, 28, 24, 30, 36}
+    assert len(ids) == 15
+    assert set(ids).issubset(set(players.player_id.astype(int)))
     return ids
 
 
