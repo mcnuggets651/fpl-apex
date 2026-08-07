@@ -72,12 +72,22 @@ def test_pipeline_end_to_end_without_network(monkeypatch, tmp_path):
         "preseason_friendlies",
         lambda self, force=False: pd.DataFrame(),
     )
+    # Keep this unit test network-free now that the live pipeline also consumes
+    # FPL Core Elo fixture context.
+    monkeypatch.setattr(
+        FPLCoreClient,
+        "fixture_elos",
+        lambda self, gameweeks, force=False: pd.DataFrame(),
+    )
     settings = Settings(
         horizon=2,
         cache_dir=tmp_path / "cache",
+        snapshot_dir=tmp_path / "snapshots",
         report_dir=tmp_path / "reports",
         current_squad_path=tmp_path / "missing.csv",
         team_state_path=tmp_path / "missing.yaml",
+        airsenal_csv=None,
+        required_sources=[],
     )
     out = run_pipeline(settings, horizon=2, scenario="both", plan_transfers=False)
     assert set(out.scenarios) == {"unrestricted", "haaland", "no-haaland"}
@@ -85,4 +95,5 @@ def test_pipeline_end_to_end_without_network(monkeypatch, tmp_path):
     assert len(out.gameweeks) == 2
     assert (tmp_path / "reports" / "latest.json").exists()
     assert (tmp_path / "reports" / "sources.csv").exists()
+    assert (tmp_path / "reports" / "scenario_comparison.json").exists()
     assert len(out.players) > 15
