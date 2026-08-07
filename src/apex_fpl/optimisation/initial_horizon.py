@@ -19,18 +19,19 @@ def optimise_initial_horizon(
     bench_weight: float = 0.08,
     locked: set[int] | None = None,
     banned: set[int] | None = None,
+    projection_col: str = "xp",
 ) -> SquadSolution:
-    """Optimise the GW1 squad over the complete planning horizon.
+    """Optimise the initial squad over the complete planning horizon.
 
-    Unlike the legacy one-week squad heuristic, the 15-player squad is fixed while
-    the XI and captain are re-optimised independently for every Gameweek in the
-    horizon. This captures fixture rotation and captaincy structure explicitly.
+    The 15-player squad is fixed while XI and captain are re-optimised independently
+    for every Gameweek. By default the objective uses the ensemble mean ``xp`` so
+    this is a genuine maximum-expected-points baseline. Risk belongs in the separate
+    correlated CVaR layer rather than being silently double-counted here.
 
-    ``bench_weight`` is a conservative expected-autosub proxy. A starter receives
-    100% of his projected value (bench component + XI increment); a benched player
-    receives only the small reserve value. Exact autosub ordering remains a
-    separate stochastic layer because it depends on multiple simultaneous no-shows
-    and formation constraints.
+    ``risk_adjusted_xp`` remains a supported explicit projection column and is the
+    fallback for older/test projection tables that do not contain ``xp``.
+    ``bench_weight`` is only a first-stage reserve-value proxy; the final published
+    GW mechanics are recalculated with exact captain/vice and autosub expectation.
     """
     locked, banned = locked or set(), banned or set()
     gws = [int(gw) for gw in gameweeks]
@@ -43,21 +44,23 @@ def optimise_initial_horizon(
     if d.empty:
         empty = d.iloc[0:0]
         return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
-    # PipelineOutput intentionally keeps the compact human-readable team_name but
-    # may omit the numeric team ID. Either field is an exact club key for the
-    # max-three-per-club constraint; never drop the constraint just because the
-    # compact decision table is being reused by the Pinnacle sidecar.
+
     club_col = "team" if "team" in d.columns else "team_name"
     if club_col not in d.columns:
         raise ValueError("players require team or team_name for club constraints")
 
+    value_col = projection_col if projection_col in projections.columns else "risk_adjusted_xp"
+    if value_col not in projections.columns:
+        raise ValueError(
+            f"projection table requires {projection_col!r} or 'risk_adjusted_xp'"
+        )
     px = projections[projections["gw"].isin(gws)][
-        ["player_id", "gw", "risk_adjusted_xp"]
+        ["player_id", "gw", value_col]
     ].copy()
     matrix = px.pivot_table(
         index="player_id",
         columns="gw",
-        values="risk_adjusted_xp",
+        values=value_col,
         aggfunc="sum",
         fill_value=0.0,
     )
@@ -93,10 +96,9 @@ def optimise_initial_horizon(
         discount = float(decay) ** t
         for i in range(n):
             value = max(float(xp[i, t]), 0.0) * discount
-            # Starter total = bw*S + (1-bw)*X = 1.0 when S=X=1.
             objective[s(i)] += bw * value
             objective[x(i, t)] += (1.0 - bw) * value
-            # Captain receives one additional copy of expected points.
+            # Normal captaincy is one additional copy of expected points.
             objective[c(i, t)] += value
 
     rows: list[dict[int, float]] = []
@@ -169,10 +171,11 @@ def optimise_initial_horizon(
     capt = [i for i in range(n) if sol[c(i, 0)] > 0.5]
     benched = [i for i in chosen if i not in lineup]
 
+    # Output GW1 xP must describe the same surface the optimiser solved, otherwise
+    # a risk-adjusted display column can misleadingly disagree with the EV decision.
     gw1_map = {pid: float(xp[i, 0]) for i, pid in enumerate(pids)}
-    d["_horizon_gw1_xp"] = d["player_id"].map(gw1_map).fillna(0.0)
-    if "gw1_xp" not in d.columns:
-        d["gw1_xp"] = d["_horizon_gw1_xp"]
+    d["gw1_xp"] = d["player_id"].map(gw1_map).fillna(0.0)
+    d["decision_projection_col"] = value_col
 
     detail_columns = [
         "player_id",
@@ -192,6 +195,7 @@ def optimise_initial_horizon(
         "xpts_8",
         "horizon_xp",
         "projection_confidence",
+        "decision_projection_col",
     ]
     cols = [col for col in detail_columns if col in d.columns]
     squad_df = d.loc[chosen, cols].sort_values(
