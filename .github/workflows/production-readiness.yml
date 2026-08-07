@@ -1,0 +1,78 @@
+name: Apex Production Readiness
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "5 6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-production-readiness
+  cancel-in-progress: true
+
+jobs:
+  full-apex-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Apex and pinned AIrsenal worker
+        run: pip install -e '.[dev,airsenal]'
+
+      - name: Run deterministic repository tests
+        run: |
+          pytest -q
+          ruff check src tests scripts
+          python scripts/check_upstreams.py
+
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/airsenal.db
+          key: airsenal-2627-${{ runner.os }}-v2
+
+      - name: Refresh genuine AIrsenal worker
+        env:
+          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
+        run: |
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            airsenal_setup_initial_db
+          else
+            airsenal_update_db
+          fi
+          python scripts/run_airsenal_worker.py \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output data/generated/airsenal.csv
+
+      - name: Generate live Apex report
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: apex-fpl run --scenario both --horizon 8 --force
+
+      - name: Enforce full-Apex decision gate
+        run: python scripts/assert_full_apex.py reports/latest.json
+
+      - name: Upload decision artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-production-readiness-${{ github.run_id }}
+          path: |
+            reports/
+            data/snapshots/latest.json
+            data/generated/airsenal.csv
+          retention-days: 30
