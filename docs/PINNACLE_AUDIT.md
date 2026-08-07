@@ -4,11 +4,9 @@
 
 ## Executive conclusion
 
-The current Apex stack is a strong production-grade FPL decision engine, but a strict "pinnacle" standard should not stop at a deterministic mean/risk-adjusted xP optimiser.
+The core Apex architecture is correct: official FPL truth -> statistical enrichment -> independent forecasts -> uncertainty -> legal optimisation -> robustness checks -> decision gate. Replacing that architecture with a different app or a single opaque AI model would make the system weaker, not stronger.
 
-The audit found one material structural weakness in the initial-squad path: the legacy MILP chooses a single GW1 XI/captain and gives every squad member a fixed fraction of aggregate horizon xP. That can prefer a large GW1 spike even when another player is clearly superior once future XI rotation is modelled explicitly.
-
-A new `optimise_initial_horizon` solver has therefore been added. It fixes the 15-player squad while optimising a legal XI and captain independently for every Gameweek in the planning horizon. Adversarial regression tests demonstrate the case where the old heuristic and the full-horizon solution diverge.
+The stress audit did, however, find weaknesses that matter if the target is the mathematical pinnacle rather than merely a strong FPL optimiser. The most important ones have now been addressed in dedicated Pinnacle code rather than hidden behind confidence language.
 
 ## What is already strong
 
@@ -18,80 +16,86 @@ A new `optimise_initial_horizon` solver has therefore been added. It fixes the 1
 - Projection disagreement and uncertainty are visible.
 - Legal squad and transfer MILPs enforce FPL constraints.
 - Personal FPL entry 63984 can seed weekly transfer planning after each deadline.
+- Manager-specific selling values are reconstructed from public transfer history plus a pre-GW1 official price baseline.
 - An independent open-fpl-solver parity check validates mathematical constraint consistency.
 - Source freshness and production readiness gates prevent stale/incomplete results from being labelled full Apex.
 
-## Stress-test findings
+## Stress-test findings and implemented upgrades
 
-### P0 — initial-squad horizon optimisation
+### P0 — true initial-squad horizon optimisation — IMPLEMENTED
 
-**Finding:** legacy initial optimisation uses an aggregate heuristic rather than a true multi-period XI/captain model.
+**Finding:** the legacy initial MILP selected one GW1 XI/captain and gave every squad player a fixed fraction of aggregate horizon xP. An adversarial example can therefore overvalue a one-week spike over a clearly superior rotation asset.
 
-**Risk:** GW1 spike players can be overvalued relative to assets with superior GW2+ rotation/captain utility.
+**Upgrade:** `optimise_initial_horizon` fixes the 15-player squad but optimises a legal XI and captain independently in every Gameweek of the horizon. Adversarial regression tests explicitly demonstrate a case where this changes the correct decision.
 
-**Action:** new multi-GW initial-horizon MILP added. It should become the production initial-squad solver after CI validation.
+### P0 — stochastic uncertainty / covariance — IMPLEMENTED AS ROBUSTNESS LAYER
 
-### P0 — stochastic uncertainty / covariance
+**Finding:** the original risk adjustment was player-by-player and therefore treated important shared uncertainties as independent.
 
-**Finding:** current risk adjustment is player-by-player. It does not model covariance between FPL outcomes.
+The new scenario layer generates correlated forecast surfaces with:
+- shared club attack shocks;
+- shared club defensive shocks;
+- common Gameweek shocks;
+- negative attacker-vs-opposing-clean-sheet linkage;
+- remaining idiosyncratic projection uncertainty;
+- marginal volatility anchored to the existing projection SD.
 
-Examples:
-- goalkeeper + defender clean-sheet points from the same club are positively correlated;
-- attackers and opposing defenders are negatively correlated;
-- multiple attackers from the same team share team-goal uncertainty;
-- captaincy concentrates outcome variance.
+The new stochastic MILP then maximises a blend of mean horizon value and lower-tail **Conditional Value at Risk (CVaR)**. A single squad/XI/captain decision is used across every scenario for each Gameweek, preventing impossible scenario-by-scenario perfect foresight.
 
-**Pinnacle upgrade:** scenario-based optimisation with a covariance-aware Monte Carlo layer and a downside objective such as CVaR / expected regret. The deterministic optimum should remain the baseline, not be discarded.
+This layer is intentionally a *robustness stress model*. Its covariance coefficients are transparent priors and are **not yet claimed to be walk-forward calibrated 2026/27 parameters**. The deterministic full-horizon optimum remains the expected-value baseline; agreement with the CVaR solution materially raises decision confidence, while disagreement is surfaced.
 
-### P0 — decision stability
+### P0 — decision stability — PARTIALLY IMPLEMENTED
 
-A single optimal squad can be misleading when several solutions are within fractions of a point.
+A single optimum can conceal a near-tie. Apex now performs exact force/ban re-solves:
+- ban each selected player and measure lost objective value;
+- force the strongest unselected alternatives and measure regret;
+- expose structurally robust picks vs choices that are only fractions of a point apart.
 
-**Pinnacle upgrade:** repeatedly solve under calibrated projection perturbations and report:
-- selection probability;
-- captain probability;
-- objective regret if a player is forced/banned;
-- near-optimal solution frequency;
-- sensitivity to expected-minutes changes;
-- sensitivity to model weights.
+The next extension is repeated solve-frequency under calibrated forecast perturbations to produce empirical selection/captain probabilities.
 
-This turns "Player X is selected" into "Player X appears in 91% of plausible optimal solutions".
+### P0 — pre-GW1 selling-price state — FIXED
+
+The audit found that the original public-entry flow could return before persisting the pre-GW1 price universe because no public picks exist before the first deadline. That would later make some original-player selling prices approximate.
+
+The initial price universe is now captured before GW1 even while entry 63984 remains in initial-squad mode, with a regression test covering the failure mode.
+
+## Remaining improvements before the theoretical ceiling
 
 ### P1 — captain/vice fallback
 
-Current xP contains appearance risk and vice-captain is selected sensibly, but the optimisation objective does not explicitly value the captain-no-show -> vice-captain fallback pair.
+Current projections include appearance risk and vice-captain selection is availability-aware, but the captain objective still does not explicitly price the probability that the captain misses out and the vice inherits the multiplier.
 
-**Upgrade:** pairwise expected captaincy value on a restricted captain candidate set so the fallback probability is part of the optimisation rather than a post-processing choice.
+**Upgrade:** pairwise captain/vice expected value inside the stochastic decision layer.
 
-### P1 — bench/autosub value
+### P1 — exact bench/autosub value
 
-Current squad/transfer objectives use a conservative bench-value proxy. Exact FPL autosub value depends on bench order, multiple no-shows and legal formation after substitutions.
+The initial and transfer solvers use a conservative bench-value proxy. Exact FPL value depends on bench order, multiple no-shows and legal formation after automatic substitutions.
 
-**Upgrade:** stochastic autosub simulation or scenario-based bench-order optimisation.
+**Upgrade:** scenario-based autosub and bench-order optimisation.
 
 ### P1 — future transfer recourse
 
-The current multi-GW transfer MILP produces the best path conditional on today's projections. In reality future information arrives before future transfers.
+The transfer MILP gives the best path conditional on today's information. Real managers receive new information before future moves.
 
-**Upgrade:** receding-horizon control plus a two-stage/scenario-tree model. Near-term moves should be committed; later moves should be represented as contingent branches rather than falsely treated as certain today.
+**Upgrade:** receding-horizon control / two-stage scenario tree. Commit the immediate move while treating later transfers as contingent rather than falsely certain.
 
-### P1 — price dynamics
+### P1 — price timing
 
-Manager-specific selling prices are reconstructed, but future market price moves are intentionally not guessed inside the optimiser.
+Exact current selling value is modelled; future price changes are intentionally not guessed.
 
-**Upgrade:** optional calibrated price-change probability model. It should influence timing only when the expected team-value benefit is worth more than the option value of waiting for information.
+**Upgrade:** optional calibrated price-move probabilities used only when the expected team-value gain exceeds the option value of waiting for news.
 
 ### P1 — market priors
 
-Market odds are supported but optional. A pinnacle forecast should use bookmaker-implied team goals, clean-sheet probability and scoring probability when a licensed/reliable feed is configured.
+Odds support exists but is optional. A stronger independent expert would use reliable market-implied team goals, clean-sheet probability and scorer probabilities.
 
-This should be an independent expert, not allowed to overwrite official identity or raw event data.
+Market data must remain an expert layer and never overwrite official identity/statistical truth.
 
 ### P2 — rank / ownership strategy
 
-Pure expected-points maximisation is correct for building the strongest generic team. Later in the season, maximising overall-rank utility can differ because effective ownership and rank state change the utility of variance.
+Pure expected-points maximisation is the correct default for the strongest team. Later in a season, rank utility can justify different variance.
 
-**Upgrade:** optional strategy mode only. It must never contaminate the default expected-points objective.
+**Upgrade:** optional rank/effective-ownership strategy mode only; it must not contaminate the default expected-points engine.
 
 ## Recommended final architecture
 
@@ -106,21 +110,20 @@ Independent forecasts
   Apex transparent model + AIrsenal + market
       |
 Calibrated ensemble
-  mean xP + distribution + covariance
+  mean xP + uncertainty
       |
-Scenario engine
-  minutes/injury/team-goal/CS/returns uncertainty
+Correlated scenario engine
+  team attack/defence + opponent linkage + idiosyncratic uncertainty
       |
 Optimisation stack
-  deterministic MILP baseline
-  + full-horizon initial MILP
+  deterministic full-horizon MILP
+  + covariance-aware mean/CVaR MILP
   + transfer/chip receding-horizon MILP
-  + stochastic CVaR/regret solver
       |
 Robustness layer
-  independent solver parity
-  selection stability
-  sensitivity / regret
+  exact force/ban regret
+  + independent solver parity
+  + future solve-frequency calibration
       |
 Decision gate
   source freshness + model coverage + mathematical validity
@@ -130,31 +133,32 @@ ChatGPT / GitHub decision interface
 
 ## Interaction contract
 
-The intended user interface remains ChatGPT rather than a bespoke application.
+The intended user interface remains ChatGPT rather than a bespoke application. Useful requests include:
 
-Typical questions:
-
-- `Run Apex now and give me the strongest 15.`
+- `Run Pinnacle now and give me the strongest 15.`
 - `Stress-test the Haaland and no-Haaland structures.`
+- `Do the deterministic and CVaR teams agree?`
+- `Which picks are mathematically fragile?`
 - `What is my best transfer this week?`
 - `Roll or transfer?`
 - `Give me the best 3-GW and 5-GW strategies.`
-- `Show me the picks that are mathematically fragile.`
-- `Which players survive the uncertainty stress test?`
 - `How much expected value do I lose if I force Player X?`
 - `What needs to happen for Player Y to become optimal?`
 
-For direct GitHub use, the production workflows are manually dispatchable under the repository Actions tab. The compact published snapshot is the preferred durable interface for ChatGPT once a green publish has completed.
+For direct GitHub use, **Actions -> Apex Pinnacle -> Run workflow** manually executes the full stress path. Once the green workflow publishes, `data/generated/pinnacle_latest.json` is the durable ChatGPT decision interface.
 
 ## Definition of "pinnacle"
 
-Apex should only use that label when all of the following are true:
+Apex should use the label only when:
 
-1. data and player identity are current and internally consistent;
+1. data and identity are current and internally consistent;
 2. independent projection workers are fresh and coverage-gated;
-3. expected minutes and tactical assumptions are explicit;
-4. legal optimisation is solved over the relevant horizon;
-5. the chosen team is stable across plausible projection uncertainty, or instability is disclosed;
-6. independent solver parity passes;
-7. no important late injury/transfer/manager evidence is unresolved;
-8. the user can see the expected-value gap and uncertainty rather than receiving a blind pick.
+3. expected-minutes/tactical assumptions are explicit;
+4. the legal squad is solved over the relevant horizon;
+5. deterministic and stochastic robustness evidence is available and any disagreement is disclosed;
+6. exact selection-regret sensitivity is available;
+7. independent solver parity passes;
+8. no important late injury/transfer/manager evidence is unresolved;
+9. expected-value gaps, downside and uncertainty are visible rather than hidden behind a single score.
+
+The covariance stress layer is now implemented, but its coefficients remain transparent priors until enough deadline/outcome history exists for walk-forward calibration. That limitation should be stated rather than disguised as certainty.
