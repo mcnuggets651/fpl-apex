@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: apex-${{ github.event_name }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -36,17 +40,39 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e .
-      - name: Run Apex diagnostic/full gate
+
+      - name: Run Apex production gate
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
-        run: apex-fpl run --scenario both --horizon 8
+        run: apex-fpl run --scenario both --horizon 8 --force
+
+      - name: Require full Apex readiness
+        env:
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open("reports/latest.json", encoding="utf-8"))
+          print("safe_to_act:", report.get("safe_to_act"))
+          print("full_apex_ready:", report.get("full_apex_ready"))
+          for blocker in report.get("blockers", []):
+              print("BLOCKER:", blocker)
+          for warning in report.get("warnings", []):
+              print("WARNING:", warning)
+          if not report.get("safe_to_act") or not report.get("full_apex_ready"):
+              raise SystemExit("Apex production gate is not green; diagnostic report retained")
+          PY
+
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: apex-report
+          name: apex-report-${{ github.run_id }}
           path: |
             reports/
             data/snapshots/latest.json
