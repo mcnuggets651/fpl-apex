@@ -59,6 +59,8 @@ jobs:
 
       - name: Run repository checks
         if: steps.guard.outputs.run == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           pytest -q
           ruff check src tests scripts

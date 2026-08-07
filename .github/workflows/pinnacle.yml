@@ -33,6 +33,8 @@ jobs:
         run: pip install -e '.[dev,airsenal]'
 
       - name: Run deterministic and adversarial stress tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           pytest -q
           ruff check src tests scripts
