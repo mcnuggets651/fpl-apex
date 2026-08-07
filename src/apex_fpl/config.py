@@ -68,6 +68,8 @@ class Settings:
         "official_fpl", "fpl_core_playerstats", "airsenal", "news_feeds"
     ])
     max_official_age_hours: float = 26.0
+    max_airsenal_age_hours: float = 36.0
+    min_airsenal_player_coverage: float = 0.45
 
 
 def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
@@ -98,7 +100,15 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         tactical_roles_path=Path(os.getenv("APEX_TACTICAL_ROLES", "data/manual/tactical_roles.csv")),
         upstreams_lock_path=Path(os.getenv("APEX_UPSTREAMS_LOCK", "upstreams.lock.json")),
         required_sources=list(raw.get("required_sources", default.required_sources)),
-        max_official_age_hours=float(raw.get("max_official_age_hours", default.max_official_age_hours)),
+        max_official_age_hours=float(
+            raw.get("max_official_age_hours", default.max_official_age_hours)
+        ),
+        max_airsenal_age_hours=float(
+            raw.get("max_airsenal_age_hours", default.max_airsenal_age_hours)
+        ),
+        min_airsenal_player_coverage=float(
+            raw.get("min_airsenal_player_coverage", default.min_airsenal_player_coverage)
+        ),
     )
     s.cache_dir.mkdir(parents=True, exist_ok=True)
     s.snapshot_dir.mkdir(parents=True, exist_ok=True)
