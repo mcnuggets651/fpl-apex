@@ -2,6 +2,7 @@ season: "2026-2027"
 horizon: 8
 budget: 100.0
 max_per_team: 3
+fpl_entry_id: 63984
 weights:
   official_ep: 0.24
   apex_model: 0.46
