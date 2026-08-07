@@ -94,6 +94,17 @@ jobs:
             uv run airsenal_setup_initial_db --fpl_team_id 1
           fi
           uv run airsenal_update_db --fpl_team_id 1
+
+          # AIrsenal issue #827: the pinned revision can leave historical
+          # PlayerAttributes.position empty. Patch only those historical DB rows
+          # from AIrsenal's own player_summary files, then refuse the forecast if
+          # a current FPL player is still unresolved.
+          cd "$GITHUB_WORKSPACE"
+          python scripts/patch_airsenal_positions.py \
+            "$AIRSENAL_DB_FILE" \
+            workers/airsenal
+
+          cd workers/airsenal
           uv run airsenal_run_prediction \
             --gameweek_start "${{ steps.horizon.outputs.start }}" \
             --gameweek_end "${{ steps.horizon.outputs.end }}"
