@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Compare Apex's squad with a pinned open-fpl-solver result.
+"""Compare Apex/Pinnacle with a pinned open-fpl-solver result.
 
-This is a robustness check, not a source-of-truth override. Both solvers receive the
-same official-ID Apex projection export. A disagreement is useful diagnostic evidence
-about objective/constraint formulation, not permission to bypass the Apex safety gate.
+Both solvers must receive the same official-ID projection surface. The comparison is
+an optimisation-formulation cross-check, never a source-of-truth override.
 """
 from __future__ import annotations
 
@@ -18,20 +17,26 @@ def _id_set(records: list[dict]) -> set[int]:
     return {int(row["player_id"]) for row in records}
 
 
+def _unrestricted(report: dict) -> tuple[dict, str]:
+    if isinstance(report.get("deterministic_scenarios"), dict):
+        return report["deterministic_scenarios"].get("unrestricted", {}), "pinnacle_ev"
+    return report.get("scenarios", {}).get("unrestricted", {}), "apex_legacy"
+
+
 def main() -> None:
     if len(sys.argv) != 3:
         raise SystemExit(
-            "Usage: python scripts/compare_solver_parity.py reports/latest.json solver-result.csv"
+            "Usage: python scripts/compare_solver_parity.py apex-or-pinnacle.json solver-result.csv"
         )
     apex_path, solver_path = map(Path, sys.argv[1:3])
-    report = json.loads(apex_path.read_text())
-    unrestricted = report.get("scenarios", {}).get("unrestricted", {})
+    report = json.loads(apex_path.read_text(encoding="utf-8"))
+    unrestricted, comparison_surface = _unrestricted(report)
     apex_squad = _id_set(unrestricted.get("squad", []))
     apex_xi = _id_set(unrestricted.get("xi", []))
     apex_cap_records = unrestricted.get("captain", [])
     apex_cap = int(apex_cap_records[0]["player_id"]) if apex_cap_records else None
-    if len(apex_squad) != 15:
-        raise ValueError("Apex unrestricted scenario does not contain a legal 15-player squad")
+    if len(apex_squad) != 15 or len(apex_xi) != 11:
+        raise ValueError("unrestricted scenario does not contain a legal 15/11 decision")
 
     external = pd.read_csv(solver_path)
     required = {"id", "week", "lineup", "bench", "captain"}
@@ -39,21 +44,32 @@ def main() -> None:
     if missing:
         raise ValueError(f"open-fpl-solver result missing columns: {sorted(missing)}")
     first_gw = int(pd.to_numeric(external["week"], errors="raise").min())
-    gw = external[pd.to_numeric(external["week"], errors="raise") == first_gw].copy()
-    selected = gw[(pd.to_numeric(gw["lineup"], errors="coerce").fillna(0) > 0.5) | (pd.to_numeric(gw["bench"], errors="coerce").fillna(-1) >= 0)]
-    external_squad = set(pd.to_numeric(selected["id"], errors="raise").astype(int))
+    gw = external[
+        pd.to_numeric(external["week"], errors="raise") == first_gw
+    ].copy()
+    selected = gw[
+        (pd.to_numeric(gw["lineup"], errors="coerce").fillna(0) > 0.5)
+        | (pd.to_numeric(gw["bench"], errors="coerce").fillna(-1) >= 0)
+    ]
+    external_squad = set(
+        pd.to_numeric(selected["id"], errors="raise").astype(int)
+    )
     external_xi = set(
         pd.to_numeric(
             gw[pd.to_numeric(gw["lineup"], errors="coerce").fillna(0) > 0.5]["id"],
             errors="raise",
         ).astype(int)
     )
-    cap_rows = gw[pd.to_numeric(gw["captain"], errors="coerce").fillna(0) > 0.5]
+    cap_rows = gw[
+        pd.to_numeric(gw["captain"], errors="coerce").fillna(0) > 0.5
+    ]
     external_cap = int(cap_rows.iloc[0]["id"]) if not cap_rows.empty else None
 
     squad_overlap = len(apex_squad & external_squad)
     xi_overlap = len(apex_xi & external_xi)
     payload = {
+        "comparison_surface": comparison_surface,
+        "projection_surface": "ensemble_mean_xp" if comparison_surface == "pinnacle_ev" else "legacy",
         "gameweek": first_gw,
         "apex_squad": sorted(apex_squad),
         "external_squad": sorted(external_squad),
@@ -68,7 +84,7 @@ def main() -> None:
         "only_external": sorted(external_squad - apex_squad),
     }
     output = apex_path.parent / "solver_parity.json"
-    output.write_text(json.dumps(payload, indent=2))
+    output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(payload, indent=2))
 
 
