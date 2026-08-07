@@ -33,18 +33,48 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e .
+      - run: pip install -e '.[airsenal]'
 
-      - name: Run Apex production gate
+      - name: Restore Apex runtime cache
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: apex-runtime-2627-${{ github.run_id }}
+          restore-keys: |
+            apex-runtime-2627-
+
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/airsenal.db
+          key: airsenal-2627-${{ runner.os }}-v3
+
+      - name: Refresh genuine AIrsenal forecasts
+        env:
+          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
+        run: |
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            airsenal_setup_initial_db
+          else
+            airsenal_update_db
+          fi
+          python scripts/run_airsenal_worker.py \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output data/generated/airsenal.csv
+
+      - name: Run personalised Apex production gate
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
           AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
@@ -52,22 +82,8 @@ jobs:
         run: apex-fpl run --scenario both --horizon 8 --force
 
       - name: Require full Apex readiness
-        env:
-          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         shell: bash
-        run: |
-          python - <<'PY'
-          import json
-          report = json.load(open("reports/latest.json", encoding="utf-8"))
-          print("safe_to_act:", report.get("safe_to_act"))
-          print("full_apex_ready:", report.get("full_apex_ready"))
-          for blocker in report.get("blockers", []):
-              print("BLOCKER:", blocker)
-          for warning in report.get("warnings", []):
-              print("WARNING:", warning)
-          if not report.get("safe_to_act") or not report.get("full_apex_ready"):
-              raise SystemExit("Apex production gate is not green; diagnostic report retained")
-          PY
+        run: python scripts/assert_full_apex.py reports/latest.json
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -76,4 +92,5 @@ jobs:
           path: |
             reports/
             data/snapshots/latest.json
+            data/generated/airsenal.csv
           retention-days: 30
