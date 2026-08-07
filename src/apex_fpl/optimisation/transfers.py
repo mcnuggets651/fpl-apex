@@ -226,6 +226,8 @@ def optimise_transfer_plan(
         squad_i = [i for i in range(n) if sol[q(S0, i, t)] > .5]
         xi_i = [i for i in range(n) if sol[q(X0, i, t)] > .5]
         cap_i = [i for i in range(n) if sol[q(C0, i, t)] > .5]
+        vice_pool = [i for i in xi_i if i not in cap_i]
+        vice_i = [max(vice_pool, key=lambda i: xpv[i, t])] if vice_pool else []
         in_i = [i for i in range(n) if sol[q(IN0, i, t)] > .5]
         out_i = [i for i in range(n) if sol[q(OUT0, i, t)] > .5]
         chosen_state = next(
@@ -255,6 +257,7 @@ def optimise_transfer_plan(
             "transfers_in": records(in_i),
             "transfers_out": records(out_i),
             "captain": records(cap_i),
+            "vice_captain": records(vice_i),
             "xi": records(xi_i),
             "squad": records(squad_i),
         })
