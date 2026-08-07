@@ -30,8 +30,14 @@ htmlcov/
 /data/manual/current_squad.csv
 /data/manual/team_state.yaml
 /data/manual/availability.csv
+/data/manual/tactical_roles.csv
+
+# Reproducibility snapshots stay as CI artifacts, not source history.
 data/snapshots/*
 !data/snapshots/.gitkeep
+
+# The generated AIrsenal forecast is intentionally committed so ordinary Apex
+# runs can consume the last validated worker output without installing JAX.
 data/generated/*
 !data/generated/.gitkeep
-/data/manual/tactical_roles.csv
+!data/generated/airsenal.csv
