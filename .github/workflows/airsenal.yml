@@ -1,0 +1,151 @@
+name: AIrsenal forecast worker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: airsenal-forecast
+  cancel-in-progress: false
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Read pinned AIrsenal revision
+        id: pin
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          lock = json.load(open("upstreams.lock.json", encoding="utf-8"))
+          source = lock["sources"]["airsenal"]
+          print(f"repository={source['repository']}")
+          print(f"sha={source['commit']}")
+          PY
+
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: .airsenal
+          key: ${{ runner.os }}-airsenal-${{ steps.pin.outputs.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-airsenal-${{ steps.pin.outputs.sha }}-
+
+      - name: Install uv and checkout pinned AIrsenal
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip uv
+          mkdir -p workers
+          git clone --filter=blob:none "https://github.com/${{ steps.pin.outputs.repository }}.git" workers/airsenal
+          git -C workers/airsenal checkout --detach "${{ steps.pin.outputs.sha }}"
+          cd workers/airsenal
+          uv sync
+
+      - name: Resolve live eight-Gameweek horizon
+        id: horizon
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import urllib.request
+
+          req = urllib.request.Request(
+              "https://fantasy.premierleague.com/api/bootstrap-static/",
+              headers={"User-Agent": "apex-fpl-airsenal-worker/1.0"},
+          )
+          with urllib.request.urlopen(req, timeout=30) as response:
+              data = json.load(response)
+          unfinished = [int(e["id"]) for e in data["events"] if not e.get("finished", False)]
+          if not unfinished:
+              raise SystemExit("No unfinished FPL Gameweeks remain")
+          start = min(unfinished)
+          end = min(38, start + 7)
+          print(f"start={start}")
+          print(f"end={end}")
+          print("gameweeks=" + ",".join(str(gw) for gw in range(start, end + 1)))
+          PY
+
+      - name: Build/update AIrsenal database and forecasts
+        env:
+          AIRSENAL_HOME: ${{ github.workspace }}/.airsenal
+          AIRSENAL_DB_FILE: ${{ github.workspace }}/.airsenal/data.db
+          FPL_TEAM_ID: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$AIRSENAL_HOME"
+          cd workers/airsenal
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            uv run airsenal_setup_initial_db --fpl_team_id 1
+          fi
+          uv run airsenal_update_db --fpl_team_id 1
+          uv run airsenal_run_prediction \
+            --gameweek_start "${{ steps.horizon.outputs.start }}" \
+            --gameweek_end "${{ steps.horizon.outputs.end }}"
+
+      - name: Export genuine AIrsenal forecast by official FPL ID
+        env:
+          AIRSENAL_DB_FILE: ${{ github.workspace }}/.airsenal/data.db
+          AIRSENAL_SOURCE_VERSION: ${{ steps.pin.outputs.sha }}
+        shell: bash
+        run: |
+          python scripts/export_airsenal.py \
+            "$AIRSENAL_DB_FILE" \
+            LATEST \
+            data/generated/airsenal.csv
+
+      - name: Install and validate Apex integration
+        shell: bash
+        run: |
+          pip install -e .
+          apex-fpl run --scenario both --horizon 8 --force
+          python - <<'PY'
+          import json
+          report = json.load(open("reports/latest.json", encoding="utf-8"))
+          sources = {row["name"]: row for row in report["sources"]}
+          air = sources.get("airsenal", {})
+          print("AIrsenal source:", air)
+          if not air.get("ok") or not air.get("configured"):
+              raise SystemExit("Apex rejected the generated AIrsenal forecast")
+          PY
+
+      - name: Commit validated forecast
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/generated/airsenal.csv
+          if git diff --cached --quiet; then
+            echo "Forecast unchanged"
+            exit 0
+          fi
+          git commit -m "data: refresh validated AIrsenal GW forecast"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Upload worker evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: airsenal-validation-${{ github.run_id }}
+          path: |
+            data/generated/airsenal.csv
+            reports/
+            data/snapshots/latest.json
+          retention-days: 30
