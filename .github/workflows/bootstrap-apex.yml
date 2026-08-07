@@ -1,0 +1,34 @@
+name: Bootstrap Apex source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".bootstrap/**"
+      - ".github/workflows/bootstrap-apex.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore consolidated Apex source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/apex-src
+          cat .bootstrap/chunk_* | base64 --decode > /tmp/apex-source.tar.gz
+          echo "706f04d1100239db368fcc1c20e7aaa9087cf0aef341ebacb2949035c35c23f7  /tmp/apex-source.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/apex-source.tar.gz -C /tmp/apex-src
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a /tmp/apex-src/. .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: build Apex FPL 2026/27 intelligence engine"
+          git push origin main
