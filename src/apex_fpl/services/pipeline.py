@@ -16,6 +16,7 @@ from apex_fpl.models.ensemble import blend_projection
 from apex_fpl.models.fixtures import fixture_multipliers, next_gameweeks
 from apex_fpl.models.minutes import minutes_profile
 from apex_fpl.models.projection import project_players
+from apex_fpl.models.tactical import infer_tactical_roles
 from apex_fpl.optimisation.squad import optimise_squad
 from apex_fpl.optimisation.transfers import TransferPlan, optimise_transfer_plan
 from apex_fpl.reporting.writer import write_reports
@@ -128,6 +129,19 @@ def run_pipeline(
     players = coalesce_context(players)
     players = add_preseason_features(players, friendlies)
 
+    # Automated role inference is a weak, data-driven prior. Verified tactical
+    # evidence can override it below, but an absent manual file no longer means
+    # every defender/midfielder/forward is treated as tactically identical.
+    inferred_roles = infer_tactical_roles(players)
+    players = players.merge(inferred_roles, on="player_id", how="left")
+    sources.append(
+        _status(
+            "tactical_inference",
+            True,
+            f"{inferred_roles['inferred_tactical_role'].notna().sum()} inferred player roles",
+        )
+    )
+
     manual = load_manual_signals()
     if not manual.empty:
         players = players.merge(manual, on="player_id", how="left")
@@ -152,18 +166,40 @@ def run_pipeline(
         sources.append(
             _status("tactical_roles", True, "no verified overrides", configured=False)
         )
-    role_mult = (
-        players["role_multiplier"]
+
+    manual_role_mult = (
+        pd.to_numeric(players["role_multiplier"], errors="coerce")
         if "role_multiplier" in players
-        else pd.Series(1.0, index=players.index)
+        else pd.Series(np.nan, index=players.index)
     )
-    role_conf = (
-        players["role_confidence"]
+    manual_role_conf = (
+        pd.to_numeric(players["role_confidence"], errors="coerce")
         if "role_confidence" in players
-        else pd.Series(0.65, index=players.index)
+        else pd.Series(np.nan, index=players.index)
     )
-    players["role_multiplier"] = pd.to_numeric(role_mult, errors="coerce").fillna(1.0)
-    players["role_confidence"] = pd.to_numeric(role_conf, errors="coerce").fillna(0.65)
+    manual_role_label = (
+        players["tactical_role"].astype("string")
+        if "tactical_role" in players
+        else pd.Series(pd.NA, index=players.index, dtype="string")
+    )
+    inferred_mult = pd.to_numeric(
+        players.get("inferred_role_multiplier", pd.Series(1.0, index=players.index)),
+        errors="coerce",
+    ).fillna(1.0)
+    inferred_conf = pd.to_numeric(
+        players.get("inferred_role_confidence", pd.Series(0.45, index=players.index)),
+        errors="coerce",
+    ).fillna(0.45)
+    inferred_label = players.get(
+        "inferred_tactical_role",
+        pd.Series("unknown", index=players.index, dtype="string"),
+    ).astype("string")
+    players["role_multiplier"] = manual_role_mult.fillna(inferred_mult).clip(0.80, 1.20)
+    players["role_confidence"] = manual_role_conf.fillna(inferred_conf).clip(0, 1)
+    players["tactical_role"] = manual_role_label.fillna(inferred_label)
+    players["tactical_role_source"] = np.where(
+        manual_role_label.notna(), "verified_override", "statistical_inference"
+    )
 
     news_audit = pd.DataFrame()
     if settings.news_feeds:
@@ -368,7 +404,11 @@ def run_pipeline(
         "minutes_60_plus_probability",
         "minutes_confidence",
         "tactical_role",
+        "tactical_role_source",
+        "role_multiplier",
         "role_confidence",
+        "tactical_attack_index",
+        "tactical_defence_index",
         "preseason_minutes",
         "preseason_starts",
         "preseason_xg90",
