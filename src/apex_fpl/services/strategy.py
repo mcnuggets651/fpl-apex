@@ -53,21 +53,20 @@ def analyse_receding_horizon(
     projections: pd.DataFrame,
     gameweeks: list[int],
     team_state: TeamState,
-    optimal_plan: TransferPlan | None,
+    optimal_plan: TransferPlan | None = None,
     *,
     max_per_team: int = 3,
     decay: float = 0.90,
     projection_col: str = "xp",
+    candidate_limit: int = 160,
 ) -> RecedingHorizonStrategy:
-    """Turn a multi-GW path into one actionable deadline decision.
+    """Return the one action Pinnacle should execute at the next deadline.
 
-    Future transfers are inherently contingent on information that has not arrived.
-    Pinnacle therefore follows a receding-horizon policy: optimise many weeks,
-    execute only the first action, then refresh every source and solve again.
-
-    The roll counterfactual is solved on the *same explicit projection surface* as
-    the candidate plan, so ``roll_regret`` is an apples-to-apples expected-value
-    comparison rather than a mix of raw and risk-adjusted xP.
+    The function re-solves the full transfer path on the explicit maximum-EV
+    projection surface rather than inheriting the legacy risk-adjusted plan. That
+    keeps uncertainty as a separate robustness question and prevents risk from
+    being double-counted. Only the first action is actionable; all later moves are
+    contingent and must be recalculated after new information arrives.
     """
     gws = [int(gw) for gw in gameweeks]
     if not gws:
@@ -75,7 +74,22 @@ def analyse_receding_horizon(
             "unavailable", None, "none", 0, 0, None, None, None, None, [],
             projection_col, "No future Gameweek is available."
         )
-    if optimal_plan is None or optimal_plan.status != "Optimal" or not optimal_plan.weeks:
+
+    ev_plan = optimise_transfer_plan_view(
+        players,
+        projections,
+        gws,
+        set(team_state.squad),
+        projection_col=projection_col,
+        bank=team_state.bank,
+        free_transfers=team_state.free_transfers,
+        max_per_team=max_per_team,
+        decay=decay,
+        selling_prices=team_state.selling_prices,
+        candidate_limit=candidate_limit,
+    )
+    plan = ev_plan if ev_plan.status == "Optimal" else optimal_plan
+    if plan is None or plan.status != "Optimal" or not plan.weeks:
         return RecedingHorizonStrategy(
             "unavailable", gws[0], "none", 0, 0, None, None, None, None, [],
             projection_col, "No optimal personalised transfer plan is available."
@@ -95,8 +109,8 @@ def analyse_receding_horizon(
     if current_week.status != "Optimal":
         return RecedingHorizonStrategy(
             "error", first_gw, "none", 0, 0,
-            float(optimal_plan.objective), None, None,
-            optimal_plan.weeks[0], optimal_plan.weeks[1:], projection_col,
+            float(plan.objective), None, None,
+            plan.weeks[0], plan.weeks[1:], projection_col,
             "Could not solve the explicit roll counterfactual from the current squad."
         )
 
@@ -113,11 +127,12 @@ def analyse_receding_horizon(
             max_per_team=max_per_team,
             decay=decay,
             selling_prices=team_state.selling_prices,
+            candidate_limit=candidate_limit,
         )
         if future.status == "Optimal":
             roll_objective += float(decay) * float(future.objective)
 
-    first = optimal_plan.weeks[0]
+    first = plan.weeks[0]
     transfers = int(first.get("transfers", 0) or 0)
     hit = int(first.get("hit_cost", 0) or 0)
     if transfers == 0:
@@ -129,7 +144,7 @@ def analyse_receding_horizon(
     else:
         action = "multiple_free_transfers"
 
-    optimal_objective = float(optimal_plan.objective)
+    optimal_objective = float(plan.objective)
     regret = max(optimal_objective - roll_objective, 0.0)
     return RecedingHorizonStrategy(
         status="optimal",
@@ -141,7 +156,7 @@ def analyse_receding_horizon(
         roll_objective=float(roll_objective),
         roll_regret=float(regret),
         action_now=first,
-        contingent_future=optimal_plan.weeks[1:],
+        contingent_future=plan.weeks[1:],
         projection_col=projection_col,
         note=(
             "Execute only action_now. The later path is a mathematical contingency, "
