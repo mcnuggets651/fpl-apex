@@ -1,0 +1,81 @@
+name: Independent solver parity
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 5 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-solver-parity
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Produce current Apex projections
+        env:
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+        run: |
+          pip install -e .
+          apex-fpl run --scenario both --horizon 8 --force
+          python scripts/export_open_solver.py \
+            reports/players.csv reports/projections.csv /tmp/apex.csv
+
+      - name: Read pinned open-fpl-solver revision
+        id: pin
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          lock = json.load(open("upstreams.lock.json", encoding="utf-8"))
+          source = lock["sources"]["open_fpl_solver"]
+          print(f"repository={source['repository']}")
+          print(f"sha={source['commit']}")
+          PY
+
+      - name: Run independent pinned solver on the same Apex xP
+        shell: bash
+        run: |
+          python -m pip install uv
+          mkdir -p workers
+          git clone --filter=blob:none \
+            "https://github.com/${{ steps.pin.outputs.repository }}.git" \
+            workers/open-fpl-solver
+          git -C workers/open-fpl-solver checkout --detach "${{ steps.pin.outputs.sha }}"
+          cp /tmp/apex.csv workers/open-fpl-solver/data/apex.csv
+          cd workers/open-fpl-solver
+          uv sync
+          uv run python run/solve.py --datasource apex --horizon 8
+
+      - name: Compare solver outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(ls -t workers/open-fpl-solver/data/results/apex_*.csv | head -1)"
+          echo "Independent result: $RESULT"
+          python scripts/compare_solver_parity.py reports/latest.json "$RESULT"
+          cp "$RESULT" reports/open_fpl_solver_latest.csv
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: solver-parity-${{ github.run_id }}
+          path: |
+            reports/solver_parity.json
+            reports/open_fpl_solver_latest.csv
+            reports/latest.json
+          retention-days: 30
