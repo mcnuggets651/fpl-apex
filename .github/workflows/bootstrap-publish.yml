@@ -1,7 +1,7 @@
 name: Bootstrap published Apex snapshot
 
-# One-shot bootstrap helper. Creating this workflow triggers exactly one publish
-# run. Later data commits do not touch this file, so the workflow stays dormant.
+# One-shot bootstrap helper. Updating this file triggers one fresh publish run.
+# Later data commits do not touch this path, so the workflow then stays dormant.
 on:
   push:
     branches: [main]
@@ -14,33 +14,73 @@ permissions:
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e .
-      - name: Run current full Apex gate
+
+      - name: Install Apex + genuine AIrsenal worker
+        run: pip install -e '.[airsenal]'
+
+      - name: Restore Apex runtime cache
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: apex-runtime-2627-bootstrap-${{ github.run_id }}
+          restore-keys: |
+            apex-runtime-2627-
+
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/airsenal.db
+          key: airsenal-2627-${{ runner.os }}-v3
+
+      - name: Refresh genuine AIrsenal forecasts
+        env:
+          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
+        run: |
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            airsenal_setup_initial_db
+          else
+            airsenal_update_db
+          fi
+          python scripts/run_airsenal_worker.py \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output data/generated/airsenal.csv
+
+      - name: Run personalised full Apex gate
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
           AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         run: apex-fpl run --scenario both --horizon 8 --force
+
+      - run: python scripts/assert_full_apex.py reports/latest.json
       - run: python scripts/publish_snapshot.py reports data/generated
-      - name: Commit first repository-readable Apex result
+
+      - name: Commit first repository-readable personalised Apex result
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f data/generated/apex_latest.json data/generated/apex_latest.md
-          git commit -m "data: publish initial green Apex snapshot [skip ci]"
+          if git diff --cached --quiet; then
+            echo "Published Apex snapshot is unchanged"
+            exit 0
+          fi
+          git commit -m "data: publish initial personalised Apex snapshot [skip ci]"
           git pull --rebase origin main
           git push origin HEAD:main
