@@ -5,7 +5,8 @@ from dataclasses import dataclass
 import pandas as pd
 
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
-from apex_fpl.optimisation.transfers import TransferPlan, optimise_transfer_plan
+from apex_fpl.optimisation.transfer_views import optimise_transfer_plan_view
+from apex_fpl.optimisation.transfers import TransferPlan
 from apex_fpl.rules import MAX_ROLLED_FREE_TRANSFERS
 from apex_fpl.services.team_state import TeamState
 
@@ -22,6 +23,7 @@ class RecedingHorizonStrategy:
     roll_regret: float | None
     action_now: dict | None
     contingent_future: list[dict]
+    projection_col: str
     note: str
 
     def to_dict(self) -> dict:
@@ -37,6 +39,7 @@ class RecedingHorizonStrategy:
             "action_now": self.action_now,
             "contingent_future": self.contingent_future,
             "future_moves_are_contingent": True,
+            "projection_col": self.projection_col,
             "note": self.note,
         }
 
@@ -54,33 +57,31 @@ def analyse_receding_horizon(
     *,
     max_per_team: int = 3,
     decay: float = 0.90,
+    projection_col: str = "xp",
 ) -> RecedingHorizonStrategy:
-    """Turn a multi-GW transfer path into an actionable one-deadline decision.
+    """Turn a multi-GW path into one actionable deadline decision.
 
-    The full transfer MILP is useful for understanding where the squad wants to
-    move, but future transfers depend on information that does not exist yet. The
-    correct operating policy is receding horizon: optimise many weeks, execute only
-    the first action, then refresh all evidence and solve again after the deadline.
+    Future transfers are inherently contingent on information that has not arrived.
+    Pinnacle therefore follows a receding-horizon policy: optimise many weeks,
+    execute only the first action, then refresh every source and solve again.
 
-    To quantify the option value of doing nothing, this function also solves the
-    counterfactual in which the manager explicitly rolls the current transfer. The
-    resulting ``roll_regret`` is directly comparable with the optimal-plan objective.
+    The roll counterfactual is solved on the *same explicit projection surface* as
+    the candidate plan, so ``roll_regret`` is an apples-to-apples expected-value
+    comparison rather than a mix of raw and risk-adjusted xP.
     """
     gws = [int(gw) for gw in gameweeks]
     if not gws:
         return RecedingHorizonStrategy(
             "unavailable", None, "none", 0, 0, None, None, None, None, [],
-            "No future Gameweek is available.",
+            projection_col, "No future Gameweek is available."
         )
     if optimal_plan is None or optimal_plan.status != "Optimal" or not optimal_plan.weeks:
         return RecedingHorizonStrategy(
             "unavailable", gws[0], "none", 0, 0, None, None, None, None, [],
-            "No optimal personalised transfer plan is available.",
+            projection_col, "No optimal personalised transfer plan is available."
         )
 
     first_gw = gws[0]
-    # Exact one-week value of keeping the current 15. Locking all 15 means this
-    # solve can only optimise the legal XI/captain while preserving the squad.
     current_week = optimise_initial_horizon(
         players,
         projections,
@@ -89,22 +90,24 @@ def analyse_receding_horizon(
         max_per_team=max_per_team,
         decay=1.0,
         locked=set(team_state.squad),
+        projection_col=projection_col,
     )
     if current_week.status != "Optimal":
         return RecedingHorizonStrategy(
             "error", first_gw, "none", 0, 0,
             float(optimal_plan.objective), None, None,
-            optimal_plan.weeks[0], optimal_plan.weeks[1:],
-            "Could not solve the explicit roll counterfactual from the current squad.",
+            optimal_plan.weeks[0], optimal_plan.weeks[1:], projection_col,
+            "Could not solve the explicit roll counterfactual from the current squad."
         )
 
     roll_objective = float(current_week.objective)
     if len(gws) > 1:
-        future = optimise_transfer_plan(
+        future = optimise_transfer_plan_view(
             players,
             projections,
             gws[1:],
             set(team_state.squad),
+            projection_col=projection_col,
             bank=team_state.bank,
             free_transfers=_next_ft_after_roll(team_state.free_transfers),
             max_per_team=max_per_team,
@@ -112,8 +115,6 @@ def analyse_receding_horizon(
             selling_prices=team_state.selling_prices,
         )
         if future.status == "Optimal":
-            # The future optimiser resets its internal t=0 discount to 1.0, so one
-            # external decay factor places it back on the original horizon scale.
             roll_objective += float(decay) * float(future.objective)
 
     first = optimal_plan.weeks[0]
@@ -141,6 +142,7 @@ def analyse_receding_horizon(
         roll_regret=float(regret),
         action_now=first,
         contingent_future=optimal_plan.weeks[1:],
+        projection_col=projection_col,
         note=(
             "Execute only action_now. The later path is a mathematical contingency, "
             "not a promise: refresh prices, minutes, injuries, transfers and news "
