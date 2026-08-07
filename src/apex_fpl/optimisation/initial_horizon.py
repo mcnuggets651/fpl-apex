@@ -43,6 +43,13 @@ def optimise_initial_horizon(
     if d.empty:
         empty = d.iloc[0:0]
         return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
+    # PipelineOutput intentionally keeps the compact human-readable team_name but
+    # may omit the numeric team ID. Either field is an exact club key for the
+    # max-three-per-club constraint; never drop the constraint just because the
+    # compact decision table is being reused by the Pinnacle sidecar.
+    club_col = "team" if "team" in d.columns else "team_name"
+    if club_col not in d.columns:
+        raise ValueError("players require team or team_name for club constraints")
 
     px = projections[projections["gw"].isin(gws)][
         ["player_id", "gw", "risk_adjusted_xp"]
@@ -112,8 +119,8 @@ def optimise_initial_horizon(
         idx = [i for i in range(n) if d.loc[i, "position"] == pos]
         add({s(i): 1.0 for i in idx}, count, count)
 
-    for team in d["team"].dropna().unique():
-        idx = [i for i in range(n) if d.loc[i, "team"] == team]
+    for team in d[club_col].dropna().unique():
+        idx = [i for i in range(n) if d.loc[i, club_col] == team]
         add({s(i): 1.0 for i in idx}, -np.inf, max_per_team)
 
     for t in range(t_count):
