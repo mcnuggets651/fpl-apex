@@ -11,10 +11,14 @@ weights:
 fixture_decay: 0.90
 bench_weights: [0.15, 0.08, 0.04, 0.02]
 risk_penalty: 0.15
+understat_enabled: true
+understat_history_seasons: 5
+understat_team_model_mode: shadow
 max_official_age_hours: 26
 required_sources:
   - official_fpl
   - fpl_core_playerstats
+  - fixture_model
   - airsenal
   - news_feeds
 source_confidence:

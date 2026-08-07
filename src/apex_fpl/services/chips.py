@@ -20,6 +20,8 @@ class ChipWindow:
     available: dict[str, bool]
     options: dict[str, dict]
     best_immediate_chip: str | None
+    recommended_chip: str | None
+    policy_reason: str
     note: str
 
     def to_dict(self) -> dict:
@@ -29,6 +31,8 @@ class ChipWindow:
             "available": self.available,
             "options": self.options,
             "best_immediate_chip": self.best_immediate_chip,
+            "recommended_chip": self.recommended_chip,
+            "policy_reason": self.policy_reason,
             "note": self.note,
         }
 
@@ -76,11 +80,20 @@ def chip_availability(team_state: TeamState, next_gw: int) -> dict[str, bool]:
     return available
 
 
-def _xp_map(projections: pd.DataFrame, gw: int) -> dict[int, float]:
+def _xp_map(
+    projections: pd.DataFrame,
+    gw: int,
+    projection_col: str,
+) -> dict[int, float]:
     d = projections[projections["gw"] == int(gw)].copy()
     if d.empty:
         return {}
-    values = d.groupby("player_id")["risk_adjusted_xp"].sum()
+    column = projection_col if projection_col in d.columns else "risk_adjusted_xp"
+    if column not in d.columns:
+        raise ValueError(
+            f"chip analysis requires {projection_col!r} or 'risk_adjusted_xp'"
+        )
+    values = d.groupby("player_id")[column].sum()
     return {int(pid): float(value) for pid, value in values.items()}
 
 
@@ -127,6 +140,7 @@ def evaluate_chip_window(
     *,
     max_per_team: int = 3,
     decay: float = 0.90,
+    projection_col: str = "xp",
 ) -> ChipWindow:
     """Quantify the value of each chip at the next deadline.
 
@@ -144,7 +158,7 @@ def evaluate_chip_window(
     if not gws:
         raise ValueError("chip analysis requires at least one future Gameweek")
     next_gw = gws[0]
-    xp = _xp_map(projections, next_gw)
+    xp = _xp_map(projections, next_gw, projection_col)
     appearance = _appearance_map(players)
 
     if transfer_plan is not None and transfer_plan.status == "Optimal" and transfer_plan.weeks:
@@ -269,10 +283,15 @@ def evaluate_chip_window(
         available=available,
         options=options,
         best_immediate_chip=best,
+        recommended_chip=None,
+        policy_reason=(
+            "Hold. Current-window gain is diagnostic only; Apex has not yet compared it "
+            "with a calibrated remaining-half opportunity-cost distribution."
+        ),
         note=(
             "Chip values are current-window opportunity values, not an instruction to "
-            "spend a chip automatically. Apex re-evaluates the remaining chip set every "
-            "deadline and should preserve chips when a later Blank/Double Gameweek has "
-            "greater expected value."
+            "spend a chip automatically. The production policy is hold until a known "
+            "Blank/Double Gameweek or another window beats a calibrated opportunity-cost "
+            "threshold, then refresh all evidence before committing."
         ),
     )

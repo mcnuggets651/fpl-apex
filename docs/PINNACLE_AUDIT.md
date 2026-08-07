@@ -44,14 +44,17 @@ The new stochastic MILP then maximises a blend of mean horizon value and lower-t
 
 This layer is intentionally a *robustness stress model*. Its covariance coefficients are transparent priors and are **not yet claimed to be walk-forward calibrated 2026/27 parameters**. The deterministic full-horizon optimum remains the expected-value baseline; agreement with the CVaR solution materially raises decision confidence, while disagreement is surfaced.
 
-### P0 — decision stability — PARTIALLY IMPLEMENTED
+### P0 — decision stability — IMPLEMENTED WITH PROVISIONAL COVARIANCE
 
 A single optimum can conceal a near-tie. Apex now performs exact force/ban re-solves:
 - ban each selected player and measure lost objective value;
 - force the strongest unselected alternatives and measure regret;
 - expose structurally robust picks vs choices that are only fractions of a point apart.
 
-The next extension is repeated solve-frequency under calibrated forecast perturbations to produce empirical selection/captain probabilities.
+Pinnacle now re-solves correlated projection scenarios and publishes empirical
+squad, XI, captain and vice-captain frequencies. Publication requires at least 16
+optimal uncertainty re-solves. The frequencies are real outputs; the covariance
+coefficients remain transparent priors until deadline archives support calibration.
 
 ### P0 — pre-GW1 selling-price state — FIXED
 
@@ -61,23 +64,24 @@ The initial price universe is now captured before GW1 even while entry 63984 rem
 
 ## Remaining improvements before the theoretical ceiling
 
-### P1 — captain/vice fallback
+### P1 — captain/vice fallback — IMPLEMENTED
 
-Current projections include appearance risk and vice-captain selection is availability-aware, but the captain objective still does not explicitly price the probability that the captain misses out and the vice inherits the multiplier.
+Exact deadline mechanics price captain no-show and vice inheritance. The strict
+gate also blocks a captain below provisional minutes, start, appearance or forecast
+confidence floors.
 
-**Upgrade:** pairwise captain/vice expected value inside the stochastic decision layer.
+### P1 — exact bench/autosub value — IMPLEMENTED
 
-### P1 — exact bench/autosub value
+The published decision enumerates appearance states and legal formations to choose
+the outfield bench order. First-stage squad solvers retain a documented reserve
+proxy; final published GW mechanics are recalculated exactly.
 
-The initial and transfer solvers use a conservative bench-value proxy. Exact FPL value depends on bench order, multiple no-shows and legal formation after automatic substitutions.
+### P1 — future transfer recourse — IMPLEMENTED AS RECEDING HORIZON
 
-**Upgrade:** scenario-based autosub and bench-order optimisation.
-
-### P1 — future transfer recourse
-
-The transfer MILP gives the best path conditional on today's information. Real managers receive new information before future moves.
-
-**Upgrade:** receding-horizon control / two-stage scenario tree. Commit the immediate move while treating later transfers as contingent rather than falsely certain.
+The engine solves the multi-Gameweek route, publishes only the next action as
+executable and marks every later transfer as contingent. Before GW1 it publishes a
+GW2-GW5 route from the selected initial squad but refuses to treat stored moves as
+instructions.
 
 ### P1 — price timing
 
@@ -90,6 +94,14 @@ Exact current selling value is modelled; future price changes are intentionally 
 Odds support exists but is optional. A stronger independent expert would use reliable market-implied team goals, clean-sheet probability and scorer probabilities.
 
 Market data must remain an expert layer and never overwrite official identity/statistical truth.
+
+### P1 — leakage-safe player evaluation and model promotion
+
+The Understat team-goal challenger has encouraging chronological evidence but
+remains in shadow mode. The player expected-minutes, component xP, ensemble weights,
+scenario covariance and chip opportunity-cost layers still need complete historical
+deadline evaluation. These are the binding analytical gaps; adding more optimiser
+complexity first would not raise forecast confidence.
 
 ### P2 — rank / ownership strategy
 

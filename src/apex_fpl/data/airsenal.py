@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ALIASES = {
@@ -128,7 +129,7 @@ def validate_airsenal_forecast(
     *,
     expected_source_version: str = "",
     max_age_hours: float = 36.0,
-    min_player_coverage: float = 0.45,
+    min_player_coverage: float = 0.95,
 ) -> tuple[bool, str]:
     """Validate that an AIrsenal file is genuine, current and horizon-complete."""
     if forecast.empty:
@@ -143,6 +144,26 @@ def validate_airsenal_forecast(
     missing = sorted(requested - covered)
     if missing:
         return False, f"missing requested Gameweeks: {missing}"
+
+    xp = pd.to_numeric(forecast["airsenal_xp"], errors="coerce")
+    if xp.isna().any() or not np.isfinite(xp).all():
+        return False, "expected-points surface contains non-finite values"
+    if (xp < 0).any() or (xp > 40).any():
+        sample = forecast.loc[(xp < 0) | (xp > 40), ["player_id", "gw", "airsenal_xp"]]
+        return False, f"expected-points values outside [0, 40]: {sample.head(5).to_dict('records')}"
+
+    if "airsenal_xmins" in forecast and forecast["airsenal_xmins"].notna().any():
+        xmins = pd.to_numeric(forecast["airsenal_xmins"], errors="coerce")
+        invalid_xmins = xmins.notna() & (~np.isfinite(xmins) | (xmins < 0) | (xmins > 180))
+        if invalid_xmins.any():
+            return False, "expected-minutes values outside [0, 180]"
+    if "airsenal_confidence" in forecast and forecast["airsenal_confidence"].notna().any():
+        confidence = pd.to_numeric(forecast["airsenal_confidence"], errors="coerce")
+        invalid_confidence = confidence.notna() & (
+            ~np.isfinite(confidence) | ~confidence.between(0, 1, inclusive="both")
+        )
+        if invalid_confidence.any():
+            return False, "confidence values outside [0, 1]"
 
     min_players = max(1, int(len(valid_ids) * min_player_coverage))
     coverage = forecast[forecast["gw"].isin(gameweeks)].groupby("gw")["player_id"].nunique()

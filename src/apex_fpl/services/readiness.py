@@ -7,7 +7,13 @@ from typing import Any
 
 
 REQUIRED_SCENARIOS = ("unrestricted", "haaland", "no-haaland")
-REQUIRED_SOURCES = ("official_fpl", "fpl_core_playerstats", "airsenal", "news_feeds")
+REQUIRED_SOURCES = (
+    "official_fpl",
+    "fpl_core_playerstats",
+    "fixture_model",
+    "airsenal",
+    "news_feeds",
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +35,12 @@ def evaluate_report(payload: dict[str, Any]) -> ReadinessResult:
         blockers.append("report safe_to_act is not true")
     if payload.get("full_apex_ready") is not True:
         blockers.append("report full_apex_ready is not true")
+
+    quality = payload.get("data_quality")
+    if not isinstance(quality, dict):
+        blockers.append("field-level data-quality report is missing")
+    elif quality.get("ready") is not True:
+        blockers.append("field-level data-quality gate is not ready")
 
     snapshot = payload.get("official_snapshot") or {}
     for field in ("snapshot_id", "retrieved_at", "bootstrap_sha256", "fixtures_sha256"):

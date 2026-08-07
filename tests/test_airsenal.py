@@ -89,6 +89,23 @@ def test_validator_rejects_stale_or_wrong_version(tmp_path: Path):
     assert "version mismatch" in detail
 
 
+def test_validator_rejects_non_finite_or_implausible_expected_points(tmp_path: Path):
+    path = tmp_path / "airsenal.csv"
+    bad = _forecast()
+    bad.loc[0, "xp"] = 99.0
+    bad.to_csv(path, index=False)
+    out = AIrsenalProjectionAdapter(str(path)).load(valid_ids=set(range(1, 7)))
+    ok, detail = validate_airsenal_forecast(
+        out,
+        set(range(1, 7)),
+        [1, 2],
+        expected_source_version=PIN,
+        min_player_coverage=0.8,
+    )
+    assert not ok
+    assert "outside [0, 40]" in detail
+
+
 def test_exporter_maps_airsenal_internal_id_to_official_fpl_id(tmp_path: Path):
     db_path = tmp_path / "airsenal.db"
     db = sqlite3.connect(db_path)

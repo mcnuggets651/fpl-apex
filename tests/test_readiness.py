@@ -13,11 +13,18 @@ def _payload():
     }
     sources = [
         {"name": name, "ok": True, "configured": True}
-        for name in ("official_fpl", "fpl_core_playerstats", "airsenal", "news_feeds")
+        for name in (
+            "official_fpl",
+            "fpl_core_playerstats",
+            "fixture_model",
+            "airsenal",
+            "news_feeds",
+        )
     ]
     return {
         "safe_to_act": True,
         "full_apex_ready": True,
+        "data_quality": {"ready": True, "blockers": [], "warnings": [], "checks": []},
         "official_snapshot": {
             "snapshot_id": "20260807T070000Z-test",
             "retrieved_at": "2026-08-07T07:00:00+00:00",

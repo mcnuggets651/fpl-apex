@@ -4,7 +4,17 @@ from apex_fpl.services.pinnacle_readiness import evaluate_pinnacle_payload
 def _scenario():
     return {
         "status": "Optimal",
-        "squad": [{"player_id": i} for i in range(15)],
+        "squad": [
+            {
+                "player_id": i,
+                "web_name": f"P{i}",
+                "expected_minutes": 80,
+                "start_probability": 0.90,
+                "appearance_probability": 0.97,
+                "projection_confidence": 0.80,
+            }
+            for i in range(15)
+        ],
         "xi": [{"player_id": i} for i in range(11)],
     }
 
@@ -22,6 +32,8 @@ def _payload():
     return {
         "safe_to_act": True,
         "full_apex_ready": True,
+        "gameweeks": [1, 2, 3, 4, 5, 6, 7, 8],
+        "data_quality": {"ready": True, "blockers": [], "warnings": [], "checks": []},
         "official_snapshot": {
             "snapshot_id": "test",
             "retrieved_at": "2026-08-07T09:00:00+00:00",
@@ -30,21 +42,44 @@ def _payload():
         },
         "sources": [
             {"name": name, "ok": True, "configured": True}
-            for name in ("official_fpl", "fpl_core_playerstats", "airsenal", "news_feeds")
+            for name in (
+                "official_fpl",
+                "fpl_core_playerstats",
+                "fixture_model",
+                "airsenal",
+                "news_feeds",
+            )
         ],
         "decision_layer": {
             "stochastic_covariance_layer": True,
             "stochastic_scenarios": 256,
             "exact_gw_mechanics": True,
             "receding_horizon_transfers": True,
+            "empirical_decision_frequency": True,
+            "decision_frequency_solves": 24,
             "covariance_coefficients_walk_forward_calibrated": False,
         },
         "deterministic_scenarios": scenarios,
         "robust_cvar_scenarios": {name: _scenario() for name in scenarios},
         "gw1_mechanics": mechanics,
         "selection_regret": [{"player_id": 1, "objective_regret": 3.0}],
+        "decision_frequencies": [
+            {
+                "player_id": 1,
+                "squad_frequency": 1.0,
+                "xi_frequency": 1.0,
+                "captain_frequency": 0.80,
+                "vice_captain_frequency": 0.10,
+            }
+        ],
         "robustness_comparison": {"unrestricted": {"squad_overlap": 14}},
         "personal_team": None,
+        "initial_squad_contingencies": {
+            "status": "Optimal",
+            "future_moves_are_contingent": True,
+            "weeks": [],
+        },
+        "initial_chip_policy": {"status": "hold", "recommended_chip": None},
         "solver_parity": {"status": "ok"},
     }
 
@@ -71,3 +106,32 @@ def test_personal_team_requires_weekly_strategy_and_chip_window():
     assert not result.ready
     assert any("weekly strategy" in blocker for blocker in result.blockers)
     assert any("chip-window" in blocker for blocker in result.blockers)
+
+
+def test_pre_gw1_requires_contingency_route_and_conservative_chip_policy():
+    payload = _payload()
+    payload["initial_squad_contingencies"] = None
+    payload["initial_chip_policy"] = None
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("contingency route" in blocker for blocker in result.blockers)
+    assert any("chip policy" in blocker for blocker in result.blockers)
+
+
+def test_unsupported_low_start_low_confidence_captain_blocks_pinnacle():
+    payload = _payload()
+    captain = payload["deterministic_scenarios"]["unrestricted"]["squad"][1]
+    captain.update(
+        {
+            "web_name": "Unsupported",
+            "expected_minutes": 46.2,
+            "start_probability": 0.20,
+            "appearance_probability": 0.616,
+            "projection_confidence": 0.165,
+        }
+    )
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("captain Unsupported" in blocker for blocker in result.blockers)
+    assert any("start probability" in blocker for blocker in result.blockers)
+    assert any("projection confidence" in blocker for blocker in result.blockers)

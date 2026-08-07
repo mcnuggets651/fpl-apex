@@ -94,3 +94,27 @@ def test_elo_strengthens_fixture_prior_without_overpowering_official_strength():
     assert elo_home["expected_team_goals"] > base_home["expected_team_goals"]
     assert 1.0 < elo_home["elo_multiplier"] < 1.25
     assert elo_home["team_elo"] == 2050
+
+
+def test_zeroed_official_strength_uses_neutral_goal_baseline_not_lower_clip():
+    teams = pd.DataFrame(
+        [
+            {
+                "id": team_id,
+                "strength": 0,
+                "strength_attack_home": 0,
+                "strength_defence_home": 0,
+                "strength_attack_away": 0,
+                "strength_defence_away": 0,
+            }
+            for team_id in (1, 2)
+        ]
+    )
+    fixtures = pd.DataFrame([{"event": 1, "team_h": 1, "team_a": 2}])
+    out = fixture_multipliers(fixtures, teams, [1])
+    home = out[out.team == 1].iloc[0]
+    away = out[out.team == 2].iloc[0]
+    assert home["expected_team_goals"] == 1.55
+    assert away["expected_team_goals"] == 1.25
+    assert home["clean_sheet_prob"] < 0.40
+    assert away["clean_sheet_prob"] < 0.30

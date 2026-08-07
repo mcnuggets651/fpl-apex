@@ -23,19 +23,22 @@ If any flag is false, the correct output is the blocker — not an old squad.
 1. **Official FPL truth** — player ID, club, FPL position, price, availability and fixtures.
 2. **FPL Core enrichment** — underlying statistics, preseason, Elo/strength and defensive-contribution context.
 3. **Genuine pinned AIrsenal** — independent multi-Gameweek projection expert, mapped through official FPL IDs.
-4. **Apex transparent xP** — expected minutes, xG/xA/xGI, fixture strength, tactical role, clean sheets, saves, defensive contributions, set pieces, penalties and 2026/27 bonus/BPS.
-5. **Trusted news/availability layer** — injuries, return dates, transfer uncertainty and manager/line-up evidence. It cannot overwrite Official FPL identity.
-6. **Ensemble** — combines available projection experts, reports disagreement, standard deviation, floors/ceilings and confidence. Full-Gameweek experts are allocated exactly once across DGW fixture rows so they cannot be silently doubled.
-7. **Maximum-EV full-horizon MILP** — fixed initial 15, legal XI and captain optimised separately in every Gameweek. The primary objective uses ensemble mean `xp`; uncertainty is not silently double-counted as a risk penalty.
-8. **Correlated scenario model** — shared Gameweek/team attack/team defence/opponent shocks plus persistent player minutes/role uncertainty across the horizon.
-9. **CVaR MILP** — a second solution balances mean return with lower-tail robustness. It exposes fragility rather than automatically preferring the safest squad.
-10. **Exact selection regret** — selected players are banned and strong alternatives are forced, then the full problem is re-solved on the same maximum-EV surface.
-11. **Exact deadline mechanics** — captain/vice no-show fallback and the best outfield bench order are evaluated explicitly. Autosubs enumerate the relevant appearance states subject to legal FPL formation rules.
-12. **Independent solver parity** — pinned `open-fpl-solver` receives the same ensemble-mean xP used by Pinnacle and checks the independent mathematical formulation.
-13. **Personal weekly strategy** — entry 63984 supplies the published squad/bank/FT/selling-price state. The Pinnacle transfer candidate pool protects cheap enablers, positional alternatives, price-band options, Pareto-efficient players and short-term fixture punts from naive global top-N pruning.
-14. **Receding-horizon transfer policy** — optimise several weeks, execute only `action_now`, quantify the exact value lost by forcing a roll, then refresh and re-solve next deadline.
-15. **Chip window** — Wildcard, Free Hit, Bench Boost and Triple Captain opportunity values are quantified under the 2026/27 rules. Positive current value is evidence, not an automatic instruction to spend a scarce chip.
-16. **No-hindsight learning archive** — the freshest green pre-deadline player forecasts are archived before each lock, official FPL outcomes are attached only after the event is finished, and walk-forward expert/calibration reports are rebuilt from genuine historical decision-time data.
+4. **Field-level data gate** — rejects non-informative official strength, missing fixture/player projection surfaces, malformed forecasts and false zero preseason evidence.
+5. **Apex transparent xP** — expected minutes, prior-season playing time, xG/xA/xGI, fixture strength, tactical role, clean sheets, saves, defensive contributions, set pieces, penalties and 2026/27 bonus/BPS.
+6. **Understat team-goal challenger** — five complete seasons, canonical teams and promoted-club priors. It remains in shadow mode until the complete promotion gate passes.
+7. **Trusted news/availability layer** — injuries, return dates, transfer uncertainty and manager/line-up evidence. It cannot overwrite Official FPL identity.
+8. **Ensemble** — combines available projection experts, reports disagreement, standard deviation, floors/ceilings and confidence. Full-Gameweek experts are allocated exactly once across DGW fixture rows so they cannot be silently doubled.
+9. **Maximum-EV full-horizon MILP** — fixed initial 15, legal XI and captain optimised separately in every Gameweek. The primary objective uses ensemble mean `xp`; uncertainty is not silently double-counted as a risk penalty.
+10. **Correlated scenario model** — shared Gameweek/team attack/team defence/opponent shocks plus persistent player minutes/role uncertainty across the horizon.
+11. **CVaR MILP** — a second solution balances mean return with lower-tail robustness. It exposes fragility rather than automatically preferring the safest squad.
+12. **Exact selection regret** — selected players are banned and strong alternatives are forced, then the full problem is re-solved on the same maximum-EV surface.
+13. **Exact deadline mechanics** — captain/vice no-show fallback and the best outfield bench order are evaluated explicitly. Autosubs enumerate the relevant appearance states subject to legal FPL formation rules.
+14. **Decision-frequency audit** — repeated correlated re-solves publish squad, XI, captain and vice-captain frequencies.
+15. **Independent solver parity** — pinned `open-fpl-solver` receives the same ensemble-mean xP used by Pinnacle and checks the independent mathematical formulation.
+16. **Personal weekly strategy** — entry 63984 supplies the published squad/bank/FT/selling-price state. The Pinnacle transfer candidate pool protects cheap enablers, positional alternatives, price-band options, Pareto-efficient players and short-term fixture punts from naive global top-N pruning.
+17. **Receding-horizon transfer policy** — optimise several weeks, execute only `action_now`, quantify the exact value lost by forcing a roll, then refresh and re-solve next deadline. Before GW1, GW2-GW5 is a contingency route only.
+18. **Chip window** — Wildcard, Free Hit, Bench Boost and Triple Captain opportunity values are quantified under the 2026/27 rules. Production defaults to hold until remaining-half opportunity cost is calibrated.
+19. **No-hindsight learning archive** — the freshest green pre-deadline player forecasts are archived before each lock, official FPL outcomes are attached only after the event is finished, and walk-forward expert/calibration reports are rebuilt from genuine historical decision-time data.
 
 ## The primary decision rule
 
@@ -66,6 +69,10 @@ python scripts/assert_pinnacle.py data/generated/pinnacle_latest.json
 ```
 
 The final output contains unrestricted, Haaland and no-Haaland maximum-EV squads, robust CVaR versions, exact sensitivity/regret, GW1 XI, captain, vice-captain, bench order, uncertainty and source/provenance evidence.
+
+It also contains a GW2-GW5 contingency route from the selected initial squad and a
+conservative chip hold policy. Those future moves are not instructions: only the
+freshly re-solved first action after the next deadline may be executed.
 
 A dedicated final run is scheduled for the morning of **21 August 2026**.
 
@@ -140,6 +147,7 @@ Optional environment variables:
 - `APEX_NEWS_FEEDS` — additional trusted/official news sources;
 - `ODDS_API_URL` / `ODDS_API_KEY` — optional market-xP feed;
 - `APEX_HORIZON` — planning horizon;
+- `APEX_UNDERSTAT_TEAM_MODEL_MODE` — `shadow` by default; use `production` only after a separate evidenced promotion;
 - `FPL_ENTRY_ID` — personal entry (63984 in production).
 
 ## Main files
@@ -153,7 +161,11 @@ Optional environment variables:
 - `data/history/deadlines/gwXX_forecast.csv` — genuine pre-deadline forecasts plus official outcomes after completion.
 - `reports/pinnacle_selection_regret.csv` — exact decision sensitivity.
 - `reports/pinnacle_scenario_player_summary.csv` — scenario mean/SD/P10/P50/P90.
+- `reports/pinnacle_decision_frequencies.csv` — uncertainty re-solve selection frequencies.
+- `reports/data_quality.csv` — field-level production checks and coverage.
+- `reports/team_goal_ratings.csv` / `team_goal_surface.csv` — Understat shadow challenger outputs.
 - `reports/team_state.json` — latest personal FPL state after the season begins.
+- `docs/evidence/team_goal_model_2026-08-07.json` — committed chronological challenger evidence and failed promotion gate.
 - `upstreams.lock.json` — exact upstream revisions.
 
 ## The learning loop
