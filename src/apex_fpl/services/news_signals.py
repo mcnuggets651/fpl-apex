@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import re
 
 import pandas as pd
@@ -80,11 +81,29 @@ def _aliases(row: pd.Series) -> list[str]:
     return sorted(set(aliases), key=len, reverse=True)
 
 
+def _age_hours(published: str, now: datetime) -> float | None:
+    try:
+        dt = datetime.fromisoformat(str(published).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max((now - dt.astimezone(timezone.utc)).total_seconds() / 3600.0, 0.0)
+    except Exception:
+        return None
+
+
 def infer_news_signals(
     players: pd.DataFrame,
     items: list[NewsItem],
+    *,
+    max_age_hours: float = 120.0,
+    now: datetime | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Map trusted-feed headlines to players using conservative name matching.
+    """Map fresh trusted/official headlines to players conservatively.
+
+    Headlines older than ``max_age_hours`` are removed before they can alter
+    expected minutes. Long-lived injury state belongs to the official FPL status
+    fields; news is the short-lived layer for press conferences, transfers and
+    late rotation information.
 
     Returns one row per player with the strongest relevant minutes multiplier and
     a complete audit table. Transfer/manager signals are retained as typed audit
@@ -103,6 +122,7 @@ def infer_news_signals(
         "headline",
         "source",
         "published",
+        "age_hours",
         "link",
         "multiplier",
         "reason",
@@ -111,12 +131,16 @@ def infer_news_signals(
     if not items or players.empty:
         return pd.DataFrame(columns=signal_columns), pd.DataFrame(columns=audit_columns)
 
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     audit: list[dict] = []
     for _, player in players.iterrows():
         aliases = _aliases(player)
         if not aliases:
             continue
         for item in items:
+            age = _age_hours(item.published, now)
+            if age is not None and age > max_age_hours:
+                continue
             title = item.title or ""
             if not any(
                 re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", title, re.I)
@@ -142,6 +166,7 @@ def infer_news_signals(
                     "headline": title,
                     "source": item.source,
                     "published": item.published,
+                    "age_hours": round(age, 2) if age is not None else None,
                     "link": item.link,
                     "multiplier": multiplier,
                     "reason": reason,
@@ -153,7 +178,7 @@ def infer_news_signals(
     if audit_df.empty:
         return pd.DataFrame(columns=signal_columns), audit_df
 
-    # Most pessimistic relevant current headline wins for minutes. This is an
+    # Most pessimistic relevant fresh headline wins for minutes. This is an
     # intentionally cautious advisory signal; official availability remains a
     # separate, stronger input in the expected-minutes model.
     idx = audit_df.groupby("player_id")["multiplier"].idxmin()
