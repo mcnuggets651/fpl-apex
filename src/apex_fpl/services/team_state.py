@@ -26,6 +26,7 @@ class TeamState:
     captain_id: int | None = None
     vice_captain_id: int | None = None
     active_chip: str | None = None
+    chips_used: list[dict] = field(default_factory=list)
     selling_prices: dict[int, float] = field(default_factory=dict)
     selling_prices_exact: bool = False
     public_deadline_snapshot: bool = False
@@ -69,6 +70,7 @@ def load_team_state(
 
     bank, free = 0.0, 1
     selling_prices: dict[int, float] = {}
+    chips_used: list[dict] = []
     sf = Path(state_path)
     if sf.exists():
         raw = yaml.safe_load(sf.read_text()) or {}
@@ -78,12 +80,14 @@ def load_team_state(
             int(pid): float(price)
             for pid, price in (raw.get("selling_prices", {}) or {}).items()
         }
+        chips_used = [dict(row) for row in (raw.get("chips_used", []) or []) if isinstance(row, dict)]
     free = min(5, max(1, free))
     return TeamState(
         squad=squad,
         bank=bank,
         free_transfers=free,
         source="manual_override",
+        chips_used=chips_used,
         selling_prices=selling_prices,
         selling_prices_exact=bool(selling_prices),
     )
@@ -234,7 +238,11 @@ def resolve_team_state(
 
     entry_name = str(summary.get("name", f"Entry {entry_id}"))
     if public is None:
-        captured = "pre-GW1 price universe captured" if initial_prices else "pre-GW1 price capture unavailable"
+        captured = (
+            "pre-GW1 price universe captured"
+            if initial_prices
+            else "pre-GW1 price capture unavailable"
+        )
         return TeamStateResolution(
             state=None,
             configured=True,
@@ -264,11 +272,16 @@ def resolve_team_state(
         captain_id=public.captain_id,
         vice_captain_id=public.vice_captain_id,
         active_chip=public.active_chip,
+        chips_used=public.chips_used,
         selling_prices=selling,
         selling_prices_exact=exact,
         public_deadline_snapshot=True,
     )
-    pricing = "exact reconstructed selling prices" if exact else "partly approximate selling prices"
+    pricing = (
+        "exact reconstructed selling prices"
+        if exact
+        else "partly approximate selling prices"
+    )
     detail = (
         f"FPL entry {public.entry_id} ({public.entry_name}) synced from published GW"
         f"{public.published_gw} picks; {public.free_transfers} FT; £{public.bank:.1f}m bank; "
