@@ -14,6 +14,7 @@ from apex_fpl.reporting.explain import (
     scenario_comparison,
 )
 from apex_fpl.services.provenance import SourceStatus
+from apex_fpl.services.data_quality import DataQualityAssessment
 from apex_fpl.services.safety import SafetyAssessment
 
 
@@ -89,6 +90,7 @@ def write_reports(
     safety: SafetyAssessment | None = None,
     snapshot: dict | None = None,
     upstreams: dict | None = None,
+    data_quality: DataQualityAssessment | None = None,
 ) -> None:
     report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -104,6 +106,10 @@ def write_reports(
     drivers.to_csv(report_dir / "player_drivers.csv", index=False)
     risks.to_csv(report_dir / "risk_report.csv", index=False)
     pd.DataFrame([s.to_dict() for s in sources]).to_csv(report_dir / "sources.csv", index=False)
+    if data_quality is not None:
+        pd.DataFrame([check.to_dict() for check in data_quality.checks]).to_csv(
+            report_dir / "data_quality.csv", index=False
+        )
     (report_dir / "scenario_comparison.json").write_text(
         json.dumps(comparisons, indent=2, default=str)
     )
@@ -120,6 +126,7 @@ def write_reports(
         "official_snapshot": snapshot or {},
         "upstreams": upstreams or {},
         "sources": [s.to_dict() for s in sources],
+        "data_quality": data_quality.to_dict() if data_quality else None,
         "integrity_warnings": _records(integrity),
         "scenario_comparison": comparisons,
         "risk_report": _records(risks),
@@ -140,6 +147,14 @@ def write_reports(
             lines.append(f"- BLOCKER: {item}")
         for item in safety.warnings:
             lines.append(f"- WARNING: {item}")
+        lines.append("")
+
+    if data_quality is not None:
+        lines += ["## Data quality", ""]
+        for check in data_quality.checks:
+            lines.append(
+                f"- **{check.name}** — {check.status.upper()}: {check.detail}"
+            )
         lines.append("")
 
     if snapshot:

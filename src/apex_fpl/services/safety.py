@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from apex_fpl.data.official import OfficialSnapshot
+from apex_fpl.services.data_quality import DataQualityAssessment
 from apex_fpl.services.provenance import SourceStatus
 
 
@@ -28,6 +29,7 @@ def assess_safety(
     scenarios: dict,
     required_sources: list[str],
     max_official_age_hours: float = 26.0,
+    data_quality: DataQualityAssessment | None = None,
 ) -> SafetyAssessment:
     blockers: list[str] = []
     warnings: list[str] = []
@@ -41,6 +43,10 @@ def assess_safety(
         blockers.append("duplicate official player IDs")
     if official.players["position"].isna().any():
         blockers.append("unknown official FPL position exists")
+
+    if data_quality is not None:
+        blockers.extend(data_quality.blockers)
+        warnings.extend(data_quality.warnings)
 
     by_name = {s.name: s for s in sources}
     for name in required_sources:

@@ -5,7 +5,22 @@ from typing import Any
 
 
 REQUIRED_SCENARIOS = ("unrestricted", "haaland", "no-haaland")
-REQUIRED_SOURCES = ("official_fpl", "fpl_core_playerstats", "airsenal", "news_feeds")
+REQUIRED_SOURCES = (
+    "official_fpl",
+    "fpl_core_playerstats",
+    "fixture_model",
+    "airsenal",
+    "news_feeds",
+)
+
+# Conservative publication floors while the 2026/27 expected-minutes and
+# ensemble layers are still prospective rather than outcome-calibrated. They are
+# blockers, not optimiser overrides: Apex must repair the evidence instead of
+# silently substituting a supposedly safer captain.
+MIN_CAPTAIN_EXPECTED_MINUTES = 60.0
+MIN_CAPTAIN_START_PROBABILITY = 0.50
+MIN_CAPTAIN_APPEARANCE_PROBABILITY = 0.75
+MIN_CAPTAIN_PROJECTION_CONFIDENCE = 0.40
 
 
 @dataclass(frozen=True)
@@ -35,6 +50,67 @@ def _check_solution(container: dict[str, Any], name: str, label: str, blockers: 
         blockers.append(f"{label} {name} does not contain an 11-player XI")
 
 
+def _number(row: dict[str, Any], field: str) -> float | None:
+    try:
+        value = float(row.get(field))
+    except (TypeError, ValueError):
+        return None
+    return value
+
+
+def _check_captain_evidence(
+    deterministic: dict[str, Any],
+    mechanics: dict[str, Any],
+    name: str,
+    blockers: list[str],
+) -> None:
+    mechanic = mechanics.get(name)
+    solution = deterministic.get(name)
+    if not isinstance(mechanic, dict) or not isinstance(solution, dict):
+        return
+    try:
+        captain_id = int(mechanic["captain_id"])
+    except (KeyError, TypeError, ValueError):
+        blockers.append(f"captain identity missing: {name}")
+        return
+    candidates = [
+        row
+        for row in solution.get("squad") or []
+        if isinstance(row, dict) and str(row.get("player_id")) == str(captain_id)
+    ]
+    if len(candidates) != 1:
+        blockers.append(f"captain evidence row missing/ambiguous: {name} player_id={captain_id}")
+        return
+    row = candidates[0]
+    name_label = str(row.get("web_name") or captain_id)
+    floors = (
+        ("expected_minutes", MIN_CAPTAIN_EXPECTED_MINUTES, "expected minutes"),
+        ("start_probability", MIN_CAPTAIN_START_PROBABILITY, "start probability"),
+        (
+            "appearance_probability",
+            MIN_CAPTAIN_APPEARANCE_PROBABILITY,
+            "appearance probability",
+        ),
+        (
+            "projection_confidence",
+            MIN_CAPTAIN_PROJECTION_CONFIDENCE,
+            "projection confidence",
+        ),
+    )
+    for field, minimum, label in floors:
+        value = _number(row, field)
+        if value is None:
+            blockers.append(f"captain {name_label} missing {label}: {name}")
+        elif value < minimum:
+            blockers.append(
+                f"captain {name_label} {label} {value:.1%} below production floor "
+                f"{minimum:.1%}: {name}"
+                if "probability" in field or "confidence" in field
+                else f"captain {name_label} {label} {value:.1f} below production floor "
+                f"{minimum:.1f}: {name}"
+            )
+
+
 def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     blockers: list[str] = []
     warnings: list[str] = []
@@ -43,6 +119,12 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         blockers.append("base Apex safe_to_act is not true")
     if payload.get("full_apex_ready") is not True:
         blockers.append("base Apex full_apex_ready is not true")
+
+    quality = payload.get("data_quality")
+    if not isinstance(quality, dict):
+        blockers.append("field-level data-quality report is missing")
+    elif quality.get("ready") is not True:
+        blockers.append("field-level data-quality gate is not ready")
 
     source_rows = payload.get("sources") or []
     sources = {str(row.get("name")): row for row in source_rows if isinstance(row, dict)}
@@ -67,6 +149,10 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         blockers.append("exact captain/vice/autosub mechanics are not active")
     if decision.get("receding_horizon_transfers") is not True:
         blockers.append("receding-horizon transfer policy is not active")
+    if decision.get("empirical_decision_frequency") is not True:
+        blockers.append("empirical decision-frequency audit is not active")
+    if int(decision.get("decision_frequency_solves", 0) or 0) < 16:
+        blockers.append("fewer than 16 optimal decision-frequency solves")
 
     deterministic = payload.get("deterministic_scenarios") or {}
     robust = payload.get("robust_cvar_scenarios") or {}
@@ -84,10 +170,35 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             blockers.append(f"captain and vice are identical: {name}")
         if len(row.get("outfield_bench_order") or []) != 3:
             blockers.append(f"outfield bench order invalid: {name}")
+        _check_captain_evidence(deterministic, mechanics, name, blockers)
 
     regret = payload.get("selection_regret") or []
     if not regret:
         blockers.append("selection-regret stress test is empty")
+
+    frequencies = payload.get("decision_frequencies") or []
+    if not frequencies:
+        blockers.append("decision-frequency audit is empty")
+    else:
+        chosen_captain = (mechanics.get("unrestricted") or {}).get("captain_id")
+        captain_row = next(
+            (
+                row
+                for row in frequencies
+                if isinstance(row, dict) and str(row.get("player_id")) == str(chosen_captain)
+            ),
+            None,
+        )
+        if captain_row is None:
+            blockers.append("published unrestricted captain absent from decision frequencies")
+        else:
+            frequency = _number(captain_row, "captain_frequency")
+            if frequency is None:
+                blockers.append("published captain frequency is missing")
+            elif frequency < 0.50:
+                warnings.append(
+                    f"published captain appears in only {frequency:.0%} of uncertainty re-solves"
+                )
 
     robust_compare = payload.get("robustness_comparison") or {}
     unrestricted = robust_compare.get("unrestricted") or {}
@@ -110,6 +221,15 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             blockers.append("published personal squad exists but weekly strategy is missing")
         if not isinstance(payload.get("chip_window"), dict):
             blockers.append("published personal squad exists but chip-window analysis is missing")
+    elif (payload.get("gameweeks") or [None])[0] == 1:
+        route = payload.get("initial_squad_contingencies")
+        if not isinstance(route, dict):
+            blockers.append("pre-GW1 decision is missing its GW2-GW5 contingency route")
+        elif route.get("status") not in {"Optimal", "not_applicable"}:
+            blockers.append("pre-GW1 GW2-GW5 contingency route is not optimal")
+        chips = payload.get("initial_chip_policy")
+        if not isinstance(chips, dict) or chips.get("status") != "hold":
+            blockers.append("pre-GW1 conservative chip policy is missing")
 
     parity = payload.get("solver_parity")
     if parity is None:

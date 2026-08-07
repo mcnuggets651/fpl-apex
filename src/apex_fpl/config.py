@@ -78,11 +78,18 @@ class Settings:
     tactical_roles_path: Path = Path("data/manual/tactical_roles.csv")
     upstreams_lock_path: Path = Path("upstreams.lock.json")
     required_sources: list[str] = field(default_factory=lambda: [
-        "official_fpl", "fpl_core_playerstats", "airsenal", "news_feeds"
+        "official_fpl",
+        "fpl_core_playerstats",
+        "fixture_model",
+        "airsenal",
+        "news_feeds",
     ])
     max_official_age_hours: float = 26.0
     max_airsenal_age_hours: float = 36.0
-    min_airsenal_player_coverage: float = 0.45
+    min_airsenal_player_coverage: float = 0.95
+    understat_enabled: bool = True
+    understat_history_seasons: int = 5
+    understat_team_model_mode: str = "shadow"
 
 
 def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
@@ -131,7 +138,27 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         min_airsenal_player_coverage=float(
             raw.get("min_airsenal_player_coverage", default.min_airsenal_player_coverage)
         ),
+        understat_enabled=str(
+            os.getenv("APEX_UNDERSTAT_ENABLED", raw.get("understat_enabled", True))
+        ).strip().casefold()
+        not in {"0", "false", "no", "off"},
+        understat_history_seasons=int(
+            raw.get("understat_history_seasons", default.understat_history_seasons)
+        ),
+        understat_team_model_mode=str(
+            os.getenv(
+                "APEX_UNDERSTAT_TEAM_MODEL_MODE",
+                raw.get(
+                    "understat_team_model_mode",
+                    default.understat_team_model_mode,
+                ),
+            )
+        ).strip().casefold(),
     )
+    if s.understat_team_model_mode not in {"shadow", "production"}:
+        raise ValueError(
+            "understat_team_model_mode must be 'shadow' or 'production'"
+        )
     s.cache_dir.mkdir(parents=True, exist_ok=True)
     s.snapshot_dir.mkdir(parents=True, exist_ok=True)
     s.report_dir.mkdir(parents=True, exist_ok=True)

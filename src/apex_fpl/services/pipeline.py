@@ -13,14 +13,21 @@ from apex_fpl.data.news import collect_news_sources, load_manual_signals
 from apex_fpl.data.odds import OddsAdapter
 from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.data.tactical import load_tactical_roles
+from apex_fpl.data.understat import load_understat_history, season_start_year
 from apex_fpl.models.ensemble import blend_projection
 from apex_fpl.models.fixtures import fixture_multipliers
 from apex_fpl.models.minutes import minutes_profile
 from apex_fpl.models.projection import project_players
 from apex_fpl.models.tactical import infer_tactical_roles
+from apex_fpl.models.team_goals import build_team_goal_surface, build_team_ratings
 from apex_fpl.optimisation.squad import optimise_squad
 from apex_fpl.optimisation.transfers import TransferPlan, optimise_transfer_plan
 from apex_fpl.reporting.writer import write_reports
+from apex_fpl.services.data_quality import (
+    DataQualityAssessment,
+    assess_data_quality,
+    official_strength_is_usable,
+)
 from apex_fpl.services.enrichment import add_preseason_features, coalesce_context
 from apex_fpl.services.integrity import reconcile
 from apex_fpl.services.news_signals import infer_news_signals
@@ -47,6 +54,7 @@ class PipelineOutput:
     gameweeks: list[int]
     safety: SafetyAssessment
     snapshot: dict
+    data_quality: DataQualityAssessment
     team_state: TeamStateResolution | None = None
 
 
@@ -177,6 +185,7 @@ def run_pipeline(
         )
 
     core = pd.DataFrame(columns=["player_id"])
+    previous = pd.DataFrame(columns=["player_id"])
     friendlies = pd.DataFrame()
     core_client: FPLCoreClient | None = None
     core_pin = str(pins.get("fpl_core_insights", {}).get("commit", ""))
@@ -191,6 +200,26 @@ def run_pipeline(
                 version=core_pin,
             )
         )
+        try:
+            previous = core_client.previous_season_playerstats(force=force)
+            previous_coverage = (
+                pd.to_numeric(previous.get("previous_minutes"), errors="coerce")
+                .notna()
+                .mean()
+            )
+            sources.append(
+                _status(
+                    "fpl_core_previous_season",
+                    previous_coverage >= 0.70,
+                    f"{len(previous)} current official IDs; prior playing-time "
+                    f"coverage={previous_coverage:.1%}",
+                    version=core_pin,
+                )
+            )
+        except Exception as exc:
+            sources.append(
+                _status("fpl_core_previous_season", False, str(exc), version=core_pin)
+            )
         try:
             friendlies = core_client.preseason_friendlies(force=force)
             sources.append(
@@ -211,6 +240,14 @@ def run_pipeline(
         )
 
     players, integrity = reconcile(official.players, core)
+    if not previous.empty:
+        previous = previous.drop_duplicates("player_id")
+        players = players.merge(
+            previous,
+            on="player_id",
+            how="left",
+            validate="one_to_one",
+        )
     players = coalesce_context(players)
     players = add_preseason_features(players, friendlies)
 
@@ -337,6 +374,17 @@ def run_pipeline(
             _status("news_feeds", True, "not configured", configured=False)
         )
 
+    if "finished" in official.fixtures.columns:
+        completed_fixtures = official.fixtures[
+            official.fixtures["finished"].fillna(False).astype(bool)
+        ]
+        team_matches = pd.concat(
+            [completed_fixtures["team_h"], completed_fixtures["team_a"]]
+        ).value_counts()
+        players["current_team_matches"] = players["team"].map(team_matches).fillna(0)
+    else:
+        players["current_team_matches"] = 0
+
     profile = minutes_profile(players)
     for col in profile.columns:
         players[col] = profile[col]
@@ -362,11 +410,113 @@ def run_pipeline(
         except Exception as exc:
             sources.append(_status("fpl_core_elo", False, str(exc), version=core_pin))
 
+    strength_ok, strength_detail = official_strength_is_usable(official.teams)
+    sources.append(
+        _status(
+            "official_team_strength",
+            strength_ok,
+            strength_detail,
+            configured=True,
+            version=official.bootstrap_sha256[:12],
+        )
+    )
+    relevant_fixture_sides = (
+        len(official.fixtures[official.fixtures["event"].isin(gws)]) * 2
+    )
+    elo_rows = (
+        len(core_elos[["gw", "team", "opponent", "is_home"]].drop_duplicates())
+        if not core_elos.empty
+        and {"gw", "team", "opponent", "is_home"}.issubset(core_elos.columns)
+        else 0
+    )
+    elo_complete = relevant_fixture_sides > 0 and elo_rows >= relevant_fixture_sides
+    understat_ratings = pd.DataFrame()
+    understat_surface = pd.DataFrame()
+    understat_complete = False
+    understat_production = settings.understat_team_model_mode == "production"
+    if settings.understat_enabled:
+        active_year = season_start_year(settings.season)
+        first_year = max(2018, active_year - settings.understat_history_seasons)
+        try:
+            history = load_understat_history(
+                range(first_year, active_year + 1),
+                active_season=active_year,
+                cache_dir=settings.cache_dir / "understat",
+                refresh_active=force,
+            )
+            understat_ratings = build_team_ratings(history.matches, official.teams)
+            understat_surface = build_team_goal_surface(
+                official.fixtures,
+                understat_ratings,
+                gws,
+            )
+            understat_rows = len(
+                understat_surface[["gw", "team", "opponent", "is_home"]]
+                .drop_duplicates()
+            )
+            understat_complete = (
+                relevant_fixture_sides > 0 and understat_rows >= relevant_fixture_sides
+            )
+            promoted = int(
+                (understat_ratings["prior_type"] == "promoted_league_average").sum()
+            )
+            note = f"; {'; '.join(history.warnings)}" if history.warnings else ""
+            sources.append(
+                _status(
+                    "understat_team_model",
+                    understat_complete,
+                    f"{len(history.matches)} completed-match rows across "
+                    f"{len(history.completed_seasons)} complete seasons; "
+                    f"fixture coverage={understat_rows}/{relevant_fixture_sides}; "
+                    f"promoted/unknown priors={promoted}; "
+                    f"mode={settings.understat_team_model_mode}{note}",
+                )
+            )
+        except Exception as exc:
+            sources.append(_status("understat_team_model", False, str(exc)))
+    else:
+        sources.append(
+            _status(
+                "understat_team_model",
+                True,
+                "disabled by configuration",
+                configured=False,
+            )
+        )
+
+    active_understat = understat_complete and understat_production
+    fixture_model_ok = active_understat or strength_ok or elo_complete
+    if strength_ok:
+        fixture_detail = (
+            "Understat xG model is active with official strength as corroboration"
+            if active_understat
+            else "positive, varying official team strengths are active"
+        )
+    elif active_understat:
+        fixture_detail = (
+            f"official strength unavailable ({strength_detail}); complete Understat xG "
+            f"team-goal surface is active ({relevant_fixture_sides}/{relevant_fixture_sides})"
+        )
+    elif elo_complete:
+        fixture_detail = (
+            f"official strength unavailable ({strength_detail}); using league goal baselines "
+            f"plus complete reconciled Elo coverage ({elo_rows}/{relevant_fixture_sides}); "
+            f"Understat challenger mode={settings.understat_team_model_mode}"
+        )
+    else:
+        fixture_detail = (
+            f"official strength unavailable ({strength_detail}); reconciled Elo coverage "
+            f"is incomplete ({elo_rows}/{relevant_fixture_sides})"
+        )
+    sources.append(_status("fixture_model", fixture_model_ok, fixture_detail))
+
     fx = fixture_multipliers(
         official.fixtures,
         official.teams,
         gws,
         core_elos=core_elos,
+        use_official_strength=strength_ok,
+        team_goal_surface=understat_surface if active_understat else None,
     )
     apex = project_players(players, fx, gws)
     projection_context = players[
@@ -534,6 +684,16 @@ def run_pipeline(
             selling_prices=team_state.selling_prices,
         )
 
+    data_quality = assess_data_quality(
+        official,
+        core,
+        friendlies,
+        fx,
+        proj,
+        gws,
+        fixture_fallback_ok=active_understat or elo_complete,
+    )
+
     safety = assess_safety(
         official,
         sources,
@@ -542,6 +702,7 @@ def run_pipeline(
         scenarios,
         settings.required_sources,
         settings.max_official_age_hours,
+        data_quality=data_quality,
     )
 
     ranked_cols = [
@@ -582,6 +743,14 @@ def run_pipeline(
     ranked_out = ranked[
         [col for col in ranked_cols if col in ranked]
     ].sort_values("horizon_xp", ascending=False)
+    if not understat_ratings.empty:
+        understat_ratings.to_csv(
+            settings.report_dir / "team_goal_ratings.csv", index=False
+        )
+    if not understat_surface.empty:
+        understat_surface.to_csv(
+            settings.report_dir / "team_goal_surface.csv", index=False
+        )
     write_reports(
         settings.report_dir,
         ranked_out,
@@ -595,6 +764,7 @@ def run_pipeline(
         safety=safety,
         snapshot=manifest,
         upstreams=pins,
+        data_quality=data_quality,
     )
     return PipelineOutput(
         ranked_out,
@@ -607,5 +777,6 @@ def run_pipeline(
         gws,
         safety,
         manifest,
+        data_quality,
         team_resolution,
     )

@@ -1,0 +1,66 @@
+{
+  "method": "expanding-season-no-hindsight",
+  "model_version": "understat_time_decay_v1",
+  "pre_registered_configuration": {
+    "half_life_days": 240.0,
+    "prior_matches": 10.0
+  },
+  "completed_seasons": [
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "folds": 3,
+  "held_out_matches": 1140,
+  "model": {
+    "goal_mae": 0.9663300542536439,
+    "poisson_loss": 1.5171170699700454,
+    "clean_sheet_brier": 0.17361168771108862
+  },
+  "league_average_baseline": {
+    "goal_mae": 1.0009660664819944,
+    "poisson_loss": 1.5461108699026067,
+    "clean_sheet_brier": 0.17858985729700416
+  },
+  "beats_baseline": {
+    "goal_mae": true,
+    "poisson_loss": true,
+    "clean_sheet_brier": true
+  },
+  "beats_baseline_in_every_fold": {
+    "goal_mae": true,
+    "poisson_loss": true,
+    "clean_sheet_brier": true
+  },
+  "ablation_mean": {
+    "no_shrinkage": {
+      "goal_mae": 0.9634742699016688,
+      "poisson_loss": 1.5181302843093292,
+      "clean_sheet_brier": 0.173482318147291
+    },
+    "no_time_decay": {
+      "goal_mae": 0.9523919967249986,
+      "poisson_loss": 1.5139319361324064,
+      "clean_sheet_brier": 0.17333568103717076
+    },
+    "time_decay_shrinkage": {
+      "goal_mae": 0.9663300542536439,
+      "poisson_loss": 1.5171170699700454,
+      "clean_sheet_brier": 0.17361168771108862
+    }
+  },
+  "promotion_gate": {
+    "chronological_out_of_sample": true,
+    "three_completed_test_seasons": true,
+    "beats_baseline_all_metrics": true,
+    "beats_baseline_every_fold": true,
+    "gameweek_block_bootstrap": false,
+    "decision_regret_non_degradation": false,
+    "leave_one_source_out_stability": false,
+    "passed": false
+  },
+  "promotion_reason": "Keep in shadow mode: the forecast backtest is encouraging, but the pre-registered time-decay configuration did not dominate its ablations and the required bootstrap, decision-regret and source-removal gates have not run.",
+  "auto_promoted": false
+}

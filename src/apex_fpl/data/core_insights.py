@@ -34,6 +34,59 @@ class FPLCoreClient:
     def players(self, force: bool = False) -> pd.DataFrame:
         return self._csv("players.csv", force)
 
+    def previous_season_playerstats(self, force: bool = False) -> pd.DataFrame:
+        """Map prior-season playing time to current official IDs via stable codes."""
+        parts = [int(value) for value in str(self.season).replace("/", "-").split("-")]
+        if len(parts) != 2:
+            raise ValueError(f"unsupported FPL season format: {self.season!r}")
+        previous = f"{parts[0] - 1}-{parts[1] - 1}"
+        prior_client = FPLCoreClient(self.http, previous, ref=self.ref)
+        current_players = self.players(force=force)
+        prior_players = prior_client.players(force=force)
+        prior_stats = prior_client.playerstats(force=force)
+        identity = {"player_code", "player_id"}
+        if not identity.issubset(current_players.columns) or not identity.issubset(
+            prior_players.columns
+        ):
+            raise ValueError("FPL Core players.csv lacks stable player_code/player_id mapping")
+
+        available = [
+            col
+            for col in (
+                "minutes",
+                "starts",
+                "expected_goals_per_90",
+                "expected_assists_per_90",
+                "defensive_contribution_per_90",
+            )
+            if col in prior_stats.columns
+        ]
+        previous_rows = prior_players[["player_code", "player_id"]].merge(
+            prior_stats[["player_id", *available]],
+            on="player_id",
+            how="left",
+            validate="one_to_one",
+        )
+        previous_rows = previous_rows.rename(
+            columns={col: f"previous_{col}" for col in available}
+        ).drop(columns="player_id")
+        current = current_players[["player_code", "player_id"]].rename(
+            columns={"player_id": "current_player_id"}
+        )
+        out = current.merge(
+            previous_rows,
+            on="player_code",
+            how="left",
+            validate="one_to_one",
+        ).rename(columns={"current_player_id": "player_id"})
+        out["previous_start_probability"] = (
+            pd.to_numeric(out.get("previous_starts"), errors="coerce") / 38.0
+        ).clip(0, 1)
+        out["previous_minutes_per_match"] = (
+            pd.to_numeric(out.get("previous_minutes"), errors="coerce") / 38.0
+        ).clip(0, 90)
+        return out.drop(columns="player_code")
+
     def teams(self, force: bool = False) -> pd.DataFrame:
         return self._csv("teams.csv", force)
 

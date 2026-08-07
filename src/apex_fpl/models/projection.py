@@ -27,9 +27,13 @@ def _blend_rate(
     preseason_minutes: pd.Series,
 ) -> pd.Series:
     p = pd.to_numeric(primary, errors="coerce").fillna(0)
-    pre = pd.to_numeric(preseason, errors="coerce").fillna(0)
+    pre_raw = pd.to_numeric(preseason, errors="coerce")
+    pre = pre_raw.fillna(0)
     mins = pd.to_numeric(preseason_minutes, errors="coerce").fillna(0)
-    pre_weight = np.clip(mins / 270.0, 0, 0.35)
+    # Missing preseason return data is not a measured zero. Minutes may still be
+    # useful for role/start evidence, but cannot pull an attacking rate down unless
+    # that return statistic was actually observed by the source.
+    pre_weight = np.clip(mins / 270.0, 0, 0.35) * pre_raw.notna().astype(float)
     return p * (1 - pre_weight) + pre * pre_weight
 
 

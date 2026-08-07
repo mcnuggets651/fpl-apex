@@ -15,10 +15,15 @@ from apex_fpl.data.http import CachedHttp
 from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.models.scenarios import generate_projection_scenarios
 from apex_fpl.optimisation.cvar import optimise_initial_cvar
+from apex_fpl.optimisation.frequencies import estimate_decision_frequencies
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.mechanics import optimise_gameweek_mechanics
 from apex_fpl.optimisation.stability import selection_regret_analysis
 from apex_fpl.services.chips import evaluate_chip_window
+from apex_fpl.services.initial_plan import (
+    build_initial_squad_contingencies,
+    initial_chip_policy,
+)
 from apex_fpl.services.pinnacle_readiness import evaluate_pinnacle_payload
 from apex_fpl.services.pipeline import run_pipeline
 from apex_fpl.services.strategy import analyse_receding_horizon
@@ -281,6 +286,20 @@ def main() -> None:
         if name in deterministic
     }
 
+    frequencies = estimate_decision_frequencies(
+        decision_players,
+        scenario_surface,
+        budget=settings.budget,
+        max_per_team=settings.max_per_team,
+        decay=settings.fixture_decay,
+        max_solves=24,
+    )
+    if frequencies.completed_solves < 16:
+        raise SystemExit(
+            "Pinnacle decision-frequency audit completed fewer than 16 optimal solves: "
+            f"{frequencies.completed_solves}/{frequencies.requested_solves}"
+        )
+
     report_dir = Path(args.report_dir)
     output_dir = Path(args.output_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -291,6 +310,9 @@ def main() -> None:
     )
     scenario_summary.to_csv(
         report_dir / "pinnacle_scenario_player_summary.csv", index=False
+    )
+    frequencies.rows.to_csv(
+        report_dir / "pinnacle_decision_frequencies.csv", index=False
     )
 
     # The final deadline mechanics use the same raw ensemble mean xP as the
@@ -314,6 +336,7 @@ def main() -> None:
     personal_team = _load_json(report_dir / "team_state.json")
     weekly_strategy = None
     chip_window = None
+    initial_contingencies = None
     team_state = out.team_state.state if out.team_state is not None else None
     if team_state is not None:
         weekly_strategy = analyse_receding_horizon(
@@ -334,7 +357,20 @@ def main() -> None:
             out.transfer_plan,
             max_per_team=settings.max_per_team,
             decay=settings.fixture_decay,
+            projection_col="xp",
         ).to_dict()
+    elif gws[0] == 1:
+        initial_contingencies = build_initial_squad_contingencies(
+            deterministic["unrestricted"],
+            decision_players,
+            projections,
+            gws,
+            budget=settings.budget,
+            max_per_team=settings.max_per_team,
+            decay=settings.fixture_decay,
+        )
+
+    chip_policy = initial_chip_policy(gws)
 
     production_report = _load_json(report_dir / "latest.json") or {}
     solver_parity = _load_json(output_dir / "solver_parity.json")
@@ -356,12 +392,21 @@ def main() -> None:
             "cvar_weight": args.cvar_weight,
             "covariance_coefficients_walk_forward_calibrated": False,
             "sensitivity": "exact force/ban objective regret",
+            "empirical_decision_frequency": True,
+            "decision_frequency_solves": frequencies.completed_solves,
             "exact_gw_mechanics": True,
             "captain_vice_rule": "expected no-show fallback value",
+            "provisional_captain_safety_floor": {
+                "expected_minutes": 60,
+                "start_probability": 0.50,
+                "appearance_probability": 0.75,
+                "projection_confidence": 0.40,
+            },
             "autosub_rule": "exact appearance-state enumeration with legal FPL formation",
             "receding_horizon_transfers": True,
             "weekly_transfer_projection_surface": "ensemble mean xp",
             "chip_rules": "2026/27 two chip sets; one of each chip per half; max one active chip per GW",
+            "chip_policy": "hold unless calibrated remaining-half opportunity cost is beaten",
             "decision_rule": (
                 "maximise expected points first; use CVaR, exact mechanics, selection "
                 "regret and independent solver evidence to expose fragility"
@@ -370,6 +415,7 @@ def main() -> None:
         "official_snapshot": out.snapshot,
         "upstreams": production_report.get("upstreams", {}),
         "sources": [s.to_dict() for s in out.sources],
+        "data_quality": out.data_quality.to_dict(),
         "personal_team": personal_team,
         "deterministic_scenarios": {
             name: _solution(sol) for name, sol in deterministic.items()
@@ -382,6 +428,7 @@ def main() -> None:
         "gw1_mechanics": gw1_mechanics,
         "robust_gw1_mechanics": robust_gw1_mechanics,
         "selection_regret": _records(regret),
+        "decision_frequencies": _records(frequencies.rows),
         "scenario_player_summary": _records(scenario_summary.head(150)),
         "transfer_plan": (
             {
@@ -395,6 +442,8 @@ def main() -> None:
         ),
         "weekly_strategy": weekly_strategy,
         "chip_window": chip_window,
+        "initial_squad_contingencies": initial_contingencies,
+        "initial_chip_policy": chip_policy,
         "solver_parity": solver_parity,
     }
 
@@ -474,12 +523,44 @@ def main() -> None:
             "Future moves are contingencies and must be re-solved after the next deadline.",
             "",
         ]
+    if initial_contingencies:
+        lines += [
+            "## GW1-GW5 contingency route",
+            "",
+            f"Starting bank: **{initial_contingencies.get('starting_bank', 0):.2f}**",
+            "",
+            initial_contingencies["execution_trigger"],
+            "",
+        ]
+        for week in initial_contingencies.get("weeks", []):
+            names_in = ", ".join(
+                str(row.get("web_name", row.get("player_id")))
+                for row in week.get("transfers_in", [])
+            ) or "none"
+            names_out = ", ".join(
+                str(row.get("web_name", row.get("player_id")))
+                for row in week.get("transfers_out", [])
+            ) or "none"
+            lines.append(
+                f"- GW{week['gw']} contingency: {names_out} → {names_in}; "
+                f"hit -{week.get('hit_cost', 0)}; bank {week.get('bank_after', 0):.2f}"
+            )
+        lines.append("")
     if chip_window:
         lines += [
             "## Chip window",
             "",
             f"Best immediate chip by current-window xP: **{chip_window['best_immediate_chip']}**",
-            "This is opportunity-value evidence, not an automatic instruction to spend the chip.",
+            f"Recommended chip: **{chip_window['recommended_chip'] or 'hold'}**",
+            chip_window["policy_reason"],
+            "",
+        ]
+    elif chip_policy:
+        lines += [
+            "## Initial chip policy",
+            "",
+            "Recommended chip: **hold**",
+            chip_policy["reason"],
             "",
         ]
     if not regret.empty:

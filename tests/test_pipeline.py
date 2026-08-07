@@ -73,6 +73,11 @@ def test_pipeline_end_to_end_without_network(monkeypatch, tmp_path):
         "preseason_friendlies",
         lambda self, force=False: pd.DataFrame(),
     )
+    monkeypatch.setattr(
+        FPLCoreClient,
+        "previous_season_playerstats",
+        lambda self, force=False: pd.DataFrame(),
+    )
     # Keep this unit test network-free now that the live pipeline also consumes
     # FPL Core Elo fixture context.
     monkeypatch.setattr(
@@ -88,6 +93,7 @@ def test_pipeline_end_to_end_without_network(monkeypatch, tmp_path):
         current_squad_path=tmp_path / "missing.csv",
         team_state_path=tmp_path / "missing.yaml",
         airsenal_csv=None,
+        understat_enabled=False,
         required_sources=[],
     )
     out = run_pipeline(settings, horizon=2, scenario="both", plan_transfers=False)

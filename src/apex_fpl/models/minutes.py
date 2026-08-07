@@ -17,6 +17,12 @@ def _series(df: pd.DataFrame, col: str, default: float) -> pd.Series:
     return pd.to_numeric(src, errors="coerce").fillna(default)
 
 
+def _optional_series(df: pd.DataFrame, col: str) -> pd.Series:
+    if col not in df.columns:
+        return pd.Series(np.nan, index=df.index, dtype=float)
+    return pd.to_numeric(df[col], errors="coerce")
+
+
 def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     """Estimate minutes plus explicit start/appearance probabilities and confidence.
 
@@ -31,18 +37,58 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     pre_starts = _series(df, "preseason_starts", 0)
     pre_apps = _series(df, "preseason_appearances", 0)
 
+    previous_start = _optional_series(df, "previous_start_probability")
+    previous_minutes = _optional_series(df, "previous_minutes_per_match")
+    team_matches = _series(df, "current_team_matches", 0)
+
     avg_if_started = np.where(starts > 0, np.clip(mins / np.maximum(starts, 1), 45, 90), 65)
-    if float(starts90.max()) > 0:
-        hist_start_prob = np.clip(starts90 / max(float(starts90.max()), 1.0), 0.20, 0.98)
-    elif float(starts.max()) > 0:
-        hist_start_prob = np.clip(starts / max(float(starts.max()), 1.0), 0.20, 0.98)
+    current_start = np.where(
+        team_matches > 0,
+        np.clip(starts / np.maximum(team_matches, 1), 0, 1),
+        np.nan,
+    )
+    current_minutes = np.where(
+        team_matches > 0,
+        np.clip(mins / np.maximum(team_matches, 1), 0, 90),
+        np.nan,
+    )
+    current_weight = np.clip(team_matches / 6.0, 0, 1)
+    prior_start = previous_start.fillna(np.nan).to_numpy(float)
+    prior_minutes = previous_minutes.fillna(np.nan).to_numpy(float)
+    blended_start = np.where(
+        np.isfinite(current_start) & np.isfinite(prior_start),
+        current_weight * current_start + (1 - current_weight) * prior_start,
+        np.where(np.isfinite(current_start), current_start, prior_start),
+    )
+    blended_minutes = np.where(
+        np.isfinite(current_minutes) & np.isfinite(prior_minutes),
+        current_weight * current_minutes + (1 - current_weight) * prior_minutes,
+        np.where(np.isfinite(current_minutes), current_minutes, prior_minutes),
+    )
+
+    # Backward-compatible in-season fallback when a caller has accumulated starts
+    # and minutes but no explicit team-match count or prior-season bridge.
+    if float(starts.max()) > 0:
+        fallback_start = np.clip(
+            np.where(starts > 0, mins / np.maximum(starts * 90.0, 1), starts90),
+            0.20,
+            0.98,
+        )
+        fallback_minutes = np.clip(avg_if_started * fallback_start, 0, 90)
     else:
-        hist_start_prob = pd.Series(0.62, index=df.index)
+        fallback_start = np.full(len(df), 0.62)
+        fallback_minutes = np.full(len(df), 58.0)
+    hist_start_prob = np.where(np.isfinite(blended_start), blended_start, fallback_start)
+    historic_expected_minutes = np.where(
+        np.isfinite(blended_minutes), blended_minutes, fallback_minutes
+    )
 
     pre_start_prob = np.where(pre_apps > 0, np.clip(pre_starts / np.maximum(pre_apps, 1), 0, 1), 0.50)
     pre_avg_minutes = np.where(pre_apps > 0, np.clip(pre_mins / np.maximum(pre_apps, 1), 0, 90), 55)
     preseason_signal = 0.60 * (90 * pre_start_prob) + 0.40 * pre_avg_minutes
-    historic_signal = 0.60 * avg_if_started + 0.40 * (90 * hist_start_prob)
+    historic_signal = 0.65 * historic_expected_minutes + 0.35 * (
+        avg_if_started * hist_start_prob
+    )
     has_preseason = pre_apps > 0
     base_minutes = np.where(has_preseason, 0.58 * preseason_signal + 0.42 * historic_signal, historic_signal)
     base_start = np.where(has_preseason, 0.58 * pre_start_prob + 0.42 * hist_start_prob, hist_start_prob)
@@ -61,7 +107,12 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     p60 = np.minimum(appearance, np.clip(0.15 * appearance + 0.85 * conditional_60 * start, 0, 1))
     p80 = np.minimum(p60, np.clip((np.asarray(expected, dtype=float) - 45) / 40, 0, 1) * start)
 
-    historic_evidence = np.clip((mins / 900.0) + (starts / 10.0), 0, 1)
+    prior_evidence = np.clip(_optional_series(df, "previous_starts").fillna(0) / 20.0, 0, 1)
+    historic_evidence = np.clip(
+        (mins / 900.0) + (starts / 10.0) + 0.70 * prior_evidence,
+        0,
+        1,
+    )
     preseason_evidence = np.clip(pre_apps / 4.0, 0, 1)
     availability_clarity = np.where(df.get("chance_of_playing_next_round", pd.Series(np.nan, index=df.index)).notna(), 0.95, 0.72)
     confidence = np.clip(
