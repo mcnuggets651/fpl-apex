@@ -10,12 +10,15 @@ on:
     paths:
       - ".github/workflows/pinnacle.yml"
       - "scripts/run_pinnacle.py"
+      - "src/apex_fpl/models/scenarios.py"
+      - "src/apex_fpl/optimisation/cvar.py"
       - "src/apex_fpl/optimisation/initial_horizon.py"
       - "src/apex_fpl/optimisation/stability.py"
       - "src/apex_fpl/services/team_state.py"
       - "tests/test_pinnacle_stress.py"
       - "tests/test_selection_regret.py"
       - "tests/test_pre_gw1_price_capture.py"
+      - "tests/test_stochastic_pinnacle.py"
 
 permissions:
   contents: write
@@ -27,7 +30,7 @@ concurrency:
 jobs:
   pinnacle:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,7 +79,7 @@ jobs:
             --horizon 8 \
             --output data/generated/airsenal.csv
 
-      - name: Generate enhanced full-horizon decision
+      - name: Generate enhanced full-horizon + CVaR decision
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
@@ -85,7 +88,13 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
-        run: python scripts/run_pinnacle.py --horizon 8 --force
+        run: |
+          python scripts/run_pinnacle.py \
+            --horizon 8 \
+            --stochastic-scenarios 256 \
+            --cvar-alpha 0.10 \
+            --cvar-weight 0.20 \
+            --force
 
       - name: Commit latest green Pinnacle snapshot
         shell: bash
