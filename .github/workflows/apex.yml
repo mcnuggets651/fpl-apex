@@ -28,6 +28,8 @@ jobs:
       - run: pytest -q
       - run: ruff check src tests scripts
       - run: python scripts/check_upstreams.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   live-run:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
