@@ -1,6 +1,6 @@
 # Using Apex directly from ChatGPT
 
-The repository now publishes a compact production snapshot specifically so ChatGPT can answer FPL questions from the current validated engine without needing access to GitHub Actions artifacts or an always-on server.
+The repository publishes a compact production snapshot so ChatGPT can answer FPL questions from the current validated engine without needing an always-on server.
 
 ## Files ChatGPT should read first
 
@@ -13,7 +13,8 @@ When asked for an Apex recommendation, inspect these repository files in this or
    - Haaland / no-Haaland / unrestricted scenarios;
    - current risk report;
    - top ranked player alternatives;
-   - transfer plan when a current squad is configured;
+   - personalised FPL entry state when published;
+   - transfer plan when a deadline squad is available;
    - independent solver parity when available.
 2. `data/generated/apex_latest.md`
    - human-readable explanation of the same run.
@@ -39,36 +40,51 @@ A result is a **full Apex recommendation** only if `apex_latest.json` says both:
 
 If either flag is false or the file is missing/stale, report the blocker and refresh the pipeline instead of presenting an old squad as current.
 
+## Personal FPL entry
+
+The 2026/27 pipeline is configured for FPL entry **63984**.
+
+Before the GW1 deadline the public FPL API does not expose the manager's live draft, so Apex correctly remains in initial-squad mode and builds the best team from scratch.
+
+After each deadline, Apex automatically reads the latest published 15-player squad for entry 63984, bank, captain/vice-captain, transfer/chip history and available free transfers. The decision horizon starts at the next open deadline rather than the already-locked Gameweek.
+
+The repository snapshot includes this under `personal_team` and the current multi-Gameweek recommendation under `transfer_plan`.
+
+Public FPL state is a deadline snapshot. It cannot be assumed to include a transfer the manager has already made privately for the next deadline. Therefore:
+
+- if the user asks **before making transfers**, use the public entry state directly;
+- if the user says they have already made a transfer after the latest deadline, use the stated change/manual override rather than silently analysing the older public squad.
+
+The pipeline also reconstructs FPL selling prices from the captured pre-GW1 price universe plus public transfer purchase costs where possible. The team-state report says whether those selling prices are exact or partly approximate.
+
 ## Typical prompts
 
 After the published snapshot exists, useful requests become simple:
 
 - `Give me the latest Apex team.`
+- `What is my best transfer this week?`
+- `Should I roll my free transfer?`
+- `Give me the best 3-GW transfer path.`
+- `Should I take a -4?`
+- `Should I wildcard now or wait?`
+- `Compare my current squad with the unrestricted Apex optimum.`
 - `Compare the current Haaland and no-Haaland structures.`
 - `Why is player X ahead of player Y?`
-- `What are the highest-risk picks in the Apex squad?`
-- `Show me the captain and vice-captain confidence.`
+- `Who should I captain and vice-captain?`
 - `What changed since the previous Apex run?`
-- `Which player is the best £6.0m midfielder alternative?`
-- `How much xP do I lose by forcing Haaland?`
 - `Does the independent solver agree with our team?`
 
 For player-vs-player questions, use the current top-player records, xP horizons, expected minutes, tactical role, role confidence, set-piece shares, source health and risk flags. Avoid choosing solely from raw total xP.
-
-## Current-squad transfer advice
-
-To unlock personalised transfer paths after the season starts, add the real 15 official FPL IDs to the private/local `data/manual/current_squad.csv` and bank/free-transfer state to `data/manual/team_state.yaml` in the execution environment. These files are gitignored intentionally.
-
-Until that explicit team state is supplied, Apex should be described as an initial-squad / wildcard-structure optimiser rather than pretending it knows the user's unrevealed transfers.
 
 ## Freshness cadence
 
 The GitHub automation is designed around:
 
 - FPL Core current-data pin refresh every six hours;
-- full Apex publish every six hours;
-- genuine AIrsenal refresh daily;
-- independent solver parity daily;
+- full personalised Apex refresh/publish every six hours;
+- genuine AIrsenal refresh inside production runs;
+- independent solver parity on its own validation cadence;
+- a dedicated final pre-GW1 run on 21 August 2026 morning;
 - manual reruns before a deadline after important press conferences or late injury news.
 
-The latest repository snapshot therefore becomes the durable interface between the model workers and ChatGPT.
+The latest repository snapshot is therefore the durable interface between the model workers and ChatGPT.
