@@ -26,6 +26,7 @@ class PublicEntryState:
     vice_captain_id: int | None
     active_chip: str | None
     transfers: list[dict[str, Any]]
+    chips_used: list[dict[str, Any]]
 
 
 def _parse_deadline(value: Any) -> datetime | None:
@@ -201,6 +202,11 @@ class OfficialEntryClient:
             for key in ("player_first_name", "player_last_name")
             if str(summary.get(key, "")).strip()
         )
+        chip_rows = [
+            dict(row)
+            for row in history.get("chips", [])
+            if isinstance(row, dict) and row.get("event") is not None
+        ]
         return PublicEntryState(
             entry_id=self.entry_id,
             entry_name=str(summary.get("name", f"Entry {self.entry_id}")),
@@ -214,4 +220,5 @@ class OfficialEntryClient:
             vice_captain_id=vice,
             active_chip=str(active_chip) if active_chip else None,
             transfers=transfers,
+            chips_used=chip_rows,
         )
