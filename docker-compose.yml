@@ -1,0 +1,9 @@
+services:
+  apex:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./reports:/app/reports
+      - ./data/cache:/app/data/cache
+      - ./data/manual:/app/data/manual

@@ -1,0 +1,3 @@
+# Add official club RSS/Atom feeds and trusted sources here when available.
+# The engine never treats a media feed as stronger than the official FPL player/team identity.
+feeds: []

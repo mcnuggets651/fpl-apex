@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets / local config
+.env
+*.pem
+*.key
+
+# Runtime outputs
+/data/raw/*
+!/data/raw/.gitkeep
+/data/cache/*
+!/data/cache/.gitkeep
+/reports/*
+!/reports/.gitkeep
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# Private/manual team state
+/data/manual/current_squad.csv
+/data/manual/team_state.yaml
+/data/manual/availability.csv
+/data/manual/player_context.csv

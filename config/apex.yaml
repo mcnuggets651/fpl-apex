@@ -1,0 +1,23 @@
+season: "2026-2027"
+horizon: 6
+budget: 100.0
+max_per_team: 3
+weights:
+  official_ep: 0.24
+  apex_model: 0.46
+  airsenal: 0.20
+  market: 0.10
+fixture_decay: 0.90
+bench_weights: [0.15, 0.08, 0.04, 0.02]
+risk_penalty: 0.15
+source_confidence:
+  official_fpl: 1.00
+  official_club: 0.95
+  fpl_core: 0.88
+  trusted_media: 0.78
+  market_odds: 0.82
+  manual: 0.70
+
+strict_apex: true
+require_airsenal: true
+require_core: true

@@ -1,0 +1,49 @@
+name: Apex FPL
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e '.[dev]'
+      - run: pytest -q
+      - run: ruff check src tests
+
+  live-run:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+      - name: Run Apex
+        env:
+          APEX_SEASON: "2026-2027"
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          AIRSENAL_PROJECTIONS_CSV: ${{ secrets.AIRSENAL_PROJECTIONS_CSV }}
+        run: apex-fpl run --scenario both --horizon 6
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apex-report
+          path: reports/
+          retention-days: 30
