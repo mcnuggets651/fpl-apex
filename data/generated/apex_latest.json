@@ -1,7 +1,7 @@
 {
   "contract": "apex-fpl-production-snapshot-v2-personalised",
-  "published_at": "2026-08-07T15:39:05.504755+00:00",
-  "generated_at": "2026-08-07T15:39:04.812160+00:00",
+  "published_at": "2026-08-07T20:26:16.256225+00:00",
+  "generated_at": "2026-08-07T20:26:15.643705+00:00",
   "gameweeks": [
     1,
     2,
@@ -15,11 +15,11 @@
   "safe_to_act": true,
   "full_apex_ready": true,
   "official_snapshot": {
-    "snapshot_id": "20260807T153853Z-3c762d6a",
-    "retrieved_at": "2026-08-07T15:38:53.681829+00:00",
+    "snapshot_id": "20260807T202604Z-dc62cece",
+    "retrieved_at": "2026-08-07T20:26:04.874344+00:00",
     "players": 573,
     "fixtures": 380,
-    "bootstrap_sha256": "9736187128775cd3b28359b09b6611072359a550ca55e7b7f8e9ca99881fa3c4",
+    "bootstrap_sha256": "1b95518a92aa74e6ceabc648f06f2ee4e8f76fde4f914d5a6b2f7c26443467e0",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
   "upstreams": {
@@ -70,16 +70,16 @@
     {
       "name": "official_fpl",
       "ok": true,
-      "detail": "573 players; 380 fixtures; snapshot=20260807T153853Z-3c762d6a",
-      "checked_at": "2026-08-07T15:38:53.718729+00:00",
+      "detail": "573 players; 380 fixtures; snapshot=20260807T202604Z-dc62cece",
+      "checked_at": "2026-08-07T20:26:04.910799+00:00",
       "configured": true,
-      "version": "973618712877"
+      "version": "1b95518a92aa"
     },
     {
       "name": "team_state",
       "ok": true,
       "detail": "FPL entry 63984 (mcnuggets) connected; no 15-player public deadline squad is published yet, so Apex remains in initial-squad mode; pre-GW1 price universe captured",
-      "checked_at": "2026-08-07T15:38:53.790109+00:00",
+      "checked_at": "2026-08-07T20:26:04.976186+00:00",
       "configured": true,
       "version": ""
     },
@@ -87,7 +87,7 @@
       "name": "fpl_core_playerstats",
       "ok": true,
       "detail": "570 rows",
-      "checked_at": "2026-08-07T15:38:54.075142+00:00",
+      "checked_at": "2026-08-07T20:26:05.126145+00:00",
       "configured": true,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
@@ -95,7 +95,7 @@
       "name": "fpl_core_previous_season",
       "ok": "True",
       "detail": "570 current official IDs; prior playing-time coverage=80.2%",
-      "checked_at": "2026-08-07T15:38:55.896587+00:00",
+      "checked_at": "2026-08-07T20:26:07.110299+00:00",
       "configured": true,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
@@ -103,7 +103,7 @@
       "name": "fpl_core_preseason",
       "ok": true,
       "detail": "604 player-match rows",
-      "checked_at": "2026-08-07T15:38:56.198163+00:00",
+      "checked_at": "2026-08-07T20:26:07.279967+00:00",
       "configured": true,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
@@ -111,7 +111,7 @@
       "name": "tactical_inference",
       "ok": true,
       "detail": "573 inferred player roles",
-      "checked_at": "2026-08-07T15:38:56.292986+00:00",
+      "checked_at": "2026-08-07T20:26:07.374316+00:00",
       "configured": true,
       "version": ""
     },
@@ -119,7 +119,7 @@
       "name": "manual_availability",
       "ok": true,
       "detail": "not configured",
-      "checked_at": "2026-08-07T15:38:56.293504+00:00",
+      "checked_at": "2026-08-07T20:26:07.374896+00:00",
       "configured": false,
       "version": ""
     },
@@ -127,15 +127,15 @@
       "name": "tactical_roles",
       "ok": true,
       "detail": "no verified overrides",
-      "checked_at": "2026-08-07T15:38:56.294130+00:00",
+      "checked_at": "2026-08-07T20:26:07.375512+00:00",
       "configured": false,
       "version": ""
     },
     {
       "name": "news_feeds",
       "ok": true,
-      "detail": "80 headlines; 13 player matches; 3 source(s) healthy",
-      "checked_at": "2026-08-07T15:38:57.658355+00:00",
+      "detail": "78 headlines; 11 player matches; 3 source(s) healthy",
+      "checked_at": "2026-08-07T20:26:08.413291+00:00",
       "configured": true,
       "version": ""
     },
@@ -143,7 +143,7 @@
       "name": "fpl_core_elo",
       "ok": true,
       "detail": "160 team-fixture Elo rows",
-      "checked_at": "2026-08-07T15:38:59.154760+00:00",
+      "checked_at": "2026-08-07T20:26:09.880995+00:00",
       "configured": true,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
@@ -151,15 +151,15 @@
       "name": "official_team_strength",
       "ok": false,
       "detail": "20/20 teams contain zero/non-positive strength values",
-      "checked_at": "2026-08-07T15:38:59.156650+00:00",
+      "checked_at": "2026-08-07T20:26:09.882974+00:00",
       "configured": true,
-      "version": "973618712877"
+      "version": "1b95518a92aa"
     },
     {
       "name": "understat_team_model",
       "ok": true,
       "detail": "1900 completed-match rows across 5 complete seasons; fixture coverage=160/160; promoted/unknown priors=3; mode=shadow; active season 2026 unavailable: UnderstatDataError: Understat EPL 2026 unavailable after 3 attempts; attempt 1: UnderstatDataError: Understat league payload has no teams object | attempt 2: UnderstatDataError: Understat league payload has no teams object | attempt 3: UnderstatDataError: Understat league payload has no teams object",
-      "checked_at": "2026-08-07T15:39:02.997400+00:00",
+      "checked_at": "2026-08-07T20:26:13.863526+00:00",
       "configured": true,
       "version": ""
     },
@@ -167,15 +167,15 @@
       "name": "fixture_model",
       "ok": true,
       "detail": "official strength unavailable (20/20 teams contain zero/non-positive strength values); using league goal baselines plus complete reconciled Elo coverage (160/160); Understat challenger mode=shadow",
-      "checked_at": "2026-08-07T15:39:02.997416+00:00",
+      "checked_at": "2026-08-07T20:26:13.863539+00:00",
       "configured": true,
       "version": ""
     },
     {
       "name": "airsenal",
       "ok": true,
-      "detail": "4584 rows; player coverage={1: 573, 2: 573, 3: 573, 4: 573, 5: 573, 6: 573, 7: 573, 8: 573}; age=0.0h; tag=d0d28b06-7f3f-4814-be37-2b38fd3e2ce4",
-      "checked_at": "2026-08-07T15:39:03.784935+00:00",
+      "detail": "4584 rows; player coverage={1: 573, 2: 573, 3: 573, 4: 573, 5: 573, 6: 573, 7: 573, 8: 573}; age=0.0h; tag=1afc2e90-8f08-466c-9aaa-cc79d1c83752",
+      "checked_at": "2026-08-07T20:26:14.637745+00:00",
       "configured": true,
       "version": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717"
     },
@@ -183,7 +183,7 @@
       "name": "market_odds",
       "ok": true,
       "detail": "optional endpoint not configured",
-      "checked_at": "2026-08-07T15:39:03.785335+00:00",
+      "checked_at": "2026-08-07T20:26:14.638135+00:00",
       "configured": false,
       "version": ""
     }
@@ -9343,7 +9343,7 @@
   ],
   "transfer_plan": null,
   "personal_team": {
-    "generated_at": "2026-08-07T15:38:53.789953+00:00",
+    "generated_at": "2026-08-07T20:26:04.976039+00:00",
     "configured": true,
     "ok": true,
     "detail": "FPL entry 63984 (mcnuggets) connected; no 15-player public deadline squad is published yet, so Apex remains in initial-squad mode; pre-GW1 price universe captured",
