@@ -7,6 +7,8 @@ from pathlib import Path
 
 from apex_fpl.services.pinnacle_readiness import evaluate_pinnacle_payload
 
+# Manual strict-production trigger: 2026-08-07T11:23+01:00
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fail unless an Apex Pinnacle snapshot is decision-ready.")
