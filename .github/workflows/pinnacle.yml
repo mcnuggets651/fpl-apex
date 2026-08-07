@@ -5,6 +5,17 @@ on:
   schedule:
     # Run after the core pin refresh / normal live pipeline cadence.
     - cron: "47 */6 * * *"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/pinnacle.yml"
+      - "scripts/run_pinnacle.py"
+      - "src/apex_fpl/optimisation/initial_horizon.py"
+      - "src/apex_fpl/optimisation/stability.py"
+      - "src/apex_fpl/services/team_state.py"
+      - "tests/test_pinnacle_stress.py"
+      - "tests/test_selection_regret.py"
+      - "tests/test_pre_gw1_price_capture.py"
 
 permissions:
   contents: write
