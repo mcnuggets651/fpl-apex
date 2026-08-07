@@ -19,7 +19,6 @@ def _pool():
                 }
             )
             pid += 1
-    # Competing third-forward slots. Raw EV prefers 15; risk-adjusted prefers 16.
     rows += [
         {
             "player_id": 15,
@@ -54,6 +53,9 @@ def test_default_horizon_solver_maximises_ensemble_mean_xp():
             for pid in players.player_id
         ]
     )
+    # Two incumbent forwards are clearly fixed. The final FWD slot is the only
+    # decision: raw EV prefers 15 while a risk-adjusted surface prefers 16.
+    projections.loc[projections.player_id.isin([13, 14]), ["xp", "risk_adjusted_xp"]] = [20.0, 20.0]
     projections.loc[projections.player_id == 15, ["xp", "risk_adjusted_xp"]] = [8.0, 3.0]
     projections.loc[projections.player_id == 16, ["xp", "risk_adjusted_xp"]] = [6.0, 5.0]
 
