@@ -1,2 +1,2 @@
-player_id,tactical_role,role_multiplier,role_confidence
-12,right_winger_primary_penalties,1.05,0.90
+player_id,tactical_role,role_multiplier,role_confidence,penalty_share,corners_share,direct_freekick_share,indirect_freekick_share,context_reason,source_url,updated_at
+12,right_winger_primary_penalties,1.05,0.90,0.90,0.35,0.20,0.35,Example only - replace with verified current evidence,https://example.com,2026-08-07T07:00:00Z
