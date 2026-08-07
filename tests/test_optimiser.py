@@ -21,6 +21,9 @@ def test_optimiser_returns_legal_squad():
     assert len(sol.squad)==15
     assert len(sol.xi)==11
     assert len(sol.captain)==1
+    assert len(sol.vice_captain)==1
+    assert int(sol.vice_captain.iloc[0].player_id) != int(sol.captain.iloc[0].player_id)
+    assert int(sol.vice_captain.iloc[0].player_id) in set(sol.xi.player_id)
     assert sol.squad.groupby("team_name").size().max() <= 3
     counts=sol.squad.groupby("position").size().to_dict()
     assert counts == {"DEF":5,"FWD":3,"GK":2,"MID":5}
