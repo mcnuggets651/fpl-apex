@@ -41,9 +41,11 @@ def _probability(bits: tuple[int, ...], probs: list[float]) -> float:
 
 
 def _legal_counts(counts: dict[str, int]) -> bool:
+    # Goalkeeper substitution is handled separately. For outfield autosubs FPL's
+    # formation test is 3+ DEF, 2+ MID and 1+ FWD (with the normal maxima).
     return all(
         XI_MIN[pos] <= int(counts.get(pos, 0)) <= XI_MAX[pos]
-        for pos in XI_MIN
+        for pos in ("DEF", "MID", "FWD")
     )
 
 
@@ -52,16 +54,11 @@ def _can_replace_slot(
     missing_slots: set[int],
     bench_position: str,
 ) -> int | None:
-    """Return a missing XI slot that can legally be replaced by the bench player.
-
-    FPL evaluates automatic substitutes against the submitted formation. Unfilled
-    no-show slots keep their submitted position while later bench priorities are
-    considered; this reproduces the important 3-DEF/1-FWD minimum constraints.
-    """
+    """Return a missing XI slot that can legally be replaced by the bench player."""
     for slot in sorted(missing_slots):
         trial = list(slot_positions)
         trial[slot] = bench_position
-        counts = {pos: trial.count(pos) for pos in XI_MIN}
+        counts = {pos: trial.count(pos) for pos in ("DEF", "MID", "FWD")}
         if _legal_counts(counts):
             return slot
     return None
@@ -78,11 +75,9 @@ def best_captain_vice(
 
     ``xp`` is unconditional expected FPL points, so it already includes the vice
     player's own appearance probability. The additional captain value for pair
-    (c, v) is therefore:
+    (c, v) is therefore
 
-      (multiplier-1) * [xP(c) + P(c no-show) * xP(v)]
-
-    under the same independent-appearance approximation used by the minutes layer.
+      (multiplier-1) * [xP(c) + P(c no-show) * xP(v)].
     """
     ids = [int(x) for x in pd.to_numeric(xi["player_id"], errors="coerce").dropna()]
     if len(ids) < 2:
@@ -116,8 +111,8 @@ def expected_autosub_points(
 
     The calculation enumerates binary appearance states for the ten starting
     outfielders and three outfield substitutes (8,192 states). This is small enough
-    to be exact and avoids the crude constant bench-weight approximation when the
-    final recommendation is presented.
+    to be exact and avoids the constant bench-weight approximation when the final
+    recommendation is presented.
     """
     xi_rows = xi.copy()
     bench_rows = bench.copy()
@@ -126,8 +121,16 @@ def expected_autosub_points(
         for row in pd.concat([xi_rows, bench_rows], ignore_index=True).itertuples(index=False)
     }
 
-    starting_gk = [int(r.player_id) for r in xi_rows.itertuples(index=False) if str(r.position) == "GK"]
-    bench_gk = [int(r.player_id) for r in bench_rows.itertuples(index=False) if str(r.position) == "GK"]
+    starting_gk = [
+        int(r.player_id)
+        for r in xi_rows.itertuples(index=False)
+        if str(r.position) == "GK"
+    ]
+    bench_gk = [
+        int(r.player_id)
+        for r in bench_rows.itertuples(index=False)
+        if str(r.position) == "GK"
+    ]
     if len(starting_gk) != 1 or len(bench_gk) != 1:
         raise ValueError("a legal FPL squad requires one starting and one bench goalkeeper")
 
@@ -147,7 +150,9 @@ def expected_autosub_points(
         if str(r.position) != "GK"
     ]
     if set(bench_out) != set(outfield_order) or len(outfield_order) != 3:
-        raise ValueError("outfield_order must contain the three outfield bench players exactly once")
+        raise ValueError(
+            "outfield_order must contain the three outfield bench players exactly once"
+        )
 
     starter_probs = [float(appearance.get(pid, 1.0)) for pid in starters]
     bench_probs = [float(appearance.get(pid, 1.0)) for pid in outfield_order]
@@ -199,10 +204,14 @@ def optimise_gameweek_mechanics(
     captain_multiplier: int = 2,
 ) -> GameweekMechanics:
     """Optimise captain/vice and bench order for a fixed legal XI/squad."""
-    squad_ids = set(pd.to_numeric(squad["player_id"], errors="coerce").dropna().astype(int))
+    squad_ids = set(
+        pd.to_numeric(squad["player_id"], errors="coerce").dropna().astype(int)
+    )
     xi_ids = set(pd.to_numeric(xi["player_id"], errors="coerce").dropna().astype(int))
     if len(squad_ids) != 15 or len(xi_ids) != 11 or not xi_ids.issubset(squad_ids):
-        raise ValueError("mechanics optimisation requires a legal 15-player squad and 11-player XI")
+        raise ValueError(
+            "mechanics optimisation requires a legal 15-player squad and 11-player XI"
+        )
 
     bench = squad[~squad["player_id"].astype(int).isin(xi_ids)].copy()
     outfield = [
