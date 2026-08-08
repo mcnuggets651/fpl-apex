@@ -8,6 +8,7 @@ on:
       - "scripts/validate_shrinkage.py"
       - "scripts/validate_shrinkage_blocked.py"
       - "scripts/validate_shrinkage_multiseason.py"
+      - "scripts/validate_shrinkage_continuous.py"
       - "tests/test_shrinkage.py"
       - ".github/workflows/shrinkage-validation.yml"
 
@@ -28,11 +29,11 @@ jobs:
         run: pip install -e '.[dev]'
       - name: Unit tests
         run: pytest -q tests/test_shrinkage.py
-      - name: Multi-season no-hindsight calibration and holdout validation
+      - name: Continuous-evidence refit and untouched holdout validation
         id: calibration
         continue-on-error: true
         run: |
-          python scripts/validate_shrinkage_multiseason.py \
+          python scripts/validate_shrinkage_continuous.py \
             --window-gws 4 \
             --force \
             --output reports/shrinkage_validation.json
@@ -45,6 +46,6 @@ jobs:
       - name: Enforce promotion gate
         if: steps.calibration.outcome != 'success'
         run: |
-          echo "Empirical-Bayes shrinkage did not pass the multi-season held-out promotion gate."
+          echo "Continuous-evidence shrinkage did not pass the refit/holdout promotion gate."
           echo "Inspect the shrinkage-validation artifact; do not promote the model."
           exit 1
