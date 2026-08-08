@@ -13,63 +13,59 @@
 
 The projection surface also carries uncertainty/disagreement information and floor/ceiling estimates.
 
-## Core modelling principle
-Forecast first, optimise second. Selection preferences must not be smuggled into the expected-points forecast.
-
-The canonical architecture is:
-1. team/fixture scoring environment;
-2. player-level expected minutes and event rates;
-3. FPL scoring translation into per-player/per-GW xPts;
-4. projection ensemble and uncertainty;
-5. legal squad optimisation on xPts;
-6. secondary/robustness decisions only after the xPts optimum is known.
-
-## Team / fixture scoring environment
-Apex may combine multiple fixture experts. Dixon-Coles/Poisson is a valid benchmark or ensemble component because it produces coherent goal-count and clean-sheet probabilities from attack/defence strengths with recency weighting. It is not accepted as the sole truth because early-season data, promoted clubs, tactical changes, transfers and lineup quality can make historical goals alone stale.
-
-Preferred hierarchy:
-- validated current fixture model / Elo evidence;
-- historical goals/xG with recency weighting;
-- Dixon-Coles/Poisson challenger or ensemble expert;
-- Understat and market-implied expectations when healthy and validated.
-
-No fixture expert may silently override official identities/fixtures.
-
-## Player attacking expectation
-Do not allocate team expected goals mechanically by one historical player share. Player attacking expectation should use direct player evidence where available:
-- xG/90 and xA/90
-- shots / shots in box
-- big chances
-- starts and minutes
-- tactical role / position
-- penalties and set-piece shares
-- opponent and team scoring environment
-- preseason/current-role evidence with appropriate uncertainty
-
-Team expected goals constrain the scoring environment, but player rates remain player-specific and may be shrunk toward team/role priors when sample sizes are weak.
-
-## Minutes model
-Expected minutes, start probability and appearance probability are first-class inputs. Rotation is represented as uncertainty, not hidden inside a single per-90 rate.
-
-## FPL scoring translation
-Translate player event probabilities into official position-specific scoring routes, including:
-- appearance points
-- goals and assists
-- clean sheets by position
-- goalkeeper saves
-- bonus/BPS prior
-- defensive contributions / DEFCON where applicable
-- cards, own-goal and other negative-event expectation where modelled reliably
-
 ## Pinnacle objective
-Primary objective: maximise expected FPL points on ensemble mean `xp`, subject to legal FPL squad, budget, club and formation constraints. The initial squad is optimised over the planning horizon with Gameweek-level XI/captain decisions. Risk is evaluated separately through stochastic scenarios/CVaR and exact selection regret.
+Primary objective: maximise expected FPL points on ensemble mean `xp`, subject to legal FPL squad, budget, club and formation constraints. Risk is evaluated separately through stochastic scenarios/CVaR and exact selection regret.
+
+## Minutes submodel
+Expected minutes is a first-class model input rather than a simple historic average. The current `minutes_profile` combines:
+- prior-season start probability and minutes per match
+- current-season team matches, starts and minutes
+- preseason appearances, starts and minutes
+- official availability/chance-of-playing status
+- manual and news availability multipliers
+- start, appearance, 60+ and 80+ probabilities
+- an explicit minutes-confidence score
+
+Minutes can be calibrated further, but it already has an independent modelling layer and directly scales attacking, clean-sheet, save and DEFCON expectation.
+
+## Player attacking rates
+The transparent player model currently uses direct player rates such as xG90/xA90 and blends preseason observations according to preseason minutes. This is preferable to allocating team xG by a single historical player share, but it still has a small-sample weakness.
+
+### Planned shrinkage upgrade
+Implement empirical-Bayes / partial-pooling shrinkage for player attacking rates:
+- derive position/role priors;
+- weight player-specific evidence by sample minutes / event volume;
+- shrink small-sample xG90/xA90/shooting rates toward the relevant prior;
+- retain more player-specific signal as evidence volume grows;
+- benchmark out of sample in the no-hindsight archive before promotion.
+
+This upgrade takes priority over adding a new Dixon-Coles fixture expert because rate uncertainty directly affects every player projection.
 
 ## Elite 10.0 secondary utility
-Elite is a secondary decision utility, never a new xP forecast.
+Elite is a secondary decision utility, not a new xP forecast.
 
 `Elite = .35 Attack + .20 Minutes + .15 Captaincy + .10 SetPieces + .10 Fixture + .05 BonusDefcon + .05 Value`
 
 Weights must sum to 1.0.
+
+### Lexicographic selection rule
+Elite uses an epsilon-constraint design:
+1. solve the relevant scenario for maximum raw Pinnacle `xp`;
+2. define a near-optimal raw-xP floor;
+3. maximise Elite utility only among solutions satisfying that floor;
+4. lock the selected 15;
+5. re-optimise XI, captain and vice on raw `xp`.
+
+The default regret allowance is 0.5%, but this is explicitly provisional rather than calibrated.
+
+### Epsilon sensitivity
+Every live Elite run must also report the unrestricted frontier at:
+- 0.00% raw-xP regret allowance
+- 0.25%
+- 0.50%
+- 1.00%
+
+For each point, report raw xP, exact regret, squad overlap/change versus maximum-EV and captain. If very small epsilon changes produce materially different squads, maximum-EV remains the canonical recommendation until no-hindsight evidence establishes a justified regret band.
 
 ### Attack — 35%
 Current implementation combines position-relative ranks of:
@@ -88,6 +84,8 @@ Current implementation combines position-relative ranks of:
 - 65% rank of canonical `xp`
 - 35% rank of 80th-percentile projection ceiling
 
+This is the explicit premium-ceiling correction, but it is only secondary to the raw-xP floor.
+
 ### Set pieces and penalties — 10%
 Raw role signal:
 - 60% penalty share
@@ -95,59 +93,37 @@ Raw role signal:
 - 15% direct free-kick share
 - 10% indirect free-kick share
 
-This is blended 75/25 with the set-piece xP prior.
+The current implementation blends this 75/25 with the set-piece xP prior.
 
 ### Fixture — 10%
-Position-relative rank of match-specific `xp_attack + xp_clean_sheet`. This reuses the transparent projection's fixture translation rather than inventing a second undocumented fixture forecast.
+Position-relative rank of match-specific `xp_attack + xp_clean_sheet`. This deliberately reuses the transparent projection's fixture translation rather than creating an undocumented second fixture model.
 
 ### Bonus + DEFCON — 5%
 Equal blend of position-relative bonus/BPS prior and defensive-contribution xP.
 
 ### Value — 5%
-Position-relative rank of `xp / price`. Value may resolve near-ties but cannot dominate primary selection.
+Position-relative rank of `xp / price`. This is intentionally small and only influences near-optimal xP solutions.
 
-## Lexicographic / epsilon-constraint Elite optimisation
-For each scenario (unrestricted, Haaland, no-Haaland):
-1. solve maximum raw Pinnacle xP;
-2. set `raw_xp_floor = max_xp_objective * (1 - epsilon)`;
-3. maximise Elite utility subject to the same legal constraints and `raw_xp_objective >= raw_xp_floor`;
-4. default provisional `epsilon = 0.005` (0.5% maximum raw-EV regret);
-5. lock the resulting 15-player squad and re-optimise XI, captain and vice on raw xP.
+## Team-strength experts
+The current production fixture layer uses validated internal strength evidence and fallback logic. A future Dixon-Coles/Poisson model should be added only as an independent expert/challenger, trained with recency weighting and evaluated out of sample.
 
-This is intentionally stronger than multiplying xP by an arbitrary utility modifier: it guarantees that Elite can only choose from genuinely near-optimal expected-points solutions.
+Do not naively average future fixture experts. Any combination of Dixon-Coles, xG-based ratings, Elo and market odds must use an explicit historically validated combination rule or stacking procedure. Until that exists, disagreement should be surfaced rather than hidden inside undocumented weights.
 
 ## Ownership
-Ownership/EO is not an input to the maximum-points objective. If an explicit rank-management mode is requested, ownership may be used as a documented tiebreak or separate game-theoretic layer. It must not lower the canonical point forecast merely to create a differential.
+Ownership/EO is not part of the canonical maximum-points objective. It may be introduced only in a separate rank-management mode or documented tiebreak where the optimisation target explicitly changes from points to rank utility.
 
-## Uncertainty simulation
-Do not sample each player's xPts independently. Scenarios should preserve realistic correlation, including:
-- team attacking/defensive shocks
-- opponent shocks
-- player persistence
-- minutes/start uncertainty
-- rotation/no-show states
-- correlated clean-sheet and scoring outcomes
-
-Compare candidate squads using expected value plus distributional evidence such as floor/ceiling, CVaR and decision persistence. Expected value remains primary unless a different explicit objective is chosen.
-
-## Planning horizon
-Use a rolling multi-Gameweek horizon (normally 6-8 GWs with decay). Re-solve after new information rather than committing to a static season-long path.
-
-## News and manual evidence
-Injury, team news, manager comments and transfer/tactical evidence enter as structured availability/minutes/role inputs. They are not substitutes for the statistical model and must be timestamped/verified where possible.
-
-## Chips
-Evaluate chips as scenario comparisons on the same xPts framework. Automation is allowed only after the opportunity-cost logic is calibrated; until then conservative/manual policy is acceptable.
+## Uncertainty
+Scenario simulation should preserve correlated football outcomes: team attack/defence, opponents, player returns and minutes/rotation are not independent. Apex uses correlated stochastic scenarios, CVaR and exact regret rather than independent draws around each player's mean.
 
 ## Required comparison
 For every Elite candidate report:
-- maximum raw-xP reference
+- maximum raw ensemble xP reference
 - Elite-selected squad raw xP
-- raw-xP regret and regret percentage
+- exact raw-xP regret
+- epsilon sensitivity frontier
 - captaincy difference
 - major minutes/role risks
-- Haaland/no-Haaland differences
-- stochastic robustness where material
+- scenario differences where material
 
 ## Promotion standard
-Do not change weights, epsilon, fixture experts or player-rate allocation because a preferred player is missing. Changes require a benchmark hypothesis, no-hindsight evaluation where possible, and a recorded decision in `APEX_DECISIONS.md`.
+Do not change weights, epsilon, priors or feature rules because a preferred player is missing. Changes require a benchmark hypothesis, no-hindsight evaluation where possible, and a recorded decision in `APEX_DECISIONS.md`.
