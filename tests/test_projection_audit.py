@@ -8,6 +8,7 @@ from apex_fpl.services.projection_audit import (
     build_fixture_shadow_comparison,
     build_player_shadow_comparison,
     build_projection_decomposition,
+    reprice_apex_for_fixture_shadow,
 )
 
 
@@ -108,6 +109,47 @@ def test_fixture_shadow_comparison_reports_deltas() -> None:
     audit = build_fixture_shadow_comparison(prod, shadow)
     assert np.isclose(audit.iloc[0]["delta_expected_team_goals"], 0.3)
     assert np.isclose(audit.iloc[0]["delta_clean_sheet_prob"], 0.1)
+
+
+def test_fixture_shadow_repricing_changes_only_fixture_sensitive_components() -> None:
+    projection = pd.DataFrame(
+        {
+            "player_id": [10],
+            "gw": [1],
+            "opponent": [2],
+            "is_home": [True],
+            "apex_xp": [5.0],
+            "xp_appearance": [1.5],
+            "xp_attack": [1.0],
+            "xp_clean_sheet": [1.0],
+            "xp_defensive_contribution": [0.5],
+            "xp_saves": [0.2],
+            "xp_bonus_prior": [0.5],
+            "xp_set_piece_prior": [0.3],
+        }
+    )
+    prod_fx = pd.DataFrame(
+        {
+            "gw": [1],
+            "team": [1],
+            "opponent": [2],
+            "is_home": [True],
+            "attack_multiplier": [1.0],
+            "clean_sheet_prob": [0.25],
+        }
+    )
+    shadow_fx = prod_fx.copy()
+    shadow_fx["attack_multiplier"] = 1.2
+    shadow_fx["clean_sheet_prob"] = 0.50
+    teams = pd.DataFrame({"player_id": [10], "team": [1]})
+
+    out = reprice_apex_for_fixture_shadow(projection, prod_fx, shadow_fx, teams)
+    row = out.iloc[0]
+    assert np.isclose(row["xp_attack"], 1.2)
+    assert np.isclose(row["xp_clean_sheet"], 2.0)
+    assert np.isclose(row["xp_defensive_contribution"], 0.5)
+    assert np.isclose(row["xp_bonus_prior"], 0.5)
+    assert np.isclose(row["apex_xp"], 6.2)
 
 
 def test_player_shadow_comparison_is_discounted() -> None:
