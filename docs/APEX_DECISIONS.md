@@ -58,3 +58,9 @@ The first Elite implementation optimised a percentile/rank utility directly. The
 
 ## D019 — Core team selection is probabilistic xPts-first
 Apex accepts the core principle that a probabilistic expected-points model feeding a legal optimiser is more defensible than a single weighted linear selection score. Team-strength modelling may use Dixon-Coles/Poisson as an independent component or challenger, but not as the sole fixture truth. Player attacking xPts should use direct player rates, expected minutes, role and set-piece evidence rather than allocating team xG mechanically by a single historical share. Ownership is excluded from the objective when the goal is maximum FPL points; it may be used only in an explicit rank-management mode or as a documented tiebreak. Uncertainty simulation must preserve team/player/minutes correlation rather than sampling players independently around a mean.
+
+## D020 — Small-sample player rates require shrinkage
+Direct xG90/xA90 and related player rates are not trustworthy merely because they are player-specific. Apex must shrink small-sample rates toward position/role priors with strength determined by evidence volume, especially for transfers, new roles and injury returns. The current preseason blend is not a substitute for formal sample-size shrinkage. This is the next projection-model upgrade ahead of adding a Dixon-Coles fixture expert.
+
+## D021 — Elite epsilon must be audited as a frontier
+The 0.5% Elite regret band is not treated as calibrated truth. Every live Elite run must expose unrestricted sensitivity at 0%, 0.25%, 0.5% and 1.0% raw-xP regret allowance. If materially different squads appear from tiny epsilon changes, maximum-EV remains the canonical recommendation until no-hindsight evidence supports a stable band. The sensitivity output is decision evidence, not another weighted forecast.
