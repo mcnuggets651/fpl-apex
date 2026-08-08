@@ -151,6 +151,54 @@ def main() -> None:
     ev_regret = float(max_ev.objective - elite.objective)
     ev_regret_pct = float(ev_regret / max_ev.objective) if max_ev.objective else 0.0
 
+    # The epsilon is deliberately provisional rather than treated as a magic
+    # calibrated constant. Generate a small Pareto/sensitivity frontier on the same
+    # live surface so the final decision can see whether Elite is stable or merely
+    # exploiting an arbitrary regret allowance. The configured 0.5% solution reuses
+    # the solve above; other rows add only the minimum extra solves needed.
+    epsilon_grid = (0.0, 0.0025, weights.max_ev_regret_fraction, 0.01)
+    epsilon_rows = []
+    for epsilon in dict.fromkeys(float(x) for x in epsilon_grid):
+        if abs(epsilon - weights.max_ev_regret_fraction) < 1e-12:
+            selection = elite_selection
+            recommendation = elite
+        else:
+            floor = float(max_ev.objective) * (1.0 - epsilon)
+            selection = optimise_initial_horizon(
+                **common,
+                projections=surface,
+                projection_col="elite_score",
+                reference_projection_col="xp",
+                min_reference_objective=floor,
+                display_projection_col="xp",
+            )
+            if selection.status != "Optimal":
+                raise SystemExit(f"Elite epsilon sensitivity solve failed: {epsilon:.4%}")
+            recommendation = optimise_initial_horizon(
+                **common,
+                projections=surface,
+                projection_col="xp",
+                locked=_ids(selection.squad),
+            )
+            if recommendation.status != "Optimal":
+                raise SystemExit(f"Elite epsilon raw-xP rescore failed: {epsilon:.4%}")
+
+        regret = float(max_ev.objective - recommendation.objective)
+        regret_pct = float(regret / max_ev.objective) if max_ev.objective else 0.0
+        epsilon_rows.append(
+            {
+                "epsilon": epsilon,
+                "raw_ev_floor": float(max_ev.objective) * (1.0 - epsilon),
+                "raw_ev_objective": float(recommendation.objective),
+                "raw_ev_regret": regret,
+                "raw_ev_regret_pct": regret_pct,
+                "squad_overlap_vs_max_ev": len(_ids(max_ev.squad) & _ids(recommendation.squad)),
+                "changed_player_ids_vs_max_ev": sorted(_ids(max_ev.squad) ^ _ids(recommendation.squad)),
+                "captain": _name(recommendation.captain),
+                "squad_player_ids": sorted(_ids(recommendation.squad)),
+            }
+        )
+
     payload = {
         "contract": "apex-elite-10-v3-lexicographic",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -162,6 +210,8 @@ def main() -> None:
             "secondary": "maximise Elite 35/20/15/10/10/5/5 utility",
             "method": "epsilon-constraint / lexicographic optimisation",
             "max_raw_ev_regret_fraction": weights.max_ev_regret_fraction,
+            "epsilon_is_calibrated": False,
+            "epsilon_sensitivity_grid": [row["epsilon"] for row in epsilon_rows],
             "unrestricted_raw_ev_floor": floors["unrestricted"],
             "deadline_lineup_and_captain_surface": "xp",
         },
@@ -186,6 +236,7 @@ def main() -> None:
             "raw_ev_regret_pct": ev_regret_pct,
             "configured_max_regret_pct": weights.max_ev_regret_fraction,
         },
+        "epsilon_sensitivity": epsilon_rows,
         "scenarios": {},
     }
 
@@ -223,6 +274,17 @@ def main() -> None:
             if c in elite.squad.columns
         ]
     ]
+    sensitivity_lines = [
+        "| epsilon | raw xP | regret | overlap vs max-EV | captain |",
+        "|---:|---:|---:|---:|:---|",
+    ]
+    for row in epsilon_rows:
+        sensitivity_lines.append(
+            f"| {row['epsilon']:.2%} | {row['raw_ev_objective']:.3f} | "
+            f"{row['raw_ev_regret_pct']:.2%} | {row['squad_overlap_vs_max_ev']}/15 | "
+            f"{row['captain'] or ''} |"
+        )
+
     lines = [
         "# Apex Elite 10.0 — xP-first lexicographic",
         "",
@@ -231,9 +293,10 @@ def main() -> None:
         "## Decision rule",
         "",
         "1. Maximise canonical Pinnacle ensemble xP.",
-        "2. Define a near-optimal xP band within 0.5% of that maximum.",
+        "2. Define a near-optimal xP band; the current 0.5% band is provisional, not calibrated.",
         "3. Inside that band, maximise the Elite 35/20/15/10/10/5/5 secondary utility.",
         "4. Re-optimise XI, captain and vice on raw xP for the selected 15.",
+        "5. Inspect the epsilon sensitivity frontier before treating Elite as superior to max-EV.",
         "",
         "## Elite unrestricted",
         "",
@@ -242,7 +305,11 @@ def main() -> None:
         f"Raw maximum-EV reference: **{max_ev.objective:.3f} xP**",
         f"Elite selected-squad raw EV: **{elite.objective:.3f} xP**",
         f"Raw-EV regret: **{ev_regret:.3f} xP ({ev_regret_pct:.2%})**",
-        f"Configured maximum regret: **{weights.max_ev_regret_fraction:.2%}**",
+        f"Configured provisional maximum regret: **{weights.max_ev_regret_fraction:.2%}**",
+        "",
+        "## Epsilon sensitivity — unrestricted",
+        "",
+        *sensitivity_lines,
         "",
         "### GW1 XI — raw xP",
         "",
@@ -254,7 +321,7 @@ def main() -> None:
         "",
         "## Interpretation",
         "",
-        "Elite no longer creates or modifies expected points. It is a secondary selector among squads that are already essentially maximum-EV. Haaland/no-Haaland use their own scenario-specific maximum-xP reference and floor.",
+        "Elite never creates or modifies expected points. It is a secondary selector among squads that are already near maximum-EV. If tiny changes in epsilon materially change the squad, maximum-EV remains the safer canonical recommendation until no-hindsight calibration establishes a regret band.",
     ]
     md_path = output_dir / "elite_latest.md"
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
