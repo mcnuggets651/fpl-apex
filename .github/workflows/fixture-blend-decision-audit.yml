@@ -1,0 +1,78 @@
+name: Apex Fixture Blend Decision Audit
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/run_fixture_blend_decision_audit.py"
+      - "scripts/validate_team_strength.py"
+      - "scripts/validate_team_strength_blend.py"
+      - ".github/workflows/fixture-blend-decision-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Apex + genuine AIrsenal worker
+        run: pip install -e '.[dev,airsenal]'
+      - name: Static check
+        run: ruff check scripts/run_fixture_blend_decision_audit.py
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/airsenal.db
+          key: airsenal-2627-${{ runner.os }}-v3
+      - name: Refresh genuine AIrsenal forecasts
+        env:
+          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
+        run: |
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            airsenal_setup_initial_db --fpl_team_id 1
+          fi
+          python scripts/update_airsenal_worker.py
+          python scripts/run_airsenal_worker.py \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output data/generated/airsenal.csv
+      - name: Run shadow-only max-EV decision impact audit
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/run_fixture_blend_decision_audit.py \
+            --horizon 8 \
+            --force \
+            --output reports/fixture_blend_decision_audit.json
+      - name: Verify shadow-only contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('reports/fixture_blend_decision_audit.json').read_text())
+          assert report['production_changed'] is False
+          assert report['canonical_publish_attempted'] is False
+          assert report['production']['status'] == 'Optimal'
+          assert report['shadow_blend']['status'] == 'Optimal'
+          assert len(report['production']['squad']) == 15
+          assert len(report['shadow_blend']['squad']) == 15
+          print('Shadow decision audit completed without changing production.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fixture-blend-decision-audit-${{ github.run_id }}
+          path: |
+            reports/fixture_blend_decision_audit.json
+            data/generated/airsenal.csv
+          retention-days: 30
