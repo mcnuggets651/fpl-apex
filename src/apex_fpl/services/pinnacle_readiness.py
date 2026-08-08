@@ -204,14 +204,20 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         if captain_row is None:
             blockers.append("published unrestricted captain absent from decision frequencies")
         else:
-            frequency = _number(captain_row, "captain_frequency")
-            if frequency is None:
-                blockers.append("published captain frequency is missing")
-            elif frequency < MIN_PUBLISHED_CAPTAIN_FREQUENCY:
-                blockers.append(
-                    f"published captain appears in only {frequency:.0%} of uncertainty "
-                    f"re-solves; production floor is {MIN_PUBLISHED_CAPTAIN_FREQUENCY:.0%}"
-                )
+            captain_frequency = _number(captain_row, "captain_frequency")
+            xi_frequency = _number(captain_row, "xi_frequency")
+            if captain_frequency is None or xi_frequency is None:
+                blockers.append("published captain conditional stability evidence is missing")
+            elif xi_frequency <= 0:
+                blockers.append("published captain never appears in XI across uncertainty re-solves")
+            else:
+                conditional_frequency = min(captain_frequency / xi_frequency, 1.0)
+                if conditional_frequency < MIN_PUBLISHED_CAPTAIN_FREQUENCY:
+                    blockers.append(
+                        f"published captain is chosen in only {conditional_frequency:.0%} of "
+                        "uncertainty re-solves where he remains in the XI; production floor is "
+                        f"{MIN_PUBLISHED_CAPTAIN_FREQUENCY:.0%}"
+                    )
 
     robust_compare = payload.get("robustness_comparison") or {}
     unrestricted = robust_compare.get("unrestricted") or {}
