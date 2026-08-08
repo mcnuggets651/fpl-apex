@@ -2,6 +2,26 @@
 
 Append concise records after meaningful project sessions. This is continuity context, not a replacement for Git history.
 
+## 2026-08-08 — Follow-up architecture audit: shrinkage, minutes and epsilon
+### Context
+A second review challenged four remaining areas before PR #11 merge: small-sample shrinkage, explicit minutes modelling, the arbitrary 0.5% Elite epsilon, and future fixture-ensemble combination rules.
+
+### Findings
+- Minutes is already a first-class Apex submodel. `minutes_profile` combines prior-season starts/minutes, current-season team matches, preseason starts/minutes, official availability, manual/news multipliers, start/appearance/60+/80+ probabilities and a confidence score. This is structurally sound enough for the current PR, though future calibration can improve it.
+- Formal empirical-Bayes shrinkage of player attacking rates is missing. The current projection blends established xG90/xA90/DEFCON inputs with preseason based on preseason minutes, but does not shrink small-sample player rates toward position/role priors. This is now the next projection-model priority.
+- The 0.5% Elite epsilon is not empirically calibrated. Rather than hide that, every live Elite run now emits an unrestricted epsilon frontier at 0%, 0.25%, 0.5% and 1.0% so the final decision can see how much raw xP is sacrificed and how much the squad changes.
+- Future fixture experts must not be naively averaged. Any Dixon-Coles/Poisson addition should enter as a benchmarked expert/challenger with an explicit historically validated combination rule.
+
+### PR #11 additions
+- Added live epsilon sensitivity frontier reporting.
+- Marked epsilon as uncalibrated in the Elite contract.
+- Added Project Brain decisions for sample-size shrinkage and epsilon sensitivity.
+- Added known-issue entries K009/K010.
+- Updated CURRENT_STATE with minutes-model status and the next modelling priority.
+
+### Decision
+Do not block the safer lexicographic selection architecture on an unrelated projection-model refactor. Merge PR #11 only if CI is green, but do not allow Elite to override maximum-EV in the final squad until the synchronized live epsilon frontier is inspected. The next modelling PR after the squad comparison is empirical-Bayes shrinkage for player attacking rates, ahead of Dixon-Coles.
+
 ## 2026-08-08 — Probabilistic xPts architecture review and Elite lexicographic correction
 ### Context
 Before merging PR #11, an alternative architecture was proposed: recency-weighted Dixon-Coles/Poisson team strength -> player xPts -> constrained optimiser -> ownership tiebreak -> Monte Carlo uncertainty. The proposal's core criticism of a single weighted selection score was valid.
@@ -21,7 +41,7 @@ Replace the proposed ±5% Elite xP modifier with a lexicographic / epsilon-const
 
 ### Implementation in PR #11
 - Stage 1 solves maximum canonical Pinnacle xP for unrestricted, Haaland and no-Haaland independently.
-- Stage 2 maximises Elite 35/20/15/10/10/5/5 utility only inside a 0.5% raw-xP regret band relative to that scenario's own maximum.
+- Stage 2 maximises Elite 35/20/15/10/10/5/5 utility only inside a provisional raw-xP regret band relative to that scenario's own maximum.
 - The selected 15 are then locked and XI/captain/vice are re-optimised on raw xP.
 - `optimise_initial_horizon` now supports a reference projection objective floor and a separate display projection surface.
 - Added tests proving a secondary objective cannot violate an exact raw-xP floor and can choose alternatives only when the floor permits it.
@@ -31,10 +51,11 @@ Replace the proposed ±5% Elite xP modifier with a lexicographic / epsilon-const
 ### Next actions
 1. Pass PR #11 CI under the lexicographic design.
 2. Merge only if green.
-3. Generate one synchronized live Pinnacle + Elite snapshot.
+3. Generate one synchronized live Pinnacle + Elite snapshot including epsilon sensitivity.
 4. Compare unrestricted, Haaland and no-Haaland on raw xP and stochastic robustness.
-5. Benchmark a Dixon-Coles/Poisson fixture expert against the existing fixture ensemble as a separate future modelling improvement, not a precondition for the immediate squad.
-6. Publish the final Apex squad only after the synchronized comparison.
+5. Add empirical-Bayes player-rate shrinkage as the next model upgrade.
+6. Benchmark a Dixon-Coles/Poisson fixture expert later as a separate improvement.
+7. Publish the final Apex squad only after the synchronized comparison.
 
 ## 2026-08-08 — First Elite live-output diagnosis
 ### Context
