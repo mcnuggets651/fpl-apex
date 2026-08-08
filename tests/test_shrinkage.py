@@ -55,6 +55,14 @@ def _players() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def test_validated_prior_minute_defaults_are_pinned() -> None:
+    assert RateShrinkageConfig().prior_minutes == {
+        "xg90": 540.0,
+        "xa90": 360.0,
+        "defcon90": 180.0,
+    }
+
+
 def test_low_minute_outlier_is_shrunk_more_than_established_player() -> None:
     players = _players()
     cfg = RateShrinkageConfig(
