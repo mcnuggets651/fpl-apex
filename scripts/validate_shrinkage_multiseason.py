@@ -191,10 +191,10 @@ def main() -> None:
 
     settings = load_settings()
     pins = load_upstream_pins(settings.upstreams_lock_path)
-    vaastav_ref = str(pins.get("vaastav", {}).get("commit", ""))
+    vaastav_ref = str(pins.get("vaastav_history", {}).get("commit", ""))
     core_ref = str(pins.get("fpl_core_insights", {}).get("commit", "")) or "main"
     if not vaastav_ref:
-        raise RuntimeError("pinned vaastav revision is required for multi-season shrinkage validation")
+        raise RuntimeError("pinned vaastav history revision is required for multi-season shrinkage validation")
 
     seasons = (*TRAIN_SEASONS, *HOLDOUT_SEASONS)
     frames = {season: _vaastav_season_frame(season, vaastav_ref) for season in seasons}
