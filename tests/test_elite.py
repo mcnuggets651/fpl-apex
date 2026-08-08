@@ -92,10 +92,20 @@ def test_elite_prefers_high_ceiling_premium_over_cheaper_efficiency() -> None:
     assert premium["elite_attack_score"] > cheap["elite_attack_score"]
     assert premium["elite_captaincy_score"] > cheap["elite_captaincy_score"]
     assert premium["elite_value_score"] < cheap["elite_value_score"]
-    assert premium["elite_weight_profile"] == "35/20/15/10/10/5/5"
+    assert premium["elite_weight_profile"] == "35/20/15/10/10/5/5; xp-anchor +/-5%"
+    assert premium["elite_decision_xp"] > premium["xp"]
+    assert cheap["elite_decision_xp"] < cheap["xp"]
 
 
 def test_elite_surface_preserves_raw_expected_points() -> None:
     projections = _projections()
     out = build_elite_projection_surface(_players(), projections)
     assert out["xp"].tolist() == projections["xp"].tolist()
+
+
+def test_elite_decision_xp_is_bounded_to_five_percent_of_raw_xp() -> None:
+    out = build_elite_projection_surface(_players(), _projections())
+    lower = out["xp"] * 0.95
+    upper = out["xp"] * 1.05
+    assert (out["elite_decision_xp"] >= lower - 1e-12).all()
+    assert (out["elite_decision_xp"] <= upper + 1e-12).all()
