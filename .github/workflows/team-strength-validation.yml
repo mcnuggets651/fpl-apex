@@ -7,6 +7,7 @@ on:
       - "src/apex_fpl/models/team_goals.py"
       - "src/apex_fpl/data/understat.py"
       - "scripts/validate_team_strength.py"
+      - "scripts/validate_team_strength_blend.py"
       - ".github/workflows/team-strength-validation.yml"
 
 permissions:
@@ -15,7 +16,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,20 +26,38 @@ jobs:
       - name: Install Apex test environment
         run: pip install -e '.[dev]'
       - name: Static checks
-        run: ruff check scripts/validate_team_strength.py src/apex_fpl/models/team_goals.py src/apex_fpl/data/understat.py
-      - name: No-hindsight team-strength validation
-        id: validation
+        run: |
+          ruff check \
+            scripts/validate_team_strength.py \
+            scripts/validate_team_strength_blend.py \
+            src/apex_fpl/models/team_goals.py \
+            src/apex_fpl/data/understat.py
+      - name: Replacement evidence
+        id: replacement
         continue-on-error: true
         run: python scripts/validate_team_strength.py --output reports/team_strength_validation.json
+      - name: Combination evidence
+        run: python scripts/validate_team_strength_blend.py --output reports/team_strength_blend_validation.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: team-strength-validation-${{ github.run_id }}
-          path: reports/team_strength_validation.json
+          path: |
+            reports/team_strength_validation.json
+            reports/team_strength_blend_validation.json
           retention-days: 30
-      - name: Enforce challenger evidence gate
-        if: steps.validation.outcome != 'success'
+      - name: Enforce evidence integrity
         run: |
-          echo "Understat team-strength challenger did not beat the neutral fallback on both untouched holdouts."
-          echo "Do not promote or blend it into production."
-          exit 1
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          replacement = json.loads(Path('reports/team_strength_validation.json').read_text())
+          blend = json.loads(Path('reports/team_strength_blend_validation.json').read_text())
+          assert replacement['challenger_validated_vs_neutral_fallback'] is True
+          assert replacement['production_elo_head_to_head_2025_26']['n_matches'] >= 300
+          assert blend['holdout_n_matches'] >= 150
+          assert replacement['production_changed'] is False
+          assert blend['production_changed'] is False
+          print('Evidence generated successfully; production promotion remains a report-level decision.')
+          PY
