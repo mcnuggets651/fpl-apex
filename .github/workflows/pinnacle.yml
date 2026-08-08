@@ -71,6 +71,7 @@ jobs:
             --output data/generated/airsenal.csv
 
       - name: Generate Pinnacle decision candidate
+        id: generate_candidate
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
@@ -79,13 +80,55 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        shell: bash
         run: |
+          set +e
           python scripts/run_pinnacle.py \
             --horizon 8 \
             --stochastic-scenarios 256 \
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
             --force
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "candidate_generated=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # run_pinnacle intentionally writes a complete candidate before exiting
+          # non-zero when the strict football/data readiness gate is blocked.
+          # Accept only that exact state. Any genuine crash, missing output or
+          # malformed payload must still fail the workflow.
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          path = Path("data/generated/pinnacle_latest.json")
+          if not path.exists():
+              print("Pinnacle runner failed before producing a candidate snapshot", file=sys.stderr)
+              raise SystemExit(1)
+
+          try:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+          except Exception as exc:
+              print(f"Pinnacle candidate is unreadable: {exc}", file=sys.stderr)
+              raise SystemExit(1)
+
+          gate = payload.get("pinnacle_gate")
+          blockers = gate.get("blockers") if isinstance(gate, dict) else None
+          if payload.get("pinnacle_ready") is False and blockers:
+              print("Pinnacle runner completed but strict decision readiness is blocked:")
+              for blocker in blockers:
+                  print(f"- {blocker}")
+              raise SystemExit(0)
+
+          print("Pinnacle runner exited non-zero for a reason other than an explicit readiness block", file=sys.stderr)
+          raise SystemExit(1)
+          PY
+          echo "candidate_generated=true" >> "$GITHUB_OUTPUT"
 
       # Decision readiness is deliberately distinct from software/system health.
       # A valid model run may correctly conclude that current evidence is too
