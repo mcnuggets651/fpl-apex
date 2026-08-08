@@ -6,11 +6,14 @@
 - Repository: `mcnuggets651/fpl-apex`
 - Production branch: `main`
 - Personal entry: `63984`
-- PR #11 now contains the unified recommendation architecture and is under CI validation.
-- Prior-season evidence/captain-stability blockers were resolved by PR #10 and are green on main.
+- PR #11 is merged. **Apex Unified** is now the sole production team-selection path.
+- Apex Unified run #36 completed successfully at system level but correctly withheld a recommendation because Pinnacle readiness reported the prior-season source unhealthy.
+- The run artifact proves the underlying prior-season evidence is actually healthy: 570 current official IDs with **80.2% prior playing-time coverage**, above the 70% production floor.
+- Root cause is a type-normalisation bug: `previous_coverage >= 0.70` can produce `numpy.bool_(True)`, which was serialized as the string `"True"`; the readiness gate deliberately accepts only native boolean `true`.
+- Fix branch: `fix/source-status-native-bools`. The fix normalises source status booleans at the provenance boundary and adds regression tests. No readiness threshold is being weakened.
 
 ## One canonical approach
-Apex now has one intended user-facing decision path:
+Apex has one user-facing decision path:
 
 **canonical xP → maximum-EV legal optimiser → correlated robustness diagnostics → epsilon-audited Elite secondary selector → maximum-EV fallback if Elite is unstable → exact GW mechanics → one recommendation.**
 
@@ -25,6 +28,15 @@ python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0
 ```
 
 Pinnacle, Elite, CVaR, regret and solver-parity outputs are internal diagnostics/challengers only. Historical standalone selection philosophies are archived under `archive/selection_approaches/`.
+
+## Latest unified selection evidence
+The first post-merge Elite epsilon frontier was unstable, so the canonical selector correctly chose **maximum_ev** rather than Elite:
+- 0.00% epsilon: 15/15 overlap vs max-EV; captain B. Fernandes
+- 0.25% epsilon: 12/15 overlap; captain B. Fernandes
+- 0.50% epsilon: 11/15 overlap; captain B. Fernandes
+- 1.00% epsilon: 11/15 overlap; captain B. Fernandes
+
+This is expected behaviour under the canonical convergence rule; Elite instability is not the current readiness blocker.
 
 ## Selection policy
 1. `xp` is the canonical expected-points forecast.
@@ -41,7 +53,7 @@ Pinnacle, Elite, CVaR, regret and solver-parity outputs are internal diagnostics
 Expected minutes is already a first-class Apex submodel. `minutes_profile` combines prior-season start/minute evidence, current-season team matches, preseason starts/minutes, official availability, manual/news multipliers and explicit start/appearance/60+/80+ probabilities with a minutes-confidence output.
 
 ## Player-rate model gap
-The current projection uses direct xG90/xA90/DEFCON rates and a preseason blend, but it does not yet formally shrink small samples toward role/position priors. Empirical-Bayes / partial-pooling shrinkage is the next projection-model upgrade.
+The current projection uses direct xG90/xA90/DEFCON rates and a preseason blend, but it does not yet formally shrink small samples toward role/position priors. Empirical-Bayes / partial-pooling shrinkage is the next projection-model upgrade after the first ready canonical baseline is captured.
 
 ## Fixture model direction
 Dixon-Coles/Poisson remains a planned independent fixture expert/challenger. It should be historically validated and combined by an explicit calibrated rule rather than naively averaged into the fixture layer.
@@ -50,14 +62,14 @@ Dixon-Coles/Poisson remains a planned independent fixture expert/challenger. It 
 Ownership/effective ownership is 0% of the pure maximum-points objective. It may only be used in a separately named rank-management mode.
 
 ## Immediate next action
-1. Pass CI for the unified PR #11.
-2. Merge PR #11 if green.
-3. Trigger **Apex Unified** once on `main`.
-4. Confirm `apex_recommendation_latest.json` is generated from one matched official snapshot and has `ready_to_act: true`.
-5. Read that file as the only team recommendation.
-6. Inspect epsilon convergence, Haaland/no-Haaland and robustness diagnostics to explain the choice—not to create competing teams.
-7. Compare the canonical team to the user's private screenshot draft if still current.
-8. Then implement empirical-Bayes player-rate shrinkage as the next modelling PR and benchmark whether it changes the canonical squad.
+1. Merge the native-boolean source-status fix after CI is green.
+2. Trigger **Apex Unified** again on `main`.
+3. Confirm the prior-season source is emitted with native `ok: true` and Pinnacle readiness passes.
+4. Confirm `apex_recommendation_latest.json` has `ready_to_act: true` and matched Official FPL hashes.
+5. Read that file as the first canonical Apex baseline team.
+6. Record squad, XI, captain, vice, bench order, raw xP, Haaland/no-Haaland diagnostics, epsilon frontier and robustness.
+7. Then implement empirical-Bayes player-rate shrinkage as a separate modelling PR.
+8. Rerun the identical unified pipeline and epsilon frontier and compare pre/post shrinkage before promotion.
 
 ## Current known boundaries
 - Public FPL cannot expose an unpublished pre-deadline private draft; a screenshot/manual override can be newer than entry `63984`'s public state.
@@ -67,8 +79,8 @@ Ownership/effective ownership is 0% of the pure maximum-points objective. It may
 - Empirical-Bayes player-rate shrinkage is not yet implemented.
 
 ## Status labels
-- **Production now:** current Pinnacle/data/robustness stack on `main`.
-- **Validation now:** PR #11 unified single-recommendation contract.
-- **Next after merge:** one live Apex Unified run and final squad readout.
-- **Next modelling upgrade:** empirical-Bayes shrinkage for player rates.
+- **Production now:** unified one-recommendation architecture on `main`.
+- **Bug fix now:** native boolean normalisation for source-health provenance.
+- **Next production milestone:** first `ready_to_act=true` canonical recommendation.
+- **Next modelling upgrade:** empirical-Bayes shrinkage for player rates, followed by pre/post frontier validation.
 - **Later benchmark:** Dixon-Coles/Poisson fixture expert.

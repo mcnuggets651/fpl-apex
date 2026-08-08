@@ -30,5 +30,8 @@ The current transparent player projection blends established rate inputs with pr
 ## K010 — Elite epsilon is provisional, not calibrated
 The 0.5% maximum raw-xP regret band is an engineering starting point, not a learned constant. Live Elite output must report a sensitivity frontier at 0%, 0.25%, 0.5% and 1.0%. If tiny epsilon changes materially alter the squad, maximum-EV remains canonical until no-hindsight calibration establishes a justified band.
 
+## K011 — Source health booleans must be native Python booleans
+**Status: fix in progress, 2026-08-08.** The first post-PR #11 Apex Unified run showed 80.2% prior-season playing-time coverage but still blocked `fpl_core_previous_season` as unhealthy. Root cause: a pandas/NumPy comparison produced `numpy.bool_(True)`; the provenance dataclass passed it through unchanged and `json.dumps(..., default=str)` serialized it as the string `"True"`. The strict readiness gate correctly rejected that string. Fix at the provenance boundary by normalising `ok` and `configured` to native Python `bool`, with regression tests. Do not lower the 70% evidence floor or loosen readiness semantics.
+
 ## Resolution discipline
 When an issue is fixed, retain the entry and mark it resolved with date, implementation and benchmark evidence rather than deleting it.
