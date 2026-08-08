@@ -1,7 +1,7 @@
 # Apex Unified Recommendation
 
-Generated: 2026-08-08T14:26:52.507410+00:00
-Official surface: `d07153fff03f` / `a478e20d030d`
+Generated: 2026-08-08T20:04:51.218582+00:00
+Official surface: `09218f1cdc7d` / `a478e20d030d`
 Canonical selector: **maximum_ev**
 Reason: Elite epsilon frontier did not pass; maximum-EV is the mandatory fallback
 
