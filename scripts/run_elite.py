@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Apex Elite 10.0 as a lexicographic xP-first decision layer."""
+"""Run Apex Elite 10.0 as a lexicographic xP-first diagnostic layer."""
 from __future__ import annotations
 
 import argparse
@@ -14,6 +14,7 @@ from apex_fpl.data.http import CachedHttp
 from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.models.elite import EliteWeights, build_elite_projection_surface
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
+from apex_fpl.optimisation.mechanics import optimise_gameweek_mechanics
 from apex_fpl.services.decision_eligibility import captain_eligible_ids
 from apex_fpl.services.pipeline import run_pipeline
 
@@ -83,6 +84,42 @@ def _convergence(epsilon_rows: list[dict], max_ev_captain: str | None) -> dict:
         "evaluated": evaluated,
         "fallback": "elite" if converged else "maximum_ev",
     }
+
+
+def _gw1_xp(projections: pd.DataFrame, gw: int) -> dict[int, float]:
+    d = projections[projections["gw"] == int(gw)]
+    grouped = d.groupby("player_id")["xp"].sum()
+    return {int(pid): float(value) for pid, value in grouped.items()}
+
+
+def _appearance(players: pd.DataFrame) -> dict[int, float]:
+    probs = pd.to_numeric(
+        players.get("appearance_probability", pd.Series(1.0, index=players.index)),
+        errors="coerce",
+    ).fillna(1.0)
+    return {
+        int(pid): float(prob)
+        for pid, prob in zip(players["player_id"].astype(int), probs)
+    }
+
+
+def _mechanics(sol, projections, gw, players, captain_eligible) -> dict:
+    result = optimise_gameweek_mechanics(
+        sol.squad,
+        sol.xi,
+        _gw1_xp(projections, gw),
+        _appearance(players),
+        captain_eligible=captain_eligible,
+    ).to_dict()
+    names = {
+        int(row.player_id): str(row.web_name)
+        for row in players[["player_id", "web_name"]].drop_duplicates("player_id").itertuples(index=False)
+    }
+    result["captain_name"] = names.get(result["captain_id"], str(result["captain_id"]))
+    result["vice_captain_name"] = names.get(result["vice_captain_id"], str(result["vice_captain_id"]))
+    result["bench_gk_name"] = names.get(result["bench_gk_id"], str(result["bench_gk_id"]))
+    result["outfield_bench_order_names"] = [names.get(pid, str(pid)) for pid in result["outfield_bench_order"]]
+    return result
 
 
 def main() -> None:
@@ -221,13 +258,20 @@ def main() -> None:
         )
 
     convergence = _convergence(epsilon_rows, _name(max_ev.captain))
+    mechanics = {
+        name: _mechanics(sol, surface, out.gameweeks[0], players, captain_eligible)
+        for name, sol in final.items()
+    }
+    max_ev_mechanics = _mechanics(max_ev, surface, out.gameweeks[0], players, captain_eligible)
 
     payload = {
-        "contract": "apex-elite-10-v3-lexicographic",
+        "contract": "apex-elite-10-v4-diagnostic",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "safe_to_act": bool(out.safety.safe_to_act),
         "full_apex_ready": bool(out.safety.full_apex_ready),
+        "official_snapshot": out.snapshot,
         "gameweeks": [int(gw) for gw in out.gameweeks],
+        "role": "diagnostic_secondary_selector_not_user_facing",
         "objective": {
             "primary": "maximise canonical Pinnacle ensemble xp",
             "secondary": "maximise Elite 35/20/15/10/10/5/5 utility",
@@ -248,8 +292,10 @@ def main() -> None:
             "price_efficiency": weights.value,
         },
         "maximum_ev_reference": _solution(max_ev),
+        "maximum_ev_gw1_mechanics": max_ev_mechanics,
         "elite_secondary_selection": _solution(elite_selection),
         "elite": _solution(elite),
+        "elite_gw1_mechanics": mechanics["unrestricted"],
         "elite_vs_max_ev": {
             "squad_overlap": len(_ids(max_ev.squad) & _ids(elite.squad)),
             "changed_player_ids": sorted(_ids(max_ev.squad) ^ _ids(elite.squad)),
@@ -274,6 +320,7 @@ def main() -> None:
             "maximum_ev_reference": _solution(reference),
             "elite_secondary_selection": _solution(selections[name]),
             "elite": _solution(recommendation),
+            "gw1_mechanics": mechanics[name],
             "raw_ev_floor": floors[name],
             "raw_ev_regret": regret,
             "raw_ev_regret_pct": regret_pct,
@@ -283,8 +330,6 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "elite_latest.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    xi = elite.xi[[c for c in ["web_name", "team_name", "position", "price", "gw1_xp"] if c in elite.xi.columns]]
-    squad = elite.squad[[c for c in ["web_name", "team_name", "position", "price", "gw1_xp"] if c in elite.squad.columns]]
     sensitivity_lines = [
         "| epsilon | raw xP | regret | overlap vs max-EV | captain |",
         "|---:|---:|---:|---:|:---|",
@@ -294,46 +339,18 @@ def main() -> None:
             f"| {row['epsilon']:.2%} | {row['raw_ev_objective']:.3f} | {row['raw_ev_regret_pct']:.2%} | "
             f"{row['squad_overlap_vs_max_ev']}/15 | {row['captain'] or ''} |"
         )
-
     lines = [
-        "# Apex Elite 10.0 — xP-first lexicographic",
+        "# Apex Elite diagnostic — xP-first lexicographic",
+        "",
+        "This file is diagnostic evidence. It is not the user-facing Apex recommendation.",
         "",
         f"Generated: {payload['generated_at']}",
-        "",
-        "## Decision rule",
-        "",
-        "1. Maximise canonical Pinnacle ensemble xP.",
-        "2. Define a near-optimal xP band; the current 0.5% band is provisional, not calibrated.",
-        "3. Inside that band, maximise the Elite 35/20/15/10/10/5/5 secondary utility.",
-        "4. Re-optimise XI, captain and vice on raw xP for the selected 15.",
-        "5. Elite is allowed to influence the canonical recommendation only if 0.25%, 0.50% and 1.00% each retain >=13/15 max-EV players and the same captain as max-EV.",
-        "",
-        "## Elite unrestricted",
-        "",
-        f"Captain: **{_name(elite.captain)}**",
-        f"Vice-captain: **{_name(elite.vice_captain)}**",
-        f"Raw maximum-EV reference: **{max_ev.objective:.3f} xP**",
-        f"Elite selected-squad raw EV: **{elite.objective:.3f} xP**",
-        f"Raw-EV regret: **{ev_regret:.3f} xP ({ev_regret_pct:.2%})**",
-        f"Configured provisional maximum regret: **{weights.max_ev_regret_fraction:.2%}**",
         f"Epsilon frontier convergence: **{'PASS' if convergence['converged'] else 'FAIL'}**",
-        f"Canonical recommendation from this layer: **{convergence['fallback']}**",
+        f"Selector outcome: **{convergence['fallback']}**",
         "",
-        "## Epsilon sensitivity — unrestricted",
+        "## Epsilon sensitivity",
         "",
         *sensitivity_lines,
-        "",
-        "### GW1 XI — raw xP",
-        "",
-        xi.to_markdown(index=False),
-        "",
-        "### 15-player squad — raw xP",
-        "",
-        squad.to_markdown(index=False),
-        "",
-        "## Interpretation",
-        "",
-        "Elite never creates or modifies expected points. The convergence rule is explicit to prevent subjective eyeballing: if the frontier fails, maximum-EV remains canonical until calibration justifies otherwise.",
     ]
     md_path = output_dir / "elite_latest.md"
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
