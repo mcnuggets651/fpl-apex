@@ -34,6 +34,42 @@ class FPLCoreClient:
     def players(self, force: bool = False) -> pd.DataFrame:
         return self._csv("players.csv", force)
 
+    @staticmethod
+    def _stable_identity_rows(players: pd.DataFrame, label: str) -> pd.DataFrame:
+        """Return one unambiguous player_code -> player_id identity row.
+
+        FPL Core occasionally contains repeated identical identity rows. Those are
+        harmless, but a true conflicting mapping must never be silently resolved.
+        Normalising here keeps the prior-season bridge one-to-one without weakening
+        identity validation.
+        """
+        required = {"player_code", "player_id"}
+        if not required.issubset(players.columns):
+            raise ValueError(f"{label} FPL Core players.csv lacks stable player_code/player_id mapping")
+
+        identity = players[["player_code", "player_id"]].copy()
+        identity["player_id"] = pd.to_numeric(identity["player_id"], errors="coerce")
+        identity = identity.dropna(subset=["player_code", "player_id"])
+        identity["player_id"] = identity["player_id"].astype(int)
+
+        code_conflicts = identity.groupby("player_code")["player_id"].nunique()
+        bad_codes = code_conflicts[code_conflicts > 1]
+        if not bad_codes.empty:
+            raise ValueError(
+                f"{label} FPL Core contains conflicting player_code mappings: "
+                + ", ".join(map(str, bad_codes.index[:10]))
+            )
+
+        id_conflicts = identity.groupby("player_id")["player_code"].nunique()
+        bad_ids = id_conflicts[id_conflicts > 1]
+        if not bad_ids.empty:
+            raise ValueError(
+                f"{label} FPL Core contains conflicting player_id mappings: "
+                + ", ".join(map(str, bad_ids.index[:10]))
+            )
+
+        return identity.drop_duplicates(["player_code", "player_id"]).reset_index(drop=True)
+
     def previous_season_playerstats(self, force: bool = False) -> pd.DataFrame:
         """Map prior-season playing time to current official IDs via stable codes."""
         parts = [int(value) for value in str(self.season).replace("/", "-").split("-")]
@@ -41,14 +77,9 @@ class FPLCoreClient:
             raise ValueError(f"unsupported FPL season format: {self.season!r}")
         previous = f"{parts[0] - 1}-{parts[1] - 1}"
         prior_client = FPLCoreClient(self.http, previous, ref=self.ref)
-        current_players = self.players(force=force)
-        prior_players = prior_client.players(force=force)
+        current_players = self._stable_identity_rows(self.players(force=force), "current-season")
+        prior_players = self._stable_identity_rows(prior_client.players(force=force), "prior-season")
         prior_stats = prior_client.playerstats(force=force)
-        identity = {"player_code", "player_id"}
-        if not identity.issubset(current_players.columns) or not identity.issubset(
-            prior_players.columns
-        ):
-            raise ValueError("FPL Core players.csv lacks stable player_code/player_id mapping")
 
         available = [
             col
@@ -63,7 +94,7 @@ class FPLCoreClient:
         ]
         # FPL Core playerstats.csv is a longitudinal table: cumulative player
         # snapshots are appended once per Gameweek. Joining it directly to the
-        # one-row player identity table creates 38 matches per established player.
+        # one-row player identity table creates many matches per established player.
         # Select the latest published snapshot per official prior-season ID and
         # reject genuinely ambiguous duplicate snapshots instead of silently
         # aggregating or double-counting them.
@@ -83,7 +114,8 @@ class FPLCoreClient:
             prior_stats = stats.sort_values(["player_id", "gw"]).drop_duplicates(
                 "player_id", keep="last"
             )
-        previous_rows = prior_players[["player_code", "player_id"]].merge(
+
+        previous_rows = prior_players.merge(
             prior_stats[["player_id", *available]],
             on="player_id",
             how="left",
@@ -92,9 +124,7 @@ class FPLCoreClient:
         previous_rows = previous_rows.rename(
             columns={col: f"previous_{col}" for col in available}
         ).drop(columns="player_id")
-        current = current_players[["player_code", "player_id"]].rename(
-            columns={"player_id": "current_player_id"}
-        )
+        current = current_players.rename(columns={"player_id": "current_player_id"})
         out = current.merge(
             previous_rows,
             on="player_code",
