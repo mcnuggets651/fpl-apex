@@ -18,13 +18,14 @@ RATE_COLUMNS = {
 
 @dataclass(frozen=True)
 class RateShrinkageConfig:
-    """Equivalent-prior-minute strengths learned by no-hindsight validation."""
+    """Equivalent-prior-minute strengths learned by no-hindsight validation.
 
-    # Calibrated on 2022/23 + 2023/24 and independently validated for attacking
-    # rates on untouched 2024/25 and 2025/26 holdouts. DEFCON is calibrated and
-    # validated through a blocked temporal holdout inside completed 2025/26.
+    These defaults are provisional whenever the evidence resolver changes. The
+    dedicated historical validation workflow refits them before production promotion.
+    """
+
     prior_minutes: dict[str, float] = field(
-        default_factory=lambda: {"xg90": 540.0, "xa90": 360.0, "defcon90": 180.0}
+        default_factory=lambda: {"xg90": 720.0, "xa90": 720.0, "defcon90": 720.0}
     )
     min_group_players: int = 6
     min_group_minutes: float = 900.0
@@ -36,37 +37,61 @@ def _numeric(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_numeric(df[col], errors="coerce")
 
 
-def _evidence_rate(
+def _competitive_evidence(
     players: pd.DataFrame,
     current_col: str,
     previous_col: str,
-) -> tuple[pd.Series, pd.Series, pd.Series]:
-    """Resolve a rate and the minutes that actually support it.
+) -> dict[str, pd.Series]:
+    """Combine previous- and current-season competitive evidence continuously.
 
-    Before GW1, FPL can expose non-zero per-90 context while current-season minutes
-    are still zero. Such a value must not be treated as a fresh sample. Prefer the
-    explicitly bridged prior-season rate/minutes when available. Once competitive
-    current-season minutes exist, use the current cumulative rate with those minutes.
+    Previous-season and current-season rates are converted back to event-equivalent
+    totals, summed, then converted to one combined competitive rate. This avoids the
+    GW1->GW2 evidence reset where a single current-season appearance would otherwise
+    replace an established player's full previous-season track record.
+
+    Preseason is intentionally excluded. It remains a separately capped signal in
+    the projection layer because the shrinkage hyperparameters are calibrated on
+    competitive Premier League evidence only.
     """
     current_rate = _numeric(players, current_col)
     previous_rate = _numeric(players, previous_col)
     current_minutes = _numeric(players, "minutes").fillna(0).clip(lower=0)
     previous_minutes = _numeric(players, "previous_minutes").fillna(0).clip(lower=0)
 
-    has_current_sample = current_minutes > 0
-    has_previous_sample = (previous_minutes > 0) & previous_rate.notna()
-    observed = current_rate.where(has_current_sample)
-    observed = observed.where(observed.notna(), previous_rate.where(has_previous_sample))
-    # Last-resort rate context with zero evidence is retained only for audit. Its
-    # posterior weight is zero, so it cannot overpower the group prior.
-    observed = observed.where(observed.notna(), current_rate)
-    sample_minutes = current_minutes.where(has_current_sample, previous_minutes)
-    sample_minutes = sample_minutes.where(observed.notna(), 0.0).fillna(0.0)
+    current_valid = (current_minutes > 0) & current_rate.notna()
+    previous_valid = (previous_minutes > 0) & previous_rate.notna()
+
+    current_used = current_minutes.where(current_valid, 0.0)
+    previous_used = previous_minutes.where(previous_valid, 0.0)
+    effective_minutes = current_used + previous_used
+
+    weighted_total = (
+        current_rate.fillna(0.0) * current_used
+        + previous_rate.fillna(0.0) * previous_used
+    )
+    combined_rate = weighted_total.div(effective_minutes.where(effective_minutes > 0))
+
+    # A zero-minute current rate can still be useful as contextual metadata, but it
+    # receives zero posterior evidence weight and therefore cannot overpower the prior.
+    context_rate = current_rate.where(current_rate.notna(), previous_rate)
+    observed = combined_rate.where(combined_rate.notna(), context_rate)
+
     source = pd.Series("group_prior", index=players.index, dtype="string")
-    source.loc[has_previous_sample] = "previous_season"
-    source.loc[has_current_sample & current_rate.notna()] = "current_season"
-    source.loc[(sample_minutes <= 0) & current_rate.notna()] = "context_no_minutes"
-    return observed, sample_minutes, source
+    source.loc[previous_valid & ~current_valid] = "previous_season"
+    source.loc[current_valid & ~previous_valid] = "current_season"
+    source.loc[previous_valid & current_valid] = "previous_plus_current"
+    source.loc[(effective_minutes <= 0) & context_rate.notna()] = "context_no_minutes"
+
+    return {
+        "observed": observed,
+        "combined_rate": combined_rate,
+        "effective_minutes": effective_minutes,
+        "source": source,
+        "previous_rate": previous_rate,
+        "current_rate": current_rate,
+        "previous_minutes": previous_used,
+        "current_minutes": current_used,
+    }
 
 
 def _leave_one_out_prior(
@@ -122,13 +147,7 @@ def shrink_player_rates(
     players: pd.DataFrame,
     config: RateShrinkageConfig | None = None,
 ) -> pd.DataFrame:
-    """Return empirical-Bayes shrunk xG90/xA90/DEFCON rates plus audit columns.
-
-    The prior is a minutes-weighted leave-one-out position mean. A player's own
-    observed rate receives weight ``minutes / (minutes + prior_minutes)``. Therefore
-    established high-minute players retain most of their signal while low-minute or
-    zero-minute context is pulled strongly toward the position prior.
-    """
+    """Return empirical-Bayes shrunk competitive rates plus full audit fields."""
     cfg = config or RateShrinkageConfig()
     out = pd.DataFrame(index=players.index)
     groups = players.get(
@@ -137,31 +156,45 @@ def shrink_player_rates(
     ).astype("string")
 
     for label, (current_col, previous_col) in RATE_COLUMNS.items():
-        observed, sample_minutes, source = _evidence_rate(players, current_col, previous_col)
+        evidence = _competitive_evidence(players, current_col, previous_col)
+        observed = evidence["observed"]
+        effective_minutes = evidence["effective_minutes"]
         prior = _leave_one_out_prior(
             observed,
-            sample_minutes,
+            effective_minutes,
             groups,
             min_group_players=cfg.min_group_players,
             min_group_minutes=cfg.min_group_minutes,
         )
         k = max(float(cfg.prior_minutes.get(label, 0.0)), 0.0)
         reliability = np.divide(
-            sample_minutes.to_numpy(float),
-            sample_minutes.to_numpy(float) + k,
+            effective_minutes.to_numpy(float),
+            effective_minutes.to_numpy(float) + k,
             out=np.ones(len(players), dtype=float) if k <= 0 else np.zeros(len(players), dtype=float),
-            where=(sample_minutes.to_numpy(float) + k) > 0,
+            where=(effective_minutes.to_numpy(float) + k) > 0,
         )
         observed_values = pd.to_numeric(observed, errors="coerce").to_numpy(float)
         prior_values = prior.to_numpy(float)
         clean_observed = np.where(np.isfinite(observed_values), observed_values, prior_values)
         posterior = reliability * clean_observed + (1.0 - reliability) * prior_values
 
+        previous_rate = pd.to_numeric(evidence["previous_rate"], errors="coerce")
+        current_rate = pd.to_numeric(evidence["current_rate"], errors="coerce")
+        combined_rate = pd.to_numeric(evidence["combined_rate"], errors="coerce")
+
+        out[f"raw_previous_{label}"] = previous_rate.to_numpy(float)
+        out[f"raw_current_{label}"] = current_rate.to_numpy(float)
+        out[f"combined_competitive_{label}"] = combined_rate.to_numpy(float)
+        # Legacy raw_* remains the exact competitive rate fed into shrinkage.
         out[f"raw_{label}"] = clean_observed
         out[f"prior_{label}"] = prior_values
         out[f"shrunk_{label}"] = np.clip(posterior, 0, None)
-        out[f"{label}_evidence_minutes"] = sample_minutes.to_numpy(float)
+        out[f"{label}_previous_evidence_minutes"] = evidence["previous_minutes"].to_numpy(float)
+        out[f"{label}_current_evidence_minutes"] = evidence["current_minutes"].to_numpy(float)
+        out[f"{label}_combined_effective_evidence_minutes"] = effective_minutes.to_numpy(float)
+        # Backwards-compatible alias for existing diagnostics.
+        out[f"{label}_evidence_minutes"] = effective_minutes.to_numpy(float)
         out[f"{label}_reliability"] = np.clip(reliability, 0, 1)
-        out[f"{label}_evidence_source"] = source.to_numpy()
+        out[f"{label}_evidence_source"] = evidence["source"].to_numpy()
 
     return out
