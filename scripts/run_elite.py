@@ -17,6 +17,9 @@ from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.services.decision_eligibility import captain_eligible_ids
 from apex_fpl.services.pipeline import run_pipeline
 
+CONVERGENCE_MIN_OVERLAP = 13
+CONVERGENCE_EPSILONS = (0.0025, 0.005, 0.01)
+
 
 def _records(df: pd.DataFrame) -> list[dict]:
     return [] if df.empty else json.loads(df.to_json(orient="records"))
@@ -41,11 +44,45 @@ def _solution(sol) -> dict:
 
 
 def _name(frame: pd.DataFrame) -> str | None:
-    return (
-        None
-        if frame.empty or "web_name" not in frame.columns
-        else str(frame.iloc[0]["web_name"])
-    )
+    if frame.empty or "web_name" not in frame.columns:
+        return None
+    return str(frame.iloc[0]["web_name"])
+
+
+def _convergence(epsilon_rows: list[dict], max_ev_captain: str | None) -> dict:
+    by_epsilon = {round(float(row["epsilon"]), 6): row for row in epsilon_rows}
+    evaluated = []
+    for epsilon in CONVERGENCE_EPSILONS:
+        row = by_epsilon.get(round(epsilon, 6))
+        if row is None:
+            return {
+                "converged": False,
+                "rule": ">=13/15 overlap with max-EV and same captain at 0.25%, 0.50%, 1.00%",
+                "reason": f"missing epsilon frontier row {epsilon:.2%}",
+                "fallback": "maximum_ev",
+            }
+        overlap_ok = int(row["squad_overlap_vs_max_ev"]) >= CONVERGENCE_MIN_OVERLAP
+        captain_ok = row.get("captain") == max_ev_captain
+        evaluated.append(
+            {
+                "epsilon": epsilon,
+                "overlap": int(row["squad_overlap_vs_max_ev"]),
+                "captain": row.get("captain"),
+                "overlap_ok": overlap_ok,
+                "captain_ok": captain_ok,
+                "passes": overlap_ok and captain_ok,
+            }
+        )
+    converged = all(row["passes"] for row in evaluated)
+    return {
+        "converged": converged,
+        "rule": ">=13/15 overlap with max-EV and same captain at 0.25%, 0.50%, 1.00%",
+        "minimum_overlap": CONVERGENCE_MIN_OVERLAP,
+        "required_same_captain": True,
+        "max_ev_captain": max_ev_captain,
+        "evaluated": evaluated,
+        "fallback": "elite" if converged else "maximum_ev",
+    }
 
 
 def main() -> None:
@@ -91,7 +128,6 @@ def main() -> None:
 
     haaland = players[players["web_name"].astype(str).str.casefold().eq("haaland")]
     haaland_id = int(haaland.iloc[0]["player_id"]) if not haaland.empty else None
-
     scenario_rules: dict[str, dict[str, set[int]]] = {
         "unrestricted": {"locked": set(), "banned": set()}
     }
@@ -99,7 +135,6 @@ def main() -> None:
         scenario_rules["haaland"] = {"locked": {haaland_id}, "banned": set()}
         scenario_rules["no_haaland"] = {"locked": set(), "banned": {haaland_id}}
 
-    # Stage 1: establish the true maximum-xP reference in each scenario.
     references = {}
     for name, rule in scenario_rules.items():
         references[name] = optimise_initial_horizon(
@@ -112,10 +147,7 @@ def main() -> None:
         if references[name].status != "Optimal":
             raise SystemExit(f"maximum-EV reference failed for scenario: {name}")
 
-    # Stage 2: maximise Elite utility only inside a tight raw-xP near-optimal band.
-    selections = {}
-    final = {}
-    floors = {}
+    selections, final, floors = {}, {}, {}
     for name, rule in scenario_rules.items():
         reference = references[name]
         floor = float(reference.objective) * (1.0 - weights.max_ev_regret_fraction)
@@ -132,10 +164,6 @@ def main() -> None:
         )
         if selections[name].status != "Optimal":
             raise SystemExit(f"Elite near-optimal selection failed for scenario: {name}")
-
-        # The 15-player squad comes from Elite's secondary objective. XI/captain/vice
-        # are then re-optimised on canonical xP, because those deadline mechanics
-        # should not be decided by a non-points utility.
         final[name] = optimise_initial_horizon(
             **common,
             projections=surface,
@@ -151,17 +179,11 @@ def main() -> None:
     ev_regret = float(max_ev.objective - elite.objective)
     ev_regret_pct = float(ev_regret / max_ev.objective) if max_ev.objective else 0.0
 
-    # The epsilon is deliberately provisional rather than treated as a magic
-    # calibrated constant. Generate a small Pareto/sensitivity frontier on the same
-    # live surface so the final decision can see whether Elite is stable or merely
-    # exploiting an arbitrary regret allowance. The configured 0.5% solution reuses
-    # the solve above; other rows add only the minimum extra solves needed.
     epsilon_grid = (0.0, 0.0025, weights.max_ev_regret_fraction, 0.01)
     epsilon_rows = []
     for epsilon in dict.fromkeys(float(x) for x in epsilon_grid):
         if abs(epsilon - weights.max_ev_regret_fraction) < 1e-12:
-            selection = elite_selection
-            recommendation = elite
+            selection, recommendation = elite_selection, elite
         else:
             floor = float(max_ev.objective) * (1.0 - epsilon)
             selection = optimise_initial_horizon(
@@ -182,7 +204,6 @@ def main() -> None:
             )
             if recommendation.status != "Optimal":
                 raise SystemExit(f"Elite epsilon raw-xP rescore failed: {epsilon:.4%}")
-
         regret = float(max_ev.objective - recommendation.objective)
         regret_pct = float(regret / max_ev.objective) if max_ev.objective else 0.0
         epsilon_rows.append(
@@ -198,6 +219,8 @@ def main() -> None:
                 "squad_player_ids": sorted(_ids(recommendation.squad)),
             }
         )
+
+    convergence = _convergence(epsilon_rows, _name(max_ev.captain))
 
     payload = {
         "contract": "apex-elite-10-v3-lexicographic",
@@ -237,6 +260,8 @@ def main() -> None:
             "configured_max_regret_pct": weights.max_ev_regret_fraction,
         },
         "epsilon_sensitivity": epsilon_rows,
+        "epsilon_convergence": convergence,
+        "canonical_recommendation": convergence["fallback"],
         "scenarios": {},
     }
 
@@ -256,33 +281,18 @@ def main() -> None:
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "elite_latest.json").write_text(
-        json.dumps(payload, indent=2), encoding="utf-8"
-    )
+    (output_dir / "elite_latest.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    xi = elite.xi[
-        [
-            c
-            for c in ["web_name", "team_name", "position", "price", "gw1_xp"]
-            if c in elite.xi.columns
-        ]
-    ]
-    squad = elite.squad[
-        [
-            c
-            for c in ["web_name", "team_name", "position", "price", "gw1_xp"]
-            if c in elite.squad.columns
-        ]
-    ]
+    xi = elite.xi[[c for c in ["web_name", "team_name", "position", "price", "gw1_xp"] if c in elite.xi.columns]]
+    squad = elite.squad[[c for c in ["web_name", "team_name", "position", "price", "gw1_xp"] if c in elite.squad.columns]]
     sensitivity_lines = [
         "| epsilon | raw xP | regret | overlap vs max-EV | captain |",
         "|---:|---:|---:|---:|:---|",
     ]
     for row in epsilon_rows:
         sensitivity_lines.append(
-            f"| {row['epsilon']:.2%} | {row['raw_ev_objective']:.3f} | "
-            f"{row['raw_ev_regret_pct']:.2%} | {row['squad_overlap_vs_max_ev']}/15 | "
-            f"{row['captain'] or ''} |"
+            f"| {row['epsilon']:.2%} | {row['raw_ev_objective']:.3f} | {row['raw_ev_regret_pct']:.2%} | "
+            f"{row['squad_overlap_vs_max_ev']}/15 | {row['captain'] or ''} |"
         )
 
     lines = [
@@ -296,7 +306,7 @@ def main() -> None:
         "2. Define a near-optimal xP band; the current 0.5% band is provisional, not calibrated.",
         "3. Inside that band, maximise the Elite 35/20/15/10/10/5/5 secondary utility.",
         "4. Re-optimise XI, captain and vice on raw xP for the selected 15.",
-        "5. Inspect the epsilon sensitivity frontier before treating Elite as superior to max-EV.",
+        "5. Elite is allowed to influence the canonical recommendation only if 0.25%, 0.50% and 1.00% each retain >=13/15 max-EV players and the same captain as max-EV.",
         "",
         "## Elite unrestricted",
         "",
@@ -306,6 +316,8 @@ def main() -> None:
         f"Elite selected-squad raw EV: **{elite.objective:.3f} xP**",
         f"Raw-EV regret: **{ev_regret:.3f} xP ({ev_regret_pct:.2%})**",
         f"Configured provisional maximum regret: **{weights.max_ev_regret_fraction:.2%}**",
+        f"Epsilon frontier convergence: **{'PASS' if convergence['converged'] else 'FAIL'}**",
+        f"Canonical recommendation from this layer: **{convergence['fallback']}**",
         "",
         "## Epsilon sensitivity — unrestricted",
         "",
@@ -321,7 +333,7 @@ def main() -> None:
         "",
         "## Interpretation",
         "",
-        "Elite never creates or modifies expected points. It is a secondary selector among squads that are already near maximum-EV. If tiny changes in epsilon materially change the squad, maximum-EV remains the safer canonical recommendation until no-hindsight calibration establishes a regret band.",
+        "Elite never creates or modifies expected points. The convergence rule is explicit to prevent subjective eyeballing: if the frontier fails, maximum-EV remains canonical until calibration justifies otherwise.",
     ]
     md_path = output_dir / "elite_latest.md"
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
