@@ -20,8 +20,11 @@ RATE_COLUMNS = {
 class RateShrinkageConfig:
     """Equivalent-prior-minute strengths learned by no-hindsight validation."""
 
+    # Calibrated on 2022/23 + 2023/24 and independently validated for attacking
+    # rates on untouched 2024/25 and 2025/26 holdouts. DEFCON is calibrated and
+    # validated through a blocked temporal holdout inside completed 2025/26.
     prior_minutes: dict[str, float] = field(
-        default_factory=lambda: {"xg90": 720.0, "xa90": 720.0, "defcon90": 720.0}
+        default_factory=lambda: {"xg90": 540.0, "xa90": 360.0, "defcon90": 180.0}
     )
     min_group_players: int = 6
     min_group_minutes: float = 900.0
