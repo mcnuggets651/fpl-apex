@@ -2,6 +2,37 @@
 
 Append concise records after meaningful project sessions. This is continuity context, not a replacement for Git history.
 
+## 2026-08-08 — Unified single-recommendation architecture
+### Context
+The repository had accumulated several internal selection outputs (maximum-EV/Pinnacle, Elite, CVaR/safety and scenario candidates). Even when mathematically useful as challengers, exposing them as separate "Apex teams" created conversational drift and inconsistent recommendations.
+
+### Decision
+Apex now has one user-facing recommendation contract. Internal models remain because they are needed to challenge and falsify the decision, but they are no longer separate recommendation paths.
+
+### Implementation in PR #11
+- Added `scripts/run_apex.py` as the single production command.
+- Added `scripts/build_canonical_recommendation.py` as the deterministic canonical selector/publisher.
+- Added `data/generated/apex_recommendation_latest.json` / `.md` as the only user-facing team output.
+- Changed the GitHub production workflow to **Apex Unified** and stopped publishing internal Pinnacle/Elite candidate teams to main.
+- Internal Pinnacle/Elite outputs remain workflow artifacts for audit/debugging only.
+- Added Official FPL snapshot identity to Elite diagnostics so the canonical builder can reject mismatched surfaces.
+- Added exact captain/vice/autosub mechanics to the Elite-selected 15 before it can become canonical.
+- The canonical selector automatically uses Elite only when the epsilon convergence rule passes; otherwise it falls back to maximum-EV.
+- Archived superseded standalone selection philosophies under `archive/selection_approaches/`.
+- Added `APEX_CANONICAL_DECISION_POLICY.md` and updated README, Master Context, Operating Manual, Architecture, Current State and Decisions.
+
+### Canonical rule
+`xp -> maximum-EV -> correlated robustness diagnostics -> epsilon-audited Elite secondary selector -> maximum-EV fallback if unstable -> exact GW mechanics -> one published recommendation.`
+
+### Next actions
+1. Pass PR #11 CI after the unified changes.
+2. Merge PR #11 if green.
+3. Trigger Apex Unified once on `main`.
+4. Confirm `apex_recommendation_latest.json` has `ready_to_act=true` and matched snapshot identity.
+5. Read that file as the one Apex team and explain its Haaland/no-Haaland/epsilon/robustness evidence.
+6. Compare against the user's current private screenshot if still current.
+7. Then implement empirical-Bayes player-rate shrinkage and benchmark whether it changes the canonical recommendation.
+
 ## 2026-08-08 — Follow-up architecture audit: shrinkage, minutes and epsilon
 ### Context
 A second review challenged four remaining areas before PR #11 merge: small-sample shrinkage, explicit minutes modelling, the arbitrary 0.5% Elite epsilon, and future fixture-ensemble combination rules.
