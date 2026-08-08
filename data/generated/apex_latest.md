@@ -1,6 +1,6 @@
 # Apex FPL Report
 
-Generated: 2026-08-08T04:36:54.753596+00:00
+Generated: 2026-08-08T08:24:11.158167+00:00
 
 ## Decision gate
 
@@ -20,14 +20,14 @@ Generated: 2026-08-08T04:36:54.753596+00:00
 
 ## Official snapshot
 
-- ID: `20260808T043643Z-dc4182c7`
+- ID: `20260808T082401Z-a23bda90`
 - Players: 573
 - Fixtures: 380
-- Bootstrap SHA256: `a104d2ec642ce5c21e672c10b3ad521e2528727d31df03e5dbb1b6bed5d229cd`
+- Bootstrap SHA256: `194e65c6633f6902da372b46da373de08c198c7afc702cfa449f1c0e9d16340c`
 
 ## Source health
 
-- **official_fpl** — OK (configured) @ `a104d2ec642c`: 573 players; 380 fixtures; snapshot=20260808T043643Z-dc4182c7
+- **official_fpl** — OK (configured) @ `194e65c6633f`: 573 players; 380 fixtures; snapshot=20260808T082401Z-a23bda90
 - **team_state** — OK (configured): FPL entry 63984 (mcnuggets) connected; no 15-player public deadline squad is published yet, so Apex remains in initial-squad mode; pre-GW1 price universe captured
 - **fpl_core_playerstats** — OK (configured) @ `911992600f8bb66f1530ebd2ca5d3cdc22420109`: 570 rows
 - **fpl_core_previous_season** — OK (configured) @ `911992600f8bb66f1530ebd2ca5d3cdc22420109`: 570 current official IDs; prior playing-time coverage=80.2%
@@ -35,12 +35,12 @@ Generated: 2026-08-08T04:36:54.753596+00:00
 - **tactical_inference** — OK (configured): 573 inferred player roles
 - **manual_availability** — OK (not configured): not configured
 - **tactical_roles** — OK (not configured): no verified overrides
-- **news_feeds** — OK (configured): 78 headlines; 6 player matches; 3 source(s) healthy
+- **news_feeds** — OK (configured): 79 headlines; 4 player matches; 3 source(s) healthy
 - **fpl_core_elo** — OK (configured) @ `911992600f8bb66f1530ebd2ca5d3cdc22420109`: 160 team-fixture Elo rows
-- **official_team_strength** — WARNING (configured) @ `a104d2ec642c`: 20/20 teams contain zero/non-positive strength values
+- **official_team_strength** — WARNING (configured) @ `194e65c6633f`: 20/20 teams contain zero/non-positive strength values
 - **understat_team_model** — OK (configured): 1900 completed-match rows across 5 complete seasons; fixture coverage=160/160; promoted/unknown priors=3; mode=shadow; active season 2026 unavailable: UnderstatDataError: Understat EPL 2026 unavailable after 3 attempts; attempt 1: UnderstatDataError: Understat league payload has no teams object | attempt 2: UnderstatDataError: Understat league payload has no teams object | attempt 3: UnderstatDataError: Understat league payload has no teams object
 - **fixture_model** — OK (configured): official strength unavailable (20/20 teams contain zero/non-positive strength values); using league goal baselines plus complete reconciled Elo coverage (160/160); Understat challenger mode=shadow
-- **airsenal** — OK (configured) @ `8c7e18eba1488dd5a7d4bdb00d4da0a75e895717`: 4584 rows; player coverage={1: 573, 2: 573, 3: 573, 4: 573, 5: 573, 6: 573, 7: 573, 8: 573}; age=0.0h; tag=2c54ca7c-9063-45e3-8df1-fc1a4b315bca
+- **airsenal** — OK (configured) @ `8c7e18eba1488dd5a7d4bdb00d4da0a75e895717`: 4584 rows; player coverage={1: 573, 2: 573, 3: 573, 4: 573, 5: 573, 6: 573, 7: 573, 8: 573}; age=0.0h; tag=69fce765-2518-4fb4-af5f-73d3abdbd121
 - **market_odds** — OK (not configured): optional endpoint not configured
 
 ## Scenario comparison
