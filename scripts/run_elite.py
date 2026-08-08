@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Run Apex Elite 10.0 with canonical xP as the optimisation anchor."""
+"""Run Apex Elite 10.0 as a lexicographic xP-first decision layer."""
 from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+
 import pandas as pd
 
 from apex_fpl.config import load_settings
@@ -28,11 +29,23 @@ def _ids(frame: pd.DataFrame) -> set[int]:
 
 
 def _solution(sol) -> dict:
-    return {"status": sol.status, "objective": float(sol.objective), "squad": _records(sol.squad), "xi": _records(sol.xi), "captain": _records(sol.captain), "vice_captain": _records(sol.vice_captain), "bench": _records(sol.bench)}
+    return {
+        "status": sol.status,
+        "objective": float(sol.objective),
+        "squad": _records(sol.squad),
+        "xi": _records(sol.xi),
+        "captain": _records(sol.captain),
+        "vice_captain": _records(sol.vice_captain),
+        "bench": _records(sol.bench),
+    }
 
 
 def _name(frame: pd.DataFrame) -> str | None:
-    return None if frame.empty or "web_name" not in frame.columns else str(frame.iloc[0]["web_name"])
+    return (
+        None
+        if frame.empty or "web_name" not in frame.columns
+        else str(frame.iloc[0]["web_name"])
+    )
 
 
 def main() -> None:
@@ -41,63 +54,212 @@ def main() -> None:
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--output-dir", default="data/generated")
     args = parser.parse_args()
+
     settings = load_settings()
-    out = run_pipeline(settings, horizon=args.horizon, scenario="both", force=args.force, plan_transfers=False)
+    out = run_pipeline(
+        settings,
+        horizon=args.horizon,
+        scenario="both",
+        force=args.force,
+        plan_transfers=False,
+    )
     if not out.safety.safe_to_act or not out.safety.full_apex_ready:
-        raise SystemExit(f"Elite blocked by Apex production gate: {'; '.join(out.safety.blockers) or 'unknown production blocker'}")
+        raise SystemExit(
+            "Elite blocked by Apex production gate: "
+            + ("; ".join(out.safety.blockers) or "unknown production blocker")
+        )
 
     official = OfficialFPLClient(CachedHttp(settings.cache_dir)).snapshot(force=False)
     team_ids = official.players[["player_id", "team"]].drop_duplicates("player_id")
-    players = out.players.drop(columns=["team"], errors="ignore").merge(team_ids, on="player_id", how="left", validate="one_to_one")
+    players = out.players.drop(columns=["team"], errors="ignore").merge(
+        team_ids, on="player_id", how="left", validate="one_to_one"
+    )
     captain_eligible = captain_eligible_ids(players)
     if len(captain_eligible) < 2:
         raise SystemExit("Elite has fewer than two captain/vice eligible players")
 
     weights = EliteWeights()
     surface = build_elite_projection_surface(players, out.projections, weights)
-    common = dict(players=players, gameweeks=out.gameweeks, budget=settings.budget, max_per_team=settings.max_per_team, decay=settings.fixture_decay, captain_eligible=captain_eligible)
-    max_ev = optimise_initial_horizon(**common, projections=surface, projection_col="xp")
-    elite = optimise_initial_horizon(**common, projections=surface, projection_col="elite_decision_xp")
+    common = dict(
+        players=players,
+        gameweeks=out.gameweeks,
+        budget=settings.budget,
+        max_per_team=settings.max_per_team,
+        decay=settings.fixture_decay,
+        captain_eligible=captain_eligible,
+    )
 
     haaland = players[players["web_name"].astype(str).str.casefold().eq("haaland")]
     haaland_id = int(haaland.iloc[0]["player_id"]) if not haaland.empty else None
-    candidates = {"unrestricted": elite}
-    if haaland_id is not None:
-        candidates["haaland"] = optimise_initial_horizon(**common, projections=surface, projection_col="elite_decision_xp", locked={haaland_id})
-        candidates["no_haaland"] = optimise_initial_horizon(**common, projections=surface, projection_col="elite_decision_xp", banned={haaland_id})
 
-    rescored = {}
-    for name, sol in candidates.items():
-        if sol.status == "Optimal":
-            rescored[name] = optimise_initial_horizon(**common, projections=surface, projection_col="xp", locked=_ids(sol.squad))
-    if elite.status != "Optimal" or max_ev.status != "Optimal":
-        raise SystemExit("Elite or maximum-EV optimiser failed")
-
-    elite_ev = rescored.get("unrestricted")
-    elite_ev_objective = float(elite_ev.objective) if elite_ev is not None else None
-    ev_regret = float(max_ev.objective - elite_ev_objective) if elite_ev_objective is not None else None
-    ev_regret_pct = float(ev_regret / max_ev.objective) if ev_regret is not None and max_ev.objective else None
-    payload = {
-        "contract": "apex-elite-10-v2-xp-anchored",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "safe_to_act": bool(out.safety.safe_to_act), "full_apex_ready": bool(out.safety.full_apex_ready),
-        "gameweeks": [int(gw) for gw in out.gameweeks],
-        "objective": {"canonical_forecast": "xp", "decision_surface": "elite_decision_xp", "max_xp_adjustment": weights.max_xp_adjustment, "rule": "raw Pinnacle xP multiplied by a bounded +/-5% Elite evidence modifier"},
-        "weights": {"expected_attacking_returns": weights.attack, "minutes_start_probability": weights.minutes, "captaincy_value": weights.captaincy, "set_pieces_penalties": weights.set_pieces, "fixture_quality": weights.fixture, "bonus_defcon": weights.bonus_defcon, "price_efficiency": weights.value},
-        "maximum_ev_reference": _solution(max_ev), "elite": _solution(elite),
-        "elite_raw_ev_rescore": _solution(elite_ev) if elite_ev is not None else None,
-        "elite_vs_max_ev": {"squad_overlap": len(_ids(max_ev.squad) & _ids(elite.squad)), "changed_player_ids": sorted(_ids(max_ev.squad) ^ _ids(elite.squad)), "max_ev_objective": float(max_ev.objective), "elite_squad_raw_ev_objective": elite_ev_objective, "raw_ev_regret": ev_regret, "raw_ev_regret_pct": ev_regret_pct},
-        "scenarios": {name: {"elite": _solution(sol), "raw_ev_rescore": _solution(rescored[name]) if name in rescored else None} for name, sol in candidates.items()},
+    scenario_rules: dict[str, dict[str, set[int]]] = {
+        "unrestricted": {"locked": set(), "banned": set()}
     }
-    output_dir = Path(args.output_dir); output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "elite_latest.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    if haaland_id is not None:
+        scenario_rules["haaland"] = {"locked": {haaland_id}, "banned": set()}
+        scenario_rules["no_haaland"] = {"locked": set(), "banned": {haaland_id}}
 
-    # Report real raw xP for the selected squad/XI, never the Elite utility as xP.
-    report_sol = elite_ev if elite_ev is not None else elite
-    xi = report_sol.xi[[c for c in ["web_name", "team_name", "position", "price", "gw1_xp"] if c in report_sol.xi.columns]]
-    squad = report_sol.squad[[c for c in ["web_name", "team_name", "position", "price", "gw1_xp"] if c in report_sol.squad.columns]]
-    lines = ["# Apex Elite 10.0 — xP anchored", "", f"Generated: {payload['generated_at']}", "", "## Objective", "", "Pinnacle ensemble xP is canonical. Elite applies only a bounded ±5% evidence modifier using the 35/20/15/10/10/5/5 profile.", "", "## Elite unrestricted", "", f"Captain: **{_name(report_sol.captain)}**", f"Vice-captain: **{_name(report_sol.vice_captain)}**", f"Elite decision objective: **{elite.objective:.3f}**", f"Raw maximum-EV reference: **{max_ev.objective:.3f} xP**", f"Elite squad raw-EV rescore: **{elite_ev_objective:.3f} xP**" if elite_ev_objective is not None else "Elite raw xP rescore unavailable", f"Raw-EV regret: **{ev_regret:.3f} xP ({ev_regret_pct:.2%})**" if ev_regret_pct is not None else "Raw-EV regret unavailable", "", "### GW1 XI — real raw xP", "", xi.to_markdown(index=False), "", "### 15-player squad — real raw xP", "", squad.to_markdown(index=False), "", "## Interpretation", "", "Elite is now a controlled decision modifier around expected points, not an alternative synthetic forecast. Haaland/no-Haaland scenarios are generated on the same surface and must be compared by raw xP rescore before publication."]
-    md_path = output_dir / "elite_latest.md"; md_path.write_text("\n".join(lines) + "\n", encoding="utf-8"); print(md_path.read_text(encoding="utf-8"))
+    # Stage 1: establish the true maximum-xP reference in each scenario.
+    references = {}
+    for name, rule in scenario_rules.items():
+        references[name] = optimise_initial_horizon(
+            **common,
+            projections=surface,
+            projection_col="xp",
+            locked=rule["locked"],
+            banned=rule["banned"],
+        )
+        if references[name].status != "Optimal":
+            raise SystemExit(f"maximum-EV reference failed for scenario: {name}")
+
+    # Stage 2: maximise Elite utility only inside a tight raw-xP near-optimal band.
+    selections = {}
+    final = {}
+    floors = {}
+    for name, rule in scenario_rules.items():
+        reference = references[name]
+        floor = float(reference.objective) * (1.0 - weights.max_ev_regret_fraction)
+        floors[name] = floor
+        selections[name] = optimise_initial_horizon(
+            **common,
+            projections=surface,
+            projection_col="elite_score",
+            reference_projection_col="xp",
+            min_reference_objective=floor,
+            display_projection_col="xp",
+            locked=rule["locked"],
+            banned=rule["banned"],
+        )
+        if selections[name].status != "Optimal":
+            raise SystemExit(f"Elite near-optimal selection failed for scenario: {name}")
+
+        # The 15-player squad comes from Elite's secondary objective. XI/captain/vice
+        # are then re-optimised on canonical xP, because those deadline mechanics
+        # should not be decided by a non-points utility.
+        final[name] = optimise_initial_horizon(
+            **common,
+            projections=surface,
+            projection_col="xp",
+            locked=_ids(selections[name].squad),
+        )
+        if final[name].status != "Optimal":
+            raise SystemExit(f"raw-xP rescore failed for scenario: {name}")
+
+    max_ev = references["unrestricted"]
+    elite_selection = selections["unrestricted"]
+    elite = final["unrestricted"]
+    ev_regret = float(max_ev.objective - elite.objective)
+    ev_regret_pct = float(ev_regret / max_ev.objective) if max_ev.objective else 0.0
+
+    payload = {
+        "contract": "apex-elite-10-v3-lexicographic",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "safe_to_act": bool(out.safety.safe_to_act),
+        "full_apex_ready": bool(out.safety.full_apex_ready),
+        "gameweeks": [int(gw) for gw in out.gameweeks],
+        "objective": {
+            "primary": "maximise canonical Pinnacle ensemble xp",
+            "secondary": "maximise Elite 35/20/15/10/10/5/5 utility",
+            "method": "epsilon-constraint / lexicographic optimisation",
+            "max_raw_ev_regret_fraction": weights.max_ev_regret_fraction,
+            "unrestricted_raw_ev_floor": floors["unrestricted"],
+            "deadline_lineup_and_captain_surface": "xp",
+        },
+        "weights": {
+            "expected_attacking_returns": weights.attack,
+            "minutes_start_probability": weights.minutes,
+            "captaincy_value": weights.captaincy,
+            "set_pieces_penalties": weights.set_pieces,
+            "fixture_quality": weights.fixture,
+            "bonus_defcon": weights.bonus_defcon,
+            "price_efficiency": weights.value,
+        },
+        "maximum_ev_reference": _solution(max_ev),
+        "elite_secondary_selection": _solution(elite_selection),
+        "elite": _solution(elite),
+        "elite_vs_max_ev": {
+            "squad_overlap": len(_ids(max_ev.squad) & _ids(elite.squad)),
+            "changed_player_ids": sorted(_ids(max_ev.squad) ^ _ids(elite.squad)),
+            "max_ev_objective": float(max_ev.objective),
+            "elite_squad_raw_ev_objective": float(elite.objective),
+            "raw_ev_regret": ev_regret,
+            "raw_ev_regret_pct": ev_regret_pct,
+            "configured_max_regret_pct": weights.max_ev_regret_fraction,
+        },
+        "scenarios": {},
+    }
+
+    for name in scenario_rules:
+        reference = references[name]
+        recommendation = final[name]
+        regret = float(reference.objective - recommendation.objective)
+        regret_pct = float(regret / reference.objective) if reference.objective else 0.0
+        payload["scenarios"][name] = {
+            "maximum_ev_reference": _solution(reference),
+            "elite_secondary_selection": _solution(selections[name]),
+            "elite": _solution(recommendation),
+            "raw_ev_floor": floors[name],
+            "raw_ev_regret": regret,
+            "raw_ev_regret_pct": regret_pct,
+        }
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "elite_latest.json").write_text(
+        json.dumps(payload, indent=2), encoding="utf-8"
+    )
+
+    xi = elite.xi[
+        [
+            c
+            for c in ["web_name", "team_name", "position", "price", "gw1_xp"]
+            if c in elite.xi.columns
+        ]
+    ]
+    squad = elite.squad[
+        [
+            c
+            for c in ["web_name", "team_name", "position", "price", "gw1_xp"]
+            if c in elite.squad.columns
+        ]
+    ]
+    lines = [
+        "# Apex Elite 10.0 — xP-first lexicographic",
+        "",
+        f"Generated: {payload['generated_at']}",
+        "",
+        "## Decision rule",
+        "",
+        "1. Maximise canonical Pinnacle ensemble xP.",
+        "2. Define a near-optimal xP band within 0.5% of that maximum.",
+        "3. Inside that band, maximise the Elite 35/20/15/10/10/5/5 secondary utility.",
+        "4. Re-optimise XI, captain and vice on raw xP for the selected 15.",
+        "",
+        "## Elite unrestricted",
+        "",
+        f"Captain: **{_name(elite.captain)}**",
+        f"Vice-captain: **{_name(elite.vice_captain)}**",
+        f"Raw maximum-EV reference: **{max_ev.objective:.3f} xP**",
+        f"Elite selected-squad raw EV: **{elite.objective:.3f} xP**",
+        f"Raw-EV regret: **{ev_regret:.3f} xP ({ev_regret_pct:.2%})**",
+        f"Configured maximum regret: **{weights.max_ev_regret_fraction:.2%}**",
+        "",
+        "### GW1 XI — raw xP",
+        "",
+        xi.to_markdown(index=False),
+        "",
+        "### 15-player squad — raw xP",
+        "",
+        squad.to_markdown(index=False),
+        "",
+        "## Interpretation",
+        "",
+        "Elite no longer creates or modifies expected points. It is a secondary selector among squads that are already essentially maximum-EV. Haaland/no-Haaland use their own scenario-specific maximum-xP reference and floor.",
+    ]
+    md_path = output_dir / "elite_latest.md"
+    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(md_path.read_text(encoding="utf-8"))
 
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
