@@ -145,7 +145,18 @@ jobs:
             exit 0
           fi
           git commit -m "data: publish canonical Apex recommendation [skip ci]"
-          git pull --rebase origin main
+
+          # The live model also refreshes internal diagnostic files. Those are
+          # intentionally not part of the canonical publish commit, but tracked
+          # runtime changes would make git rebase refuse to start. Revert only
+          # the remaining uncommitted tracked changes; the canonical files above
+          # are already safely recorded in HEAD.
+          echo "Discarding uncommitted runtime diagnostics before rebase:"
+          git status --short
+          git restore --worktree .
+
+          git fetch origin main
+          git rebase origin/main
           git push origin HEAD:main
 
       - name: Confirm publication withheld when canonical gate is blocked
