@@ -7,30 +7,33 @@
 - Branch: `main`
 - Personal entry: `63984`
 - Pinnacle: active production decision engine
-- Elite 10.0: merged to `main`
-- Elite PR #6: configured `Apex FPL` CI completed successfully before merge
+- Elite 10.0: live, with xP-anchored correction currently under validation
+- Prior-season evidence/captain-stability blockers: resolved by PR #10 and green on main
 
 ## Current modelling philosophy
-Use Pinnacle ensemble xP as canonical expected points. Use Elite as an additional ceiling/captaincy/minutes-aware decision lens. Never assume Elite is better until the latest live output is compared with Pinnacle on raw xP.
+Pinnacle ensemble `xp` is canonical expected points. Elite is a controlled ceiling/captaincy/minutes-aware decision modifier around that forecast, never an alternative synthetic points model. Every Elite candidate is re-scored on raw xP.
 
 ## Elite profile
-`35 attack / 20 minutes / 15 captaincy / 10 set pieces / 10 fixture / 5 bonus+DEFCON / 5 value`
+Evidence weights: `35 attack / 20 minutes / 15 captaincy / 10 set pieces / 10 fixture / 5 bonus+DEFCON / 5 value`.
+
+Validated correction: the evidence score must not be optimised as standalone percentile utility. The corrected Elite surface anchors on raw xP and applies a bounded ±5% modifier. The cap is deliberately conservative and requires benchmark evidence before expansion.
 
 ## Immediate next action
-Run/inspect the merged Elite 10.0 optimiser on the latest live source surface and benchmark it against current Pinnacle. Compare unrestricted, Haaland and no-Haaland scenarios before declaring a final Apex Elite squad.
+Validate the xP-anchored Elite correction in CI, merge if green, then run one synchronized live snapshot producing Pinnacle maximum-EV, Elite unrestricted, Elite Haaland and Elite no-Haaland candidates. Compare all candidates on raw xP, captaincy, minutes, attacking ceiling, set pieces, fixtures, DEFCON/bonus and uncertainty before declaring the final Apex squad.
 
 ## Current known boundary
 - The public FPL API cannot expose an unpublished pre-deadline draft. A current screenshot/manual team can therefore be newer than entry `63984`'s public state.
-- Market odds are a planned enhancement unless/until a validated feed is confirmed in the production gate.
+- Market odds remain optional unless/until a validated feed is confirmed in the production gate.
 - New-season evidence is inherently limited before competitive matches accumulate.
 
 ## Latest user objective
-Prioritise the highest projected point accumulation and elite ceiling, incorporating attacking threat, expected minutes, preseason, fixtures, penalties/set pieces, clean sheets, DEFCON and bonus. Avoid the previous optimiser failure mode of over-selecting questionable low-ceiling value picks.
+Prioritise the highest projected point accumulation and elite ceiling, incorporating attacking threat, expected minutes, preseason, fixtures, penalties/set pieces, clean sheets, DEFCON and bonus. Avoid low-ceiling value flooding and do not sacrifice material expected points merely to improve a rank-based utility score.
 
 ## Do not forget
-The user has supplied a current private draft via screenshot in the active project history. It is a comparison candidate, not automatically the optimum. Future recommendations should compare the latest private/manual team with live Pinnacle/Elite outputs when available.
+The user has supplied a current private draft via screenshot in the active project history. It is a comparison candidate, not automatically the optimum. Future recommendations should compare the latest private/manual team with synchronized live Pinnacle/Elite outputs.
 
 ## Status labels
-- **Production now:** Pinnacle + merged Elite code.
-- **Needs validation now:** live Elite output versus Pinnacle after merge.
+- **Production now:** Pinnacle + Elite pipeline + resolved evidence/captain gates.
+- **Validation now:** xP-anchored Elite objective correction.
+- **Next:** synchronized Pinnacle/Elite/Haaland/no-Haaland run and final squad decision.
 - **Proposed, not production:** Apex Meta selector and future market/Bayesian/ownership upgrades.
