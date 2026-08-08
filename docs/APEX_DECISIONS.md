@@ -64,3 +64,6 @@ Direct xG90/xA90 and related player rates are not trustworthy merely because the
 
 ## D021 — Elite epsilon must be audited as a frontier
 The 0.5% Elite regret band is not treated as calibrated truth. Every live Elite run must expose unrestricted sensitivity at 0%, 0.25%, 0.5% and 1.0% raw-xP regret allowance. If materially different squads appear from tiny epsilon changes, maximum-EV remains the canonical recommendation until no-hindsight evidence supports a stable band. The sensitivity output is decision evidence, not another weighted forecast.
+
+## D022 — Epsilon convergence is machine-readable, not eyeballed
+Elite may influence the canonical recommendation only when each of the 0.25%, 0.50% and 1.00% unrestricted frontier solutions retains at least 13 of the 15 maximum-EV squad members and preserves the same captain as maximum-EV. This threshold is explicit to prevent subjective visual interpretation of a frontier. If any required frontier point fails either condition, the layer must fall back to maximum-EV. The 13/15 rule itself is a provisional operational rule and should be revisited only with benchmark/no-hindsight evidence.
