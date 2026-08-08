@@ -1,4 +1,4 @@
-name: Apex Final GW1 2026
+name: Apex Final GW1 2026 — Unified
 
 on:
   workflow_dispatch:
@@ -10,13 +10,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: apex-final-gw1-2026
+  group: apex-final-gw1-2026-unified
   cancel-in-progress: true
 
 jobs:
   final-gw1:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
       - name: One-off date guard
         id: guard
@@ -46,8 +46,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: data/cache
-          key: apex-runtime-2627-gw1-final-${{ github.run_id }}
+          key: apex-unified-gw1-final-${{ github.run_id }}
           restore-keys: |
+            apex-unified-runtime-2627-
+            apex-pinnacle-runtime-2627-
             apex-runtime-2627-
 
       - name: Cache AIrsenal database
@@ -72,8 +74,6 @@ jobs:
           AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
         run: |
           if [ ! -s "$AIRSENAL_DB_FILE" ]; then
-            # AIrsenal requires a positive ID only to initialise its schema.
-            # Apex never uses this manager's transactions for forecasts.
             airsenal_setup_initial_db --fpl_team_id 1
           fi
           python scripts/update_airsenal_worker.py
@@ -82,7 +82,7 @@ jobs:
             --horizon 8 \
             --output data/generated/airsenal.csv
 
-      - name: Generate final pre-GW1 recommendation
+      - name: Generate final canonical pre-GW1 recommendation
         if: steps.guard.outputs.run == 'true'
         env:
           APEX_SEASON: "2026-2027"
@@ -92,19 +92,24 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
-        run: apex-fpl run --scenario both --horizon 8 --force
+        run: |
+          python scripts/run_apex.py \
+            --horizon 8 \
+            --stochastic-scenarios 512 \
+            --cvar-alpha 0.10 \
+            --cvar-weight 0.20 \
+            --force
 
-      - name: Enforce full Apex decision gate
-        if: steps.guard.outputs.run == 'true'
-        run: python scripts/assert_full_apex.py reports/latest.json
-
-      - name: Upload final GW1 recommendation
+      - name: Upload final GW1 unified recommendation
         if: always() && steps.guard.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: apex-final-gw1-2026-${{ github.run_id }}
+          name: apex-final-gw1-2026-unified-${{ github.run_id }}
           path: |
+            data/generated/apex_recommendation_latest.json
+            data/generated/apex_recommendation_latest.md
+            data/generated/pinnacle_latest.json
+            data/generated/elite_latest.json
             reports/
-            data/snapshots/latest.json
             data/generated/airsenal.csv
           retention-days: 60

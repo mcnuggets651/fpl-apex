@@ -21,6 +21,9 @@ def optimise_initial_horizon(
     banned: set[int] | None = None,
     captain_eligible: set[int] | None = None,
     projection_col: str = "xp",
+    reference_projection_col: str | None = None,
+    min_reference_objective: float | None = None,
+    display_projection_col: str | None = None,
 ) -> SquadSolution:
     """Optimise the initial squad over the complete planning horizon.
 
@@ -29,10 +32,14 @@ def optimise_initial_horizon(
     this is a genuine maximum-expected-points baseline. Risk belongs in the separate
     correlated CVaR layer rather than being silently double-counted here.
 
-    ``risk_adjusted_xp`` remains a supported explicit projection column and is the
-    fallback for older/test projection tables that do not contain ``xp``.
-    ``bench_weight`` is only a first-stage reserve-value proxy; the final published
-    GW mechanics are recalculated with exact captain/vice and autosub expectation.
+    ``reference_projection_col`` + ``min_reference_objective`` enable an
+    epsilon-constraint / lexicographic second stage. A secondary objective can be
+    maximised only among solutions that retain a specified minimum value on the
+    canonical reference surface (normally raw Pinnacle ``xp``).
+
+    ``display_projection_col`` controls the values exposed as ``gw1_xp`` in the
+    returned dataframes. This lets a secondary utility drive selection while the
+    report still shows real expected points.
     """
     locked, banned = locked or set(), banned or set()
     captain_eligible = (
@@ -58,26 +65,33 @@ def optimise_initial_horizon(
         raise ValueError(
             f"projection table requires {projection_col!r} or 'risk_adjusted_xp'"
         )
-    px = projections[projections["gw"].isin(gws)][
-        ["player_id", "gw", value_col]
-    ].copy()
-    matrix = px.pivot_table(
-        index="player_id",
-        columns="gw",
-        values=value_col,
-        aggfunc="sum",
-        fill_value=0.0,
-    )
-    for gw in gws:
-        if gw not in matrix.columns:
-            matrix[gw] = 0.0
 
     n, t_count = len(d), len(gws)
     pids = d["player_id"].astype(int).tolist()
-    xp = np.zeros((n, t_count), dtype=float)
-    for i, pid in enumerate(pids):
-        if pid in matrix.index:
-            xp[i, :] = [float(matrix.loc[pid, gw]) for gw in gws]
+
+    def values_for(column: str) -> np.ndarray:
+        if column not in projections.columns:
+            raise ValueError(f"projection table requires {column!r}")
+        px = projections[projections["gw"].isin(gws)][
+            ["player_id", "gw", column]
+        ].copy()
+        matrix = px.pivot_table(
+            index="player_id",
+            columns="gw",
+            values=column,
+            aggfunc="sum",
+            fill_value=0.0,
+        )
+        for gw in gws:
+            if gw not in matrix.columns:
+                matrix[gw] = 0.0
+        values = np.zeros((n, t_count), dtype=float)
+        for i, pid in enumerate(pids):
+            if pid in matrix.index:
+                values[i, :] = [float(matrix.loc[pid, gw]) for gw in gws]
+        return values
+
+    xp = values_for(value_col)
 
     # Variables: fixed squad S_i; per-GW XI X_i,t; per-GW captain C_i,t.
     S0 = 0
@@ -95,15 +109,20 @@ def optimise_initial_horizon(
         return C0 + t * n + i
 
     bw = float(np.clip(bench_weight, 0.0, 0.35))
-    objective = np.zeros(total_vars, dtype=float)
-    for t in range(t_count):
-        discount = float(decay) ** t
-        for i in range(n):
-            value = max(float(xp[i, t]), 0.0) * discount
-            objective[s(i)] += bw * value
-            objective[x(i, t)] += (1.0 - bw) * value
-            # Normal captaincy is one additional copy of expected points.
-            objective[c(i, t)] += value
+
+    def build_objective(values: np.ndarray) -> np.ndarray:
+        coefficients = np.zeros(total_vars, dtype=float)
+        for t in range(t_count):
+            discount = float(decay) ** t
+            for i in range(n):
+                value = max(float(values[i, t]), 0.0) * discount
+                coefficients[s(i)] += bw * value
+                coefficients[x(i, t)] += (1.0 - bw) * value
+                # Normal captaincy is one additional copy of expected points.
+                coefficients[c(i, t)] += value
+        return coefficients
+
+    objective = build_objective(xp)
 
     rows: list[dict[int, float]] = []
     lower: list[float] = []
@@ -141,6 +160,20 @@ def optimise_initial_horizon(
         for i in range(n):
             add({x(i, t): 1.0, s(i): -1.0}, -np.inf, 0)
             add({c(i, t): 1.0, x(i, t): -1.0}, -np.inf, 0)
+
+    if min_reference_objective is not None:
+        ref_col = reference_projection_col or "xp"
+        reference_values = values_for(ref_col)
+        reference_objective = build_objective(reference_values)
+        add(
+            {
+                idx: float(value)
+                for idx, value in enumerate(reference_objective)
+                if abs(float(value)) > 1e-12
+            },
+            float(min_reference_objective),
+            np.inf,
+        )
 
     A = lil_matrix((len(rows), total_vars), dtype=float)
     for r, coeffs in enumerate(rows):
@@ -183,11 +216,12 @@ def optimise_initial_horizon(
     capt = [i for i in range(n) if sol[c(i, 0)] > 0.5]
     benched = [i for i in chosen if i not in lineup]
 
-    # Output GW1 xP must describe the same surface the optimiser solved, otherwise
-    # a risk-adjusted display column can misleadingly disagree with the EV decision.
-    gw1_map = {pid: float(xp[i, 0]) for i, pid in enumerate(pids)}
+    display_col = display_projection_col or value_col
+    display_values = xp if display_col == value_col else values_for(display_col)
+    gw1_map = {pid: float(display_values[i, 0]) for i, pid in enumerate(pids)}
     d["gw1_xp"] = d["player_id"].map(gw1_map).fillna(0.0)
     d["decision_projection_col"] = value_col
+    d["display_projection_col"] = display_col
 
     detail_columns = [
         "player_id",
@@ -208,6 +242,7 @@ def optimise_initial_horizon(
         "horizon_xp",
         "projection_confidence",
         "decision_projection_col",
+        "display_projection_col",
     ]
     cols = [col for col in detail_columns if col in d.columns]
     squad_df = d.loc[chosen, cols].sort_values(
@@ -231,7 +266,7 @@ def optimise_initial_horizon(
         ).fillna(1.0)
         vice_idx = max(
             vice_pool,
-            key=lambda i: float(xp[i, 0]) * float(appearance.iloc[i]),
+            key=lambda i: float(display_values[i, 0]) * float(appearance.iloc[i]),
         )
         vice_df = d.loc[[vice_idx], cols]
     else:

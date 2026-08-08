@@ -83,6 +83,11 @@ def test_invalid_weights_are_rejected() -> None:
         EliteWeights(attack=0.50).validate()
 
 
+def test_invalid_regret_fraction_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        EliteWeights(max_ev_regret_fraction=0.06).validate()
+
+
 def test_elite_prefers_high_ceiling_premium_over_cheaper_efficiency() -> None:
     out = build_elite_projection_surface(_players(), _projections())
     premium = out.loc[out["player_id"] == 1].iloc[0]
@@ -92,10 +97,19 @@ def test_elite_prefers_high_ceiling_premium_over_cheaper_efficiency() -> None:
     assert premium["elite_attack_score"] > cheap["elite_attack_score"]
     assert premium["elite_captaincy_score"] > cheap["elite_captaincy_score"]
     assert premium["elite_value_score"] < cheap["elite_value_score"]
-    assert premium["elite_weight_profile"] == "35/20/15/10/10/5/5"
+    assert (
+        premium["elite_weight_profile"]
+        == "35/20/15/10/10/5/5; secondary under xP floor"
+    )
 
 
 def test_elite_surface_preserves_raw_expected_points() -> None:
     projections = _projections()
     out = build_elite_projection_surface(_players(), projections)
     assert out["xp"].tolist() == projections["xp"].tolist()
+    assert "elite_decision_xp" not in out.columns
+
+
+def test_default_raw_ev_regret_band_is_half_percent() -> None:
+    weights = EliteWeights()
+    assert weights.max_ev_regret_fraction == pytest.approx(0.005)

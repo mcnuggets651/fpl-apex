@@ -1,103 +1,19 @@
-name: Publish green Apex snapshot
+name: Archived — legacy Apex snapshot publisher
 
 on:
   workflow_dispatch:
-  schedule:
-    # Core pin refreshes at minute 03. The standard live check runs at minute 17.
-    # Publish shortly afterwards so GitHub exposes the newest green personalised result.
-    - cron: "33 */6 * * *"
 
 permissions:
-  contents: write
-
-concurrency:
-  group: publish-green-apex
-  cancel-in-progress: true
+  contents: read
 
 jobs:
-  publish:
+  archived:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - run: |
+          echo "This workflow is archived and intentionally publishes no team."
+          echo "Use the Apex Unified workflow / scripts/run_apex.py instead."
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install Apex + genuine AIrsenal worker
-        run: pip install -e '.[airsenal]'
-
-      - name: Restore Apex runtime cache
-        uses: actions/cache@v4
-        with:
-          path: data/cache
-          key: apex-runtime-2627-publish-${{ github.run_id }}
-          restore-keys: |
-            apex-runtime-2627-
-
-      - name: Cache AIrsenal database
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/airsenal.db
-          key: airsenal-2627-${{ runner.os }}-v3
-
-      - name: Refresh genuine AIrsenal forecasts
-        env:
-          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
-        run: |
-          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
-            # AIrsenal requires a positive ID only to initialise its schema.
-            # Apex never uses this manager's transactions for forecasts.
-            airsenal_setup_initial_db --fpl_team_id 1
-          fi
-          python scripts/update_airsenal_worker.py
-          python scripts/run_airsenal_worker.py \
-            --db "$AIRSENAL_DB_FILE" \
-            --horizon 8 \
-            --output data/generated/airsenal.csv
-
-      - name: Run full personalised Apex gate
-        env:
-          APEX_SEASON: "2026-2027"
-          APEX_HORIZON: "8"
-          FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
-          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
-        run: apex-fpl run --scenario both --horizon 8 --force
-
-      - name: Require full Apex readiness
-        run: python scripts/assert_full_apex.py reports/latest.json
-
-      - name: Publish only a green decision state
-        run: python scripts/publish_snapshot.py reports data/generated
-
-      - name: Commit compact latest recommendation
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f data/generated/apex_latest.json data/generated/apex_latest.md
-          if git diff --cached --quiet; then
-            echo "Published Apex decision has not changed"
-            exit 0
-          fi
-          git commit -m "data: publish green Apex snapshot [skip ci]"
-          git pull --rebase origin main
-          git push origin HEAD:main
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: published-apex-${{ github.run_id }}
-          path: |
-            reports/
-            data/generated/apex_latest.json
-            data/generated/apex_latest.md
-          retention-days: 30
+# Historical purpose: published data/generated/apex_latest.* from the old base pipeline.
+# Superseded by the single canonical contract:
+# data/generated/apex_recommendation_latest.*

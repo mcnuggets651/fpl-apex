@@ -8,10 +8,12 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class EliteWeights:
-    """Apex Elite 10.0 objective weights.
+    """Apex Elite 10.0 secondary-decision weights.
 
-    The weights intentionally favour repeatable point accumulation and captaincy
-    ceiling over simple points-per-million efficiency. They must sum to one.
+    Pinnacle ``xp`` remains the canonical forecast and primary optimisation target.
+    Elite is used only after a maximum-xP reference has been established. The
+    optimiser may then maximise this utility subject to retaining at least
+    ``1 - max_ev_regret_fraction`` of the relevant maximum-xP objective.
     """
 
     attack: float = 0.35
@@ -21,6 +23,7 @@ class EliteWeights:
     fixture: float = 0.10
     bonus_defcon: float = 0.05
     value: float = 0.05
+    max_ev_regret_fraction: float = 0.005
 
     def validate(self) -> None:
         values = [
@@ -36,6 +39,8 @@ class EliteWeights:
             raise ValueError("Elite weights must be non-negative")
         if not np.isclose(sum(values), 1.0, atol=1e-9):
             raise ValueError(f"Elite weights must sum to 1.0, got {sum(values):.6f}")
+        if not 0.0 <= self.max_ev_regret_fraction <= 0.05:
+            raise ValueError("Elite max_ev_regret_fraction must be between 0 and 5%")
 
 
 def _num(df: pd.DataFrame, col: str, default: float = 0.0) -> pd.Series:
@@ -52,11 +57,19 @@ def _optional_player_metric(players: pd.DataFrame, candidates: tuple[str, ...]) 
 
 
 def _rank01(values: pd.Series, groups: pd.Series | None = None) -> pd.Series:
-    clean = pd.to_numeric(values, errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    clean = (
+        pd.to_numeric(values, errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+    )
     if groups is None:
         return clean.rank(method="average", pct=True).clip(0.0, 1.0)
     frame = pd.DataFrame({"value": clean, "group": groups.astype(str)})
-    return frame.groupby("group", dropna=False)["value"].rank(method="average", pct=True).clip(0.0, 1.0)
+    return (
+        frame.groupby("group", dropna=False)["value"]
+        .rank(method="average", pct=True)
+        .clip(0.0, 1.0)
+    )
 
 
 def build_elite_projection_surface(
@@ -64,28 +77,22 @@ def build_elite_projection_surface(
     projections: pd.DataFrame,
     weights: EliteWeights | None = None,
 ) -> pd.DataFrame:
-    """Attach an Apex Elite 10.0 utility score to every player/Gameweek row.
+    """Attach the Elite secondary utility to the canonical projection surface.
 
-    This is deliberately a *decision utility*, not a replacement expected-points
-    forecast. The existing ensemble ``xp`` remains the auditable expected-points
-    surface. Elite re-ranks that evidence to emphasise attacking ceiling, secure
-    minutes, captaincy, set pieces and fixture quality while reducing the influence
-    of price efficiency to five per cent.
-
-    All inputs already exist in the Pinnacle pipeline. Optional shot/big-chance
-    fields are used when FPL Core provides them and safely fall back to zero.
+    This function does not alter ``xp`` and does not manufacture a second expected-
+    points forecast. The 35/20/15/10/10/5/5 score exists only to rank solutions
+    that already satisfy a strict raw-xP floor in the optimiser.
     """
     w = weights or EliteWeights()
     w.validate()
-
     if not {"player_id", "gw"}.issubset(projections.columns):
         raise ValueError("projections require player_id and gw")
     if "xp" not in projections.columns:
         raise ValueError("Elite scoring requires the Pinnacle ensemble xp column")
 
     player_cols = [
-        col
-        for col in [
+        c
+        for c in [
             "player_id",
             "position",
             "price",
@@ -93,12 +100,9 @@ def build_elite_projection_surface(
             "start_probability",
             "appearance_probability",
         ]
-        if col in players.columns
+        if c in players.columns
     ]
     p = players.drop_duplicates("player_id")[player_cols].copy()
-
-    # FPL Core schemas have changed names historically, so support the common
-    # spellings without making the production gate depend on any one optional field.
     extras = players.drop_duplicates("player_id")[["player_id"]].copy()
     base_players = players.drop_duplicates("player_id").reset_index(drop=True)
     extras["shots_signal"] = _optional_player_metric(
@@ -116,12 +120,10 @@ def build_elite_projection_surface(
     out["price"] = _num(out, "price", 4.5).clip(lower=3.5)
 
     parts: list[pd.DataFrame] = []
-    for gw, d in out.groupby("gw", sort=True, dropna=False):
+    for _, d in out.groupby("gw", sort=True, dropna=False):
         d = d.copy()
         pos = d["position"].astype(str)
 
-        # 35% attacking returns: transparent match-level attacking xP is the anchor,
-        # with direct xG/xA plus FPL Core shot/big-chance evidence as supporting priors.
         attack = (
             0.55 * _rank01(_num(d, "xp_attack"), pos)
             + 0.20 * _rank01(_num(d, "model_xg90"), pos)
@@ -129,49 +131,40 @@ def build_elite_projection_surface(
             + 0.10 * _rank01(_num(d, "shots_signal"), pos)
             + 0.05 * _rank01(_num(d, "big_chances_signal"), pos)
         )
-
-        # 20% minutes/start security. This intentionally rewards players who can
-        # convert good rates into actual FPL points repeatedly.
         minutes = (
-            0.50 * (_num(d, "expected_minutes", 0.0) / 90.0).clip(0.0, 1.0)
-            + 0.35 * _num(d, "start_probability", 0.0).clip(0.0, 1.0)
-            + 0.15 * _num(d, "appearance_probability", 0.0).clip(0.0, 1.0)
+            0.50 * (_num(d, "expected_minutes") / 90.0).clip(0.0, 1.0)
+            + 0.35 * _num(d, "start_probability").clip(0.0, 1.0)
+            + 0.15 * _num(d, "appearance_probability").clip(0.0, 1.0)
         )
-
-        # 15% captaincy: reward both central expectation and explosive upper-tail
-        # potential. This is the deliberate premium-player correction missing from
-        # a pure points-per-million optimiser.
         captaincy = (
             0.65 * _rank01(_num(d, "xp"))
-            + 0.35 * _rank01(_num(d, "projection_ceiling_80", _num(d, "xp").mean()))
+            + 0.35
+            * _rank01(_num(d, "projection_ceiling_80", _num(d, "xp").mean()))
         )
-
-        # 10% penalties/set pieces. Penalties dominate because their FPL conversion
-        # value is much larger than a generic corner or indirect free kick.
         set_pieces = (
             0.60 * _num(d, "penalty_share").clip(0.0, 1.0)
             + 0.15 * _num(d, "corners_share").clip(0.0, 1.0)
             + 0.15 * _num(d, "direct_freekick_share").clip(0.0, 1.0)
             + 0.10 * _num(d, "indirect_freekick_share").clip(0.0, 1.0)
         )
-        set_pieces = 0.75 * set_pieces + 0.25 * _rank01(_num(d, "xp_set_piece_prior"), pos)
-
-        # 10% fixture quality. The transparent projection has already translated
-        # opponent/home strength into attacking and clean-sheet expectation, so use
-        # those match-specific components rather than introducing a second fixture model.
-        fixture_signal = _num(d, "xp_attack") + _num(d, "xp_clean_sheet")
-        fixture = _rank01(fixture_signal, pos)
-
-        # 5% bonus + DEFCON: useful repeatable routes, but never allowed to dominate
-        # attacking ceiling in the Elite objective.
+        set_pieces = 0.75 * set_pieces + 0.25 * _rank01(
+            _num(d, "xp_set_piece_prior"), pos
+        )
+        fixture = _rank01(_num(d, "xp_attack") + _num(d, "xp_clean_sheet"), pos)
         bonus_defcon = 0.50 * _rank01(_num(d, "xp_bonus_prior"), pos) + 0.50 * _rank01(
             _num(d, "xp_defensive_contribution"), pos
         )
+        value = _rank01(_num(d, "xp") / d["price"].clip(lower=3.5), pos)
 
-        # 5% value only. This is the key philosophical change: cheap efficiency can
-        # break ties, but can no longer flood the XI with low-ceiling value picks.
-        ppm = _num(d, "xp") / d["price"].clip(lower=3.5)
-        value = _rank01(ppm, pos)
+        elite_score = (
+            w.attack * attack
+            + w.minutes * minutes
+            + w.captaincy * captaincy
+            + w.set_pieces * set_pieces
+            + w.fixture * fixture
+            + w.bonus_defcon * bonus_defcon
+            + w.value * value
+        ).clip(0.0, 1.0)
 
         d["elite_attack_score"] = attack
         d["elite_minutes_score"] = minutes
@@ -180,19 +173,13 @@ def build_elite_projection_surface(
         d["elite_fixture_score"] = fixture
         d["elite_bonus_defcon_score"] = bonus_defcon
         d["elite_value_score"] = value
-        d["elite_score"] = (
-            w.attack * attack
-            + w.minutes * minutes
-            + w.captaincy * captaincy
-            + w.set_pieces * set_pieces
-            + w.fixture * fixture
-            + w.bonus_defcon * bonus_defcon
-            + w.value * value
-        )
-        d["elite_score"] = d["elite_score"].clip(lower=0.0, upper=1.0)
-        d["elite_weight_profile"] = "35/20/15/10/10/5/5"
+        d["elite_score"] = elite_score
+        d["elite_weight_profile"] = "35/20/15/10/10/5/5; secondary under xP floor"
         parts.append(d)
 
     if not parts:
-        return out.assign(elite_score=0.0, elite_weight_profile="35/20/15/10/10/5/5")
+        return out.assign(
+            elite_score=0.0,
+            elite_weight_profile="35/20/15/10/10/5/5; secondary under xP floor",
+        )
     return pd.concat(parts, ignore_index=True)

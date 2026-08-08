@@ -1,9 +1,7 @@
-name: Apex FPL
+name: Apex CI
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 */6 * * *"
   push:
     branches: [main]
   pull_request:
@@ -12,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: apex-${{ github.event_name }}
+  group: apex-ci-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -31,69 +29,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-  live-run:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -e '.[airsenal]'
-
-      - name: Restore Apex runtime cache
-        uses: actions/cache@v4
-        with:
-          path: data/cache
-          key: apex-runtime-2627-${{ github.run_id }}
-          restore-keys: |
-            apex-runtime-2627-
-
-      - name: Cache AIrsenal database
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/airsenal.db
-          key: airsenal-2627-${{ runner.os }}-v3
-
-      - name: Refresh genuine AIrsenal forecasts
-        env:
-          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
-        run: |
-          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
-            # AIrsenal requires a positive ID only to initialise its schema.
-            # Apex never uses this manager's transactions for forecasts.
-            airsenal_setup_initial_db --fpl_team_id 1
-          fi
-          python scripts/update_airsenal_worker.py
-          python scripts/run_airsenal_worker.py \
-            --db "$AIRSENAL_DB_FILE" \
-            --horizon 8 \
-            --output data/generated/airsenal.csv
-
-      - name: Run personalised Apex production gate
-        env:
-          APEX_SEASON: "2026-2027"
-          APEX_HORIZON: "8"
-          FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
-          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
-        run: apex-fpl run --scenario both --horizon 8 --force
-
-      - name: Require full Apex readiness
-        shell: bash
-        run: python scripts/assert_full_apex.py reports/latest.json
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: apex-report-${{ github.run_id }}
-          path: |
-            reports/
-            data/snapshots/latest.json
-            data/generated/airsenal.csv
-          retention-days: 30
+# Production team generation is intentionally excluded from this workflow.
+# The only scheduled/user-facing decision workflow is `.github/workflows/pinnacle.yml`
+# (display name: Apex Unified), which runs `scripts/run_apex.py` and publishes only
+# `data/generated/apex_recommendation_latest.*`.
