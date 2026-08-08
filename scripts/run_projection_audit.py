@@ -18,7 +18,6 @@ from apex_fpl.data.http import CachedHttp
 from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.data.understat import load_understat_history, season_start_year
 from apex_fpl.models.fixtures import fixture_multipliers
-from apex_fpl.models.projection import project_players
 from apex_fpl.models.team_goals import build_team_goal_surface, build_team_ratings
 from apex_fpl.services.data_quality import official_strength_is_usable
 from apex_fpl.services.pipeline import run_pipeline
@@ -26,6 +25,7 @@ from apex_fpl.services.projection_audit import (
     build_fixture_shadow_comparison,
     build_player_shadow_comparison,
     build_projection_decomposition,
+    reprice_apex_for_fixture_shadow,
 )
 from apex_fpl.services.provenance import load_upstream_pins
 
@@ -134,7 +134,17 @@ def main() -> None:
     )
     fixture_audit.to_csv(output_dir / "fixture_shadow_comparison.csv", index=False)
 
-    shadow_apex = project_players(out.players, shadow_fx, out.gameweeks)
+    # Reprice only the two fixture-sensitive Apex components from the already
+    # computed production projection. This is exact for the current player model
+    # and avoids treating the slim report-facing ``out.players`` table as raw
+    # modelling input.
+    player_teams = official.players[["player_id", "team"]].drop_duplicates("player_id")
+    shadow_apex = reprice_apex_for_fixture_shadow(
+        out.projections,
+        production_fx,
+        shadow_fx,
+        player_teams,
+    )
     player_shadow = build_player_shadow_comparison(
         out.projections,
         shadow_apex,
