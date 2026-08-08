@@ -131,6 +131,106 @@ def build_fixture_shadow_comparison(
     return out.sort_values(["gw", "team"]).reset_index(drop=True)
 
 
+def reprice_apex_for_fixture_shadow(
+    production_apex: pd.DataFrame,
+    production_fx: pd.DataFrame,
+    shadow_fx: pd.DataFrame,
+    player_teams: pd.DataFrame,
+) -> pd.DataFrame:
+    """Reprice transparent Apex xP under a shadow fixture surface.
+
+    The fixture model enters the current player projection only through the attack
+    multiplier and clean-sheet probability. Repricing those two components from
+    the already-computed production projection is therefore exact for a pure
+    fixture-surface challenger and avoids rebuilding players from the deliberately
+    slim report-facing pipeline output.
+    """
+    if production_apex.empty:
+        return production_apex.copy()
+    required_projection = {
+        "player_id",
+        "gw",
+        "opponent",
+        "is_home",
+        "apex_xp",
+        "xp_attack",
+        "xp_clean_sheet",
+    }
+    missing = required_projection - set(production_apex.columns)
+    if missing:
+        raise ValueError(f"shadow repricing missing projection columns: {sorted(missing)}")
+    if not {"player_id", "team"}.issubset(player_teams.columns):
+        raise ValueError("player-team map must contain player_id and team")
+
+    keys = ["gw", "team", "opponent", "is_home"]
+    fixture_cols = [*keys, "attack_multiplier", "clean_sheet_prob"]
+    for label, frame in [("production", production_fx), ("shadow", shadow_fx)]:
+        missing_fx = set(fixture_cols) - set(frame.columns)
+        if missing_fx:
+            raise ValueError(
+                f"{label} fixture surface missing columns: {sorted(missing_fx)}"
+            )
+
+    teams = player_teams[["player_id", "team"]].drop_duplicates("player_id")
+    d = production_apex.merge(
+        teams,
+        on="player_id",
+        how="left",
+        validate="many_to_one",
+    )
+    if d["team"].isna().any():
+        raise ValueError("shadow repricing could not map every projected player to a team")
+
+    prod = production_fx[fixture_cols].rename(
+        columns={
+            "attack_multiplier": "production_attack_multiplier",
+            "clean_sheet_prob": "production_clean_sheet_prob",
+        }
+    )
+    shadow = shadow_fx[fixture_cols].rename(
+        columns={
+            "attack_multiplier": "shadow_attack_multiplier",
+            "clean_sheet_prob": "shadow_clean_sheet_prob",
+        }
+    )
+    d = d.merge(prod, on=keys, how="left", validate="many_to_one")
+    d = d.merge(shadow, on=keys, how="left", validate="many_to_one")
+
+    fixture_rows = d["opponent"].notna()
+    needed = [
+        "production_attack_multiplier",
+        "production_clean_sheet_prob",
+        "shadow_attack_multiplier",
+        "shadow_clean_sheet_prob",
+    ]
+    if d.loc[fixture_rows, needed].isna().any().any():
+        raise ValueError("shadow repricing fixture coverage is incomplete")
+
+    prod_attack_mult = _numeric(d, "production_attack_multiplier", 1.0).clip(lower=1e-9)
+    shadow_attack_mult = _numeric(d, "shadow_attack_multiplier", 1.0)
+    prod_cs = _numeric(d, "production_clean_sheet_prob", 0.30).clip(lower=1e-9)
+    shadow_cs = _numeric(d, "shadow_clean_sheet_prob", 0.30)
+
+    original_attack = _numeric(d, "xp_attack")
+    original_clean = _numeric(d, "xp_clean_sheet")
+    d["xp_attack"] = original_attack * (shadow_attack_mult / prod_attack_mult)
+    d["xp_clean_sheet"] = original_clean * (shadow_cs / prod_cs)
+
+    unchanged = [
+        "xp_appearance",
+        "xp_defensive_contribution",
+        "xp_saves",
+        "xp_bonus_prior",
+        "xp_set_piece_prior",
+    ]
+    d["apex_xp"] = d["xp_attack"] + d["xp_clean_sheet"]
+    for col in unchanged:
+        d["apex_xp"] += _numeric(d, col)
+
+    drop_cols = ["team", *needed]
+    return d.drop(columns=[col for col in drop_cols if col in d.columns])
+
+
 def build_player_shadow_comparison(
     production_apex: pd.DataFrame,
     shadow_apex: pd.DataFrame,
