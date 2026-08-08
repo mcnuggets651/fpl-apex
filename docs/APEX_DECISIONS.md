@@ -17,8 +17,8 @@ Pinnacle ensemble `xp` remains the canonical expected-points forecast. Risk and 
 ## D005 — Do not optimise points-per-million alone
 Cheap efficiency may break ties but must not flood the XI with low-ceiling picks at the expense of premium captaincy and elite attacking routes.
 
-## D006 — Elite 10.0 objective
-Elite utility is fixed initially at 35/20/15/10/10/5/5: attack/minutes/captaincy/set pieces/fixtures/bonus+DEFCON/value. Weight changes require benchmark evidence and a documented decision.
+## D006 — Elite 10.0 evidence profile
+Elite evidence is fixed initially at 35/20/15/10/10/5/5: attack/minutes/captaincy/set pieces/fixtures/bonus+DEFCON/value. Weight changes require benchmark evidence and a documented decision.
 
 ## D007 — Elite does not replace Pinnacle
 Every Elite squad must be re-scored on raw ensemble xP and its exact EV regret versus maximum-EV Pinnacle must be reported.
@@ -52,3 +52,6 @@ Future Apex work must load `CURRENT_STATE.md`, `APEX_MASTER_CONTEXT.md` and this
 
 ## D017 — Proposed Meta layer must earn promotion
 A future Meta selector may compare Pinnacle, Elite, Safety, Aggressive/Differential and Value candidates, but it must not be promoted merely because it looks sophisticated. It must beat or improve robustness against benchmarks without unacceptable EV regret.
+
+## D018 — Elite must be xP-anchored
+The first Elite implementation optimised a percentile/rank utility directly. Live validation showed this could make high-ranked lower-ceiling assets look too similar to true premium point scorers and produced misleading `gw1_xp` reporting. Elite must therefore optimise a decision value anchored to canonical Pinnacle `xp`. The 35/20/15/10/10/5/5 evidence profile is retained only as a bounded modifier. Initial production cap: no player/Gameweek Elite modifier may move raw xP by more than ±5%. Raw xP remains the forecast, and every Elite squad must still be re-scored on raw xP. This cap can change only after benchmark evidence.
