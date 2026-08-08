@@ -1,16 +1,16 @@
 {
   "contract": "apex-unified-recommendation-v1",
-  "generated_at": "2026-08-08T14:14:23.050763+00:00",
+  "generated_at": "2026-08-08T14:26:52.507410+00:00",
   "canonical": true,
   "user_facing_source_of_truth": true,
   "ready_to_act": true,
   "blockers": [],
   "official_snapshot": {
-    "snapshot_id": "20260808T140819Z-7f5c3238",
-    "retrieved_at": "2026-08-08T14:08:19.504364+00:00",
+    "snapshot_id": "20260808T142046Z-cbc1535a",
+    "retrieved_at": "2026-08-08T14:20:46.332140+00:00",
     "players": 573,
     "fixtures": 380,
-    "bootstrap_sha256": "d37ee3d44456990f16ccaaa3510d1af431e43dc4b9b7f39f8d258a742bea5b3f",
+    "bootstrap_sha256": "d07153fff03fba78114207fd34c25db20ee33e99b0db552b7f3d98d00d46e745",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
   "gameweeks": [
@@ -5227,14 +5227,14 @@
   "internal_diagnostics": {
     "pinnacle_contract": "apex-pinnacle-v3-final",
     "elite_contract": "apex-elite-10-v4-diagnostic",
-    "pinnacle_snapshot_id": "20260808T140819Z-7f5c3238",
-    "elite_snapshot_id": "20260808T141345Z-e5fe1ed0",
+    "pinnacle_snapshot_id": "20260808T142046Z-cbc1535a",
+    "elite_snapshot_id": "20260808T142615Z-017a08f7",
     "pinnacle_content_fingerprint": [
-      "d37ee3d44456990f16ccaaa3510d1af431e43dc4b9b7f39f8d258a742bea5b3f",
+      "d07153fff03fba78114207fd34c25db20ee33e99b0db552b7f3d98d00d46e745",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "elite_content_fingerprint": [
-      "d37ee3d44456990f16ccaaa3510d1af431e43dc4b9b7f39f8d258a742bea5b3f",
+      "d07153fff03fba78114207fd34c25db20ee33e99b0db552b7f3d98d00d46e745",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "same_official_surface": true
