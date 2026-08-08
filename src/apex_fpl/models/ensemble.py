@@ -42,7 +42,12 @@ def blend_projection(
     weights: dict[str, float],
     risk_penalty: float,
 ) -> pd.DataFrame:
-    """Blend experts with missing-source reweighting and quantified uncertainty."""
+    """Blend experts with missing-source reweighting and quantified uncertainty.
+
+    The canonical ``xp`` remains exactly the same weighted mean as before. The
+    additional ``xp_expert_*`` columns expose each expert's exact additive share of
+    that mean so downstream diagnostics can explain a decision without guessing.
+    """
     out = _allocate_gameweek_experts(base.copy())
     n = len(out)
     numerator = np.zeros(n, dtype=float)
@@ -52,6 +57,8 @@ def blend_projection(
         sum(max(float(weights.get(k, 0)), 0) for k in EXPERT_COLUMNS) or 1.0
     )
     expert_count = np.zeros(n, dtype=int)
+    expert_values: dict[str, np.ndarray] = {}
+    expert_weights: dict[str, float] = {}
 
     for key, col in EXPERT_COLUMNS.items():
         if col not in out.columns:
@@ -59,6 +66,8 @@ def blend_projection(
         v = pd.to_numeric(out[col], errors="coerce").to_numpy(float)
         mask = np.isfinite(v)
         w = max(float(weights.get(key, 0)), 0.0)
+        expert_values[key] = v
+        expert_weights[key] = w
         numerator[mask] += v[mask] * w
         sumsq[mask] += (v[mask] ** 2) * w
         denominator[mask] += w
@@ -99,12 +108,8 @@ def blend_projection(
         if "role_confidence" in out
         else pd.Series(0.65, index=out.index)
     )
-    min_conf = (
-        pd.to_numeric(min_src, errors="coerce").fillna(0.65).to_numpy(float)
-    )
-    role_conf = (
-        pd.to_numeric(role_src, errors="coerce").fillna(0.65).to_numpy(float)
-    )
+    min_conf = pd.to_numeric(min_src, errors="coerce").fillna(0.65).to_numpy(float)
+    role_conf = pd.to_numeric(role_src, errors="coerce").fillna(0.65).to_numpy(float)
     confidence = np.clip(
         coverage
         * agreement
@@ -117,14 +122,31 @@ def blend_projection(
     out["expert_count"] = expert_count
     out["expert_coverage"] = coverage
     out["expert_disagreement_sd"] = disagreement_sd
+
+    # Exact additive contribution of every configured expert to canonical xp.
+    # Missing experts contribute zero. If no expert is available, the existing
+    # fallback remains the transparent Apex model and is attributed accordingly.
+    for key in EXPERT_COLUMNS:
+        contrib = np.zeros(n, dtype=float)
+        if key in expert_values:
+            values = expert_values[key]
+            valid = np.isfinite(values) & (denominator > 0)
+            contrib[valid] = (
+                values[valid]
+                * expert_weights[key]
+                / np.maximum(denominator[valid], 1e-12)
+            )
+        out[f"xp_expert_{key}"] = contrib
+    no_expert = denominator <= 0
+    if np.any(no_expert):
+        out.loc[no_expert, "xp_expert_apex_model"] = fallback[no_expert]
+
     # ``projection_sd`` includes the transparent model's match-outcome variance.
     # That is useful for points-distribution reporting, but it is not uncertainty
     # about the latent expected-points forecast and must not drive decision
     # stability re-solves. Keep a separate epistemic scale built from expert
     # disagreement and an explicit evidence-gap allowance.
-    evidence_gap_sd = np.maximum(mean, 0.0) * (
-        0.05 + 0.25 * (1.0 - confidence)
-    )
+    evidence_gap_sd = np.maximum(mean, 0.0) * (0.05 + 0.25 * (1.0 - confidence))
     out["forecast_uncertainty_sd"] = np.sqrt(
         disagreement_sd**2 + evidence_gap_sd**2
     )
