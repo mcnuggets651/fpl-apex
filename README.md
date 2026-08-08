@@ -1,46 +1,79 @@
-# Apex FPL — Pinnacle Decision Engine
+# Apex FPL — Unified Decision Engine
 
-Apex FPL is a reproducible 2026/27 Fantasy Premier League decision system built to answer:
+Apex is a reproducible 2026/27 Fantasy Premier League decision system built to answer one question:
 
-> Given everything we can defensibly know before the deadline, which legal FPL decision maximises expected points, how robust is it, and what would make us change it?
+> Given everything we can defensibly know before the deadline, what is the single legal FPL decision that best maximises expected points, and how robust is it?
 
-The production personal entry is **FPL ID 63984**.
+Production personal entry: **63984**.
 
-## Start here
+## One team, one contract
 
-The complete operating guide is **[`docs/PINNACLE_USER_GUIDE.md`](docs/PINNACLE_USER_GUIDE.md)**.
+Apex no longer exposes Pinnacle, Elite, CVaR, value or other models as competing user-facing teams.
 
-The single most important rule is that a recommendation is called **Apex Pinnacle** only when `data/generated/pinnacle_latest.json` says all three are true:
+The **only** user-facing recommendation is:
 
-```json
-{
-  "safe_to_act": true,
-  "full_apex_ready": true,
-  "pinnacle_ready": true
-}
+- `data/generated/apex_recommendation_latest.json`
+- `data/generated/apex_recommendation_latest.md`
+
+The **only** production command is:
+
+```bash
+python scripts/run_apex.py \
+  --horizon 8 \
+  --stochastic-scenarios 256 \
+  --cvar-alpha 0.10 \
+  --cvar-weight 0.20 \
+  --force
 ```
 
-If the gate is red, the engine reports the blocker instead of serving an old team.
+If `ready_to_act` is false, Apex withholds a team and reports the blockers instead of choosing manually among diagnostic outputs.
 
-## What Pinnacle uses
+## Canonical decision policy
 
-- **Official FPL** as canonical source for player ID, club, FPL position, price, status and fixtures.
-- **FPL Core Insights** for current underlying stats, preseason, Elo/strength and defensive-contribution context.
-- **Genuine pinned AIrsenal** as an independent expected-points expert, mapped only through official FPL IDs.
-- **Apex xP decomposition** for expected minutes, xG/xA/xGI, clean sheets, saves, defensive contribution, set pieces, penalties, tactical role and 2026/27 bonus/BPS.
-- **Trusted news/manager/transfer evidence** for short-lived availability and role changes without letting headlines overwrite official identity.
-- **Projection ensemble** with disagreement, confidence, standard deviation and floors/ceilings.
-- **Maximum-EV full-horizon MILP** that keeps the 15-player initial squad fixed but optimises XI and captain separately in every Gameweek.
-- **Correlated stochastic scenarios** with club attack/defence, opponent, Gameweek and persistent player-role/minutes uncertainty.
-- **CVaR MILP** as a lower-tail robustness cross-check.
-- **Exact selection regret** by force/ban re-optimisation.
-- **Exact captain/vice fallback and autosub mechanics** for the final deadline recommendation.
-- **Independent pinned open-fpl-solver parity** on the same ensemble-mean xP surface.
-- **Personal team synchronisation** for entry 63984, including bank, rolled free transfers, chip history and reconstructed selling prices.
-- **Receding-horizon weekly transfer strategy**: execute only the next action, then re-solve after new information.
-- **No-hindsight learning archive** that stores genuine pre-deadline forecasts and attaches official outcomes only after the Gameweek finishes.
+The production hierarchy is:
 
-Exact upstream revisions are locked in `upstreams.lock.json`.
+1. Official FPL canonical identity/price/status/fixtures.
+2. Validated FPL Core, AIrsenal, historical, preseason, tactical, news and fixture evidence.
+3. First-class expected-minutes/start/appearance model.
+4. Canonical ensemble expected points (`xp`).
+5. Legal maximum-xP full-horizon optimiser.
+6. Correlated scenario/CVaR, exact regret, captain stability and independent-solver diagnostics.
+7. Elite 35/20/15/10/10/5/5 as a **secondary lexicographic selector only** inside a near-optimal xP set.
+8. Epsilon frontier at 0%, 0.25%, 0.5% and 1.0%.
+9. Elite may influence the canonical 15 only when 0.25%, 0.5% and 1.0% each retain at least 13/15 of max-EV and the same captain.
+10. Otherwise maximum-EV is the automatic fallback.
+11. Exact XI, captain, vice and bench mechanics are recalculated on raw xP.
+12. Publish one recommendation only when readiness and snapshot-consistency gates are green.
+
+Full policy: [`docs/APEX_CANONICAL_DECISION_POLICY.md`](docs/APEX_CANONICAL_DECISION_POLICY.md).
+
+## Internal diagnostics — not separate recommendations
+
+The following remain important, but are internal evidence layers:
+
+- `pinnacle_latest.*` — maximum-EV and production-readiness diagnostics.
+- `elite_latest.*` — epsilon/lexicographic secondary-selector diagnostics.
+- correlated CVaR solution — lower-tail sensitivity.
+- exact force/ban regret — selection fragility.
+- captain/vice/autosub mechanics — deadline execution.
+- independent solver parity — same-surface optimisation check.
+- Haaland/no-Haaland scenarios — explicit counterfactuals.
+
+Historical standalone selection philosophies are documented under `archive/selection_approaches/` and must not be presented as alternative Apex teams.
+
+## What Apex uses
+
+- **Official FPL** — player identity, club, position, price, status, fixtures.
+- **FPL Core Insights** — underlying stats, preseason, Elo/strength, defensive-contribution context.
+- **Pinned AIrsenal** — independent expected-points expert mapped through Official FPL IDs.
+- **Apex xP decomposition** — minutes, attack, clean sheets, saves, DEFCON, penalties/set pieces, tactical role, bonus/BPS.
+- **News/manager/transfer evidence** — availability and role verification.
+- **Projection ensemble** — mean xP, disagreement, confidence, variance, floor/ceiling.
+- **Correlated stochastic scenarios** — team/player/minutes outcome dependence.
+- **Receding-horizon transfer planning** — execute the current action, then refresh and re-solve.
+- **No-hindsight archive** — pre-deadline forecasts stored before outcomes are known.
+
+Exact external revisions are pinned in `upstreams.lock.json`.
 
 ## Quick start
 
@@ -48,119 +81,52 @@ Exact upstream revisions are locked in `upstreams.lock.json`.
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev,airsenal]'
-
 export FPL_ENTRY_ID=63984
-apex-fpl pinnacle --horizon 8
-apex-fpl pinnacle-status
+python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
 ```
 
-Equivalent explicit command:
-
-```bash
-python scripts/run_pinnacle.py \
-  --horizon 8 \
-  --stochastic-scenarios 256 \
-  --cvar-alpha 0.10 \
-  --cvar-weight 0.20 \
-  --force
-python scripts/assert_pinnacle.py
-```
-
-## Use it from ChatGPT
-
-The intended user interface is the conversation, not a separate app. Examples:
+Then read:
 
 ```text
-Give me the latest Apex Pinnacle team.
-Stress-test Haaland vs no Haaland.
-What is my best transfer this week?
-Should I roll? Show the exact value of rolling.
-Is a -4 justified?
-Give me the action now and contingent 3-GW path.
-Who should I captain and vice-captain?
-What is the exact bench order?
-Should I wildcard now or wait?
-Which current picks are mathematically fragile?
-Does CVaR or the independent solver disagree?
-How has the model performed so far this season?
+data/generated/apex_recommendation_latest.json
 ```
 
-ChatGPT should read `data/generated/pinnacle_latest.json` first rather than reuse a remembered historical team.
+## ChatGPT operating rule
 
-## Personal FPL workflow
+When the user asks:
 
-Before GW1, FPL does not expose an unpublished draft, so Pinnacle builds the optimal initial squad from scratch.
+> “Give me the Apex team.”
 
-After each deadline, entry **63984** supplies the latest public 15-player squad, bank, captain/vice, transfer/chip history and rolled free-transfer state. Manager-specific selling prices are reconstructed from the captured pre-GW1 official price universe plus later public purchase prices.
+ChatGPT must:
 
-Public FPL picks are deadline snapshots. If a transfer has already been privately made for the next deadline, provide that change as a manual override; the public API cannot see it yet.
+1. load the Project Brain;
+2. read `apex_recommendation_latest.json` first;
+3. present that recommendation if `ready_to_act=true`;
+4. otherwise report blockers;
+5. use Pinnacle/Elite/CVaR only to explain the canonical decision;
+6. never produce several competing Apex teams unless the user explicitly asks for a labelled scenario.
 
-## Mathematical decision hierarchy
+## Project Brain
 
-1. Maximise expected FPL points on ensemble mean `xp`.
-2. Check the correlated CVaR solution for downside sensitivity.
-3. Re-solve force/ban cases to quantify exact selection regret.
-4. Recalculate captain, vice and bench order with exact fallback/autosub expectation.
-5. Cross-check the independent solver on the same xP surface.
-6. Act only if all required source and Pinnacle gates are green.
+Start with:
 
-Risk is therefore **measured separately**, not silently baked into the primary objective twice.
+1. [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md)
+2. [`docs/APEX_MASTER_CONTEXT.md`](docs/APEX_MASTER_CONTEXT.md)
+3. [`docs/APEX_DECISIONS.md`](docs/APEX_DECISIONS.md)
+4. [`docs/APEX_CANONICAL_DECISION_POLICY.md`](docs/APEX_CANONICAL_DECISION_POLICY.md)
+5. [`docs/APEX_OPERATING_MANUAL.md`](docs/APEX_OPERATING_MANUAL.md)
 
-## Weekly transfer philosophy
+## Current modelling priority
 
-Pinnacle does not tell you to blindly follow a static eight-week transfer script. It uses **receding horizon** optimisation:
+The next forecast-model upgrade is **empirical-Bayes / partial-pooling shrinkage of small-sample player xG90/xA90 and related rates toward role/position priors**. This improves the canonical xP forecast; it does not create another selection philosophy.
 
-- solve the full next several Gameweeks;
-- compare the best action with the explicit roll counterfactual;
-- execute only the current action;
-- treat later transfers as contingencies;
-- refresh prices, injuries, expected minutes, news and fixtures;
-- solve again at the next deadline.
+Dixon-Coles/Poisson is a later fixture-expert benchmark and must earn ensemble weight through historical validation.
 
-The candidate universe also protects positional options, cheap enablers, price-band leaders, Pareto-efficient assets and one-week fixture punts from naive global top-N pruning.
+## Known boundary
 
-## Chips
+Apex improves decision quality; it cannot remove football randomness. Before enough 2026/27 outcomes exist, some covariance/minutes/rate assumptions remain priors and are explicitly tracked for calibration.
 
-The personal state stores used-chip history and the engine evaluates the current Wildcard, Free Hit, Bench Boost and Triple Captain window under the 2026/27 rules.
-
-Chip value is reported as opportunity evidence. A positive immediate gain is not by itself an instruction to spend a scarce chip because future Blank/Double Gameweeks may be more valuable.
-
-## Learning without hindsight
-
-The Pinnacle workflow maintains `data/history/deadlines/`.
-
-Within 30 hours of each deadline it refreshes that Gameweek's green pre-deadline forecast. Once Official FPL marks the event finished, official points are attached. `data/generated/calibration_report.json` then reports expert error/ranking performance, candidate ensemble calibration and a genuine latest-GW holdout check when enough history exists.
-
-Weights are **not automatically changed after one good sample**. Promotion remains conservative until repeated out-of-sample evidence establishes a stable improvement.
-
-## GitHub automation
-
-The key workflows are:
-
-- **Apex Pinnacle** — full tests, upstream validation, genuine AIrsenal refresh, live production gate, maximum-EV/CVaR/regret/mechanics run, strict Pinnacle gate, deadline learning archive and repository-readable snapshot. Scheduled every six hours and manually dispatchable.
-- **Publish independent solver parity** — runs the pinned external solver on the same Pinnacle ensemble-mean xP and embeds the comparison back into the snapshot.
-- **Apex / AIrsenal / FPL Core refresh workflows** — maintain the validated source and diagnostic layers underneath Pinnacle.
-
-A dedicated final pre-GW1 run is scheduled for the morning of **21 August 2026**.
-
-## Main outputs
-
-- `data/generated/pinnacle_latest.json` — machine-readable final decision.
-- `data/generated/pinnacle_latest.md` — human-readable final decision.
-- `data/generated/apex_latest.json` — validated base production state.
-- `data/generated/solver_parity.json` — independent same-surface optimisation check.
-- `data/generated/airsenal.csv` — genuine AIrsenal projections.
-- `data/generated/calibration_report.json` — historical learning status.
-- `data/history/deadlines/gwXX_forecast.csv` — no-hindsight forecast/outcome archive.
-- `reports/pinnacle_selection_regret.csv` — exact decision sensitivity.
-- `reports/pinnacle_scenario_player_summary.csv` — stochastic player summaries.
-- `reports/team_state.json` — current public/manual personal team state.
-
-## Known-data boundary
-
-Apex Pinnacle can improve the quality of the decision; it cannot remove football randomness. The initial covariance coefficients are transparent priors because 2026/27 outcomes do not exist before the season. They are explicitly flagged and can be validated as the no-hindsight archive grows.
-
-The standard is not certainty. The standard is **the strongest auditable decision that the available data supports**.
+The standard is not certainty. The standard is **one consistent, auditable decision from the strongest validated process available**.
 
 ## Licence
 
