@@ -25,12 +25,19 @@ def _load(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _snapshot_id(payload: dict[str, Any]) -> str | None:
+def _snapshot(payload: dict[str, Any]) -> dict[str, Any]:
     snap = payload.get("official_snapshot")
-    if not isinstance(snap, dict):
-        return None
-    value = snap.get("snapshot_id")
-    return str(value) if value else None
+    return snap if isinstance(snap, dict) else {}
+
+
+def _snapshot_fingerprint(payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    snap = _snapshot(payload)
+    bootstrap = snap.get("bootstrap_sha256")
+    fixtures = snap.get("fixtures_sha256")
+    return (
+        str(bootstrap) if bootstrap else None,
+        str(fixtures) if fixtures else None,
+    )
 
 
 def _name(rows: Any) -> str | None:
@@ -79,14 +86,12 @@ def main() -> None:
     if not elite.get("safe_to_act") or not elite.get("full_apex_ready"):
         blockers.append("Elite diagnostic did not run on a fully green Apex surface")
 
-    pinnacle_snapshot = _snapshot_id(pinnacle)
-    elite_snapshot = _snapshot_id(elite)
-    if not pinnacle_snapshot or not elite_snapshot:
-        blockers.append("diagnostic snapshot identity is missing")
-    elif pinnacle_snapshot != elite_snapshot:
-        blockers.append(
-            f"Pinnacle/Elite snapshot mismatch: {pinnacle_snapshot} != {elite_snapshot}"
-        )
+    pinnacle_fp = _snapshot_fingerprint(pinnacle)
+    elite_fp = _snapshot_fingerprint(elite)
+    if None in pinnacle_fp or None in elite_fp:
+        blockers.append("diagnostic Official FPL content hashes are missing")
+    elif pinnacle_fp != elite_fp:
+        blockers.append("Pinnacle/Elite Official FPL content hashes do not match")
 
     convergence = elite.get("epsilon_convergence")
     converged = bool(isinstance(convergence, dict) and convergence.get("converged"))
@@ -101,9 +106,22 @@ def main() -> None:
     if not isinstance(selected, dict) or selected.get("status") != "Optimal":
         blockers.append(f"selected canonical solution is not optimal: {selector}")
         selected = selected if isinstance(selected, dict) else {}
+    squad = selected.get("squad") or []
+    xi = selected.get("xi") or []
+    if not isinstance(squad, list) or len(squad) != 15:
+        blockers.append("canonical squad is not a legal 15-player selection")
+        squad = squad if isinstance(squad, list) else []
+    if not isinstance(xi, list) or len(xi) != 11:
+        blockers.append("canonical starting XI does not contain 11 players")
+        xi = xi if isinstance(xi, list) else []
     if not isinstance(mechanics, dict):
         blockers.append("exact GW1 captain/vice/bench mechanics are missing")
         mechanics = {}
+
+    captain = mechanics.get("captain_name") or _name(selected.get("captain"))
+    vice_captain = mechanics.get("vice_captain_name") or _name(selected.get("vice_captain"))
+    if not captain or not vice_captain:
+        blockers.append("canonical captain/vice could not be resolved")
 
     ready = not blockers
     recommendation = {
@@ -114,10 +132,10 @@ def main() -> None:
             else "Elite epsilon frontier did not pass; maximum-EV is the mandatory fallback"
         ),
         "objective": selected.get("objective"),
-        "squad": selected.get("squad") or [],
-        "xi": selected.get("xi") or [],
-        "captain": mechanics.get("captain_name") or _name(selected.get("captain")),
-        "vice_captain": mechanics.get("vice_captain_name") or _name(selected.get("vice_captain")),
+        "squad": squad,
+        "xi": xi,
+        "captain": captain,
+        "vice_captain": vice_captain,
         "bench_gk": mechanics.get("bench_gk_name"),
         "outfield_bench_order": mechanics.get("outfield_bench_order_names") or [],
         "gw1_expected_total_with_mechanics": mechanics.get("expected_total_points"),
@@ -142,6 +160,7 @@ def main() -> None:
             "minutes_model": "first-class",
             "uncertainty": "correlated scenarios/CVaR/regret are diagnostics, not a second hidden forecast",
             "deadline_mechanics": "exact captain/vice/autosub mechanics",
+            "same_surface_check": "Official FPL bootstrap/fixtures SHA-256 hashes must match",
             "next_projection_upgrade": "empirical-Bayes shrinkage of small-sample player rates toward role/position priors",
         },
         "recommendation": recommendation,
@@ -159,8 +178,11 @@ def main() -> None:
         "internal_diagnostics": {
             "pinnacle_contract": pinnacle.get("contract"),
             "elite_contract": elite.get("contract"),
-            "pinnacle_snapshot_id": pinnacle_snapshot,
-            "elite_snapshot_id": elite_snapshot,
+            "pinnacle_snapshot_id": _snapshot(pinnacle).get("snapshot_id"),
+            "elite_snapshot_id": _snapshot(elite).get("snapshot_id"),
+            "pinnacle_content_fingerprint": pinnacle_fp,
+            "elite_content_fingerprint": elite_fp,
+            "same_official_surface": pinnacle_fp == elite_fp and None not in pinnacle_fp,
         },
     }
 
@@ -171,13 +193,11 @@ def main() -> None:
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     if ready:
-        squad = recommendation["squad"]
-        xi = recommendation["xi"]
         lines = [
             "# Apex Unified Recommendation",
             "",
             f"Generated: {payload['generated_at']}",
-            f"Snapshot: `{pinnacle_snapshot}`",
+            f"Official surface: `{pinnacle_fp[0][:12]}` / `{pinnacle_fp[1][:12]}`",
             f"Canonical selector: **{selector}**",
             f"Reason: {recommendation['selector_reason']}",
             "",
