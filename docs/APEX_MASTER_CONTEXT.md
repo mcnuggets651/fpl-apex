@@ -14,21 +14,47 @@ Build the strongest auditable Fantasy Premier League decision engine possible: m
 ## Non-negotiable principles
 1. Official FPL is canonical for identity, club, position, price, status and fixtures.
 2. Never select a squad from memory or generic FPL opinion when current generated outputs exist.
-3. Never trust one model. AIrsenal, Apex projections, FPL Core evidence and independent solver checks are inputs to an ensemble/decision process.
-4. Raw expected points remain the canonical forecast. Decision utilities may re-rank evidence but must report any EV regret.
-5. Do not optimise points-per-million alone. Premium captaincy, attacking ceiling and repeatable point routes matter.
-6. Minutes/start probability is a first-class variable.
-7. News/web evidence is a verification/availability layer, not the primary selection engine.
-8. Every recommendation must be reproducible, explainable and traceable to a current run.
-9. A red data/readiness gate blocks an Apex-labelled recommendation.
-10. Football randomness cannot be eliminated; confidence must never be presented as certainty.
+3. Raw ensemble expected points (`xp`) are the canonical forecast.
+4. Expected minutes/start/appearance probability is a first-class model input.
+5. The legal maximum-xP optimiser is the primary selection baseline.
+6. Elite may influence selection only as a secondary lexicographic selector inside an epsilon-audited near-optimal xP set.
+7. If Elite fails its explicit convergence rule, maximum-EV is the automatic fallback.
+8. CVaR, regret, captain stability and independent solvers are robustness diagnostics, not separate user-facing teams.
+9. Ownership is excluded from the pure maximum-points objective.
+10. Every recommendation must be reproducible, explainable and traceable to a current run.
+11. A red data/readiness/snapshot-consistency gate blocks an Apex-labelled recommendation.
+12. Football randomness cannot be eliminated; confidence must never be presented as certainty.
 
-## Current engines
-### Pinnacle
-Primary maximum-EV production engine. It maximises ensemble-mean xP, then separately measures CVaR downside, selection regret, captain/vice fallback, autosubs and independent-solver parity.
+## One production recommendation
+Apex has **one** user-facing decision contract:
 
-### Elite 10.0
-Merged additional decision lens designed to correct excessive value-pick bias. It preserves Pinnacle `xp` and adds an Elite utility with weights:
+- `data/generated/apex_recommendation_latest.json`
+- `data/generated/apex_recommendation_latest.md`
+
+The canonical production command is:
+
+```bash
+python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
+```
+
+When the user asks for “the Apex team”, this contract is the answer. Internal Pinnacle, Elite, CVaR, regret and solver outputs exist to construct/challenge that answer, not to create several competing Apex teams.
+
+## Unified decision flow
+Official FPL → validated enrichment → first-class minutes model → canonical player xP ensemble → maximum-EV legal optimiser → correlated robustness diagnostics → epsilon-audited Elite secondary selector → maximum-EV fallback if Elite is unstable → exact captain/vice/bench mechanics → **one canonical recommendation**.
+
+### Elite convergence rule
+Elite may influence the canonical 15 only when the 0.25%, 0.50% and 1.00% epsilon solutions each:
+- retain at least 13/15 of the maximum-EV squad; and
+- keep the same captain as maximum-EV.
+
+Otherwise the canonical selector is maximum-EV.
+
+## Internal diagnostic layers
+### Maximum-EV / Pinnacle
+The auditable ground truth baseline: maximise ensemble-mean xP under FPL legality and horizon constraints.
+
+### Elite
+Secondary evidence lens only. Weight profile remains:
 - 35% attacking returns
 - 20% expected minutes/start probability
 - 15% captaincy value
@@ -37,25 +63,30 @@ Merged additional decision lens designed to correct excessive value-pick bias. I
 - 5% bonus and DEFCON
 - 5% price efficiency
 
-Elite must always be compared with Pinnacle on raw ensemble xP. It is not permission to select famous players without evidence.
+Elite never creates or modifies expected points.
 
-## Current production stack
-Official FPL → source validation/normalisation → FPL Core Insights → pinned AIrsenal → historical/preseason/tactical/news/strength layers → Apex xP decomposition → projection ensemble → Pinnacle + Elite → stochastic/CVaR/regret/parity checks → final recommendation.
+### Robustness
+Correlated scenarios, CVaR, exact force/ban regret, captain stability, exact mechanics and independent solver parity expose fragility. They do not silently substitute another objective.
+
+## Projection-model next priority
+The main known projection gap is formal empirical-Bayes/partial-pooling shrinkage of small-sample player attacking rates toward role/position priors. This is the next modelling upgrade after the unified recommendation is validated. Dixon-Coles/Poisson is a later fixture-expert benchmark, not a new selection philosophy.
 
 ## Expected decision output
-A final recommendation should contain the legal 15-man squad, GW XI, captain, vice, bench order, cost/bank, horizon xP, relevant confidence/risk, key scoring routes, scenario comparison (including Haaland/no-Haaland when material), and exact reasons for any human/Elite override of maximum EV.
+The canonical recommendation should contain the legal 15-man squad, GW XI, captain, vice, bench order, horizon objective, exact GW mechanics, readiness status, epsilon convergence evidence, Haaland/no-Haaland scenarios when relevant and robustness diagnostics.
 
 ## Continuity protocol
 Before substantive Apex work read, in order:
 1. `docs/CURRENT_STATE.md`
 2. this file
 3. `docs/APEX_DECISIONS.md`
-4. `docs/APEX_OPERATING_MANUAL.md`
-5. current generated outputs (`pinnacle_latest.json`, `elite_latest.json` when present)
+4. `docs/APEX_CANONICAL_DECISION_POLICY.md`
+5. `docs/APEX_OPERATING_MANUAL.md`
+6. `data/generated/apex_recommendation_latest.json`
 
-Then continue from the latest state rather than reconstructing the project from chat history.
+Only then inspect internal diagnostics if needed. Continue from the latest state rather than reconstructing the project from chat history.
 
 ## Related canonical documents
+- [Canonical decision policy](APEX_CANONICAL_DECISION_POLICY.md)
 - [Current state](CURRENT_STATE.md)
 - [Decisions](APEX_DECISIONS.md)
 - [Architecture](APEX_ARCHITECTURE.md)
