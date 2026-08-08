@@ -2,6 +2,20 @@
 
 Append concise records after meaningful project sessions. This is continuity context, not a replacement for Git history.
 
+## 2026-08-08 — Shrinkage must revalidate frontier stability
+### Context
+Final architecture review agreed that empirical-Bayes shrinkage should not be judged only by player-level forecast error. Some apparent Elite epsilon instability may currently be caused by noisy low-minute player rates rather than genuine squad-selection uncertainty.
+
+### Decision
+After implementing shrinkage, rerun the identical canonical maximum-EV + epsilon frontier and compare it against the pre-shrinkage baseline. Required comparison: raw-xP regret, 15-player overlap, captain agreement and convergence status at 0.25%, 0.50% and 1.00%. Improved or preserved frontier stability is a useful sanity signal that shrinkage reduced projection noise. A shrinkage model that destabilises the frontier without improving no-hindsight forecast performance is not promoted automatically.
+
+### Sequencing unchanged
+1. Finish/merge the unified recommendation architecture first.
+2. Produce the first canonical Apex team.
+3. Implement empirical-Bayes shrinkage as a separate projection-model PR.
+4. Backtest player forecast performance and rerun the epsilon frontier.
+5. Only then consider later fixture-model additions such as Dixon-Coles.
+
 ## 2026-08-08 — Unified single-recommendation architecture
 ### Context
 The repository had accumulated several internal selection outputs (maximum-EV/Pinnacle, Elite, CVaR/safety and scenario candidates). Even when mathematically useful as challengers, exposing them as separate "Apex teams" created conversational drift and inconsistent recommendations.
