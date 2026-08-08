@@ -1,0 +1,50 @@
+name: Apex Shrinkage Validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/apex_fpl/models/shrinkage.py"
+      - "scripts/validate_shrinkage.py"
+      - "tests/test_shrinkage.py"
+      - ".github/workflows/shrinkage-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Apex test environment
+        run: pip install -e '.[dev]'
+      - name: Unit tests
+        run: pytest -q tests/test_shrinkage.py
+      - name: Held-out no-hindsight calibration
+        id: calibration
+        continue-on-error: true
+        run: |
+          python scripts/validate_shrinkage.py \
+            --train-season 2024-2025 \
+            --test-season 2025-2026 \
+            --window-gws 4 \
+            --force \
+            --output reports/shrinkage_validation.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shrinkage-validation-${{ github.run_id }}
+          path: reports/shrinkage_validation.json
+          retention-days: 30
+      - name: Enforce promotion gate
+        if: steps.calibration.outcome != 'success'
+        run: |
+          echo "Empirical-Bayes shrinkage did not pass the held-out promotion gate."
+          echo "Inspect the shrinkage-validation artifact; do not promote the model."
+          exit 1
