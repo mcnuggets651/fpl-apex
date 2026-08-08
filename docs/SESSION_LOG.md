@@ -2,6 +2,29 @@
 
 Append concise records after meaningful project sessions. This is continuity context, not a replacement for Git history.
 
+## 2026-08-08 — Elite xP-anchor correction
+### Context
+The first live Elite 10.0 output exposed a conceptual flaw: percentile/rank utility was being optimised directly. The unrestricted Elite squad scored 313.851 raw xP versus 319.582 for maximum-EV (5.731 xP / ~1.8% regret), and the report displayed Elite utility values under a `gw1_xp` heading.
+
+### Decision
+Preserve Pinnacle ensemble xP as the mathematical anchor. Retain the 35/20/15/10/10/5/5 Elite evidence profile only as a controlled modifier around raw xP.
+
+### Implementation
+- Added `elite_decision_xp = xp * (1 + bounded Elite modifier)`.
+- Initial modifier is capped at ±5% per player/Gameweek.
+- Elite optimiser now selects on `elite_decision_xp`, not standalone `elite_score`.
+- Raw xP rescore remains mandatory.
+- Elite report now uses the raw-xP-rescored squad/XI when displaying `gw1_xp`.
+- Haaland and no-Haaland scenarios use the same xP-anchored surface.
+- Recorded the architecture decision in `APEX_DECISIONS.md` and updated `CURRENT_STATE.md`.
+
+### Next actions
+1. Pass CI and merge the xP-anchor correction.
+2. Generate one synchronized live snapshot.
+3. Compare Pinnacle maximum-EV, Elite unrestricted, Haaland and no-Haaland on raw xP and robustness.
+4. Compare the winning structures against the user's private draft.
+5. Publish the final Apex squad only after this comparison.
+
 ## 2026-08-08 — Project Brain creation
 ### Context
 Repeated project conversations were losing continuity between current production state, proposed architecture and squad recommendations.
