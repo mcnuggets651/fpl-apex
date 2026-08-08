@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from pathlib import Path
 
 import numpy as np
@@ -247,7 +246,7 @@ def main() -> None:
         official.fixtures,
         official.teams,
         out.gameweeks,
-        core_elos=None,  # critical: prevent unvalidated multiplicative double-counting
+        core_elos=None,
         use_official_strength=False,
         team_goal_surface=blend_surface,
     )
