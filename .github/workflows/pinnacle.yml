@@ -70,7 +70,7 @@ jobs:
             --horizon 8 \
             --output data/generated/airsenal.csv
 
-      - name: Generate final Pinnacle decision
+      - name: Generate Pinnacle decision candidate
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
@@ -86,7 +86,21 @@ jobs:
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
             --force
-          python scripts/assert_pinnacle.py data/generated/pinnacle_latest.json
+
+      # Decision readiness is deliberately distinct from software/system health.
+      # A valid model run may correctly conclude that current evidence is too
+      # unstable to publish a deadline recommendation. That must remain visible,
+      # but it should not make documentation-only or healthy scheduled runs look
+      # like broken CI.
+      - name: Evaluate strict Pinnacle decision readiness
+        id: readiness
+        continue-on-error: true
+        run: python scripts/assert_pinnacle.py data/generated/pinnacle_latest.json
+
+      - name: Report blocked decision without failing system health
+        if: steps.readiness.outcome == 'failure'
+        run: |
+          echo "::warning title=Apex Pinnacle not decision-ready::The production pipeline completed successfully, but the strict Pinnacle readiness gate blocked publication. Inspect the generated artifact for current football/data uncertainty blockers."
 
       - name: Update no-hindsight learning archive
         env:
@@ -95,6 +109,7 @@ jobs:
         run: python scripts/update_learning_archive.py
 
       - name: Commit latest green Pinnacle snapshot and learning state
+        if: steps.readiness.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -114,6 +129,10 @@ jobs:
           git commit -m "data: publish Apex Pinnacle decision [skip ci]"
           git pull --rebase origin main
           git push origin HEAD:main
+
+      - name: Confirm publication withheld when readiness is blocked
+        if: steps.readiness.outcome == 'failure'
+        run: echo "Pinnacle candidate retained as an artifact only; no blocked decision was published to main."
 
       - uses: actions/upload-artifact@v4
         if: always()
