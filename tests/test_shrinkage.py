@@ -146,3 +146,31 @@ def test_leave_one_out_prior_does_not_let_outlier_define_its_own_prior() -> None
     )
     low = shrunk.loc[players["player_id"].eq(100)].iloc[0]
     assert low["prior_xg90"] < 0.5
+
+
+def test_position_specific_prior_minutes_change_reliability_without_changing_evidence() -> None:
+    players = _players()
+    defender = players.iloc[[0]].copy()
+    defender["player_id"] = 999
+    defender["position"] = "DEF"
+    players = pd.concat([players, defender], ignore_index=True)
+    cfg = RateShrinkageConfig(
+        prior_minutes={
+            "xg90": {"DEFAULT": 360.0, "MID": 720.0, "DEF": 180.0},
+            "xa90": 360.0,
+            "defcon90": 360.0,
+        },
+        min_group_players=99,
+        min_group_minutes=1_000_000,
+    )
+    shrunk = shrink_player_rates(players, cfg)
+    midfielder = shrunk.loc[players["player_id"].eq(1)].iloc[0]
+    defender_row = shrunk.loc[players["player_id"].eq(999)].iloc[0]
+
+    assert np.isclose(midfielder["xg90_prior_minutes"], 720.0)
+    assert np.isclose(defender_row["xg90_prior_minutes"], 180.0)
+    assert np.isclose(
+        midfielder["xg90_combined_effective_evidence_minutes"],
+        defender_row["xg90_combined_effective_evidence_minutes"],
+    )
+    assert defender_row["xg90_reliability"] > midfielder["xg90_reliability"]
