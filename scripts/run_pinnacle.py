@@ -325,7 +325,7 @@ def main() -> None:
         scenario_surface,
         deterministic["unrestricted"].squad,
         deterministic["unrestricted"].xi,
-        max_solves=24,
+        max_solves=scenario_surface.n_scenarios,
         captain_eligible=captain_eligible,
     )
     if fixed_captain_frequencies.completed_solves < 16:
