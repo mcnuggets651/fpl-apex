@@ -140,6 +140,42 @@ def _add_models(d: pd.DataFrame, alpha: float) -> pd.DataFrame:
     return _loss_columns(out, "multiplicative", multiply_home, multiply_away)
 
 
+def _add_component_model(
+    d: pd.DataFrame,
+    *,
+    attack_alpha: float,
+    clean_sheet_alpha: float,
+) -> pd.DataFrame:
+    """Score the FPL-facing split surface selected on calibration GWs only.
+
+    Attacking returns consume expected-team-goals, while clean-sheet points
+    consume the opponent blank probability. They are separate FPL components
+    and need not inherit one compromise expert weight.
+    """
+    elo_home, elo_away, _, _ = _elo_lambdas(d)
+    u_home = d["pred_home"].to_numpy(float)
+    u_away = d["pred_away"].to_numpy(float)
+    attack_home = attack_alpha * u_home + (1.0 - attack_alpha) * elo_home
+    attack_away = attack_alpha * u_away + (1.0 - attack_alpha) * elo_away
+    clean_sheet_home = (
+        clean_sheet_alpha * u_home + (1.0 - clean_sheet_alpha) * elo_home
+    )
+    clean_sheet_away = (
+        clean_sheet_alpha * u_away + (1.0 - clean_sheet_alpha) * elo_away
+    )
+    out = _loss_columns(d, "component", attack_home, attack_away)
+    clean_sheet_scored = _loss_columns(
+        d,
+        "component_clean_sheet",
+        clean_sheet_home,
+        clean_sheet_away,
+    )
+    out["component_cs_brier"] = clean_sheet_scored[
+        "component_clean_sheet_cs_brier"
+    ].to_numpy(float)
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="reports/team_strength_blend_validation.json")
@@ -165,49 +201,64 @@ def main() -> None:
     train = d[d["gw"] <= 19].copy()
     test = d[d["gw"] >= 20].copy()
     grid: list[dict] = []
-    selected: float | None = None
-    best: tuple[float, float, float] | None = None
+    attack_selected: float | None = None
+    clean_sheet_selected: float | None = None
+    best_attack: tuple[float, float, float] | None = None
+    best_clean_sheet: tuple[float, float] | None = None
     for alpha in BLEND_GRID:
         scored = _add_models(train, alpha)
         metric = _model_metrics(scored, "blend")
         grid.append({"understat_weight": alpha, **metric})
-        key = (metric["xg_rmse"], metric["clean_sheet_brier"], alpha)
-        if best is None or key < best:
-            best = key
-            selected = alpha
-    if selected is None:
-        raise RuntimeError("blend calibration failed")
+        attack_key = (metric["xg_rmse"], metric["goal_poisson_nll"], alpha)
+        clean_sheet_key = (metric["clean_sheet_brier"], alpha)
+        if best_attack is None or attack_key < best_attack:
+            best_attack = attack_key
+            attack_selected = alpha
+        if best_clean_sheet is None or clean_sheet_key < best_clean_sheet:
+            best_clean_sheet = clean_sheet_key
+            clean_sheet_selected = alpha
+    if attack_selected is None or clean_sheet_selected is None:
+        raise RuntimeError("component blend calibration failed")
 
-    scored = _add_models(test, selected)
+    scored = _add_models(test, attack_selected)
+    scored = _add_component_model(
+        scored,
+        attack_alpha=attack_selected,
+        clean_sheet_alpha=clean_sheet_selected,
+    )
     metrics = {
         name: _model_metrics(scored, name)
-        for name in ("understat", "elo", "blend", "multiplicative")
+        for name in ("understat", "elo", "blend", "component", "multiplicative")
     }
     comparisons = {}
     for rival in ("understat", "elo", "multiplicative"):
-        comparisons[f"blend_vs_{rival}"] = {
+        comparisons[f"component_vs_{rival}"] = {
             "xg_squared_error_delta_bootstrap": _bootstrap_delta(
-                scored, "blend_xg_sq", f"{rival}_xg_sq"
+                scored, "component_xg_sq", f"{rival}_xg_sq"
             ),
             "clean_sheet_brier_delta_bootstrap": _bootstrap_delta(
-                scored, "blend_cs_brier", f"{rival}_cs_brier"
+                scored, "component_cs_brier", f"{rival}_cs_brier"
             ),
             "goal_nll_delta_bootstrap": _bootstrap_delta(
-                scored, "blend_goal_nll", f"{rival}_goal_nll"
+                scored, "component_goal_nll", f"{rival}_goal_nll"
             ),
         }
 
-    blend_best_xg = metrics["blend"]["xg_rmse"] <= min(
+    component_best_xg = metrics["component"]["xg_rmse"] <= min(
         metrics["understat"]["xg_rmse"], metrics["elo"]["xg_rmse"]
     )
-    blend_best_cs = metrics["blend"]["clean_sheet_brier"] <= min(
+    component_best_cs = metrics["component"]["clean_sheet_brier"] <= min(
         metrics["understat"]["clean_sheet_brier"], metrics["elo"]["clean_sheet_brier"]
+    )
+    component_best_nll = metrics["component"]["goal_poisson_nll"] <= min(
+        metrics["understat"]["goal_poisson_nll"],
+        metrics["elo"]["goal_poisson_nll"],
     )
     multiplicative_safe = (
         metrics["multiplicative"]["xg_rmse"]
         <= max(metrics["understat"]["xg_rmse"], metrics["elo"]["xg_rmse"])
     )
-    candidate = bool(blend_best_xg and blend_best_cs)
+    candidate = bool(component_best_xg and component_best_cs and component_best_nll)
 
     report = {
         "contract": "apex-team-strength-blend-validation-v1",
@@ -219,7 +270,9 @@ def main() -> None:
         "blend_calibration_gws": "1-19",
         "blend_holdout_gws": "20-38",
         "blend_grid": list(BLEND_GRID),
-        "selected_understat_weight": selected,
+        "selected_understat_weight": attack_selected,
+        "selected_attack_understat_weight": attack_selected,
+        "selected_clean_sheet_understat_weight": clean_sheet_selected,
         "calibration_scores": grid,
         "holdout_n_matches": int(len(test)),
         "holdout_metrics": metrics,
@@ -227,7 +280,8 @@ def main() -> None:
         "blend_candidate_ready_for_shadow_integration": candidate,
         "naive_multiplicative_combination_safe": bool(multiplicative_safe),
         "note": (
-            "The selected convex blend weight sees only GW1-19. GW20-38 are untouched. "
+            "Attack and clean-sheet weights are selected independently using only GW1-19. "
+            "GW20-38 are untouched. "
             "The multiplicative surface mirrors the current fixture code behavior if an "
             "Understat team-goal surface is enabled while Elo multiplication remains active."
         ),
@@ -235,7 +289,7 @@ def main() -> None:
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
-    print(json.dumps({"blend_candidate": candidate, "selected_weight": selected, "output": str(path)}, indent=2))
+    print(json.dumps({"blend_candidate": candidate, "selected_attack_weight": attack_selected, "selected_clean_sheet_weight": clean_sheet_selected, "output": str(path)}, indent=2))
 
 
 if __name__ == "__main__":
