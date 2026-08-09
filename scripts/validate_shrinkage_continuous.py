@@ -337,17 +337,23 @@ def _choose_position_k(
     train: pd.DataFrame,
     metric: str,
     *,
-    min_examples: int = 250,
-    min_clusters: int = 40,
+    max_selection_minutes: float = 900.0,
+    min_examples: int = 100,
+    min_clusters: int = 30,
 ) -> tuple[dict[str, int], dict]:
-    """Fit heterogeneous prior strength using calibration data only.
+    """Fit heterogeneous low-evidence prior strength on calibration data only.
 
-    Position groups already have different leave-one-out prior means. Allowing
-    their prior variance (equivalent minutes) to differ avoids forcing the much
-    noisier forward and midfielder attacking rates to share defender/GK
-    reliability. Sparse groups retain the global calibration-only fallback.
+    Shrinkage is intended to repair uncertain rates. Selecting its strength on
+    all rows lets established-player observations dominate the loss and tunes
+    away from the actual low-evidence use case. Each position is therefore fit
+    only on calibration examples below the unchanged 900-minute evidence
+    boundary. Sparse groups retain a calibration-only global fallback.
     """
-    global_k, global_scores = _choose_k(train, metric)
+    low_train = train[
+        train["effective_minutes_before"] < max_selection_minutes
+    ].copy()
+    global_selection = low_train if not low_train.empty else train
+    global_k, global_scores = _choose_k(global_selection, metric)
     selected: dict[str, int] = {"DEFAULT": global_k}
     by_position: dict[str, dict] = {}
     positions = sorted(
@@ -355,15 +361,19 @@ def _choose_position_k(
         for position in train["position"].dropna().astype(str).unique()
     )
     for position in positions:
-        subset = train[train["position"].astype(str) == position].copy()
+        all_position = train[train["position"].astype(str) == position].copy()
+        subset = all_position[
+            all_position["effective_minutes_before"] < max_selection_minutes
+        ].copy()
         clusters = int(subset["cluster_id"].nunique())
         if len(subset) < min_examples or clusters < min_clusters:
             selected[position] = global_k
             by_position[position] = {
                 "selected_prior_minutes": global_k,
                 "used_global_fallback": True,
-                "train_n": int(len(subset)),
-                "clusters": clusters,
+                "selection_train_n": int(len(subset)),
+                "selection_clusters": clusters,
+                "all_position_train_n": int(len(all_position)),
                 "grid_scores": [],
             }
             continue
@@ -372,21 +382,24 @@ def _choose_position_k(
         by_position[position] = {
             "selected_prior_minutes": position_k,
             "used_global_fallback": False,
-            "train_n": int(len(subset)),
-            "clusters": clusters,
+            "selection_train_n": int(len(subset)),
+            "selection_clusters": clusters,
+            "all_position_train_n": int(len(all_position)),
             "grid_scores": position_scores,
         }
     return selected, {
         "global_fallback": {
             "selected_prior_minutes": global_k,
+            "selection_train_n": int(len(global_selection)),
+            "selection_clusters": int(global_selection["cluster_id"].nunique()),
             "grid_scores": global_scores,
         },
         "by_position": by_position,
         "selection_data": "calibration seasons only",
+        "selection_evidence_minutes_lt": max_selection_minutes,
         "min_examples": min_examples,
         "min_clusters": min_clusters,
     }
-
 
 def _core_season_frame(client: FPLCoreClient, force: bool) -> pd.DataFrame:
     stats = client.playerstats(force=force).copy()
