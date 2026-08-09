@@ -339,7 +339,7 @@ def main() -> None:
             "players_out": [names[pid] for pid in sorted(prod_ids - shadow_ids)],
             "objective_delta": float(shadow_solution.objective - prod_solution.objective),
             "gw1_exact_mechanics_delta": float(
-                shadow_mechanics["expected_total"] - prod_mechanics["expected_total"]
+                shadow_mechanics["expected_total_points"] - prod_mechanics["expected_total_points"]
             ),
             "captain_changed": (
                 shadow_mechanics["captain_name"] != prod_mechanics["captain_name"]
