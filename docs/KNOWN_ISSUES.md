@@ -27,10 +27,10 @@ Early-season stochastic coefficients may be priors before sufficient 2026/27 out
 ## K009 — Player attacking rates need explicit sample-size shrinkage
 **Status: research implementation exists; production remains blocked.** The current
 transparent production projection still does not apply formal empirical-Bayes
-shrinkage. A dormant candidate combines previous/current competitive evidence and
-hierarchical leave-one-out priors, but the first validator was invalid (K012).
-Promote only after the corrected validator, production-parity audit and separate
-activation review pass.
+shrinkage. PR #18 merges a dormant candidate that combines previous/current
+competitive evidence and hierarchical leave-one-out priors. Its corrected
+attacking-rate shadow gate passes; the production-parity integration audit and
+separate activation review remain outstanding.
 
 ## K010 — Elite epsilon is provisional, not calibrated
 The 0.5% maximum raw-xP regret band is an engineering starting point, not a learned constant. Live Elite output must report a sensitivity frontier at 0%, 0.25%, 0.5% and 1.0%. If tiny epsilon changes materially alter the squad, maximum-EV remains canonical until no-hindsight calibration establishes a justified band.
@@ -39,7 +39,13 @@ The 0.5% maximum raw-xP regret band is an engineering starting point, not a lear
 **Resolved 2026-08-08 in PR #12.** The provenance boundary now normalises source-health fields to native Python booleans. The 70% prior-season evidence floor and strict readiness semantics were unchanged.
 
 ## K012 — PR #14 historical shrinkage validation used a future-selected cohort
-The first green validator filtered players by future minutes/outcome availability before calculating live-price tiers and empirical priors. That leaks future participation into the prediction cohort and differs from production, which uses the full live roster. The green result is withdrawn until full-roster, pre-GW1-inclusive validation passes from scratch. Production shrinkage remains blocked.
+**Resolved in the research validator by PR #18; production remains blocked.** The
+first green validator filtered players by future minutes/outcome availability
+before calculating live-price tiers and empirical priors. PR #18 freezes priors
+on the complete point-in-time roster, applies outcome eligibility only after
+prediction and includes pre-GW1/GW1-5/GW6+ gates. The corrected xG90/xA90 shadow
+gate passes, but the seasons are not independent final holdouts and no production
+activation is connected.
 
 ## K013 — Captain scenario frequencies are not calibrated probabilities
 The correlated scenario coefficients are explicit priors. Fixed-XI captain frequencies are useful telemetry, but a 50% hard publication decision cannot be interpreted as calibrated probability evidence until historical coverage and discrimination are validated. The raw baseline also fails the proposed fixed-XI threshold, so this diagnostic must be separated from shrinkage promotion.

@@ -11,11 +11,13 @@
   unstable → exact Gameweek mechanics → one published recommendation.
 - PR #16 is merged. The Understat team-strength challenger is shadow-only and
   does not change canonical publication.
-- PR #14 is blocked and must not be merged as written. It combines model
-  activation, readiness semantics and uncalibrated captain telemetry, and its
-  original historical validator used an outcome-selected prediction cohort.
-- PR #17 contains the versioned season-rule correction and deterministic replay
-  foundations. It remains a draft until independent CI and review are green.
+- PR #14 is closed and superseded. It combined model activation, readiness
+  semantics and uncalibrated captain telemetry, and its original historical
+  validator used an outcome-selected prediction cohort.
+- PR #17 is merged. It fixes versioned season rules/free transfers and adds the
+  deterministic replay foundations.
+- PR #18 is merged. It adds a dormant attack-only shrinkage candidate and the
+  corrected shadow validator; it does not connect shrinkage to production.
 
 The only production command is:
 
@@ -30,7 +32,7 @@ The only user-facing outputs are:
 
 ## Latest verified canonical recommendation
 
-The 2026-08-09 10:55 UTC publication on `main` is decision-ready:
+The post-PR #17 publication at 2026-08-09 11:36 UTC is decision-ready:
 
 - selector: **maximum_ev**
 - reason: the Elite epsilon frontier did not converge
@@ -38,7 +40,7 @@ The 2026-08-09 10:55 UTC publication on `main` is decision-ready:
 - GW1 exact-mechanics total: **51.5251454610 xP**
 - captain: **Haaland**
 - vice-captain: **B.Fernandes**
-- official bootstrap SHA-256 prefix: `1336496b32c3`
+- official bootstrap SHA-256 prefix: `1b658fa96da5`
 - fixtures SHA-256 prefix: `a478e20d030d`
 
 Canonical 15:
@@ -64,24 +66,26 @@ overwrite it.
 
 ### Team strength
 
-The Understat challenger from PR #16 is merged in shadow mode. Its PR checks
-passed, but exact post-merge `main` CI was not independently evidenced during
-the release audit. Run Apex CI and Apex Unified on the exact release SHA before
-tagging.
+The Understat challenger from PR #16 is merged in shadow mode. Its component
+checks passed and it does not alter canonical publication. The exact PR #17
+merge SHA passed 142 local tests/Ruff, and the subsequent Apex Unified run
+published the decision-ready artifact above.
 
 ### Player-rate shrinkage
 
-A clean research PR must be cut from current `main` with only:
+A clean research implementation is merged from PR #18 with only:
 
 - the dormant shrinkage model;
 - production-parity cohort construction;
 - corrected chronological validator and tests;
 - durable validation evidence.
 
-Do not include pipeline activation or readiness-semantics changes. The 2024/25
-and 2025/26 seasons have been inspected during development, so they are
-chronological evaluation seasons, not untouched final holdouts. Production
-activation requires a separately reviewed decision after corrected evidence.
+The corrected full-roster validator passes its xG90/xA90 chronological shadow
+gate across 2024/25 and 2025/26, including pre-GW1, GW1-5 and GW6+ strata.
+DEFCON fails and is a no-op by default. Those seasons have been inspected during
+development, so they are not independent final holdouts. The merged report sets
+`production_activation_authorized=false`; activation requires a separate PR and
+decision.
 
 ### Captain uncertainty
 
@@ -103,15 +107,12 @@ the 2026/27 deadline archive as the true prospective final test.
 
 ## Immediate release sequence
 
-1. Keep PR #14 blocked; supersede it with a clean dormant research PR.
-2. Merge PR #17 only after its CI/review is green.
-3. Run Apex CI and Apex Unified on the exact candidate release SHA.
-4. Confirm the canonical artifact is decision-ready and reproducible.
-5. Tag only that verified SHA.
-6. Build the remaining historical adapter, transfer/chip controller, isolated
+1. Preserve PR #14 as closed/superseded and keep shrinkage dormant.
+2. Build the remaining historical adapter, transfer/chip controller, isolated
    scorer and 38-GW orchestrator under `FULL_SEASON_REPLAY_PROTOCOL.md`.
-7. Freeze policies/metrics before opening 2025/26 outcomes.
-8. Preserve every 2026/27 pre-deadline bundle and decision for prospective
+3. Freeze code, policies and metrics before opening 2025/26 outcomes.
+4. Run 2025/26 as the locked strategy/mechanics benchmark.
+5. Preserve every 2026/27 pre-deadline bundle and decision for prospective
    validation.
 
 ## Current boundaries
