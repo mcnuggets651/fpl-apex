@@ -15,7 +15,10 @@ from apex_fpl.data.http import CachedHttp
 from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.models.scenarios import generate_projection_scenarios
 from apex_fpl.optimisation.cvar import optimise_initial_cvar
-from apex_fpl.optimisation.frequencies import estimate_decision_frequencies
+from apex_fpl.optimisation.frequencies import (
+    estimate_decision_frequencies,
+    estimate_fixed_xi_captain_frequencies,
+)
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.mechanics import optimise_gameweek_mechanics
 from apex_fpl.optimisation.stability import selection_regret_analysis
@@ -317,6 +320,21 @@ def main() -> None:
             "Pinnacle decision-frequency audit completed fewer than 16 optimal solves: "
             f"{frequencies.completed_solves}/{frequencies.requested_solves}"
         )
+    fixed_captain_frequencies = estimate_fixed_xi_captain_frequencies(
+        decision_players,
+        scenario_surface,
+        deterministic["unrestricted"].squad,
+        deterministic["unrestricted"].xi,
+        max_solves=24,
+        captain_eligible=captain_eligible,
+    )
+    if fixed_captain_frequencies.completed_solves < 16:
+        raise SystemExit(
+            "Pinnacle fixed-XI captain-frequency audit completed fewer than "
+            "16 solves: "
+            f"{fixed_captain_frequencies.completed_solves}/"
+            f"{fixed_captain_frequencies.requested_solves}"
+        )
 
     report_dir = Path(args.report_dir)
     output_dir = Path(args.output_dir)
@@ -331,6 +349,10 @@ def main() -> None:
     )
     frequencies.rows.to_csv(
         report_dir / "pinnacle_decision_frequencies.csv", index=False
+    )
+    fixed_captain_frequencies.rows.to_csv(
+        report_dir / "pinnacle_fixed_xi_captain_frequencies.csv",
+        index=False,
     )
 
     # The final deadline mechanics use the same raw ensemble mean xP as the
@@ -434,6 +456,10 @@ def main() -> None:
             "sensitivity": "exact force/ban objective regret",
             "empirical_decision_frequency": True,
             "decision_frequency_solves": frequencies.completed_solves,
+            "fixed_xi_captain_frequency": True,
+            "fixed_xi_captain_frequency_solves": (
+                fixed_captain_frequencies.completed_solves
+            ),
             "exact_gw_mechanics": True,
             "captain_eligibility_enforced_in_all_solves": True,
             "captain_vice_rule": "expected no-show fallback value",
@@ -470,6 +496,9 @@ def main() -> None:
         "robust_gw1_mechanics": robust_gw1_mechanics,
         "selection_regret": _records(regret),
         "decision_frequencies": _records(frequencies.rows),
+        "fixed_xi_captain_frequencies": _records(
+            fixed_captain_frequencies.rows
+        ),
         "scenario_player_summary": _records(scenario_summary.head(150)),
         "transfer_plan": (
             {
