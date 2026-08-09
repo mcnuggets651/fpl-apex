@@ -64,18 +64,19 @@ def _read_csv(url: str) -> pd.DataFrame:
 def _vaastav_frame(season: str, ref: str) -> pd.DataFrame:
     events = _read_csv(_raw_url(ref, season, "gws/merged_gw.csv"))
     players = _read_csv(_raw_url(ref, season, "players_raw.csv"))
-    required = {"element", "round", "minutes", "expected_goals", "expected_assists"}
+    required = {"element", "round", "minutes", "expected_goals", "expected_assists", "value"}
     missing = required - set(events.columns)
     if missing:
         raise ValueError(f"vaastav {season} missing attacking fields: {sorted(missing)}")
     if not {"id", "code", "element_type"}.issubset(players.columns):
         raise ValueError(f"vaastav {season} players_raw lacks id/code/element_type")
 
-    e = events[["element", "round", "minutes", "expected_goals", "expected_assists"]].copy()
+    e = events[["element", "round", "minutes", "expected_goals", "expected_assists", "value"]].copy()
     e["player_id"] = pd.to_numeric(e["element"], errors="coerce")
     e["gw"] = pd.to_numeric(e["round"], errors="coerce")
     for col in ("minutes", "expected_goals", "expected_assists"):
         e[col] = pd.to_numeric(e[col], errors="coerce").fillna(0.0)
+    e["price_value"] = pd.to_numeric(e["value"], errors="coerce")
     e = e.dropna(subset=["player_id", "gw"])
     e["player_id"] = e["player_id"].astype(int)
     e["gw"] = e["gw"].astype(int)
@@ -85,6 +86,7 @@ def _vaastav_frame(season: str, ref: str) -> pd.DataFrame:
             minutes_event=("minutes", "sum"),
             xg_event=("expected_goals", "sum"),
             xa_event=("expected_assists", "sum"),
+            price_value=("price_value", "last"),
         )
         .sort_values(["player_id", "gw"])
     )
@@ -108,7 +110,7 @@ def _vaastav_frame(season: str, ref: str) -> pd.DataFrame:
     out["season"] = season
     return out[[
         "season", "player_id", "player_code", "position", "gw", "minutes",
-        "expected_goals_per_90", "expected_assists_per_90",
+        "price_value", "expected_goals_per_90", "expected_assists_per_90",
     ]].copy()
 
 
@@ -154,7 +156,9 @@ def _examples(frame: pd.DataFrame, metric: str, window_gws: int = 4) -> pd.DataF
     for cutoff in range(6, max_gw - window_gws + 1, 4):
         before = _snapshot(frame, cutoff)
         after = _snapshot(frame, cutoff + window_gws)
-        keep = ["player_id", "player_code", "position", "minutes", current_col]
+        keep = [
+            "player_id", "player_code", "position", "minutes", "price_value", current_col
+        ]
         if "previous_minutes" in before.columns:
             keep.extend(["previous_minutes", previous_col])
         b = before[keep].rename(columns={"minutes": "minutes_before", current_col: "rate_before"})
@@ -209,9 +213,26 @@ def _predict(
     previous_col = PREVIOUS_RATE_FIELDS[metric]
     rows: list[pd.DataFrame] = []
     for _, group in examples.groupby("cutoff_gw", sort=True):
+        positions = group["position"].fillna("UNKNOWN").astype("string")
+        if "price_value" in group.columns and group["price_value"].notna().any():
+            price_rank = (
+                pd.to_numeric(group["price_value"], errors="coerce")
+                .groupby(positions)
+                .rank(method="average", pct=True)
+                .fillna(0.5)
+            )
+            price_tier = pd.cut(
+                price_rank,
+                bins=[-np.inf, 1 / 3, 2 / 3, np.inf],
+                labels=["LOW", "MID", "HIGH"],
+            ).astype("string")
+            shrinkage_group = positions + "|" + price_tier
+        else:
+            shrinkage_group = positions
         players = pd.DataFrame({
             "player_id": group["player_id"].astype(int).to_numpy(),
-            "position": group["position"].fillna("UNKNOWN").to_numpy(),
+            "position": positions.to_numpy(),
+            "shrinkage_group": shrinkage_group.to_numpy(),
             "minutes": group["minutes_before"].to_numpy(float),
             "previous_minutes": group["previous_minutes"].fillna(0).to_numpy(float),
             "expected_goals_per_90": np.nan,
@@ -337,23 +358,16 @@ def _choose_position_k(
     train: pd.DataFrame,
     metric: str,
     *,
-    max_selection_minutes: float = 900.0,
-    min_examples: int = 100,
-    min_clusters: int = 30,
+    min_examples: int = 250,
+    min_clusters: int = 40,
 ) -> tuple[dict[str, int], dict]:
-    """Fit heterogeneous low-evidence prior strength on calibration data only.
+    """Fit position-specific prior strength using calibration data only.
 
-    Shrinkage is intended to repair uncertain rates. Selecting its strength on
-    all rows lets established-player observations dominate the loss and tunes
-    away from the actual low-evidence use case. Each position is therefore fit
-    only on calibration examples below the unchanged 900-minute evidence
-    boundary. Sparse groups retain a calibration-only global fallback.
+    Prior means use no-hindsight position-by-live-price tiers at each cutoff.
+    Equivalent prior minutes remain position-specific so different attacking
+    rate variances are not forced through one reliability curve.
     """
-    low_train = train[
-        train["effective_minutes_before"] < max_selection_minutes
-    ].copy()
-    global_selection = low_train if not low_train.empty else train
-    global_k, global_scores = _choose_k(global_selection, metric)
+    global_k, global_scores = _choose_k(train, metric)
     selected: dict[str, int] = {"DEFAULT": global_k}
     by_position: dict[str, dict] = {}
     positions = sorted(
@@ -361,19 +375,15 @@ def _choose_position_k(
         for position in train["position"].dropna().astype(str).unique()
     )
     for position in positions:
-        all_position = train[train["position"].astype(str) == position].copy()
-        subset = all_position[
-            all_position["effective_minutes_before"] < max_selection_minutes
-        ].copy()
+        subset = train[train["position"].astype(str) == position].copy()
         clusters = int(subset["cluster_id"].nunique())
         if len(subset) < min_examples or clusters < min_clusters:
             selected[position] = global_k
             by_position[position] = {
                 "selected_prior_minutes": global_k,
                 "used_global_fallback": True,
-                "selection_train_n": int(len(subset)),
-                "selection_clusters": clusters,
-                "all_position_train_n": int(len(all_position)),
+                "train_n": int(len(subset)),
+                "clusters": clusters,
                 "grid_scores": [],
             }
             continue
@@ -382,21 +392,18 @@ def _choose_position_k(
         by_position[position] = {
             "selected_prior_minutes": position_k,
             "used_global_fallback": False,
-            "selection_train_n": int(len(subset)),
-            "selection_clusters": clusters,
-            "all_position_train_n": int(len(all_position)),
+            "train_n": int(len(subset)),
+            "clusters": clusters,
             "grid_scores": position_scores,
         }
     return selected, {
         "global_fallback": {
             "selected_prior_minutes": global_k,
-            "selection_train_n": int(len(global_selection)),
-            "selection_clusters": int(global_selection["cluster_id"].nunique()),
             "grid_scores": global_scores,
         },
         "by_position": by_position,
         "selection_data": "calibration seasons only",
-        "selection_evidence_minutes_lt": max_selection_minutes,
+        "prior_mean_groups": "position_by_live_price_tercile_at_cutoff",
         "min_examples": min_examples,
         "min_clusters": min_clusters,
     }
