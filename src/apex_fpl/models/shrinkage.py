@@ -6,6 +6,24 @@ import numpy as np
 import pandas as pd
 
 
+VALIDATED_ATTACK_PRIOR_MINUTES: dict[str, dict[str, float]] = {
+    "xg90": {
+        "DEFAULT": 540.0,
+        "GK": 2400.0,
+        "DEF": 1200.0,
+        "MID": 360.0,
+        "FWD": 1200.0,
+    },
+    "xa90": {
+        "DEFAULT": 360.0,
+        "GK": 2400.0,
+        "DEF": 180.0,
+        "MID": 360.0,
+        "FWD": 360.0,
+    },
+}
+
+
 RATE_COLUMNS = {
     "xg90": ("expected_goals_per_90", "previous_expected_goals_per_90"),
     "xa90": ("expected_assists_per_90", "previous_expected_assists_per_90"),
