@@ -8,7 +8,11 @@ on:
       - "src/apex_fpl/services/pipeline.py"
       - "scripts/validate_shrinkage_continuous.py"
       - "scripts/run_shrinkage_decision_audit.py"
+      - "scripts/run_pinnacle.py"
+      - "src/apex_fpl/optimisation/frequencies.py"
+      - "src/apex_fpl/services/pinnacle_readiness.py"
       - "tests/test_shrinkage.py"
+      - "tests/test_pinnacle_readiness.py"
       - ".github/workflows/shrinkage-decision-audit.yml"
 
 permissions:
@@ -119,6 +123,7 @@ jobs:
           name: shrinkage-decision-audit-${{ github.run_id }}
           path: |
             reports/shrinkage_decision_audit.json
+            reports/pinnacle_fixed_xi_captain_frequencies.csv
             data/generated/elite_latest.json
             data/generated/elite_latest.md
             data/generated/pinnacle_latest.json
