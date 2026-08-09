@@ -401,6 +401,7 @@ def _choose_position_k(
         "min_clusters": min_clusters,
     }
 
+
 def _core_season_frame(client: FPLCoreClient, force: bool) -> pd.DataFrame:
     stats = client.playerstats(force=force).copy()
     players = client.players(force=force).copy()
