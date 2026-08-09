@@ -198,7 +198,11 @@ def _tag(examples: pd.DataFrame, season: str, season_index: int) -> pd.DataFrame
     return out
 
 
-def _predict(examples: pd.DataFrame, metric: str, k: float) -> pd.DataFrame:
+def _predict(
+    examples: pd.DataFrame,
+    metric: str,
+    k: float | dict[str, float],
+) -> pd.DataFrame:
     if examples.empty:
         return examples
     current_col = RATE_FIELDS[metric]
@@ -220,7 +224,11 @@ def _predict(examples: pd.DataFrame, metric: str, k: float) -> pd.DataFrame:
         players[current_col] = group["rate_before"].to_numpy(float)
         players[previous_col] = group[previous_col].to_numpy(float)
         cfg = RateShrinkageConfig(
-            prior_minutes={"xg90": k if metric == "xg90" else 720.0, "xa90": k if metric == "xa90" else 720.0, "defcon90": k if metric == "defcon90" else 720.0},
+            prior_minutes={
+                "xg90": k if metric == "xg90" else 720.0,
+                "xa90": k if metric == "xa90" else 720.0,
+                "defcon90": k if metric == "defcon90" else 720.0,
+            },
             min_group_players=5,
             min_group_minutes=900.0,
         )
@@ -325,6 +333,61 @@ def _choose_k(train: pd.DataFrame, metric: str) -> tuple[int, list[dict]]:
     return int(best["prior_minutes"]), scores
 
 
+def _choose_position_k(
+    train: pd.DataFrame,
+    metric: str,
+    *,
+    min_examples: int = 250,
+    min_clusters: int = 40,
+) -> tuple[dict[str, int], dict]:
+    """Fit heterogeneous prior strength using calibration data only.
+
+    Position groups already have different leave-one-out prior means. Allowing
+    their prior variance (equivalent minutes) to differ avoids forcing the much
+    noisier forward and midfielder attacking rates to share defender/GK
+    reliability. Sparse groups retain the global calibration-only fallback.
+    """
+    global_k, global_scores = _choose_k(train, metric)
+    selected: dict[str, int] = {"DEFAULT": global_k}
+    by_position: dict[str, dict] = {}
+    positions = sorted(
+        str(position)
+        for position in train["position"].dropna().astype(str).unique()
+    )
+    for position in positions:
+        subset = train[train["position"].astype(str) == position].copy()
+        clusters = int(subset["cluster_id"].nunique())
+        if len(subset) < min_examples or clusters < min_clusters:
+            selected[position] = global_k
+            by_position[position] = {
+                "selected_prior_minutes": global_k,
+                "used_global_fallback": True,
+                "train_n": int(len(subset)),
+                "clusters": clusters,
+                "grid_scores": [],
+            }
+            continue
+        position_k, position_scores = _choose_k(subset, metric)
+        selected[position] = position_k
+        by_position[position] = {
+            "selected_prior_minutes": position_k,
+            "used_global_fallback": False,
+            "train_n": int(len(subset)),
+            "clusters": clusters,
+            "grid_scores": position_scores,
+        }
+    return selected, {
+        "global_fallback": {
+            "selected_prior_minutes": global_k,
+            "grid_scores": global_scores,
+        },
+        "by_position": by_position,
+        "selection_data": "calibration seasons only",
+        "min_examples": min_examples,
+        "min_clusters": min_clusters,
+    }
+
+
 def _core_season_frame(client: FPLCoreClient, force: bool) -> pd.DataFrame:
     stats = client.playerstats(force=force).copy()
     players = client.players(force=force).copy()
@@ -406,7 +469,7 @@ def main() -> None:
         for idx, season in enumerate(CALIBRATION_SEASONS, start=1):
             training_parts.append(_tag(_examples(frames[season], metric, args.window_gws), season, idx))
         train = pd.concat(training_parts, ignore_index=True)
-        chosen_k, grid_scores = _choose_k(train, metric)
+        chosen_k, grid_scores = _choose_position_k(train, metric)
         holdouts = {}
         metric_pass = True
         for idx, season in enumerate(HOLDOUT_SEASONS, start=10):
@@ -418,7 +481,8 @@ def main() -> None:
             metric_pass = metric_pass and bool(gate["pass"])
         report["metrics"][metric] = {
             "status": "validated" if metric_pass else "validation_failed",
-            "chosen_prior_minutes": chosen_k,
+            "chosen_prior_minutes": chosen_k["DEFAULT"],
+            "chosen_prior_minutes_by_position": chosen_k,
             "train_n": int(len(train)),
             "grid_scores": grid_scores,
             "holdouts": holdouts,
@@ -441,7 +505,8 @@ def main() -> None:
         report["metrics"]["defcon90"] = {
             "status": "validated" if gate["pass"] else "validation_failed",
             "evidence_design": "blocked_2025_26_no_previous_defcon_history_available",
-            "chosen_prior_minutes": chosen_k,
+            "chosen_prior_minutes": chosen_k["DEFAULT"],
+            "chosen_prior_minutes_by_position": chosen_k,
             "train_cutoffs": cutoffs[:split],
             "test_cutoffs": cutoffs[split:],
             "grid_scores": grid_scores,
