@@ -39,10 +39,10 @@ def position_price_tier_groups(
     *,
     price_column: str | None = None,
 ) -> pd.Series:
-    """Return the production position-by-live-price-tercile prior groups.
+    """Return deterministic position-by-live-price-tercile prior groups.
 
-    The same helper is used by live projection and temporal validation so cohort
-    construction cannot drift between the two paths.
+    The validator uses this helper. Any future production integration must call
+    the same function so cohort construction cannot drift between the two paths.
     """
     positions = players.get(
         "position",
@@ -86,7 +86,12 @@ class RateShrinkageConfig:
     """
 
     prior_minutes: dict[str, float | dict[str, float]] = field(
-        default_factory=lambda: {"xg90": 720.0, "xa90": 720.0, "defcon90": 720.0}
+        default_factory=lambda: {
+            "xg90": dict(CANDIDATE_ATTACK_PRIOR_MINUTES["xg90"]),
+            "xa90": dict(CANDIDATE_ATTACK_PRIOR_MINUTES["xa90"]),
+            # DEFCON failed the evidence gate and is therefore a no-op by default.
+            "defcon90": 0.0,
+        }
     )
     min_group_players: int = 6
     min_group_minutes: float = 900.0

@@ -326,3 +326,12 @@ def test_live_price_group_helper_is_shared_and_deterministic() -> None:
         "MID|HIGH",
         "MID|HIGH",
     ]
+
+
+def test_default_candidate_uses_corrected_attack_k_and_leaves_defcon_raw() -> None:
+    players = _players()
+    shrunk = shrink_player_rates(players)
+    assert shrunk["xg90_prior_minutes"].eq(180.0).all()
+    assert shrunk["xa90_prior_minutes"].eq(360.0).all()
+    assert shrunk["defcon90_prior_minutes"].eq(0.0).all()
+    assert np.allclose(shrunk["shrunk_defcon90"], shrunk["raw_defcon90"])
