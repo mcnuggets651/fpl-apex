@@ -25,7 +25,12 @@ News/manager/transfer information changes quickly. Use freshness and authoritati
 Early-season stochastic coefficients may be priors before sufficient 2026/27 outcomes exist. Validate them as the no-hindsight archive grows.
 
 ## K009 — Player attacking rates need explicit sample-size shrinkage
-The current transparent player projection blends established rate inputs with preseason evidence, but it does not yet apply formal empirical-Bayes shrinkage of xG90/xA90/related attacking rates toward position/role priors as a function of sample size. This matters most for transfers, role changes, injury returns and players with very small minute samples. Add and benchmark shrinkage before prioritising a new Dixon-Coles fixture expert.
+**Status: research implementation exists; production remains blocked.** The current
+transparent production projection still does not apply formal empirical-Bayes
+shrinkage. A dormant candidate combines previous/current competitive evidence and
+hierarchical leave-one-out priors, but the first validator was invalid (K012).
+Promote only after the corrected validator, production-parity audit and separate
+activation review pass.
 
 ## K010 — Elite epsilon is provisional, not calibrated
 The 0.5% maximum raw-xP regret band is an engineering starting point, not a learned constant. Live Elite output must report a sensitivity frontier at 0%, 0.25%, 0.5% and 1.0%. If tiny epsilon changes materially alter the squad, maximum-EV remains canonical until no-hindsight calibration establishes a justified band.
