@@ -26,9 +26,10 @@ def _optional_series(df: pd.DataFrame, col: str) -> pd.Series:
 def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     """Estimate minutes plus explicit start/appearance probabilities and confidence.
 
-    This is intentionally conservative before enough 2026/27 observations exist:
-    preseason contributes, but cannot fully erase established-season context.
-    Official availability is applied before any lower-authority news/manual signal.
+    Preseason and verified team-news evidence can override stale historical roles
+    when they are strong enough. Official availability remains the hard ceiling:
+    upside evidence can raise a healthy player's role estimate, but cannot erase
+    an injury, suspension or explicit negative availability signal.
     """
     mins = _series(df, "minutes", 0)
     starts = _series(df, "starts", 0)
@@ -90,8 +91,36 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         avg_if_started * hist_start_prob
     )
     has_preseason = pre_apps > 0
-    base_minutes = np.where(has_preseason, 0.58 * preseason_signal + 0.42 * historic_signal, historic_signal)
-    base_start = np.where(has_preseason, 0.58 * pre_start_prob + 0.42 * hist_start_prob, hist_start_prob)
+    # Repeated preseason team-sheet evidence should progressively supersede a stale
+    # prior-season role. One cameo remains weak evidence; four appearances can carry
+    # 82% of the role estimate. This is still probabilistic, not a guaranteed start.
+    preseason_weight = np.clip(0.50 + 0.08 * pre_apps, 0.58, 0.82)
+    base_minutes = np.where(
+        has_preseason,
+        preseason_weight * preseason_signal + (1 - preseason_weight) * historic_signal,
+        historic_signal,
+    )
+    base_start = np.where(
+        has_preseason,
+        preseason_weight * pre_start_prob + (1 - preseason_weight) * hist_start_prob,
+        hist_start_prob,
+    )
+
+    # Explicit deadline evidence from official press conferences, club releases or
+    # a verified projected XI may replace the statistical role prior. Overrides are
+    # inputs to expected value, not confidence multipliers or optimiser bonuses.
+    minutes_override = _optional_series(df, "expected_minutes_override")
+    start_override = _optional_series(df, "start_probability_override")
+    base_minutes = np.where(
+        minutes_override.notna(),
+        minutes_override.clip(0, 90),
+        base_minutes,
+    )
+    base_start = np.where(
+        start_override.notna(),
+        start_override.clip(0, 1),
+        base_start,
+    )
 
     avail = df.apply(availability_probability, axis=1).astype(float)
     manual = _series(df, "availability_multiplier", 1.0).clip(0, 1)
@@ -103,6 +132,12 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     # A non-starter can still appear from the bench. The coefficient is deliberately
     # below 1 because substitute usage is uncertain rather than guaranteed.
     appearance = np.clip(start + (1 - start) * 0.52 * availability, start, 1)
+    appearance_override = _optional_series(df, "appearance_probability_override")
+    appearance = np.where(
+        appearance_override.notna(),
+        np.clip(appearance_override, start, 1) * availability,
+        appearance,
+    )
     conditional_60 = 1.0 / (1.0 + np.exp(-(np.asarray(expected, dtype=float) - 58.0) / 8.0))
     p60 = np.minimum(appearance, np.clip(0.15 * appearance + 0.85 * conditional_60 * start, 0, 1))
     p80 = np.minimum(p60, np.clip((np.asarray(expected, dtype=float) - 45) / 40, 0, 1) * start)
@@ -119,6 +154,12 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         0.35 + 0.28 * np.maximum(historic_evidence, preseason_evidence) + 0.22 * availability_clarity,
         0.35,
         0.95,
+    )
+    evidence_confidence = _optional_series(df, "minutes_evidence_confidence")
+    confidence = np.where(
+        evidence_confidence.notna(),
+        np.maximum(confidence, evidence_confidence.clip(0, 0.95)),
+        confidence,
     )
     # Explicit news/manual overrides are useful evidence, but also signal that the
     # situation may be moving. They should not create false certainty.
