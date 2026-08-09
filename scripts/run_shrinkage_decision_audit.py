@@ -9,6 +9,8 @@ from pathlib import Path
 import pandas as pd
 
 from apex_fpl.config import load_settings
+from apex_fpl.data.http import CachedHttp
+from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.models.scenarios import generate_projection_scenarios
 from apex_fpl.optimisation.frequencies import (
     estimate_fixed_xi_captain_frequencies,
@@ -206,7 +208,20 @@ def main() -> None:
     if raw.gameweeks != shrunk.gameweeks:
         raise SystemExit("raw/shrunk gameweek surfaces differ")
 
-    players = shrunk.players
+    official = OfficialFPLClient(CachedHttp(settings.cache_dir)).snapshot(
+        force=False
+    )
+    team_ids = official.players[["player_id", "team"]].drop_duplicates(
+        "player_id"
+    )
+    players = shrunk.players.drop(columns=["team"], errors="ignore").merge(
+        team_ids,
+        on="player_id",
+        how="left",
+        validate="one_to_one",
+    )
+    if players["team"].isna().any():
+        raise SystemExit("shrinkage A/B player universe has missing official team IDs")
     eligible = captain_eligible_ids(players)
     common = {
         "players": players,
