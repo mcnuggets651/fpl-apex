@@ -18,6 +18,11 @@ from apex_fpl.models.ensemble import blend_projection
 from apex_fpl.models.fixtures import fixture_multipliers
 from apex_fpl.models.minutes import minutes_profile
 from apex_fpl.models.projection import project_players
+from apex_fpl.models.shrinkage import (
+    VALIDATED_ATTACK_PRIOR_MINUTES,
+    RateShrinkageConfig,
+    shrink_player_rates,
+)
 from apex_fpl.models.tactical import infer_tactical_roles
 from apex_fpl.models.team_goals import build_team_goal_surface, build_team_ratings
 from apex_fpl.optimisation.squad import optimise_squad
@@ -56,6 +61,60 @@ class PipelineOutput:
     snapshot: dict
     data_quality: DataQualityAssessment
     team_state: TeamStateResolution | None = None
+
+
+def _apply_validated_attack_shrinkage(
+    players: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Apply only the attacking rates that passed untouched holdout gates."""
+    out = players.copy()
+    positions = out.get(
+        "position",
+        pd.Series("UNKNOWN", index=out.index, dtype="string"),
+    ).astype("string")
+    if "price" in out.columns:
+        live_price = pd.to_numeric(out["price"], errors="coerce")
+    elif "now_cost" in out.columns:
+        live_price = pd.to_numeric(out["now_cost"], errors="coerce") / 10.0
+    else:
+        live_price = pd.Series(np.nan, index=out.index, dtype=float)
+    price_rank = (
+        live_price.groupby(positions)
+        .rank(method="average", pct=True)
+        .fillna(0.5)
+    )
+    price_tier = pd.cut(
+        price_rank,
+        bins=[-np.inf, 1 / 3, 2 / 3, np.inf],
+        labels=["LOW", "MID", "HIGH"],
+    ).astype("string")
+    out["shrinkage_group"] = positions + "|" + price_tier
+
+    audit = shrink_player_rates(
+        out,
+        RateShrinkageConfig(
+            prior_minutes={
+                "xg90": VALIDATED_ATTACK_PRIOR_MINUTES["xg90"],
+                "xa90": VALIDATED_ATTACK_PRIOR_MINUTES["xa90"],
+                # DEFCON remains unchanged until its separate gate passes.
+                "defcon90": 0.0,
+            },
+            min_group_players=5,
+            min_group_minutes=900.0,
+        ),
+    )
+    out["unshrunk_expected_goals_per_90"] = pd.to_numeric(
+        out.get("expected_goals_per_90"), errors="coerce"
+    )
+    out["unshrunk_expected_assists_per_90"] = pd.to_numeric(
+        out.get("expected_assists_per_90"), errors="coerce"
+    )
+    out["expected_goals_per_90"] = audit["shrunk_xg90"].to_numpy(float)
+    out["expected_assists_per_90"] = audit["shrunk_xa90"].to_numpy(float)
+    for column in audit.columns:
+        if column.startswith(("raw_", "prior_", "shrunk_", "xg90_", "xa90_")):
+            out[f"shrinkage_{column}"] = audit[column].to_numpy()
+    return out, audit
 
 
 def _official_ep(players: pd.DataFrame, gameweeks: list[int]) -> pd.DataFrame:
@@ -384,6 +443,24 @@ def run_pipeline(
         players["current_team_matches"] = players["team"].map(team_matches).fillna(0)
     else:
         players["current_team_matches"] = 0
+
+    players, shrinkage_audit = _apply_validated_attack_shrinkage(players)
+    attack_coverage = float(
+        shrinkage_audit[["shrunk_xg90", "shrunk_xa90"]]
+        .notna()
+        .all(axis=1)
+        .mean()
+    )
+    sources.append(
+        _status(
+            "empirical_bayes_attacking_rates",
+            attack_coverage >= 0.95,
+            f"validated xG90/xA90 coverage={attack_coverage:.1%}; "
+            "DEFCON excluded from promotion",
+            configured=True,
+            version="position-price-tier-v1",
+        )
+    )
 
     profile = minutes_profile(players)
     for col in profile.columns:
