@@ -181,6 +181,24 @@ def main() -> None:
         .drop_duplicates("player_id")
         .itertuples(index=False)
     }
+    captain_candidate_ids = {
+        int(raw_mechanics["captain_id"]),
+        int(shrunk_mechanics["captain_id"]),
+    }
+    raw_gw_xp = _gw_xp(raw.projections, gw)
+    shrunk_gw_xp = _gw_xp(shrunk.projections, gw)
+    captain_xp_evidence = {
+        names[player_id]: {
+            "raw_gw1_xp": raw_gw_xp.get(player_id),
+            "shrunk_gw1_xp": shrunk_gw_xp.get(player_id),
+            "delta": (
+                shrunk_gw_xp.get(player_id, 0.0)
+                - raw_gw_xp.get(player_id, 0.0)
+            ),
+        }
+        for player_id in sorted(captain_candidate_ids)
+    }
+
     raw_optimum_score = _score_squad(
         raw.projections,
         raw_ids,
@@ -219,6 +237,7 @@ def main() -> None:
             shrunk_solution,
             shrunk_mechanics,
         ),
+        "captain_xp_evidence": captain_xp_evidence,
         "decision_delta": {
             "squad_overlap": len(raw_ids & shrunk_ids),
             "players_in": [
