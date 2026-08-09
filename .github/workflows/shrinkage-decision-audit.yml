@@ -106,6 +106,14 @@ jobs:
           assert audit['defcon_promoted'] is False
           assert audit['decision_delta']['squad_overlap'] >= 13
           assert audit['decision_delta']['raw_xp_regret_pct'] <= 0.01
+          assert (
+              audit['captain_stability_ab']['raw_control']['completed_solves']
+              >= 16
+          )
+          assert (
+              audit['captain_stability_ab']['validated_shrinkage']
+              ['completed_solves'] >= 16
+          )
           assert len(elite['epsilon_sensitivity']) == 4
           max_ev_captain = elite['epsilon_convergence']['max_ev_captain']
           assert all(
