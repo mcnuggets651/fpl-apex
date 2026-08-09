@@ -24,7 +24,7 @@ class RateShrinkageConfig:
     dedicated historical validation workflow refits them before production promotion.
     """
 
-    prior_minutes: dict[str, float] = field(
+    prior_minutes: dict[str, float | dict[str, float]] = field(
         default_factory=lambda: {"xg90": 720.0, "xa90": 720.0, "defcon90": 720.0}
     )
     min_group_players: int = 6
@@ -166,12 +166,33 @@ def shrink_player_rates(
             min_group_players=cfg.min_group_players,
             min_group_minutes=cfg.min_group_minutes,
         )
-        k = max(float(cfg.prior_minutes.get(label, 0.0)), 0.0)
+        configured_k = cfg.prior_minutes.get(label, 0.0)
+        if isinstance(configured_k, dict):
+            group_k = {
+                str(group): max(float(value), 0.0)
+                for group, value in configured_k.items()
+            }
+            fallback_k = group_k.get("DEFAULT", 0.0)
+            k_values = (
+                groups.map(group_k)
+                .fillna(fallback_k)
+                .astype(float)
+                .clip(lower=0.0)
+                .to_numpy()
+            )
+        else:
+            k_values = np.full(
+                len(players),
+                max(float(configured_k), 0.0),
+                dtype=float,
+            )
+        evidence_minutes = effective_minutes.to_numpy(float)
+        denominator = evidence_minutes + k_values
         reliability = np.divide(
-            effective_minutes.to_numpy(float),
-            effective_minutes.to_numpy(float) + k,
-            out=np.ones(len(players), dtype=float) if k <= 0 else np.zeros(len(players), dtype=float),
-            where=(effective_minutes.to_numpy(float) + k) > 0,
+            evidence_minutes,
+            denominator,
+            out=np.where(k_values <= 0, 1.0, 0.0),
+            where=denominator > 0,
         )
         observed_values = pd.to_numeric(observed, errors="coerce").to_numpy(float)
         prior_values = prior.to_numpy(float)
@@ -194,6 +215,7 @@ def shrink_player_rates(
         out[f"{label}_combined_effective_evidence_minutes"] = effective_minutes.to_numpy(float)
         # Backwards-compatible alias for existing diagnostics.
         out[f"{label}_evidence_minutes"] = effective_minutes.to_numpy(float)
+        out[f"{label}_prior_minutes"] = k_values
         out[f"{label}_reliability"] = np.clip(reliability, 0, 1)
         out[f"{label}_evidence_source"] = evidence["source"].to_numpy()
 
