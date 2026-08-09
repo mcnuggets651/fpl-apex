@@ -67,6 +67,20 @@ jobs:
           AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         run: python scripts/run_elite.py --horizon 8 --force
+      - name: Run unified post-shrinkage readiness path
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/run_apex.py \
+            --horizon 8 \
+            --stochastic-scenarios 256 \
+            --cvar-alpha 0.10 \
+            --cvar-weight 0.20 \
+            --force
+
       - name: Enforce decision stability contract
         run: |
           python - <<'PY'
@@ -79,14 +93,24 @@ jobs:
           elite = json.loads(
               Path('data/generated/elite_latest.json').read_text()
           )
+          canonical = json.loads(
+              Path('data/generated/apex_recommendation_latest.json').read_text()
+          )
           assert audit['production_changed'] is False
           assert audit['canonical_publish_attempted'] is False
           assert audit['promotion_scope'] == ['xg90', 'xa90']
           assert audit['defcon_promoted'] is False
           assert audit['decision_delta']['squad_overlap'] >= 13
-          assert audit['decision_delta']['captain_agreement'] is True
           assert audit['decision_delta']['raw_xp_regret_pct'] <= 0.01
           assert len(elite['epsilon_sensitivity']) == 4
+          max_ev_captain = elite['epsilon_convergence']['max_ev_captain']
+          assert all(
+              row['captain'] == max_ev_captain
+              for row in elite['epsilon_sensitivity']
+          )
+          assert canonical['ready_to_act'] is True
+          assert canonical['recommendation']['selector'] == 'maximum_ev'
+          assert canonical['recommendation']['captain'] == max_ev_captain
           print('Shrinkage decision audit passed without publishing a team.')
           PY
       - uses: actions/upload-artifact@v4
@@ -97,5 +121,8 @@ jobs:
             reports/shrinkage_decision_audit.json
             data/generated/elite_latest.json
             data/generated/elite_latest.md
+            data/generated/pinnacle_latest.json
+            data/generated/apex_recommendation_latest.json
+            data/generated/apex_recommendation_latest.md
             data/generated/airsenal.csv
           retention-days: 30
