@@ -132,7 +132,7 @@ def _fixed_xi_captain_stability(
         scenarios,
         solution.squad,
         solution.xi,
-        max_solves=24,
+        max_solves=scenarios.n_scenarios,
         captain_eligible=eligible,
     )
     if frequencies.completed_solves < 16:
