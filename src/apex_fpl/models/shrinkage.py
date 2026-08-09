@@ -150,10 +150,11 @@ def shrink_player_rates(
     """Return empirical-Bayes shrunk competitive rates plus full audit fields."""
     cfg = config or RateShrinkageConfig()
     out = pd.DataFrame(index=players.index)
-    groups = players.get(
+    positions = players.get(
         "position",
         pd.Series("UNKNOWN", index=players.index, dtype="string"),
     ).astype("string")
+    groups = players.get("shrinkage_group", positions).astype("string")
 
     for label, (current_col, previous_col) in RATE_COLUMNS.items():
         evidence = _competitive_evidence(players, current_col, previous_col)
@@ -174,7 +175,7 @@ def shrink_player_rates(
             }
             fallback_k = group_k.get("DEFAULT", 0.0)
             k_values = (
-                groups.map(group_k)
+                positions.map(group_k)
                 .fillna(fallback_k)
                 .astype(float)
                 .clip(lower=0.0)
