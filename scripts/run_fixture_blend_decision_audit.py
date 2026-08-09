@@ -31,7 +31,8 @@ from apex_fpl.services.pipeline import run_pipeline
 from apex_fpl.services.projection_audit import reprice_apex_for_fixture_shadow
 from apex_fpl.services.provenance import load_upstream_pins
 
-UNDERSTAT_WEIGHT = 0.50
+ATTACK_UNDERSTAT_WEIGHT = 0.50
+CLEAN_SHEET_UNDERSTAT_WEIGHT = 1.00
 UNDERSTAT_CFG = TeamGoalConfig(half_life_days=180.0, prior_matches=5.0)
 
 
@@ -109,13 +110,13 @@ def _blend_surface(production_fx: pd.DataFrame, understat_fx: pd.DataFrame) -> p
         raise ValueError(
             f"fixture blend coverage mismatch: {len(d)}/{len(production_fx)} fixture sides"
         )
-    alpha = UNDERSTAT_WEIGHT
+    alpha = ATTACK_UNDERSTAT_WEIGHT
     d["expected_team_goals"] = alpha * d["understat_xg"] + (1.0 - alpha) * d["prod_xg"]
     d["expected_goals_against"] = (
         alpha * d["understat_xga"] + (1.0 - alpha) * d["prod_xga"]
     )
     d["clean_sheet_prob"] = np.exp(-d["expected_goals_against"])
-    d["team_goal_source"] = "shadow_convex_understat_elo_50_50"
+    d["team_goal_source"] = "shadow_component_attack_understat_elo_50_50"
     return d[
         [
             *keys,
@@ -125,6 +126,32 @@ def _blend_surface(production_fx: pd.DataFrame, understat_fx: pd.DataFrame) -> p
             "team_goal_source",
         ]
     ]
+
+
+def _apply_component_clean_sheet_expert(
+    attack_fx: pd.DataFrame,
+    understat_fx: pd.DataFrame,
+) -> pd.DataFrame:
+    """Use calibrated attack blend and calibrated clean-sheet expert separately."""
+    keys = ["gw", "team", "opponent", "is_home"]
+    clean_sheet = understat_fx[keys + ["clean_sheet_prob"]].rename(
+        columns={"clean_sheet_prob": "component_clean_sheet_prob"}
+    )
+    out = attack_fx.merge(clean_sheet, on=keys, how="left", validate="one_to_one")
+    if out["component_clean_sheet_prob"].isna().any():
+        raise ValueError("component clean-sheet expert coverage mismatch")
+    alpha = CLEAN_SHEET_UNDERSTAT_WEIGHT
+    if alpha != 1.0:
+        out["clean_sheet_prob"] = (
+            alpha * out["component_clean_sheet_prob"]
+            + (1.0 - alpha) * out["clean_sheet_prob"]
+        )
+    else:
+        out["clean_sheet_prob"] = out["component_clean_sheet_prob"]
+    out["team_goal_source"] = (
+        "shadow_component_attack_blend_clean_sheet_understat"
+    )
+    return out.drop(columns=["component_clean_sheet_prob"])
 
 
 def _shadow_canonical_projection(
@@ -250,12 +277,13 @@ def main() -> None:
         use_official_strength=False,
         team_goal_surface=blend_surface,
     )
+    component_fx = _apply_component_clean_sheet_expert(blend_fx, understat_fx)
 
     team_map = official.players[["player_id", "team"]].drop_duplicates("player_id")
     shadow_apex = reprice_apex_for_fixture_shadow(
         out.projections,
         production_fx,
-        blend_fx,
+        component_fx,
         team_map,
     )
     shadow_projection = _shadow_canonical_projection(out.projections, shadow_apex)
@@ -325,8 +353,9 @@ def main() -> None:
         "gameweeks": out.gameweeks,
         "official_strength_usable": False,
         "fixture_candidate": {
-            "understat_weight": UNDERSTAT_WEIGHT,
-            "elo_weight": 1.0 - UNDERSTAT_WEIGHT,
+            "attack_understat_weight": ATTACK_UNDERSTAT_WEIGHT,
+            "attack_elo_weight": 1.0 - ATTACK_UNDERSTAT_WEIGHT,
+            "clean_sheet_understat_weight": CLEAN_SHEET_UNDERSTAT_WEIGHT,
             "understat_half_life_days": UNDERSTAT_CFG.half_life_days,
             "understat_prior_matches": UNDERSTAT_CFG.prior_matches,
             "elo_applied_after_blend": False,
@@ -353,8 +382,8 @@ def main() -> None:
             player_delta.nsmallest(20, "delta_horizon_xp")
         ),
         "evidence_status": (
-            "shadow research candidate only; historical blend gate did not pass the "
-            "predeclared clean-sheet point-estimate criterion"
+            "shadow component-specific candidate; production remains unchanged pending "
+            "historical component gate and canonical stability approval"
         ),
     }
     path = Path(args.output)
