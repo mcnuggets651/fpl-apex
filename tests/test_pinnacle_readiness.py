@@ -59,6 +59,8 @@ def _payload():
             "receding_horizon_transfers": True,
             "empirical_decision_frequency": True,
             "decision_frequency_solves": 24,
+            "fixed_xi_captain_frequency": True,
+            "fixed_xi_captain_frequency_solves": 24,
             "covariance_coefficients_walk_forward_calibrated": False,
         },
         "deterministic_scenarios": scenarios,
@@ -70,6 +72,13 @@ def _payload():
                 "player_id": 1,
                 "squad_frequency": 1.0,
                 "xi_frequency": 1.0,
+                "captain_frequency": 0.80,
+                "vice_captain_frequency": 0.10,
+            }
+        ],
+        "fixed_xi_captain_frequencies": [
+            {
+                "player_id": 1,
                 "captain_frequency": 0.80,
                 "vice_captain_frequency": 0.10,
             }
@@ -145,12 +154,28 @@ def test_unsupported_low_start_low_confidence_captain_blocks_pinnacle():
     assert any("projection confidence" in blocker for blocker in result.blockers)
 
 
-def test_low_captain_frequency_blocks_publication():
+def test_low_fixed_xi_captain_frequency_blocks_publication():
     payload = _payload()
-    payload["decision_frequencies"][0]["captain_frequency"] = 0.49
+    payload["fixed_xi_captain_frequencies"][0]["captain_frequency"] = 0.49
     result = evaluate_pinnacle_payload(payload)
     assert not result.ready
-    assert any("uncertainty re-solves" in blocker for blocker in result.blockers)
+    assert any("fixed-XI uncertainty re-solves" in blocker for blocker in result.blockers)
+
+
+def test_whole_decision_frequency_does_not_replace_fixed_xi_captain_audit():
+    payload = _payload()
+    payload["decision_frequencies"][0]["captain_frequency"] = 0.10
+    payload["decision_frequencies"][0]["xi_frequency"] = 0.50
+    result = evaluate_pinnacle_payload(payload)
+    assert result.ready
+
+
+def test_missing_fixed_xi_captain_audit_blocks_publication():
+    payload = _payload()
+    payload["fixed_xi_captain_frequencies"] = []
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("fixed-XI captain-frequency audit" in blocker for blocker in result.blockers)
 
 
 def test_robust_captain_disagreement_blocks_publication():
