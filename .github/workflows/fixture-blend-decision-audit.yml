@@ -66,6 +66,8 @@ jobs:
           assert report['shadow_blend']['status'] == 'Optimal'
           assert len(report['production']['squad']) == 15
           assert len(report['shadow_blend']['squad']) == 15
+          assert report['decision_delta']['squad_overlap'] >= 13
+          assert report['decision_delta']['captain_changed'] is False
           print('Shadow decision audit completed without changing production.')
           PY
       - uses: actions/upload-artifact@v4
