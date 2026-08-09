@@ -165,6 +165,10 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         blockers.append("empirical decision-frequency audit is not active")
     if int(decision.get("decision_frequency_solves", 0) or 0) < 16:
         blockers.append("fewer than 16 optimal decision-frequency solves")
+    if decision.get("fixed_xi_captain_frequency") is not True:
+        blockers.append("fixed-XI captain-frequency audit is not active")
+    if int(decision.get("fixed_xi_captain_frequency_solves", 0) or 0) < 16:
+        blockers.append("fewer than 16 fixed-XI captain-frequency solves")
 
     deterministic = payload.get("deterministic_scenarios") or {}
     robust = payload.get("robust_cvar_scenarios") or {}
@@ -191,33 +195,34 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     frequencies = payload.get("decision_frequencies") or []
     if not frequencies:
         blockers.append("decision-frequency audit is empty")
+
+    fixed_captain_frequencies = payload.get("fixed_xi_captain_frequencies") or []
+    if not fixed_captain_frequencies:
+        blockers.append("fixed-XI captain-frequency audit is empty")
     else:
         chosen_captain = (mechanics.get("unrestricted") or {}).get("captain_id")
         captain_row = next(
             (
                 row
-                for row in frequencies
+                for row in fixed_captain_frequencies
                 if isinstance(row, dict) and str(row.get("player_id")) == str(chosen_captain)
             ),
             None,
         )
         if captain_row is None:
-            blockers.append("published unrestricted captain absent from decision frequencies")
+            blockers.append(
+                "published unrestricted captain absent from fixed-XI frequencies"
+            )
         else:
             captain_frequency = _number(captain_row, "captain_frequency")
-            xi_frequency = _number(captain_row, "xi_frequency")
-            if captain_frequency is None or xi_frequency is None:
-                blockers.append("published captain conditional stability evidence is missing")
-            elif xi_frequency <= 0:
-                blockers.append("published captain never appears in XI across uncertainty re-solves")
-            else:
-                conditional_frequency = min(captain_frequency / xi_frequency, 1.0)
-                if conditional_frequency < MIN_PUBLISHED_CAPTAIN_FREQUENCY:
-                    blockers.append(
-                        f"published captain is chosen in only {conditional_frequency:.0%} of "
-                        "uncertainty re-solves where he remains in the XI; production floor is "
-                        f"{MIN_PUBLISHED_CAPTAIN_FREQUENCY:.0%}"
-                    )
+            if captain_frequency is None:
+                blockers.append("published captain fixed-XI stability evidence is missing")
+            elif captain_frequency < MIN_PUBLISHED_CAPTAIN_FREQUENCY:
+                blockers.append(
+                    f"published captain is chosen in only {captain_frequency:.0%} of "
+                    "fixed-XI uncertainty re-solves; production floor is "
+                    f"{MIN_PUBLISHED_CAPTAIN_FREQUENCY:.0%}"
+                )
 
     robust_compare = payload.get("robustness_comparison") or {}
     unrestricted = robust_compare.get("unrestricted") or {}
