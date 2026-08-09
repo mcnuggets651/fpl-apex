@@ -498,7 +498,7 @@ def main() -> None:
         split = min(split, len(cutoffs) - 2)
         train = de[de["cutoff_gw"].isin(cutoffs[:split])].copy()
         test = de[de["cutoff_gw"].isin(cutoffs[split:])].copy()
-        chosen_k, grid_scores = _choose_k(train, "defcon90")
+        chosen_k, grid_scores = _choose_position_k(train, "defcon90")
         scored = _predict(test, "defcon90", chosen_k)
         validation = _metrics(scored)
         gate = _gate(validation)
