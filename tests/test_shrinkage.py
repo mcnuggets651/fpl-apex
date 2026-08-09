@@ -174,3 +174,20 @@ def test_position_specific_prior_minutes_change_reliability_without_changing_evi
         defender_row["xg90_combined_effective_evidence_minutes"],
     )
     assert defender_row["xg90_reliability"] > midfielder["xg90_reliability"]
+
+
+def test_shrinkage_group_refines_prior_inside_position() -> None:
+    players = _players()
+    players["shrinkage_group"] = "MID|LOW"
+    players.loc[players["player_id"].isin([100, 101]), "shrinkage_group"] = "MID|HIGH"
+    cfg = RateShrinkageConfig(
+        prior_minutes={"xg90": 720.0, "xa90": 720.0, "defcon90": 720.0},
+        min_group_players=1,
+        min_group_minutes=80.0,
+    )
+    shrunk = shrink_player_rates(players, cfg)
+    low_sample_high_tier = shrunk.loc[players["player_id"].eq(100)].iloc[0]
+    low_tier = shrunk.loc[players["player_id"].eq(1)].iloc[0]
+
+    assert low_sample_high_tier["prior_xg90"] > low_tier["prior_xg90"]
+    assert np.isclose(low_sample_high_tier["prior_xg90"], 0.60)
