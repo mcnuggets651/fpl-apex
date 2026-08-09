@@ -540,12 +540,29 @@ def main() -> None:
         report["metrics"]["defcon90"] = {"status": "insufficient_history", "promotion_gate": {"pass": False}}
         all_pass = False
 
-    report["promotion_ready"] = bool(all_pass)
+    attack_rate_promotion_ready = bool(
+        report["metrics"]["xg90"]["promotion_gate"]["pass"]
+        and report["metrics"]["xa90"]["promotion_gate"]["pass"]
+    )
+    defcon_promotion_ready = bool(
+        report["metrics"]["defcon90"]["promotion_gate"]["pass"]
+    )
+    report["promotion_scope"] = ["xg90", "xa90"]
+    report["excluded_from_promotion"] = {
+        "defcon90": (
+            "Equivalent prior-season DEFCON history is unavailable and the "
+            "unchanged low-evidence confidence gate did not pass."
+        )
+    }
+    report["attack_rate_promotion_ready"] = attack_rate_promotion_ready
+    report["defcon_promotion_ready"] = defcon_promotion_ready
+    report["promotion_ready"] = attack_rate_promotion_ready
     report["promotion_rule"] = (
-        "Refit from scratch. xG/xA must pass both untouched holdouts using effective-evidence buckets, "
-        "with statistically clear improvement in every available <900-minute bucket, no worse overall "
-        "RMSE, and no statistically clear harm for >=1800 effective-minute players. DEFCON uses the "
-        "same gate on a weaker blocked 2025/26 evidence class."
+        "Refit from scratch. xG/xA must each pass both untouched holdouts using "
+        "effective-evidence buckets, with statistically clear improvement in every "
+        "available <900-minute bucket, no worse overall RMSE, and no statistically "
+        "clear harm for >=1800 effective-minute players. DEFCON is explicitly "
+        "excluded until its separate unchanged evidence gate passes."
     )
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
