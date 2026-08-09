@@ -28,19 +28,37 @@ def test_free_transfer_roll_replays_history():
         ],
         "chips": [],
     }
-    # GW1: 1 -> 2; GW2: use one => stays 2; GW3: roll => 3.
-    assert derive_next_free_transfers(history, 3) == 3
+    # GW1 awards the first FT for GW2; use it in GW2; roll once after GW3.
+    assert derive_next_free_transfers(history, 3) == 2
 
 
 def test_wildcard_preserves_banked_transfers():
     history = {
         "current": [
             {"event": 1, "event_transfers": 0},
-            {"event": 2, "event_transfers": 8},
+            {"event": 2, "event_transfers": 0},
+            {"event": 3, "event_transfers": 8},
         ],
-        "chips": [{"event": 2, "name": "wildcard"}],
+        "chips": [{"event": 3, "name": "wildcard"}],
     }
-    assert derive_next_free_transfers(history, 2) == 2
+    assert derive_next_free_transfers(history, 3) == 2
+
+
+def test_gw1_awards_one_free_transfer_for_gw2():
+    history = {"current": [{"event": 1, "event_transfers": 0}], "chips": []}
+    assert derive_next_free_transfers(history, 1) == 1
+
+
+def test_2025_26_gw16_afcon_top_up_is_season_specific():
+    history = {
+        "current": [
+            {"event": gw, "event_transfers": 1}
+            for gw in range(1, 16)
+        ],
+        "chips": [],
+    }
+    assert derive_next_free_transfers(history, 15, season="2025-26") == 5
+    assert derive_next_free_transfers(history, 15, season="2026-2027") == 1
 
 
 def test_latest_public_state_reads_published_picks():
@@ -94,7 +112,7 @@ def test_latest_public_state_reads_published_picks():
     assert state.squad == set(range(1, 16))
     assert state.bank == 0.5
     assert state.team_value == 100.5
-    assert state.free_transfers == 2
+    assert state.free_transfers == 1
     assert state.captain_id == 1
     assert state.vice_captain_id == 2
 

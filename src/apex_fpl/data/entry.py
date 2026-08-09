@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 
 from apex_fpl.data.http import CachedHttp
-from apex_fpl.rules import MAX_ROLLED_FREE_TRANSFERS
+from apex_fpl.rules import SeasonRules, season_rules
 
 BASE = "https://fantasy.premierleague.com/api"
 
@@ -41,8 +41,14 @@ def _parse_deadline(value: Any) -> datetime | None:
         return None
 
 
-def _next_free_transfers(ft: int, transfers: int) -> int:
-    return min(MAX_ROLLED_FREE_TRANSFERS, max(1, int(ft) - int(transfers) + 1))
+def _next_free_transfers(ft: int, transfers: int, rules: SeasonRules) -> int:
+    return min(
+        rules.max_rolled_free_transfers,
+        max(
+            rules.first_post_deadline_free_transfers,
+            int(ft) - int(transfers) + 1,
+        ),
+    )
 
 
 def derive_next_free_transfers(
@@ -50,6 +56,7 @@ def derive_next_free_transfers(
     latest_event: int,
     latest_entry_history: dict[str, Any] | None = None,
     latest_active_chip: str | None = None,
+    season: str = "2026-2027",
 ) -> int:
     """Replay public entry history to estimate FTs available for the next deadline.
 
@@ -75,7 +82,10 @@ def derive_next_free_transfers(
     if latest_active_chip:
         chips[latest_event] = str(latest_active_chip).casefold().replace("_", "")
 
-    ft = 1
+    rules = season_rules(season)
+    # Initial-squad construction has unlimited changes, not one bankable FT.
+    # The first actual FT is awarded for the deadline after GW1.
+    ft = rules.initial_free_transfers
     for gw in range(1, latest_event + 1):
         row = rows.get(gw, {})
         transfers = int(row.get("event_transfers", 0) or 0)
@@ -83,9 +93,15 @@ def derive_next_free_transfers(
         if chip in {"wildcard", "freehit"}:
             # Banked FTs are retained through these chips; no additional roll is
             # awarded for the chip week itself.
-            ft = min(MAX_ROLLED_FREE_TRANSFERS, max(1, ft))
+            ft = min(
+                rules.max_rolled_free_transfers,
+                max(rules.first_post_deadline_free_transfers, ft),
+            )
         else:
-            ft = _next_free_transfers(ft, transfers)
+            ft = _next_free_transfers(ft, transfers, rules)
+        top_up = rules.top_up_for_gameweek(gw + 1)
+        if top_up is not None:
+            ft = min(rules.max_rolled_free_transfers, max(ft, int(top_up)))
     return ft
 
 
@@ -97,9 +113,16 @@ class OfficialEntryClient:
     transfers made after the latest deadline and before the next one.
     """
 
-    def __init__(self, http: CachedHttp, entry_id: int):
+    def __init__(
+        self,
+        http: CachedHttp,
+        entry_id: int,
+        *,
+        season: str = "2026-2027",
+    ):
         self.http = http
         self.entry_id = int(entry_id)
+        self.season = str(season)
 
     def summary(self, force: bool = False) -> dict[str, Any]:
         return self.http.get_json(
@@ -188,6 +211,7 @@ class OfficialEntryClient:
             published_gw,
             latest_entry_history=entry_history,
             latest_active_chip=active_chip,
+            season=self.season,
         )
         captain = next(
             (int(row["element"]) for row in picks if row.get("is_captain")),

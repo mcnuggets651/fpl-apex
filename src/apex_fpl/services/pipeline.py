@@ -173,6 +173,7 @@ def run_pipeline(
             team_state_path=settings.team_state_path,
             entry_id=settings.fpl_entry_id,
             force=force,
+            season=settings.season,
         )
         write_team_state_report(settings.report_dir, team_resolution)
         sources.append(

@@ -73,3 +73,12 @@ Apex must expose exactly one user-facing recommendation path. `scripts/run_apex.
 
 ## D024 — Shrinkage must be validated through the epsilon frontier as well as player metrics
 When empirical-Bayes/partial-pooling shrinkage is introduced, Apex must rerun the same canonical maximum-EV and Elite epsilon frontier before and after the projection change. The validation is not limited to lower player-level error: reduced small-sample noise should also make the near-optimal frontier at 0.25%, 0.50% and 1.00% at least as stable unless genuine football uncertainty justifies otherwise. Compare squad overlap, captain agreement, raw-xP regret and frontier convergence pre/post shrinkage. If shrinkage materially destabilises the frontier without improving no-hindsight forecast performance, it must not be promoted automatically.
+
+## D025 — Historical replay uses a hard information firewall
+A replay decision may consume only immutable inputs proven available before its predeclared cutoff. Future participation, results and revised source files are scoring data and cannot influence priors, features, optimisation or chip timing. Decision and outcome processes remain separate and are joined only after the weekly action is sealed.
+
+## D026 — Validation contamination must be labelled honestly
+2025/26 has influenced shrinkage and fixture-model development and is therefore a pseudo-prospective integration benchmark, not an untouched final holdout. Code, configuration and evaluation rules must be frozen before the replay. The strongest independent evidence is the prospective 2026/27 deadline archive.
+
+## D027 — Stateful rules are season-versioned
+Free-transfer initialization, special top-ups, chip windows and other state transitions belong to an explicit `SeasonRules` contract. Historical replay must never inherit a later season's rules silently. Before GW1 the initial squad has unlimited changes but zero bankable FTs; the first FT is available for GW2.
