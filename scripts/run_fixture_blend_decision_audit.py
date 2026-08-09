@@ -165,7 +165,7 @@ def _solution_payload(solution, mechanics) -> dict:
         "xi": _records(solution.xi),
         "captain": mechanics["captain_name"],
         "vice_captain": mechanics["vice_captain_name"],
-        "expected_total_with_exact_gw1_mechanics": float(mechanics["expected_total"]),
+        "expected_total_with_exact_gw1_mechanics": float(mechanics["expected_total_points"]),
         "bench_order": mechanics["outfield_bench_order_names"],
     }
 
