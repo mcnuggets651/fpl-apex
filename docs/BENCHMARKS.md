@@ -51,14 +51,22 @@ canonical 15 or captain and is not a production replacement.
 
 The first PR #14 green result is withdrawn: prediction cohorts were filtered by
 future minutes/outcome availability before empirical priors and live-price tiers
-were calculated. A corrected validator must construct priors on the complete
-point-in-time roster and apply future eligibility only after predictions are
-frozen. Report pre-GW1, GW1-5 and GW6+ strata separately.
+were calculated. PR #18 replaces it with complete-roster predictions that apply
+future eligibility only after predictions are frozen and report pre-GW1, GW1-5
+and GW6+ strata separately.
+
+Corrected attacking-rate RMSE ratios (shrunk/raw):
+
+- xG90: 0.923542 in 2024/25; 0.731473 in 2025/26;
+- xA90: 0.833267 in 2024/25; 0.916736 in 2025/26.
+
+All four attacking-rate shadow gates pass. DEFCON fails its separate gate and is
+a no-op by default.
 
 The 2024/25 and 2025/26 seasons have been inspected during model development.
 They are useful chronological evaluation seasons but are not independent final
-holdouts. Shrinkage remains shadow-only unless a clean research PR passes the
-corrected gates and a separate activation decision is approved.
+holdouts. Shrinkage remains dormant even after the corrected shadow pass;
+activation requires a separate PR and explicit decision.
 
 ## Promotion rule
 Do not tune weights to fit a preferred squad. Record hypotheses before evaluating outcomes and use the no-hindsight archive as the season grows.
