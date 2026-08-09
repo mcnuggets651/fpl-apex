@@ -9,6 +9,10 @@ from pathlib import Path
 import pandas as pd
 
 from apex_fpl.config import load_settings
+from apex_fpl.models.scenarios import generate_projection_scenarios
+from apex_fpl.optimisation.frequencies import (
+    estimate_fixed_xi_captain_frequencies,
+)
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.mechanics import optimise_gameweek_mechanics
 from apex_fpl.services.decision_eligibility import captain_eligible_ids
@@ -103,10 +107,79 @@ def _solution_payload(solution, mechanics) -> dict:
     }
 
 
+def _fixed_xi_captain_stability(
+    players: pd.DataFrame,
+    projections: pd.DataFrame,
+    gameweeks: list[int],
+    solution,
+    captain_id: int,
+    *,
+    n_scenarios: int,
+    seed: int,
+    eligible: set[int],
+) -> dict:
+    scenarios = generate_projection_scenarios(
+        players,
+        projections,
+        gameweeks,
+        n_scenarios=n_scenarios,
+        seed=seed,
+    )
+    frequencies = estimate_fixed_xi_captain_frequencies(
+        players,
+        scenarios,
+        solution.squad,
+        solution.xi,
+        max_solves=24,
+        captain_eligible=eligible,
+    )
+    if frequencies.completed_solves < 16:
+        raise SystemExit(
+            "fixed-XI captain A/B completed fewer than 16 solves: "
+            f"{frequencies.completed_solves}/{frequencies.requested_solves}"
+        )
+    names = {
+        int(row.player_id): str(row.web_name)
+        for row in players[["player_id", "web_name"]]
+        .drop_duplicates("player_id")
+        .itertuples(index=False)
+    }
+    row = frequencies.rows[
+        frequencies.rows["player_id"].astype(int).eq(int(captain_id))
+    ]
+    if len(row) != 1:
+        raise SystemExit(
+            f"published captain {captain_id} missing from fixed-XI audit"
+        )
+    frequency = float(row.iloc[0]["captain_frequency"])
+    leaders = frequencies.rows.head(5)
+    return {
+        "captain_id": int(captain_id),
+        "captain": names.get(int(captain_id), str(captain_id)),
+        "captain_frequency": frequency,
+        "passes_50pct_floor": frequency >= 0.50,
+        "completed_solves": frequencies.completed_solves,
+        "scenario_seed": scenarios.seed,
+        "leaders": [
+            {
+                "player_id": int(item.player_id),
+                "player": str(item.web_name),
+                "captain_frequency": float(item.captain_frequency),
+                "vice_captain_frequency": float(
+                    item.vice_captain_frequency
+                ),
+            }
+            for item in leaders.itertuples(index=False)
+        ],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--horizon", type=int, default=8)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--stochastic-scenarios", type=int, default=256)
+    parser.add_argument("--scenario-seed", type=int, default=20260807)
     parser.add_argument(
         "--output",
         default="reports/shrinkage_decision_audit.json",
@@ -187,6 +260,26 @@ def main() -> None:
     }
     raw_gw_xp = _gw_xp(raw.projections, gw)
     shrunk_gw_xp = _gw_xp(shrunk.projections, gw)
+    raw_captain_stability = _fixed_xi_captain_stability(
+        players,
+        raw.projections,
+        raw.gameweeks,
+        raw_solution,
+        int(raw_mechanics["captain_id"]),
+        n_scenarios=args.stochastic_scenarios,
+        seed=args.scenario_seed,
+        eligible=eligible,
+    )
+    shrunk_captain_stability = _fixed_xi_captain_stability(
+        players,
+        shrunk.projections,
+        shrunk.gameweeks,
+        shrunk_solution,
+        int(shrunk_mechanics["captain_id"]),
+        n_scenarios=args.stochastic_scenarios,
+        seed=args.scenario_seed,
+        eligible=eligible,
+    )
     captain_xp_evidence = {
         names[player_id]: {
             "raw_gw1_xp": raw_gw_xp.get(player_id),
@@ -238,6 +331,15 @@ def main() -> None:
             shrunk_mechanics,
         ),
         "captain_xp_evidence": captain_xp_evidence,
+        "captain_stability_ab": {
+            "production_floor": 0.50,
+            "raw_control": raw_captain_stability,
+            "validated_shrinkage": shrunk_captain_stability,
+            "frequency_delta": (
+                shrunk_captain_stability["captain_frequency"]
+                - raw_captain_stability["captain_frequency"]
+            ),
+        },
         "decision_delta": {
             "squad_overlap": len(raw_ids & shrunk_ids),
             "players_in": [
