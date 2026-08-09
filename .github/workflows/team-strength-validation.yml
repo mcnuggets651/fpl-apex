@@ -57,6 +57,7 @@ jobs:
           assert replacement['challenger_validated_vs_neutral_fallback'] is True
           assert replacement['production_elo_head_to_head_2025_26']['n_matches'] >= 300
           assert blend['holdout_n_matches'] >= 150
+          assert blend['blend_candidate_ready_for_shadow_integration'] is True
           assert replacement['production_changed'] is False
           assert blend['production_changed'] is False
           print('Evidence generated successfully; production promotion remains a report-level decision.')
