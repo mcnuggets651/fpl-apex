@@ -200,6 +200,7 @@ def resolve_team_state(
     team_state_path: str | Path,
     entry_id: int | None,
     force: bool = False,
+    season: str = "2026-2027",
 ) -> TeamStateResolution:
     # Capture the complete official GW1 price universe *before* the first deadline,
     # even though public entry picks do not exist yet. This is required later to
@@ -224,7 +225,7 @@ def resolve_team_state(
             detail="no FPL entry ID configured; initial-squad mode",
         )
 
-    client = OfficialEntryClient(http, int(entry_id))
+    client = OfficialEntryClient(http, int(entry_id), season=season)
     try:
         summary = client.summary(force=force)
         public = client.latest_public_state(events, force=force)

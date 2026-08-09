@@ -122,6 +122,7 @@ def sync_team(force: bool = typer.Option(True)):
         team_state_path=settings.team_state_path,
         entry_id=settings.fpl_entry_id,
         force=force,
+        season=settings.season,
     )
     write_team_state_report(settings.report_dir, resolution)
     console.print(resolution.detail)
