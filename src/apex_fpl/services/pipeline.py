@@ -194,6 +194,7 @@ def run_pipeline(
     scenario: str = "both",
     force: bool = False,
     plan_transfers: bool = True,
+    apply_attack_shrinkage: bool = True,
 ) -> PipelineOutput:
     horizon = horizon or settings.horizon
     http = CachedHttp(settings.cache_dir)
@@ -444,23 +445,34 @@ def run_pipeline(
     else:
         players["current_team_matches"] = 0
 
-    players, shrinkage_audit = _apply_validated_attack_shrinkage(players)
-    attack_coverage = float(
-        shrinkage_audit[["shrunk_xg90", "shrunk_xa90"]]
-        .notna()
-        .all(axis=1)
-        .mean()
-    )
-    sources.append(
-        _status(
-            "empirical_bayes_attacking_rates",
-            attack_coverage >= 0.95,
-            f"validated xG90/xA90 coverage={attack_coverage:.1%}; "
-            "DEFCON excluded from promotion",
-            configured=True,
-            version="position-price-tier-v1",
+    if apply_attack_shrinkage:
+        players, shrinkage_audit = _apply_validated_attack_shrinkage(players)
+        attack_coverage = float(
+            shrinkage_audit[["shrunk_xg90", "shrunk_xa90"]]
+            .notna()
+            .all(axis=1)
+            .mean()
         )
-    )
+        sources.append(
+            _status(
+                "empirical_bayes_attacking_rates",
+                attack_coverage >= 0.95,
+                f"validated xG90/xA90 coverage={attack_coverage:.1%}; "
+                "DEFCON excluded from promotion",
+                configured=True,
+                version="position-price-tier-v1",
+            )
+        )
+    else:
+        sources.append(
+            _status(
+                "empirical_bayes_attacking_rates",
+                True,
+                "disabled for explicit pre/post decision audit",
+                configured=False,
+                version="raw-rates-control",
+            )
+        )
 
     profile = minutes_profile(players)
     for col in profile.columns:
