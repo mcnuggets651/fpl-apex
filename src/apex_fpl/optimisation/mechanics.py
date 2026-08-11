@@ -80,7 +80,27 @@ def best_captain_vice(
 
       (multiplier-1) * [xP(c) + P(c no-show) * xP(v)].
     """
-    ids = [int(x) for x in pd.to_numeric(xi["player_id"], errors="coerce").dropna()]
+    ids = sorted(
+        int(x) for x in pd.to_numeric(xi["player_id"], errors="coerce").dropna()
+    )
+    return best_captain_vice_ids(
+        ids,
+        xp,
+        appearance,
+        captain_multiplier=captain_multiplier,
+        captain_eligible=captain_eligible,
+    )
+
+
+def best_captain_vice_ids(
+    ids: list[int] | tuple[int, ...],
+    xp: dict[int, float],
+    appearance: dict[int, float],
+    *,
+    captain_multiplier: int = 2,
+    captain_eligible: set[int] | None = None,
+) -> tuple[int, int, float]:
+    ids = sorted(int(pid) for pid in ids)
     if captain_eligible is not None:
         eligible = {int(pid) for pid in captain_eligible}
         ids = [pid for pid in ids if pid in eligible]
@@ -105,6 +125,107 @@ def best_captain_vice(
     return best
 
 
+def autosub_weights_ids(
+    xi_ids: tuple[int, ...],
+    bench_ids: tuple[int, ...],
+    positions: dict[int, str],
+    appearance: dict[int, float],
+    *,
+    outfield_order: tuple[int, ...],
+) -> dict[int, float]:
+    starting_gk = [pid for pid in xi_ids if positions[pid] == "GK"]
+    bench_gk = [pid for pid in bench_ids if positions[pid] == "GK"]
+    if len(starting_gk) != 1 or len(bench_gk) != 1:
+        raise ValueError("a legal FPL squad requires one starting and one bench goalkeeper")
+    gk_start, gk_bench = starting_gk[0], bench_gk[0]
+    weights = {int(gk_bench): 1.0 - float(appearance.get(gk_start, 1.0))}
+
+    starters = [pid for pid in xi_ids if positions[pid] != "GK"]
+    bench_out = [pid for pid in bench_ids if positions[pid] != "GK"]
+    if set(bench_out) != set(outfield_order) or len(outfield_order) != 3:
+        raise ValueError(
+            "outfield_order must contain the three outfield bench players exactly once"
+        )
+
+    position_order = ("DEF", "MID", "FWD")
+    position_index = {position: idx for idx, position in enumerate(position_order)}
+    missing_distribution: dict[tuple[int, int, int], float] = {(0, 0, 0): 1.0}
+    for pid in starters:
+        idx = position_index[positions[pid]]
+        appears = min(max(float(appearance.get(pid, 1.0)), 0.0), 1.0)
+        next_distribution: dict[tuple[int, int, int], float] = {}
+        for counts, probability in missing_distribution.items():
+            next_distribution[counts] = (
+                next_distribution.get(counts, 0.0) + probability * appears
+            )
+            missing = list(counts)
+            missing[idx] += 1
+            key = tuple(missing)
+            next_distribution[key] = (
+                next_distribution.get(key, 0.0) + probability * (1.0 - appears)
+            )
+        missing_distribution = next_distribution
+
+    planned_counts = {
+        position: sum(positions[pid] == position for pid in starters)
+        for position in position_order
+    }
+    bench_probs = [float(appearance.get(pid, 1.0)) for pid in outfield_order]
+    substitution_probabilities = {int(pid): 0.0 for pid in outfield_order}
+    for missing_tuple, p_start in missing_distribution.items():
+        if p_start <= 1e-15 or not any(missing_tuple):
+            continue
+        for bench_bits in product((0, 1), repeat=3):
+            state_prob = p_start * _probability(bench_bits, bench_probs)
+            if state_prob <= 1e-15:
+                continue
+            live_counts = dict(planned_counts)
+            missing_counts = {
+                position: int(missing_tuple[idx])
+                for idx, position in enumerate(position_order)
+            }
+            for pid, appears in zip(outfield_order, bench_bits):
+                if not appears or not any(missing_counts.values()):
+                    continue
+                for missing_position in position_order:
+                    if missing_counts[missing_position] <= 0:
+                        continue
+                    trial = dict(live_counts)
+                    trial[missing_position] -= 1
+                    trial[positions[pid]] += 1
+                    if not _legal_counts(trial):
+                        continue
+                    live_counts = trial
+                    missing_counts[missing_position] -= 1
+                    substitution_probabilities[int(pid)] += state_prob
+                    break
+    for pid, probability in substitution_probabilities.items():
+        appears = float(appearance.get(pid, 0.0))
+        weights[pid] = probability / appears if appears > 1e-12 else 0.0
+    return weights
+
+
+def _expected_autosub_ids(
+    xi_ids: tuple[int, ...],
+    bench_ids: tuple[int, ...],
+    positions: dict[int, str],
+    xp: dict[int, float],
+    appearance: dict[int, float],
+    *,
+    outfield_order: tuple[int, ...],
+) -> float:
+    weights = autosub_weights_ids(
+        xi_ids,
+        bench_ids,
+        positions,
+        appearance,
+        outfield_order=outfield_order,
+    )
+    return float(
+        sum(weight * max(float(xp.get(pid, 0.0)), 0.0) for pid, weight in weights.items())
+    )
+
+
 def expected_autosub_points(
     xi: pd.DataFrame,
     bench: pd.DataFrame,
@@ -127,78 +248,76 @@ def expected_autosub_points(
         for row in pd.concat([xi_rows, bench_rows], ignore_index=True).itertuples(index=False)
     }
 
-    starting_gk = [
-        int(r.player_id)
-        for r in xi_rows.itertuples(index=False)
-        if str(r.position) == "GK"
-    ]
-    bench_gk = [
-        int(r.player_id)
-        for r in bench_rows.itertuples(index=False)
-        if str(r.position) == "GK"
-    ]
-    if len(starting_gk) != 1 or len(bench_gk) != 1:
-        raise ValueError("a legal FPL squad requires one starting and one bench goalkeeper")
-
-    gk_start, gk_bench = starting_gk[0], bench_gk[0]
-    gk_value = (1.0 - float(appearance.get(gk_start, 1.0))) * max(
-        float(xp.get(gk_bench, 0.0)), 0.0
+    xi_ids = tuple(sorted(int(pid) for pid in xi_rows["player_id"]))
+    bench_ids = tuple(sorted(int(pid) for pid in bench_rows["player_id"]))
+    return _expected_autosub_ids(
+        xi_ids,
+        bench_ids,
+        positions,
+        xp,
+        appearance,
+        outfield_order=outfield_order,
     )
 
-    starters = [
-        int(r.player_id)
-        for r in xi_rows.itertuples(index=False)
-        if str(r.position) != "GK"
-    ]
-    bench_out = [
-        int(r.player_id)
-        for r in bench_rows.itertuples(index=False)
-        if str(r.position) != "GK"
-    ]
-    if set(bench_out) != set(outfield_order) or len(outfield_order) != 3:
+
+def evaluate_gameweek_mechanics_ids(
+    squad_ids: tuple[int, ...],
+    xi_ids: tuple[int, ...],
+    positions: dict[int, str],
+    xp: dict[int, float],
+    appearance: dict[int, float],
+    *,
+    captain_multiplier: int = 2,
+    captain_eligible: set[int] | None = None,
+) -> GameweekMechanics:
+    """Evaluate mechanics without dataframe construction in exhaustive searches."""
+    squad_set, xi_set = set(squad_ids), set(xi_ids)
+    if len(squad_set) != 15 or len(xi_set) != 11 or not xi_set.issubset(squad_set):
         raise ValueError(
-            "outfield_order must contain the three outfield bench players exactly once"
+            "mechanics optimisation requires a legal 15-player squad and 11-player XI"
         )
+    bench_ids = tuple(sorted(squad_set - xi_set))
+    outfield = tuple(pid for pid in bench_ids if positions[pid] != "GK")
+    bench_gk = tuple(pid for pid in bench_ids if positions[pid] == "GK")
+    if len(outfield) != 3 or len(bench_gk) != 1:
+        raise ValueError("bench must contain one goalkeeper and three outfield players")
 
-    starter_probs = [float(appearance.get(pid, 1.0)) for pid in starters]
-    bench_probs = [float(appearance.get(pid, 1.0)) for pid in outfield_order]
-    conditional = {
-        pid: (
-            max(float(xp.get(pid, 0.0)), 0.0) / float(appearance.get(pid, 0.0))
-            if float(appearance.get(pid, 0.0)) > 1e-12
-            else 0.0
+    best_order: tuple[int, ...] | None = None
+    best_autosub = -1.0
+    for order in permutations(sorted(outfield)):
+        value = _expected_autosub_ids(
+            tuple(sorted(xi_set)),
+            bench_ids,
+            positions,
+            xp,
+            appearance,
+            outfield_order=tuple(int(pid) for pid in order),
         )
-        for pid in outfield_order
-    }
-
-    slot_positions = [positions[pid] for pid in starters]
-    expected = 0.0
-    for starter_bits in product((0, 1), repeat=len(starters)):
-        p_start = _probability(starter_bits, starter_probs)
-        if p_start <= 1e-15:
-            continue
-        missing = {idx for idx, bit in enumerate(starter_bits) if not bit}
-        if not missing:
-            continue
-        for bench_bits in product((0, 1), repeat=3):
-            p_bench = _probability(bench_bits, bench_probs)
-            state_prob = p_start * p_bench
-            if state_prob <= 1e-15:
-                continue
-            live_slots = list(slot_positions)
-            missing_slots = set(missing)
-            contribution = 0.0
-            for pid, appears in zip(outfield_order, bench_bits):
-                if not appears or not missing_slots:
-                    continue
-                slot = _can_replace_slot(live_slots, missing_slots, positions[pid])
-                if slot is None:
-                    continue
-                live_slots[slot] = positions[pid]
-                missing_slots.remove(slot)
-                contribution += conditional[pid]
-            expected += state_prob * contribution
-    return float(gk_value + expected)
+        if value > best_autosub + 1e-12 or (
+            abs(value - best_autosub) <= 1e-12
+            and (best_order is None or tuple(order) < best_order)
+        ):
+            best_autosub = value
+            best_order = tuple(int(pid) for pid in order)
+    assert best_order is not None
+    captain, vice, captain_bonus = best_captain_vice_ids(
+        tuple(sorted(xi_set)),
+        xp,
+        appearance,
+        captain_multiplier=captain_multiplier,
+        captain_eligible=captain_eligible,
+    )
+    xi_points = sum(max(float(xp.get(pid, 0.0)), 0.0) for pid in xi_set)
+    return GameweekMechanics(
+        expected_xi_points=float(xi_points),
+        expected_autosub_points=float(best_autosub),
+        expected_captain_bonus=float(captain_bonus),
+        expected_total_points=float(xi_points + best_autosub + captain_bonus),
+        captain_id=int(captain),
+        vice_captain_id=int(vice),
+        bench_gk_id=int(bench_gk[0]),
+        outfield_bench_order=best_order,
+    )
 
 
 def optimise_gameweek_mechanics(
@@ -236,7 +355,7 @@ def optimise_gameweek_mechanics(
 
     best_order: tuple[int, ...] | None = None
     best_autosub = -1.0
-    for order in permutations(outfield):
+    for order in permutations(sorted(outfield)):
         value = expected_autosub_points(
             xi,
             bench,

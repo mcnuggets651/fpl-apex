@@ -111,9 +111,14 @@ def main() -> None:
             blockers.append("diagnostics do not match the supplied sealed decision bundle")
 
     convergence = elite.get("epsilon_convergence")
-    selector = "strategy_maximum_ev"
-    selected = (pinnacle.get("deterministic_scenarios") or {}).get("unrestricted")
-    mechanics = (pinnacle.get("gw1_mechanics") or {}).get("unrestricted")
+    selector = "exact_horizon_maximum_ev"
+    authority = pinnacle.get("authoritative_decision")
+    if not isinstance(authority, dict) or authority.get("status") != "Optimal":
+        blockers.append("authoritative exact-horizon decision is missing or not optimal")
+        authority = authority if isinstance(authority, dict) else {}
+    selected = authority.get("solution")
+    weeks = authority.get("weeks") or []
+    mechanics = weeks[0] if isinstance(weeks, list) and weeks else None
 
     if not isinstance(selected, dict) or selected.get("status") != "Optimal":
         blockers.append(f"selected canonical solution is not optimal: {selector}")
@@ -139,10 +144,12 @@ def main() -> None:
     recommendation = {
         "selector": selector,
         "selector_reason": (
-            "The unrestricted rolling-horizon maximum-EV strategy is the sole production "
-            "authority; Elite and robustness layers are diagnostics only."
+            "The sealed near-optimal squad frontier is rescored across every Gameweek "
+            "with exact XI, captain, vice-captain and autosub mechanics; that single "
+            "Decision object is the production authority."
         ),
-        "objective": selected.get("objective"),
+        "objective": authority.get("objective"),
+        "objective_reconciliation": authority.get("objective_reconciliation"),
         "squad": squad,
         "xi": xi,
         "captain": captain,
@@ -169,14 +176,15 @@ def main() -> None:
         "gameweeks": pinnacle.get("gameweeks") or elite.get("gameweeks") or [],
         "decision_policy": {
             "primary_forecast": "canonical ensemble xp",
-            "primary_selection": "maximum expected FPL points under legal FPL constraints",
+            "primary_selection": "maximum exact-mechanics expected points among the sealed near-optimal legal squad frontier",
             "secondary_selection": "none; Elite is diagnostic-only",
             "elite_convergence_rule": ">=13/15 overlap with max-EV and same captain at 0.25%, 0.50%, 1.00%",
             "elite_failure_fallback": "not applicable; Elite has no publication authority",
             "ownership_in_points_objective": False,
             "minutes_model": "first-class",
             "uncertainty": "correlated scenarios/CVaR/regret are diagnostics, not a second hidden forecast",
-            "deadline_mechanics": "exact captain/vice/autosub mechanics",
+            "deadline_mechanics": "exact XI/captain/vice/autosub mechanics in every horizon Gameweek",
+            "unique_optimum_claimed": False,
             "same_surface_check": (
                 "sealed decision bundle identity and all material input hashes must match"
                 if pinnacle_bundle_id or elite_bundle_id

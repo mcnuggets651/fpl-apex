@@ -29,6 +29,24 @@ def _payload():
         }
         for name in scenarios
     }
+    authoritative_solution = _scenario()
+    authoritative_solution["objective"] = 99.0
+    authoritative_solution["captain"] = [{"player_id": 1}]
+    authoritative_solution["vice_captain"] = [{"player_id": 2}]
+    authoritative_solution["bench"] = [{"player_id": i} for i in range(11, 15)]
+    authoritative_weeks = [
+        {
+            "gw": gw,
+            "discount": 0.9 ** (gw - 1),
+            "discounted_expected_points": 10.0,
+            "expected_total_points": 10.0 / (0.9 ** (gw - 1)),
+            "captain_id": 1,
+            "vice_captain_id": 2,
+            "xi_ids": list(range(11)),
+            "outfield_bench_order": [12, 13, 14],
+        }
+        for gw in range(1, 9)
+    ]
     return {
         "safe_to_act": True,
         "full_apex_ready": True,
@@ -55,6 +73,7 @@ def _payload():
             "stochastic_covariance_layer": True,
             "stochastic_scenarios": 256,
             "exact_gw_mechanics": True,
+            "authoritative_exact_horizon_mechanics": True,
             "captain_eligibility_enforced_in_all_solves": True,
             "receding_horizon_transfers": True,
             "empirical_decision_frequency": True,
@@ -64,6 +83,20 @@ def _payload():
         "deterministic_scenarios": scenarios,
         "robust_cvar_scenarios": {name: _scenario() for name in scenarios},
         "gw1_mechanics": mechanics,
+        "authoritative_decision": {
+            "contract": "apex-exact-horizon-decision-v1",
+            "status": "Optimal",
+            "objective": 80.0,
+            "objective_reconciliation": 80.0,
+            "solution": authoritative_solution,
+            "weeks": authoritative_weeks,
+            "shortlist": {
+                "candidate_count": 8,
+                "candidate_limit": 16,
+                "complete_within_configured_band": True,
+            },
+            "equivalence": {"unique_optimum_proven": False},
+        },
         "selection_regret": [{"player_id": 1, "objective_regret": 3.0}],
         "decision_frequencies": [
             {
@@ -148,6 +181,7 @@ def test_unsupported_low_start_low_confidence_captain_blocks_pinnacle():
             "projection_confidence": 0.165,
         }
     )
+    payload["authoritative_decision"]["solution"]["squad"][1].update(captain)
     result = evaluate_pinnacle_payload(payload)
     assert not result.ready
     assert any("captain Unsupported" in blocker for blocker in result.blockers)

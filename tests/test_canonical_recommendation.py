@@ -57,6 +57,7 @@ def _mechanics(captain: str) -> dict:
 
 def _pinnacle(bootstrap: str = "boot", fixtures: str = "fix") -> dict:
     now = datetime.now(timezone.utc).isoformat()
+    exact_solution = _solution("ExactCap", 102.0)
     return {
         "contract": "pinnacle-test",
         "safe_to_act": True,
@@ -83,6 +84,16 @@ def _pinnacle(bootstrap: str = "boot", fixtures: str = "fix") -> dict:
         "robust_cvar_scenarios": {"unrestricted": {"status": "Optimal"}},
         "deterministic_scenarios": {"unrestricted": _solution("StrategyCap", 101.0)},
         "gw1_mechanics": {"unrestricted": _mechanics("StrategyCap")},
+        "authoritative_decision": {
+            "contract": "apex-exact-horizon-decision-v1",
+            "status": "Optimal",
+            "objective": 102.0,
+            "objective_reconciliation": 102.0,
+            "solution": exact_solution,
+            "weeks": [{"gw": 1, **_mechanics("ExactCap")}],
+            "shortlist": {"candidate_count": 4},
+            "equivalence": {"unique_optimum_proven": False},
+        },
         "selection_regret": [{"player_id": row["player_id"], "regret": 1.0} for row in _rows()],
         "solver_parity": {
             "comparison_surface": "pinnacle_ev",
@@ -147,8 +158,8 @@ def test_converged_elite_remains_diagnostic_only(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert payload["ready_to_act"] is True
     assert payload["contract"] == "apex-strategy-recommendation-v2"
-    assert payload["recommendation"]["selector"] == "strategy_maximum_ev"
-    assert payload["recommendation"]["captain"] == "StrategyCap"
+    assert payload["recommendation"]["selector"] == "exact_horizon_maximum_ev"
+    assert payload["recommendation"]["captain"] == "ExactCap"
     assert payload["internal_diagnostics"]["same_official_surface"] is True
 
 
@@ -156,8 +167,8 @@ def test_unstable_elite_cannot_change_strategy_authority(tmp_path: Path) -> None
     result, payload = _run(tmp_path, _pinnacle(), _elite(False))
     assert result.returncode == 0
     assert payload["ready_to_act"] is True
-    assert payload["recommendation"]["selector"] == "strategy_maximum_ev"
-    assert payload["recommendation"]["captain"] == "StrategyCap"
+    assert payload["recommendation"]["selector"] == "exact_horizon_maximum_ev"
+    assert payload["recommendation"]["captain"] == "ExactCap"
 
 
 def test_mismatched_official_surface_withholds_recommendation(tmp_path: Path) -> None:

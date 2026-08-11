@@ -48,6 +48,9 @@ def optimise_initial_horizon(
     reference_projection_col: str | None = None,
     min_reference_objective: float | None = None,
     display_projection_col: str | None = None,
+    excluded_squads: list[set[int]] | None = None,
+    solver_relative_gap: float = 0.001,
+    solver_time_limit: int = 90,
 ) -> SquadSolution:
     """Optimise the initial squad over the complete planning horizon.
 
@@ -66,6 +69,7 @@ def optimise_initial_horizon(
     report still shows real expected points.
     """
     locked, banned = locked or set(), banned or set()
+    excluded_squads = excluded_squads or []
     captain_eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
@@ -172,6 +176,13 @@ def optimise_initial_horizon(
         idx = [i for i in range(n) if d.loc[i, club_col] == team]
         add({s(i): 1.0 for i in idx}, -np.inf, max_per_team)
 
+    # No-good cuts let the exact-mechanics decision layer enumerate distinct legal
+    # squad candidates without changing the underlying expected-points objective.
+    for excluded in excluded_squads:
+        idx = [i for i, pid in enumerate(pids) if pid in {int(x) for x in excluded}]
+        if len(idx) == 15:
+            add({s(i): 1.0 for i in idx}, -np.inf, 14)
+
     for t in range(t_count):
         add({x(i, t): 1.0 for i in range(n)}, 11, 11)
         add({c(i, t): 1.0 for i in range(n)}, 1, 1)
@@ -219,8 +230,8 @@ def optimise_initial_horizon(
                 for t in range(t_count):
                     ub[c(i, t)] = 0.0
 
-    configured_gap = 0.001
-    time_limit = 90
+    configured_gap = float(max(solver_relative_gap, 0.0))
+    time_limit = int(max(solver_time_limit, 1))
     result = milp(
         c=-objective,
         integrality=np.ones(total_vars, dtype=int),

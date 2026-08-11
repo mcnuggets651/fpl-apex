@@ -21,14 +21,14 @@ python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0
 2. Enrich with validated FPL Core, AIrsenal, historical, preseason, tactical, news and fixture evidence.
 3. Produce canonical ensemble expected points (`xp`).
 4. Treat expected minutes/start/appearance probabilities as first-class inputs.
-5. Solve the legal maximum-xP squad over the planning horizon.
-6. Run correlated uncertainty/CVaR, exact force/ban regret, captain stability and independent parity as robustness diagnostics.
-7. Run Elite only as a diagnostic frontier inside a near-optimal xP set.
-8. Audit Elite across epsilon = 0%, 0.25%, 0.5%, 1.0%.
-9. The unrestricted rolling-horizon maximum-EV strategy is the sole canonical selection.
-10. Elite convergence is evidence only and never substitutes a different production 15.
-11. Re-optimise XI, captain, vice and bench mechanics on raw xP for the selected 15.
-12. Publish a team only when all required readiness/snapshot-consistency gates pass.
+5. Use the legal maximum-xP MILP to enumerate distinct squads inside a disclosed near-optimal candidate band.
+6. Exhaustively rescore every candidate across the complete horizon with legal XI, captain, vice-captain, bench order and autosub expectations.
+7. Select one deterministic exact-mechanics `Decision`; this object alone owns the published squad and captain.
+8. Label all candidates within the configured point band as near-equivalent and never claim a unique global optimum unless it is proven.
+9. Run correlated uncertainty/CVaR, force/ban regret, captain stability and independent parity as robustness diagnostics.
+10. Run Elite only as a diagnostic frontier and audit epsilon = 0%, 0.25%, 0.5%, 1.0%.
+11. Elite convergence and the shortlist-generating MILP are evidence only; neither can override the authoritative `Decision` after rescoring.
+12. Publish a team only when the objective reconciles exactly and all readiness/snapshot-consistency gates pass.
 
 ## What does not enter the maximum-points objective
 - ownership / effective ownership;

@@ -32,7 +32,7 @@ Sealed decision bundle
 (content hashes, code/config, evidence, projections, team state)
       |
       v
-Maximum-EV legal optimiser  <-------------------+
+Near-optimal legal squad shortlist  <-----------+
       |                                          |
       +--> correlated CVaR / scenarios           |
       +--> exact force-ban regret                 |
@@ -43,11 +43,12 @@ Maximum-EV legal optimiser  <-------------------+
       +--> Elite epsilon frontier ----------------+
                     |
                     v
-Canonical strategy
-(rolling-horizon maximum-EV only)
+Exact horizon rescoring
+(XI / captain / vice / bench / autosubs for every GW)
                     |
                     v
-Exact XI / captain / vice / bench mechanics on raw xP
+Authoritative Decision
+(deterministic winner + near-equivalent set; no unique claim)
                     |
                     v
 ONE USER-FACING OUTPUT
@@ -86,20 +87,20 @@ state are content-addressed by one `bundle_id`. Every optimiser and diagnostic
 consumes that bundle; diagnostic layers may not fetch or project independently.
 See `docs/DECISION_BUNDLE.md`.
 
-### Maximum-EV optimiser
-This is the primary selection baseline. It maximises canonical ensemble xP under budget, club, squad and formation constraints over the selected planning horizon.
+### Maximum-EV shortlist generator
+The MILP maximises canonical ensemble xP under budget, club, squad and formation constraints, then uses distinct-squad no-good cuts to enumerate candidates inside a disclosed regret band. Its flat bench coefficient is a search approximation, not the published objective.
 
 ### Elite diagnostic frontier
 Elite is not a separate forecast or team. It evaluates near-optimal solutions satisfying explicit raw-xP floors at 0%, 0.25%, 0.5% and 1.0%, but cannot change the production selection.
 
 ### Canonical selector
-There is one deterministic publication rule: the unrestricted rolling-horizon maximum-EV strategy owns the final 15, XI and captain. Elite convergence and other robustness outputs explain sensitivity; no human or diagnostic engine chooses a competing production team.
+There is one deterministic publication rule: rescore the sealed candidate frontier across every horizon Gameweek with exact FPL mechanics, apply the documented player-ID tie-break, and publish that `Decision`. The shortlist generator, Elite and other robustness outputs explain sensitivity; no human or diagnostic engine chooses a competing production team.
 
 ### Robustness
 CVaR, correlated stochastic scenarios, exact regret and solver parity quantify fragility. They are checks, not undocumented substitutions for expected value. Scenario generation must preserve joint football outcomes rather than independently perturb each player.
 
-### Exact deadline mechanics
-For the selected 15, XI/captain/vice/bench order are resolved on raw xP with explicit no-show fallback and legal autosub mechanics.
+### Exact horizon mechanics
+For every shortlisted 15 and every horizon Gameweek, the legal XI, captain, vice-captain and bench order are resolved on raw xP with explicit no-show fallback and exact formation-aware autosub expectations. Discounted weekly totals must reconcile to the published objective.
 
 ### Ownership / rank strategy
 Ownership is not part of the canonical maximum-points objective. Effective ownership may be used only in a separately named rank-management mode where the objective explicitly changes.
@@ -120,7 +121,8 @@ The unified recommendation requires:
 - `pinnacle_ready=true`;
 - matched sealed decision-bundle identity between internal selection diagnostics;
 - an optimal selected solution;
-- exact GW mechanics present.
+- exact mechanics present for every horizon Gameweek;
+- a reconciled authoritative objective and explicit equivalence disclosure.
 
 If any required gate fails, Apex publishes no team and reports blockers.
 
