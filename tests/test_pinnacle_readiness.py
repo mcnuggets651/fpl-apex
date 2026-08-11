@@ -88,7 +88,12 @@ def _payload():
             "weeks": [],
         },
         "initial_chip_policy": {"status": "hold", "recommended_chip": None},
-        "solver_parity": {"status": "ok"},
+        "solver_parity": {
+            "status": "ok",
+            "comparison_surface": "pinnacle_ev",
+            "squad_overlap": 15,
+            "captain_agrees": True,
+        },
     }
 
 

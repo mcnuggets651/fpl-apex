@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from apex_fpl.services.answer_context import build_answer_context
+
 
 def _load(path: Path) -> dict[str, Any]:
     if not path.exists():
@@ -190,7 +192,17 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "apex_recommendation_latest.json"
     md_path = output_dir / "apex_recommendation_latest.md"
+    answer_context = build_answer_context(payload, pinnacle)
+    if not answer_context["safe_to_act"]:
+        payload["ready_to_act"] = False
+        payload["blockers"] = list(
+            dict.fromkeys([*payload["blockers"], *answer_context["blockers"]])
+        )
+        answer_context = build_answer_context(payload, pinnacle)
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    (output_dir / "apex_answer_context.json").write_text(
+        json.dumps(answer_context, indent=2), encoding="utf-8"
+    )
 
     if ready:
         lines = [

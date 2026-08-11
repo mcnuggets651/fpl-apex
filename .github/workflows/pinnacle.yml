@@ -38,6 +38,7 @@ jobs:
           pytest -q
           ruff check src tests scripts
           python scripts/check_upstreams.py
+          python scripts/check_governance_consistency.py
 
       - name: Restore runtime cache
         uses: actions/cache@v4
@@ -136,6 +137,7 @@ jobs:
           git add -f \
             data/generated/apex_recommendation_latest.json \
             data/generated/apex_recommendation_latest.md \
+            data/generated/apex_answer_context.json \
             data/generated/calibration_report.json
           if [ -d data/history/deadlines ]; then
             git add -f data/history/deadlines
@@ -171,6 +173,7 @@ jobs:
             reports/
             data/generated/apex_recommendation_latest.json
             data/generated/apex_recommendation_latest.md
+            data/generated/apex_answer_context.json
             data/generated/pinnacle_latest.json
             data/generated/pinnacle_latest.md
             data/generated/elite_latest.json

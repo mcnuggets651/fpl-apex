@@ -1,11 +1,15 @@
 # ChatGPT Apex Query Policy
 
+Authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md). This file is a
+compact policy summary and cannot override the operating manual.
+
 This policy governs every ChatGPT answer about FPL players, squads, transfers, captaincy, chips, fixtures, expected minutes, expected points, or Apex recommendations.
 
 ## Mandatory source order
 
 1. Read `docs/CURRENT_STATE.md` and the Project Brain first.
-2. Read `data/generated/apex_recommendation_latest.json` before giving any recommendation.
+2. Read `data/generated/apex_answer_context.json`; do not produce an Apex-labelled
+   answer from any other artifact.
 3. Use the latest committed Apex diagnostics and pinned upstream evidence to explain the canonical result.
 4. Keep production, shadow, open-PR and stale artifacts explicitly separated by date/ref.
 5. Do not use external web research unless the repository evidence has a concrete gap that prevents a defensible answer.

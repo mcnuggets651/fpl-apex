@@ -264,11 +264,11 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             blockers.append("pre-GW1 conservative chip policy is missing")
 
     parity = payload.get("solver_parity")
-    if parity is None:
-        warnings.append("independent solver parity snapshot is not embedded in this run")
-    elif isinstance(parity, dict) and parity.get("comparison_surface") is not None:
-        if parity.get("comparison_surface") != "pinnacle_ev":
-            blockers.append("independent solver parity was not computed on Pinnacle EV")
+    if not isinstance(parity, dict):
+        blockers.append("required independent solver parity snapshot is not embedded")
+    elif parity.get("comparison_surface") != "pinnacle_ev":
+        blockers.append("independent solver parity was not computed on Pinnacle EV")
+    else:
         if int(parity.get("squad_overlap", 0) or 0) < MIN_ROBUST_SQUAD_OVERLAP:
             blockers.append("independent solver squad parity is below 12/15")
         if parity.get("captain_agrees") is not True:

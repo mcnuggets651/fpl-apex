@@ -1,12 +1,18 @@
 # Using Apex Pinnacle directly from ChatGPT
 
+Authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md). If this file
+conflicts with the manual, the manual wins.
+
 ChatGPT is the intended user interface for the decision engine. GitHub Actions performs the reproducible computation; compact repository snapshots are the durable contract between the workers and ChatGPT. No separate app is required.
 
 ## Files ChatGPT should read first
 
 For a current recommendation, inspect in this order:
 
-1. `data/generated/pinnacle_latest.json`
+1. `data/generated/apex_answer_context.json`
+   - the only permitted input for an Apex-labelled answer;
+   - withholds the production result when any required gate fails.
+2. `data/generated/pinnacle_latest.json`
    - deterministic full-horizon unrestricted / Haaland / no-Haaland solutions;
    - covariance-aware CVaR robustness solutions;
    - deterministic-vs-robust overlap;
@@ -14,15 +20,15 @@ For a current recommendation, inspect in this order:
    - scenario downside / median / upside summaries;
    - current personalised team/transfer state when public;
    - source health and official-snapshot provenance.
-2. `data/generated/pinnacle_latest.md`
+3. `data/generated/pinnacle_latest.md`
    - human-readable version of the enhanced decision run.
-3. `data/generated/apex_latest.json`
+4. `data/generated/apex_latest.json`
    - latest production-green core fallback if the Pinnacle snapshot is not yet published.
-4. `data/generated/solver_parity.json`
+5. `data/generated/solver_parity.json`
    - independent Apex-vs-open-fpl-solver mathematical parity evidence.
-5. `data/generated/airsenal.csv`
+6. `data/generated/airsenal.csv`
    - genuine pinned AIrsenal player/Gameweek projection evidence.
-6. `upstreams.lock.json`
+7. `upstreams.lock.json`
    - exact upstream revisions used by the pipeline.
 
 Never answer a current team question from remembered historical picks when repository decision files are available.

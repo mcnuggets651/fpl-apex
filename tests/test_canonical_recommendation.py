@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 import sys
@@ -18,6 +19,12 @@ def _rows() -> list[dict]:
                 "position": position,
                 "price": 5.0,
                 "gw1_xp": 3.0 + idx / 10.0,
+                "horizon_xp": 20.0 + idx / 10.0,
+                "expected_minutes": 75.0,
+                "start_probability": 0.8,
+                "projection_confidence": 0.7,
+                "tactical_role": "test role",
+                "tactical_role_source": "verified_lineup",
             }
         )
     return rows
@@ -49,6 +56,7 @@ def _mechanics(captain: str) -> dict:
 
 
 def _pinnacle(bootstrap: str = "boot", fixtures: str = "fix") -> dict:
+    now = datetime.now(timezone.utc).isoformat()
     return {
         "contract": "pinnacle-test",
         "safe_to_act": True,
@@ -57,10 +65,24 @@ def _pinnacle(bootstrap: str = "boot", fixtures: str = "fix") -> dict:
         "pinnacle_gate": {"ready": True, "blockers": []},
         "official_snapshot": {
             "snapshot_id": "pinnacle-run-id",
+            "retrieved_at": now,
             "bootstrap_sha256": bootstrap,
             "fixtures_sha256": fixtures,
         },
         "gameweeks": [1, 2, 3],
+        "sources": [
+            {
+                "name": "news_feeds",
+                "ok": True,
+                "configured": True,
+                "checked_at": now,
+                "version": "test",
+            }
+        ],
+        "robust_cvar_scenarios": {"unrestricted": {"status": "Optimal"}},
+        "selection_regret": [{"player_id": row["player_id"], "regret": 1.0} for row in _rows()],
+        "solver_parity": {"comparison_surface": "pinnacle_ev"},
+        "initial_squad_contingencies": {"status": "Optimal"},
     }
 
 

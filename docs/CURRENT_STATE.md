@@ -1,6 +1,13 @@
 # Apex FPL — Current State
 
+Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
+
 **Last updated:** 2026-08-11
+
+The closed-answer governance release is a validated candidate until its PR is
+merged and the production workflow publishes `apex_answer_context.json`. Local
+validation evidence is recorded in
+`docs/evidence/governance_reliability_v1.json`; this is not an activation claim.
 
 ## Production
 
@@ -27,6 +34,7 @@ python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0
 
 The only user-facing outputs are:
 
+- `data/generated/apex_answer_context.json`
 - `data/generated/apex_recommendation_latest.json`
 - `data/generated/apex_recommendation_latest.md`
 
