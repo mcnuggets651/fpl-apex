@@ -81,6 +81,15 @@ class WeeklyAction:
             "hit_cost": int(self.hit_cost),
         }
 
+    @property
+    def action_sha256(self) -> str:
+        payload = json.dumps(
+            self.to_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
 
 @dataclass(frozen=True)
 class ReplayState:
@@ -107,6 +116,9 @@ class ReplayState:
         for _, chip in self.chips_used:
             if chip not in _VALID_CHIPS:
                 raise ValueError(f"unsupported chip in state: {chip}")
+        seen = [(int(gameweek), chip) for gameweek, chip in self.chips_used]
+        if len(seen) != len(set(seen)):
+            raise ValueError("chip history contains a duplicate Gameweek/chip pair")
 
     def to_dict(self) -> dict:
         return {

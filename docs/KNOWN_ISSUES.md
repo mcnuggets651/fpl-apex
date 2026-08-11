@@ -58,11 +58,14 @@ activation is connected.
 The correlated scenario coefficients are explicit priors. Fixed-XI captain frequencies are useful telemetry, but a 50% hard publication decision cannot be interpreted as calibrated probability evidence until historical coverage and discrimination are validated. The raw baseline also fails the proposed fixed-XI threshold, so this diagnostic must be separated from shrinkage promotion.
 
 ## K014 — Full-season replay path is incomplete
-The current-season pipeline now has a sealed decision-bundle contract, but it has
-no injected historical clock or point-in-time historical ingestion adapter, and
-the canonical builder is still initial-squad-oriented after GW1. A season replay
-also needs a deterministic chip controller, realised scorer and hash-chained team
-state. See `FULL_SEASON_REPLAY_PROTOCOL.md`.
+**Partially resolved in PR 7; historical inputs remain blocked.** The repository
+now has a deterministic 38-GW engine, outcome firewall, legal state transitions,
+purchase/sale ledger, chip semantics, formation-aware autosubs, realised scorer
+and state/decision hash chain. The 2025/26 source audit found zero immutable
+pre-deadline Apex bundles and only 11/38 Official-FPL xP files, so publishing an
+Apex total would require hindsight. The remaining work is historical bundle
+recovery or an explicitly weaker benchmark whose limitations are predeclared.
+See `FULL_SEASON_REPLAY_PROTOCOL.md` and the PR 7 evidence artifact.
 
 ## Resolution discipline
 When an issue is fixed, retain the entry and mark it resolved with date, implementation and benchmark evidence rather than deleting it.
