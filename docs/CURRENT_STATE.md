@@ -1,6 +1,6 @@
 # Apex FPL — Current State
 
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-11
 
 ## Production
 
@@ -29,6 +29,17 @@ The only user-facing outputs are:
 
 - `data/generated/apex_recommendation_latest.json`
 - `data/generated/apex_recommendation_latest.md`
+
+## ChatGPT query discipline
+
+Every FPL/player/squad/transfer question must follow
+[`CHATGPT_APEX_QUERY_POLICY.md`](CHATGPT_APEX_QUERY_POLICY.md).
+
+In particular: load this Project Brain and the latest canonical recommendation
+before answering; use committed Apex and pinned-upstream evidence first; do not
+browse externally unless a concrete repository evidence gap prevents a defensible
+answer; and never mix production, shadow, open-PR or stale artifacts without
+labelling the distinction.
 
 ## Latest verified canonical recommendation
 
