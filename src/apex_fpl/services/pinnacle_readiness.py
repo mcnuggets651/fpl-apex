@@ -234,6 +234,13 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             blockers.append("zero relevant selected-player evidence rows")
         if coverage.get("captain_has_current_evidence") is not True:
             blockers.append("published captain lacks current attributable evidence")
+        if (
+            "captain_has_decision_grade_evidence" in coverage
+            and coverage.get("captain_has_decision_grade_evidence") is not True
+        ):
+            blockers.append(
+                "published captain lacks official or independently corroborated evidence"
+            )
         missing_uncertain = coverage.get(
             "high_uncertainty_starters_missing_evidence"
         ) or []

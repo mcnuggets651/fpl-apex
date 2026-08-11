@@ -81,3 +81,39 @@ def test_current_tactical_provenance_covers_high_uncertainty_starter():
     )
     assert payload["coverage"]["ready"] is True
     assert payload["coverage"]["relevant_evidence_rows"] == 2
+
+
+def test_single_trusted_media_story_is_visible_but_not_decision_grade_for_captain():
+    news = _news()
+    news.loc[:, "source_tier"] = "trusted_media"
+    payload = build_selected_player_evidence(
+        _players().iloc[[0]], news, [1], xi_ids=[1], captain_id=1, now=NOW
+    )
+    assert payload["coverage"]["captain_has_current_evidence"] is True
+    assert payload["coverage"]["captain_has_decision_grade_evidence"] is False
+    assert payload["coverage"]["ready"] is False
+
+
+def test_two_independent_trusted_media_sources_are_decision_grade():
+    news = pd.concat([_news(), _news()], ignore_index=True)
+    news.loc[:, "source_tier"] = "trusted_media"
+    news.loc[0, "source_name"] = "Trusted A"
+    news.loc[0, "source_url"] = "https://a.example/captain"
+    news.loc[1, "source_name"] = "Trusted B"
+    news.loc[1, "source_url"] = "https://b.example/captain"
+    payload = build_selected_player_evidence(
+        _players().iloc[[0]], news, [1], xi_ids=[1], captain_id=1, now=NOW
+    )
+    assert payload["coverage"]["captain_has_decision_grade_evidence"] is True
+    assert payload["coverage"]["ready"] is True
+
+
+def test_two_articles_from_same_trusted_publisher_are_not_independent():
+    news = pd.concat([_news(), _news()], ignore_index=True)
+    news.loc[:, "source_tier"] = "trusted_media"
+    news.loc[1, "source_url"] = "https://example.test/second-captain-story"
+    payload = build_selected_player_evidence(
+        _players().iloc[[0]], news, [1], xi_ids=[1], captain_id=1, now=NOW
+    )
+    assert payload["coverage"]["captain_has_decision_grade_evidence"] is False
+    assert payload["coverage"]["ready"] is False

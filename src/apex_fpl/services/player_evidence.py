@@ -11,6 +11,7 @@ from apex_fpl.data.news import TRUSTED_SOURCE_TIERS
 CAPTAIN_MINUTES_CONFIDENCE_FLOOR = 0.75
 HIGH_UNCERTAINTY_MINUTES_CONFIDENCE = 0.75
 HIGH_UNCERTAINTY_ROLE_CONFIDENCE = 0.65
+OFFICIAL_SOURCE_TIERS = {"official_club", "official_league"}
 
 
 def _value(value: Any) -> Any:
@@ -171,6 +172,18 @@ def build_selected_player_evidence(
                 )
 
         current = [item for item in evidence if item["eligible_for_decision"]]
+        current_sources = {
+            str(item.get("source_name") or "").casefold() for item in current
+        }
+        official_current = any(
+            str(item.get("source_tier") or "") in OFFICIAL_SOURCE_TIERS for item in current
+        )
+        trusted_current_sources = {
+            str(item.get("source_name") or "").casefold()
+            for item in current
+            if str(item.get("source_tier") or "") == "trusted_media"
+        }
+        decision_grade = bool(official_current or len(trusted_current_sources) >= 2)
         minutes_confidence = _number(row.get("minutes_confidence"))
         role_confidence = _number(row.get("role_confidence"))
         high_uncertainty = player_id in xi and (
@@ -191,7 +204,10 @@ def build_selected_player_evidence(
                 "role_confidence": role_confidence,
                 "high_uncertainty_starter": high_uncertainty,
                 "has_current_decision_evidence": bool(current),
+                "has_decision_grade_evidence": decision_grade,
                 "current_evidence_count": len(current),
+                "independent_current_sources": len(current_sources),
+                "official_current_evidence": official_current,
                 "evidence": evidence,
             }
         )
@@ -201,7 +217,7 @@ def build_selected_player_evidence(
     missing_high_uncertainty = [
         row["player_id"]
         for row in high_uncertainty
-        if not row["has_current_decision_evidence"]
+        if not row["has_decision_grade_evidence"]
     ]
     covered = [row for row in dossiers if row["has_current_decision_evidence"]]
     coverage = {
@@ -212,12 +228,16 @@ def build_selected_player_evidence(
         "captain_has_current_evidence": bool(
             captain and captain["has_current_decision_evidence"]
         ),
+        "captain_has_decision_grade_evidence": bool(
+            captain and captain["has_decision_grade_evidence"]
+        ),
         "captain_minutes_confidence_floor": CAPTAIN_MINUTES_CONFIDENCE_FLOOR,
         "high_uncertainty_starter_ids": [row["player_id"] for row in high_uncertainty],
         "high_uncertainty_starters_missing_evidence": missing_high_uncertainty,
+        "high_uncertainty_starters_missing_decision_grade_evidence": missing_high_uncertainty,
         "ready": bool(
             captain
-            and captain["has_current_decision_evidence"]
+            and captain["has_decision_grade_evidence"]
             and not missing_high_uncertainty
             and covered
         ),

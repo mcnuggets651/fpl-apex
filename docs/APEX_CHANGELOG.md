@@ -2,6 +2,18 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-11 — Decision-grade evidence ingestion candidate
+- Added structured official-article publication/body extraction and bounded same-host
+  HTTPS hydration for official HTML news indexes.
+- Added ambiguity-safe player resolution using full names and official-club context.
+- Added typed lineup, availability, tactical-role and set-piece evidence with
+  event-specific expiry windows and local negation protection.
+- Required official evidence or two independent trusted-media sources for captains
+  and high-uncertainty starters; the readiness floor was not weakened.
+- The current live audit remains honestly blocked: all three configured sources
+  responded, but no current item was decision-relevant. PR 6 improves the path by
+  which deadline evidence can qualify; it does not fabricate pre-press-conference coverage.
+
 ## 2026-08-11 — Projection calibration and ablation contract
 - Added strict no-hindsight deadline validation, cohort and interval diagnostics,
   expanding-window holdouts, Gameweek-block bootstrap and refitted source ablations.
