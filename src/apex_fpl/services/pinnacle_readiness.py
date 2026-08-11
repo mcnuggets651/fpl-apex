@@ -213,10 +213,10 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             else:
                 conditional_frequency = min(captain_frequency / xi_frequency, 1.0)
                 if conditional_frequency < MIN_PUBLISHED_CAPTAIN_FREQUENCY:
-                    blockers.append(
+                    warnings.append(
                         f"published captain is chosen in only {conditional_frequency:.0%} of "
-                        "uncertainty re-solves where he remains in the XI; production floor is "
-                        f"{MIN_PUBLISHED_CAPTAIN_FREQUENCY:.0%}"
+                        "uncertainty re-solves where he remains in the XI; the provisional "
+                        f"diagnostic reference is {MIN_PUBLISHED_CAPTAIN_FREQUENCY:.0%}"
                     )
 
     robust_compare = payload.get("robustness_comparison") or {}
@@ -238,7 +238,7 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             f"production floor is {MIN_ROBUST_XI_OVERLAP}/11"
         )
     if unrestricted.get("captain_agrees") is not True:
-        blockers.append("deterministic/CVaR unrestricted captains disagree")
+        warnings.append("deterministic/CVaR unrestricted captains disagree")
 
     decision_calibrated = decision.get("covariance_coefficients_walk_forward_calibrated")
     if decision_calibrated is not True:
@@ -269,10 +269,16 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     elif parity.get("comparison_surface") != "pinnacle_ev":
         blockers.append("independent solver parity was not computed on Pinnacle EV")
     else:
+        parity_snapshot = parity.get("official_snapshot") or {}
+        for field in ("bootstrap_sha256", "fixtures_sha256"):
+            if parity_snapshot.get(field) != snapshot.get(field):
+                blockers.append(f"independent solver parity {field} does not match Pinnacle")
         if int(parity.get("squad_overlap", 0) or 0) < MIN_ROBUST_SQUAD_OVERLAP:
             blockers.append("independent solver squad parity is below 12/15")
+        if int(parity.get("xi_overlap", 0) or 0) < MIN_ROBUST_XI_OVERLAP:
+            blockers.append("independent solver XI parity is below 9/11")
         if parity.get("captain_agrees") is not True:
-            blockers.append("independent solver captain parity failed")
+            warnings.append("independent solver selected a different maximum-EV captain")
 
     return PinnacleReadiness(
         ready=not blockers,

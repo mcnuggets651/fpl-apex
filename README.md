@@ -38,10 +38,10 @@ The production hierarchy is:
 4. Canonical ensemble expected points (`xp`).
 5. Legal maximum-xP full-horizon optimiser.
 6. Correlated scenario/CVaR, exact regret, captain stability and independent-solver diagnostics.
-7. Elite 35/20/15/10/10/5/5 as a **secondary lexicographic selector only** inside a near-optimal xP set.
+7. Elite 35/20/15/10/10/5/5 as a diagnostic frontier inside a near-optimal xP set.
 8. Epsilon frontier at 0%, 0.25%, 0.5% and 1.0%.
-9. Elite may influence the canonical 15 only when 0.25%, 0.5% and 1.0% each retain at least 13/15 of max-EV and the same captain.
-10. Otherwise maximum-EV is the automatic fallback.
+9. The unrestricted rolling-horizon maximum-EV strategy is always canonical.
+10. Elite convergence cannot substitute a different production 15.
 11. Exact XI, captain, vice and bench mechanics are recalculated on raw xP.
 12. Publish one recommendation only when readiness and snapshot-consistency gates are green.
 

@@ -92,7 +92,12 @@ def _payload():
             "status": "ok",
             "comparison_surface": "pinnacle_ev",
             "squad_overlap": 15,
+            "xi_overlap": 11,
             "captain_agrees": True,
+            "official_snapshot": {
+                "bootstrap_sha256": "a" * 64,
+                "fixtures_sha256": "b" * 64,
+            },
         },
     }
 
@@ -150,20 +155,20 @@ def test_unsupported_low_start_low_confidence_captain_blocks_pinnacle():
     assert any("projection confidence" in blocker for blocker in result.blockers)
 
 
-def test_low_captain_frequency_blocks_publication():
+def test_low_uncalibrated_captain_frequency_is_a_warning():
     payload = _payload()
     payload["decision_frequencies"][0]["captain_frequency"] = 0.49
     result = evaluate_pinnacle_payload(payload)
-    assert not result.ready
-    assert any("uncertainty re-solves" in blocker for blocker in result.blockers)
+    assert result.ready
+    assert any("uncertainty re-solves" in warning for warning in result.warnings)
 
 
-def test_robust_captain_disagreement_blocks_publication():
+def test_robust_captain_disagreement_is_a_warning():
     payload = _payload()
     payload["robustness_comparison"]["unrestricted"]["captain_agrees"] = False
     result = evaluate_pinnacle_payload(payload)
-    assert not result.ready
-    assert any("captains disagree" in blocker for blocker in result.blockers)
+    assert result.ready
+    assert any("captains disagree" in warning for warning in result.warnings)
 
 
 def test_pre_gw1_prior_season_failure_blocks_publication():
@@ -182,9 +187,23 @@ def test_failed_embedded_solver_parity_blocks_publication():
     payload["solver_parity"] = {
         "comparison_surface": "pinnacle_ev",
         "squad_overlap": 11,
+        "xi_overlap": 8,
         "captain_agrees": False,
+        "official_snapshot": {
+            "bootstrap_sha256": "a" * 64,
+            "fixtures_sha256": "b" * 64,
+        },
     }
     result = evaluate_pinnacle_payload(payload)
     assert not result.ready
     assert any("solver squad parity" in blocker for blocker in result.blockers)
-    assert any("solver captain parity" in blocker for blocker in result.blockers)
+    assert any("solver XI parity" in blocker for blocker in result.blockers)
+    assert any("different maximum-EV captain" in warning for warning in result.warnings)
+
+
+def test_stale_solver_parity_snapshot_blocks_publication():
+    payload = _payload()
+    payload["solver_parity"]["official_snapshot"]["fixtures_sha256"] = "c" * 64
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("fixtures_sha256 does not match" in blocker for blocker in result.blockers)

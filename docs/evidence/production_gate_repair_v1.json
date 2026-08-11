@@ -1,0 +1,47 @@
+{
+  "contract": "apex-production-gate-repair-evidence-v1",
+  "source_workflow_run": {
+    "repository": "mcnuggets651/fpl-apex",
+    "run_id": 31470857411,
+    "head_sha": "1edd361fb3be548e06f535cd2adb08b66685ddc7"
+  },
+  "confirmed_root_causes": [
+    "independent parity generation depended on a Pinnacle run already passing the parity gate",
+    "an uncalibrated captain-frequency reference was used as a production blocker",
+    "CVaR and independent-solver captain disagreement blocked maximum-EV without measuring a safety failure",
+    "answer context treated optional official team strength as required despite a validated complete fixture fallback",
+    "parity evidence did not bind itself to the official snapshot hashes or enforce XI overlap",
+    "the canonical builder still allowed Elite to replace the maximum-EV production team",
+    "Pinnacle and data-quality warnings were dropped from the answer contract"
+  ],
+  "repaired_contract": {
+    "canonical": "apex-strategy-recommendation-v2",
+    "selector": "strategy_maximum_ev",
+    "parity": "generated and embedded on the same official/projection surface before canonical publication",
+    "captain_frequency": "uncalibrated diagnostic warning",
+    "cvar_captain_disagreement": "robustness warning",
+    "hard_parity_checks": [
+      "comparison surface",
+      "official bootstrap hash",
+      "official fixtures hash",
+      "squad overlap",
+      "XI overlap"
+    ],
+    "fallback_source_policy": "the field-level data-quality gate decides whether a validated fallback is acceptable",
+    "warning_policy": "Pinnacle, data-quality and inferred-role warnings propagate to apex_answer_context.json"
+  },
+  "local_validation": {
+    "tests_passed": 167,
+    "lint": "pass",
+    "upstream_pins": "pass",
+    "governance_consistency": "pass",
+    "downloaded_run_replay": {
+      "synthetic_matching_parity_used_only_to_exercise_post_parity_gate": true,
+      "safe_to_act": true,
+      "canonical_selector": "strategy_maximum_ev",
+      "captain": "Haaland"
+    }
+  },
+  "activation_claim": false,
+  "activation_requirement": "Merge the PR, obtain green CI, then complete a fresh Apex Unified run with genuine independent parity and a published answer context."
+}

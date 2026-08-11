@@ -17,8 +17,8 @@ Build the strongest auditable Fantasy Premier League decision engine possible: m
 3. Raw ensemble expected points (`xp`) are the canonical forecast.
 4. Expected minutes/start/appearance probability is a first-class model input.
 5. The legal maximum-xP optimiser is the primary selection baseline.
-6. Elite may influence selection only as a secondary lexicographic selector inside an epsilon-audited near-optimal xP set.
-7. If Elite fails its explicit convergence rule, maximum-EV is the automatic fallback.
+6. Elite is a diagnostic frontier inside an epsilon-audited near-optimal xP set.
+7. The rolling-horizon maximum-EV strategy remains canonical regardless of Elite convergence.
 8. CVaR, regret, captain stability and independent solvers are robustness diagnostics, not separate user-facing teams.
 9. Ownership is excluded from the pure maximum-points objective.
 10. Every recommendation must be reproducible, explainable and traceable to a current run.
@@ -40,14 +40,14 @@ python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0
 When the user asks for “the Apex team”, this contract is the answer. Internal Pinnacle, Elite, CVaR, regret and solver outputs exist to construct/challenge that answer, not to create several competing Apex teams.
 
 ## Unified decision flow
-Official FPL → validated enrichment → first-class minutes model → canonical player xP ensemble → maximum-EV legal optimiser → correlated robustness diagnostics → epsilon-audited Elite secondary selector → maximum-EV fallback if Elite is unstable → exact captain/vice/bench mechanics → **one canonical recommendation**.
+Official FPL → validated enrichment → first-class minutes model → canonical player xP ensemble → rolling-horizon maximum-EV legal optimiser → exact captain/vice/bench mechanics → **one canonical recommendation**, with correlated robustness and Elite epsilon audits attached as diagnostics.
 
-### Elite convergence rule
-Elite may influence the canonical 15 only when the 0.25%, 0.50% and 1.00% epsilon solutions each:
+### Elite convergence diagnostic
+Elite reports whether the 0.25%, 0.50% and 1.00% epsilon solutions each:
 - retain at least 13/15 of the maximum-EV squad; and
 - keep the same captain as maximum-EV.
 
-Otherwise the canonical selector is maximum-EV.
+This evidence never changes the canonical maximum-EV selection.
 
 ## Internal diagnostic layers
 ### Maximum-EV / Pinnacle

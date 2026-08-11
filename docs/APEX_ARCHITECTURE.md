@@ -39,9 +39,8 @@ Maximum-EV legal optimiser  <-------------------+
       +--> Elite epsilon frontier ----------------+
                     |
                     v
-Canonical selector
-(Elite only if explicit convergence rule passes;
- otherwise maximum-EV fallback)
+Canonical strategy
+(rolling-horizon maximum-EV only)
                     |
                     v
 Exact XI / captain / vice / bench mechanics on raw xP
@@ -79,11 +78,11 @@ Combines experts into the canonical `xp` surface and records disagreement/uncert
 ### Maximum-EV optimiser
 This is the primary selection baseline. It maximises canonical ensemble xP under budget, club, squad and formation constraints over the selected planning horizon.
 
-### Elite secondary selector
-Elite is not a separate forecast or team. It is a lexicographic secondary selector. Maximum raw xP is solved first; Elite may choose only among near-optimal solutions satisfying an explicit raw-xP floor. The live frontier is evaluated at 0%, 0.25%, 0.5% and 1.0%.
+### Elite diagnostic frontier
+Elite is not a separate forecast or team. It evaluates near-optimal solutions satisfying explicit raw-xP floors at 0%, 0.25%, 0.5% and 1.0%, but cannot change the production selection.
 
 ### Canonical selector
-There is one deterministic publication rule. Elite may influence the final 15 only when 0.25%, 0.5% and 1.0% each retain at least 13/15 maximum-EV players and the same captain. Otherwise maximum-EV is selected automatically. No human eyeballing chooses between internal engines.
+There is one deterministic publication rule: the unrestricted rolling-horizon maximum-EV strategy owns the final 15, XI and captain. Elite convergence and other robustness outputs explain sensitivity; no human or diagnostic engine chooses a competing production team.
 
 ### Robustness
 CVaR, correlated stochastic scenarios, exact regret and solver parity quantify fragility. They are checks, not undocumented substitutions for expected value. Scenario generation must preserve joint football outcomes rather than independently perturb each player.

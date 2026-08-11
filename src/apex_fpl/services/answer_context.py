@@ -9,6 +9,13 @@ ANSWER_CONTRACT = "apex-answer-context-v1"
 MAX_OFFICIAL_AGE_HOURS = 12.0
 MAX_SOURCE_AGE_HOURS = 12.0
 REQUIRED_DIAGNOSTICS = ("cvar", "selection_regret", "solver_parity")
+REQUIRED_SOURCES = {
+    "official_fpl",
+    "fpl_core_playerstats",
+    "fixture_model",
+    "airsenal",
+    "news_feeds",
+}
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -78,7 +85,13 @@ def build_answer_context(
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     blockers = [str(value) for value in canonical.get("blockers") or []]
-    warnings: list[str] = []
+    warnings: list[str] = [
+        str(value)
+        for value in (
+            *((pinnacle.get("pinnacle_gate") or {}).get("warnings") or []),
+            *((pinnacle.get("data_quality") or {}).get("warnings") or []),
+        )
+    ]
 
     canonical_snapshot = canonical.get("official_snapshot") or {}
     pinnacle_snapshot = pinnacle.get("official_snapshot") or {}
@@ -108,7 +121,9 @@ def build_answer_context(
             "version": source.get("version"),
         }
         source_health.append(row)
-        if row["configured"] and (not row["ok"] or age is None or age > MAX_SOURCE_AGE_HOURS):
+        if row["name"] in REQUIRED_SOURCES and (
+            not row["configured"] or not row["ok"] or age is None or age > MAX_SOURCE_AGE_HOURS
+        ):
             blockers.append(f"required/configured source is unhealthy or stale: {row['name']}")
 
     robust = pinnacle.get("robust_cvar_scenarios")
@@ -119,6 +134,11 @@ def build_answer_context(
     parity = pinnacle.get("solver_parity")
     if not isinstance(parity, dict) or parity.get("comparison_surface") != "pinnacle_ev":
         blockers.append("required same-surface solver parity is missing or invalid")
+    elif any(
+        (parity.get("official_snapshot") or {}).get(key) != pinnacle_snapshot.get(key)
+        for key in snapshot_fields
+    ):
+        blockers.append("solver parity and Pinnacle snapshot hashes do not match")
 
     strategy = pinnacle.get("weekly_strategy") or pinnacle.get("initial_squad_contingencies")
     if not isinstance(strategy, dict):
@@ -130,8 +150,19 @@ def build_answer_context(
             blockers.append(f"selected player lacks expected-minutes evidence: {player['web_name']}")
         if not player.get("role_source"):
             blockers.append(f"selected player lacks role provenance: {player['web_name']}")
+    inferred_roles = [
+        str(player.get("web_name"))
+        for player in selected
+        if player.get("role_source") == "statistical_inference"
+    ]
+    if inferred_roles:
+        warnings.append(
+            "selected-player roles still rely on statistical inference rather than verified "
+            "authoritative overrides: " + ", ".join(inferred_roles)
+        )
 
     blockers = list(dict.fromkeys(blockers))
+    warnings = list(dict.fromkeys(warnings))
     safe = (
         canonical.get("ready_to_act") is True
         and pinnacle.get("pinnacle_ready") is True

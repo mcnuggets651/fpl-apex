@@ -69,6 +69,81 @@ jobs:
             --horizon 8 \
             --output data/generated/airsenal.csv
 
+      - name: Generate Pinnacle surface for independent parity
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/run_pinnacle.py \
+            --horizon 8 \
+            --stochastic-scenarios 256 \
+            --cvar-alpha 0.10 \
+            --cvar-weight 0.20 \
+            --force
+          status=$?
+          set -e
+          test -s data/generated/pinnacle_latest.json
+          if [ "$status" -ne 0 ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("data/generated/pinnacle_latest.json").read_text())
+          blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
+          allowed = (
+              "solver parity",
+              "uncertainty re-solves",
+              "deterministic/CVaR unrestricted captains disagree",
+          )
+          unexpected = [row for row in blockers if not any(token in row for token in allowed)]
+          if unexpected:
+              raise SystemExit("Pinnacle has non-parity blockers: " + "; ".join(unexpected))
+          PY
+          fi
+          python scripts/export_open_solver.py \
+            reports/players.csv reports/projections.csv /tmp/apex.csv \
+            --projection-col xp
+
+      - name: Read pinned independent solver revision
+        id: parity-pin
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          source = json.load(open("upstreams.lock.json", encoding="utf-8"))["sources"]["open_fpl_solver"]
+          print(f"repository={source['repository']}")
+          print(f"sha={source['commit']}")
+          PY
+
+      - name: Run and embed same-surface independent parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install uv
+          git clone --filter=blob:none \
+            "https://github.com/${{ steps.parity-pin.outputs.repository }}.git" \
+            "$RUNNER_TEMP/open-fpl-solver"
+          git -C "$RUNNER_TEMP/open-fpl-solver" checkout --detach \
+            "${{ steps.parity-pin.outputs.sha }}"
+          cp /tmp/apex.csv "$RUNNER_TEMP/open-fpl-solver/data/apex.csv"
+          cd "$RUNNER_TEMP/open-fpl-solver"
+          uv sync
+          uv run python run/solve.py --datasource apex --horizon 8
+          cd "$GITHUB_WORKSPACE"
+          RESULT="$(ls -t "$RUNNER_TEMP"/open-fpl-solver/data/results/apex_*.csv | head -1)"
+          python scripts/compare_solver_parity.py \
+            data/generated/pinnacle_latest.json "$RESULT"
+          python scripts/embed_solver_parity.py \
+            data/generated/pinnacle_latest.json \
+            data/generated/solver_parity.json
+
       - name: Generate single canonical Apex recommendation
         id: canonical
         env:
@@ -87,6 +162,7 @@ jobs:
             --stochastic-scenarios 256 \
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
+            --reuse-pinnacle \
             --force
           status=$?
           set -e
@@ -138,6 +214,7 @@ jobs:
             data/generated/apex_recommendation_latest.json \
             data/generated/apex_recommendation_latest.md \
             data/generated/apex_answer_context.json \
+            data/generated/solver_parity.json \
             data/generated/calibration_report.json
           if [ -d data/history/deadlines ]; then
             git add -f data/history/deadlines
@@ -176,6 +253,7 @@ jobs:
             data/generated/apex_answer_context.json
             data/generated/pinnacle_latest.json
             data/generated/pinnacle_latest.md
+            data/generated/solver_parity.json
             data/generated/elite_latest.json
             data/generated/elite_latest.md
             data/generated/calibration_report.json

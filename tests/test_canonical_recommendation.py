@@ -80,8 +80,16 @@ def _pinnacle(bootstrap: str = "boot", fixtures: str = "fix") -> dict:
             }
         ],
         "robust_cvar_scenarios": {"unrestricted": {"status": "Optimal"}},
+        "deterministic_scenarios": {"unrestricted": _solution("StrategyCap", 101.0)},
+        "gw1_mechanics": {"unrestricted": _mechanics("StrategyCap")},
         "selection_regret": [{"player_id": row["player_id"], "regret": 1.0} for row in _rows()],
-        "solver_parity": {"comparison_surface": "pinnacle_ev"},
+        "solver_parity": {
+            "comparison_surface": "pinnacle_ev",
+            "official_snapshot": {
+                "bootstrap_sha256": bootstrap,
+                "fixtures_sha256": fixtures,
+            },
+        },
         "initial_squad_contingencies": {"status": "Optimal"},
     }
 
@@ -131,21 +139,22 @@ def _run(tmp_path: Path, pinnacle: dict, elite: dict) -> tuple[subprocess.Comple
     return result, payload
 
 
-def test_converged_elite_becomes_canonical(tmp_path: Path) -> None:
+def test_converged_elite_remains_diagnostic_only(tmp_path: Path) -> None:
     result, payload = _run(tmp_path, _pinnacle(), _elite(True))
     assert result.returncode == 0
     assert payload["ready_to_act"] is True
-    assert payload["recommendation"]["selector"] == "elite_lexicographic"
-    assert payload["recommendation"]["captain"] == "EliteCap"
+    assert payload["contract"] == "apex-strategy-recommendation-v2"
+    assert payload["recommendation"]["selector"] == "strategy_maximum_ev"
+    assert payload["recommendation"]["captain"] == "StrategyCap"
     assert payload["internal_diagnostics"]["same_official_surface"] is True
 
 
-def test_unstable_elite_falls_back_to_max_ev(tmp_path: Path) -> None:
+def test_unstable_elite_cannot_change_strategy_authority(tmp_path: Path) -> None:
     result, payload = _run(tmp_path, _pinnacle(), _elite(False))
     assert result.returncode == 0
     assert payload["ready_to_act"] is True
-    assert payload["recommendation"]["selector"] == "maximum_ev"
-    assert payload["recommendation"]["captain"] == "MaxCap"
+    assert payload["recommendation"]["selector"] == "strategy_maximum_ev"
+    assert payload["recommendation"]["captain"] == "StrategyCap"
 
 
 def test_mismatched_official_surface_withholds_recommendation(tmp_path: Path) -> None:

@@ -13,9 +13,9 @@ validation evidence is recorded in
 
 - Repository: `mcnuggets651/fpl-apex`
 - Production branch: `main`
-- Production selector: canonical xP → legal maximum-EV optimiser → correlated
-  robustness/Elite diagnostics → maximum-EV fallback when the Elite frontier is
-  unstable → exact Gameweek mechanics → one published recommendation.
+- Production selector: canonical xP → rolling-horizon legal maximum-EV optimiser
+  → exact Gameweek mechanics → one published recommendation. Correlated
+  robustness and Elite frontiers are non-authoritative diagnostics.
 - PR #16 is merged. The Understat team-strength challenger is shadow-only and
   does not change canonical publication.
 - PR #14 is closed and superseded. It combined model activation, readiness
