@@ -62,3 +62,13 @@ The live pipeline has no injected historical clock or immutable as-of bundle, an
 
 ## Resolution discipline
 When an issue is fixed, retain the entry and mark it resolved with date, implementation and benchmark evidence rather than deleting it.
+
+## K009 — Preseason return-stat coverage and covariance calibration
+
+Preseason minutes/team-sheet evidence is available more broadly than xG/xA/return
+statistics. Missing return fields remain unknown rather than zero. Apex now caps a
+single substitute appearance at 12% role weight, but improved attacking-stat coverage
+still requires an authoritative provider or verified match-event capture. Covariance
+and captain-stability references cannot honestly be outcome-calibrated before archived
+pre-deadline forecasts have corresponding 2026/27 results; until then they are labelled
+provisional diagnostics and have no production-selection authority.

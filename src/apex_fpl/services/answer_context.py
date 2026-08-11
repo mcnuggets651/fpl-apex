@@ -77,6 +77,45 @@ def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any])
     return reasons
 
 
+def _captain_surfaces(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> dict[str, Any]:
+    """Label captain decisions by objective so diagnostic disagreement is explicit."""
+    recommendation = canonical.get("recommendation") or {}
+    mechanics = pinnacle.get("gw1_mechanics") or {}
+    deterministic = mechanics.get("unrestricted") or {}
+    cvar = ((pinnacle.get("robust_cvar_scenarios") or {}).get("unrestricted") or {})
+    parity = pinnacle.get("solver_parity") or {}
+    return {
+        "production": {
+            "label": "maximum_ev_production",
+            "captain": recommendation.get("captain"),
+            "authority": True,
+            "objective": "maximum expected FPL points with exact GW1 mechanics",
+        },
+        "deterministic_diagnostic": {
+            "label": "pinnacle_ev_mechanics",
+            "captain_id": deterministic.get("captain_id"),
+            "captain": deterministic.get("captain_name"),
+            "authority": False,
+        },
+        "cvar_diagnostic": {
+            "label": "lower_tail_robustness",
+            "captain_id": cvar.get("captain_id"),
+            "captain": cvar.get("captain_name"),
+            "authority": False,
+        },
+        "independent_parity_diagnostic": {
+            "label": str(parity.get("comparison_surface") or "unknown"),
+            "captain_id": parity.get("independent_captain_id"),
+            "apex_captain_id": parity.get("apex_captain_id"),
+            "authority": False,
+        },
+        "interpretation": (
+            "Only maximum_ev_production is user-facing. Other captain choices test "
+            "robustness or solver agreement and cannot silently replace it."
+        ),
+    }
+
+
 def build_answer_context(
     canonical: dict[str, Any],
     pinnacle: dict[str, Any],
@@ -192,6 +231,7 @@ def build_answer_context(
             "selection_regret": pinnacle.get("selection_regret"),
             "solver_parity": parity,
             "pinnacle_gate": pinnacle.get("pinnacle_gate"),
+            "captain_surfaces": _captain_surfaces(canonical, pinnacle),
         },
         "news_role_evidence": {
             "sources": [

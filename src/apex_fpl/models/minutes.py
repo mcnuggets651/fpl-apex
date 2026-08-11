@@ -91,10 +91,21 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         avg_if_started * hist_start_prob
     )
     has_preseason = pre_apps > 0
-    # Repeated preseason team-sheet evidence should progressively supersede a stale
-    # prior-season role. One cameo remains weak evidence; four appearances can carry
-    # 82% of the role estimate. This is still probabilistic, not a guaranteed start.
-    preseason_weight = np.clip(0.50 + 0.08 * pre_apps, 0.58, 0.82)
+    # Preseason is evidence, not a new season-sized prior.  The old formula assigned
+    # 58% to *any* appearance, so one 45-minute cameo could overwhelm 30 competitive
+    # starts.  Weight now grows from effective team-sheet evidence: starts are much
+    # stronger than cameos, minutes add support, and repeated starts can still
+    # supersede a stale historical role.  A single non-start is capped at 12%.
+    effective_preseason_games = pre_starts + 0.25 * np.maximum(pre_apps - pre_starts, 0)
+    sample_reliability = 1.0 - np.exp(-effective_preseason_games / 1.8)
+    minutes_reliability = np.clip(pre_mins / 270.0, 0, 1)
+    preseason_weight = np.clip(
+        0.82 * sample_reliability * (0.70 + 0.30 * minutes_reliability),
+        0,
+        0.82,
+    )
+    cameo_only = (pre_apps == 1) & (pre_starts == 0)
+    preseason_weight = np.where(cameo_only, np.minimum(preseason_weight, 0.12), preseason_weight)
     base_minutes = np.where(
         has_preseason,
         preseason_weight * preseason_signal + (1 - preseason_weight) * historic_signal,
@@ -148,7 +159,7 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         0,
         1,
     )
-    preseason_evidence = np.clip(pre_apps / 4.0, 0, 1)
+    preseason_evidence = np.clip(effective_preseason_games / 4.0, 0, 1)
     availability_clarity = np.where(df.get("chance_of_playing_next_round", pd.Series(np.nan, index=df.index)).notna(), 0.95, 0.72)
     confidence = np.clip(
         0.35 + 0.28 * np.maximum(historic_evidence, preseason_evidence) + 0.22 * availability_clarity,
@@ -173,6 +184,8 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         "minutes_60_plus_probability": p60,
         "minutes_80_plus_probability": p80,
         "minutes_confidence": confidence,
+        "preseason_role_weight": preseason_weight,
+        "preseason_effective_games": effective_preseason_games,
     }, index=df.index)
 
 

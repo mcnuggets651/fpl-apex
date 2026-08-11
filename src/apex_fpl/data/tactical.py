@@ -13,6 +13,11 @@ ROLE_COLUMNS = [
     "corners_share",
     "direct_freekick_share",
     "indirect_freekick_share",
+    "expected_minutes_override",
+    "start_probability_override",
+    "appearance_probability_override",
+    "minutes_evidence_confidence",
+    "lineup_evidence_type",
     "context_reason",
     "source_url",
     "updated_at",
@@ -59,12 +64,21 @@ def load_tactical_roles(path: Path) -> pd.DataFrame:
         "corners_share",
         "direct_freekick_share",
         "indirect_freekick_share",
+        "start_probability_override",
+        "appearance_probability_override",
+        "minutes_evidence_confidence",
     ]:
         if col not in out:
             out[col] = pd.NA
         out[col] = pd.to_numeric(out[col], errors="coerce").clip(0, 1)
 
-    for col in ["context_reason", "source_url", "updated_at"]:
+    if "expected_minutes_override" not in out:
+        out["expected_minutes_override"] = pd.NA
+    out["expected_minutes_override"] = pd.to_numeric(
+        out["expected_minutes_override"], errors="coerce"
+    ).clip(0, 90)
+
+    for col in ["lineup_evidence_type", "context_reason", "source_url", "updated_at"]:
         if col not in out:
             out[col] = pd.NA
 

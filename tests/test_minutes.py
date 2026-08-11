@@ -91,9 +91,30 @@ def test_repeated_preseason_starts_supersede_stale_squad_role():
         ]
     )
     out = minutes_profile(df)
-    assert out.loc[0, "start_probability"] > 0.80
-    assert out.loc[0, "expected_minutes"] > 65
+    assert out.loc[0, "start_probability"] > 0.70
+    assert out.loc[0, "expected_minutes"] > 60
     assert out.loc[0, "expected_minutes"] > out.loc[1, "expected_minutes"]
+    assert out.loc[0, "preseason_role_weight"] > 0.65
+    assert out.loc[1, "preseason_role_weight"] <= 0.12
+
+
+def test_one_preseason_cameo_cannot_erase_full_season_starting_evidence():
+    df = pd.DataFrame([{
+        "minutes": 0,
+        "starts": 0,
+        "previous_minutes": 2500,
+        "previous_starts": 30,
+        "previous_minutes_per_match": 2500 / 38,
+        "previous_start_probability": 30 / 38,
+        "preseason_minutes": 45,
+        "preseason_starts": 0,
+        "preseason_appearances": 1,
+        "status": "a",
+    }])
+    out = minutes_profile(df).iloc[0]
+    assert out["preseason_role_weight"] <= 0.12
+    assert out["start_probability"] > 0.69
+    assert out["expected_minutes"] > 55
 
 
 def test_verified_lineup_override_replaces_role_prior_but_not_injury_status():
