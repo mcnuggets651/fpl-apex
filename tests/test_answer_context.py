@@ -28,12 +28,14 @@ def _payloads():
         "ready_to_act": True,
         "blockers": [],
         "official_snapshot": snapshot,
+        "decision_bundle_id": "bundle-a",
         "recommendation": {"squad": [player]},
     }
     pinnacle = {
         "contract": "pinnacle-v1",
         "pinnacle_ready": True,
         "official_snapshot": snapshot,
+        "decision_bundle_id": "bundle-a",
         "sources": [
             {
                 "name": "news_feeds",
@@ -47,6 +49,7 @@ def _payloads():
         "selection_regret": [{"player_id": 1, "regret": 1.2, "alternative_name": "Saka"}],
         "solver_parity": {
             "comparison_surface": "pinnacle_ev",
+            "decision_bundle_id": "bundle-a",
             "official_snapshot": {"bootstrap_sha256": "a", "fixtures_sha256": "b"},
         },
         "weekly_strategy": {"status": "Optimal"},
@@ -60,11 +63,38 @@ def test_complete_context_is_only_green_answer_contract():
     assert context["safe_to_act"] is True
     assert context["only_input_for_apex_answers"] is True
     assert context["production_result"] is not None
+    assert context["decision_bundle_id"] == "bundle-a"
     assert context["selected_player_reasons"][0]["alternative"] == "Saka"
     surfaces = context["diagnostics"]["captain_surfaces"]
     assert surfaces["production"]["authority"] is True
     assert surfaces["cvar_diagnostic"]["authority"] is False
     assert "Only maximum_ev_production" in surfaces["interpretation"]
+
+
+def test_captain_and_regret_surfaces_follow_producer_schemas():
+    canonical, pinnacle = _payloads()
+    pinnacle["selection_regret"] = [
+        {
+            "player_id": 1,
+            "objective_regret": 0.25,
+            "added_player_names": ["Saka"],
+            "removed_player_names": ["Foden"],
+        }
+    ]
+    pinnacle["robust_cvar_scenarios"]["unrestricted"]["captain"] = [
+        {"player_id": 9, "web_name": "Haaland"}
+    ]
+    pinnacle["solver_parity"].update(
+        {"apex_captain": 8, "external_captain": 7}
+    )
+
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+    surfaces = context["diagnostics"]["captain_surfaces"]
+    assert context["selected_player_reasons"][0]["alternative"] == "Saka"
+    assert surfaces["cvar_diagnostic"]["captain_id"] == 9
+    assert surfaces["cvar_diagnostic"]["captain"] == "Haaland"
+    assert surfaces["independent_parity_diagnostic"]["captain_id"] == 7
+    assert surfaces["independent_parity_diagnostic"]["apex_captain_id"] == 8
 
 
 def test_stale_or_missing_diagnostics_withhold_production_result():
@@ -87,6 +117,14 @@ def test_snapshot_mismatch_and_missing_minutes_block():
     assert context["safe_to_act"] is False
     assert any("hashes do not match" in blocker for blocker in context["blockers"])
     assert any("expected-minutes" in blocker for blocker in context["blockers"])
+
+
+def test_bundle_identity_is_required_and_must_match():
+    canonical, pinnacle = _payloads()
+    pinnacle["decision_bundle_id"] = "bundle-b"
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+    assert context["safe_to_act"] is False
+    assert any("bundle identities do not match" in row for row in context["blockers"])
 
 
 def test_router_requires_the_correct_artifact():

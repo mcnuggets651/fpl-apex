@@ -207,6 +207,34 @@ jobs:
           FPL_ENTRY_ID: "63984"
         run: python scripts/update_learning_archive.py
 
+      - name: Seal atomic workflow artifact before publication cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          packet="$RUNNER_TEMP/apex-unified-packet"
+          mkdir -p "$packet"
+          for path in \
+            reports \
+            data/generated/apex_recommendation_latest.json \
+            data/generated/apex_recommendation_latest.md \
+            data/generated/apex_answer_context.json \
+            data/generated/pinnacle_latest.json \
+            data/generated/pinnacle_latest.md \
+            data/generated/solver_parity.json \
+            data/generated/elite_latest.json \
+            data/generated/elite_latest.md \
+            data/generated/decision_bundle \
+            data/generated/calibration_report.json \
+            data/generated/airsenal.csv \
+            data/history/deadlines
+          do
+            if [ -e "$path" ]; then
+              mkdir -p "$packet/$(dirname "$path")"
+              cp -a "$path" "$packet/$path"
+            fi
+          done
+
       - name: Publish only the canonical Apex recommendation
         if: steps.canonical.outputs.ready == 'true'
         shell: bash
@@ -250,18 +278,5 @@ jobs:
         if: always()
         with:
           name: apex-unified-${{ github.run_id }}
-          path: |
-            reports/
-            data/generated/apex_recommendation_latest.json
-            data/generated/apex_recommendation_latest.md
-            data/generated/apex_answer_context.json
-            data/generated/pinnacle_latest.json
-            data/generated/pinnacle_latest.md
-            data/generated/solver_parity.json
-            data/generated/elite_latest.json
-            data/generated/elite_latest.md
-            data/generated/decision_bundle/
-            data/generated/calibration_report.json
-            data/history/deadlines/
-            data/generated/airsenal.csv
+          path: ${{ runner.temp }}/apex-unified-packet/
           retention-days: 30

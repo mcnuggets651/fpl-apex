@@ -9,7 +9,8 @@ weights:
   airsenal: 0.20
   market: 0.10
 fixture_decay: 0.90
-bench_weights: [0.15, 0.08, 0.04, 0.02]
+# Temporary horizon approximation until PR 3 rescoring applies exact bench order/autosubs.
+approximate_bench_weight: 0.08
 risk_penalty: 0.15
 understat_enabled: true
 understat_history_seasons: 5

@@ -66,7 +66,8 @@ def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any])
                 "role_source": player.get("tactical_role_source"),
                 "selection_regret": regret_row.get("regret")
                 or regret_row.get("objective_regret"),
-                "alternative": regret_row.get("best_replacement_name")
+                "alternative": (regret_row.get("added_player_names") or [None])[0]
+                or regret_row.get("best_replacement_name")
                 or regret_row.get("alternative_name"),
                 "reason": (
                     "Selected by the canonical optimiser on the matched projection surface; "
@@ -84,6 +85,12 @@ def _captain_surfaces(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> di
     deterministic = mechanics.get("unrestricted") or {}
     cvar = ((pinnacle.get("robust_cvar_scenarios") or {}).get("unrestricted") or {})
     parity = pinnacle.get("solver_parity") or {}
+
+    def captain_record(payload: dict[str, Any]) -> dict[str, Any]:
+        records = payload.get("captain") or []
+        return records[0] if records and isinstance(records[0], dict) else {}
+
+    cvar_captain = captain_record(cvar)
     return {
         "production": {
             "label": "maximum_ev_production",
@@ -99,14 +106,14 @@ def _captain_surfaces(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> di
         },
         "cvar_diagnostic": {
             "label": "lower_tail_robustness",
-            "captain_id": cvar.get("captain_id"),
-            "captain": cvar.get("captain_name"),
+            "captain_id": cvar_captain.get("player_id"),
+            "captain": cvar_captain.get("web_name"),
             "authority": False,
         },
         "independent_parity_diagnostic": {
             "label": str(parity.get("comparison_surface") or "unknown"),
-            "captain_id": parity.get("independent_captain_id"),
-            "apex_captain_id": parity.get("apex_captain_id"),
+            "captain_id": parity.get("external_captain"),
+            "apex_captain_id": parity.get("apex_captain"),
             "authority": False,
         },
         "interpretation": (
@@ -134,6 +141,12 @@ def build_answer_context(
 
     canonical_snapshot = canonical.get("official_snapshot") or {}
     pinnacle_snapshot = pinnacle.get("official_snapshot") or {}
+    canonical_bundle = canonical.get("decision_bundle_id")
+    pinnacle_bundle = pinnacle.get("decision_bundle_id")
+    if not canonical_bundle or not pinnacle_bundle:
+        blockers.append("canonical or Pinnacle decision bundle identity is missing")
+    elif canonical_bundle != pinnacle_bundle:
+        blockers.append("canonical and Pinnacle decision bundle identities do not match")
     snapshot_fields = ("bootstrap_sha256", "fixtures_sha256")
     if any(canonical_snapshot.get(key) != pinnacle_snapshot.get(key) for key in snapshot_fields):
         blockers.append("canonical and Pinnacle snapshot hashes do not match")
@@ -218,12 +231,14 @@ def build_answer_context(
         "blockers": blockers,
         "warnings": warnings,
         "run_age_hours": official_age,
+        "decision_bundle_id": canonical_bundle,
         "versions": {
             "canonical_contract": canonical.get("contract"),
             "pinnacle_contract": pinnacle.get("contract"),
             "official_snapshot_id": canonical_snapshot.get("snapshot_id"),
             "bootstrap_sha256": canonical_snapshot.get("bootstrap_sha256"),
             "fixtures_sha256": canonical_snapshot.get("fixtures_sha256"),
+            "decision_bundle_id": canonical_bundle,
         },
         "source_health": source_health,
         "diagnostics": {

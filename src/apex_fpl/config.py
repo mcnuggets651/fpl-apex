@@ -64,7 +64,7 @@ class Settings:
         "airsenal": 0.20,
         "market": 0.10,
     })
-    bench_weights: list[float] = field(default_factory=lambda: [0.15, 0.08, 0.04, 0.02])
+    approximate_bench_weight: float = 0.08
     cache_dir: Path = Path("data/cache")
     snapshot_dir: Path = Path("data/snapshots")
     report_dir: Path = Path("reports")
@@ -107,7 +107,9 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         fixture_decay=float(raw.get("fixture_decay", default.fixture_decay)),
         risk_penalty=float(raw.get("risk_penalty", default.risk_penalty)),
         weights=raw.get("weights", default.weights),
-        bench_weights=raw.get("bench_weights", default.bench_weights),
+        approximate_bench_weight=float(
+            raw.get("approximate_bench_weight", default.approximate_bench_weight)
+        ),
         cache_dir=Path(os.getenv("APEX_CACHE_DIR", "data/cache")),
         snapshot_dir=Path(os.getenv("APEX_SNAPSHOT_DIR", "data/snapshots")),
         report_dir=Path(os.getenv("APEX_REPORT_DIR", "reports")),

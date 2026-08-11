@@ -51,6 +51,10 @@ def test_regret_analysis_re_solves_selected_and_alternative_players():
         decay=1.0,
     )
     assert baseline.status == "Optimal"
+    assert baseline.solver["incumbent"] == baseline.objective
+    assert baseline.solver["bound"] is not None
+    assert baseline.solver["relative_gap"] is not None
+    assert baseline.solver["termination_reason"]
 
     stress = selection_regret_analysis(
         players,
@@ -68,3 +72,7 @@ def test_regret_analysis_re_solves_selected_and_alternative_players():
     alternatives = stress[~stress.selected]
     assert len(selected) == 15
     assert 1 <= len(alternatives) <= 3
+    assert selected["added_player_ids"].map(len).ge(1).all()
+    assert selected["removed_player_ids"].map(len).eq(1).all()
+    assert alternatives["added_player_ids"].map(len).eq(1).all()
+    assert alternatives["removed_player_ids"].map(len).ge(1).all()

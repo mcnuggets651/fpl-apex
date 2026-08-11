@@ -10,6 +10,24 @@ def _num(df: pd.DataFrame, col: str, default: float = 0.0) -> pd.Series:
     return pd.to_numeric(df[col], errors="coerce").fillna(default)
 
 
+def _optional_num(df: pd.DataFrame, col: str) -> pd.Series:
+    if col not in df.columns:
+        return pd.Series(np.nan, index=df.index, dtype=float)
+    return pd.to_numeric(df[col], errors="coerce")
+
+
+def _blend_observed_rate(
+    primary: pd.Series, preseason: pd.Series, preseason_minutes: pd.Series
+) -> pd.Series:
+    base = pd.to_numeric(primary, errors="coerce").fillna(0.0)
+    observed = pd.to_numeric(preseason, errors="coerce")
+    weight = (
+        np.clip(pd.to_numeric(preseason_minutes, errors="coerce").fillna(0.0) / 270.0, 0.0, 0.35)
+        * observed.notna().astype(float)
+    )
+    return base * (1.0 - weight) + observed.fillna(0.0) * weight
+
+
 def _per90(total: pd.Series, minutes: pd.Series) -> pd.Series:
     return total * 90.0 / np.maximum(minutes, 90.0)
 
@@ -41,18 +59,16 @@ def infer_tactical_roles(players: pd.DataFrame) -> pd.DataFrame:
 
     xg90 = _num(d, "expected_goals_per_90", 0.0)
     xa90 = _num(d, "expected_assists_per_90", 0.0)
-    pre_xg90 = _num(d, "preseason_xg90", 0.0)
-    pre_xa90 = _num(d, "preseason_xa90", 0.0)
-    pre_weight = np.clip(preseason_minutes / 270.0, 0.0, 0.35)
-    xg90 = xg90 * (1.0 - pre_weight) + pre_xg90 * pre_weight
-    xa90 = xa90 * (1.0 - pre_weight) + pre_xa90 * pre_weight
+    xg90 = _blend_observed_rate(xg90, _optional_num(d, "preseason_xg90"), preseason_minutes)
+    xa90 = _blend_observed_rate(xa90, _optional_num(d, "preseason_xa90"), preseason_minutes)
 
     box90 = _per90(_num(d, "touches_opposition_box", 0.0), minutes)
     chances90 = _per90(_num(d, "chances_created", 0.0), minutes)
     crosses90 = _per90(_num(d, "accurate_crosses", 0.0), minutes)
     defensive90 = _num(d, "defensive_contribution_per_90", 0.0)
-    pre_def90 = _num(d, "preseason_defcon90", 0.0)
-    defensive90 = defensive90 * (1.0 - pre_weight) + pre_def90 * pre_weight
+    defensive90 = _blend_observed_rate(
+        defensive90, _optional_num(d, "preseason_defcon90"), preseason_minutes
+    )
 
     attack_index = (
         1.45 * xg90

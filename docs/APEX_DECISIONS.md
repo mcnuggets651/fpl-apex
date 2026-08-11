@@ -95,3 +95,12 @@ Pinnacle, Elite, parity and canonical publication must carry that same identity.
 Independent live refetches inside diagnostic layers are prohibited because an
 Official-only hash comparison cannot prove that news, tactical evidence,
 AIrsenal, FPL Core, configuration or projections were identical.
+
+## D030 — Missing return evidence remains missing through model integration
+
+Preseason minutes may inform role and availability without implying that xG, xA
+or defensive-return data were observed. Projection and tactical-role blending
+must preserve missing return values; only an explicitly observed zero may pull a
+historical rate down. Solver and diagnostic artifacts must also publish their
+actual producer contracts: captain records, constrained-squad additions/removals,
+and MILP incumbent/bound/gap/termination metadata.

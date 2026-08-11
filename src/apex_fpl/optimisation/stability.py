@@ -40,6 +40,10 @@ def selection_regret_analysis(
         "constrained_objective",
         "objective_regret",
         "constrained_status",
+        "added_player_ids",
+        "added_player_names",
+        "removed_player_ids",
+        "removed_player_names",
     ]
     if baseline.status != "Optimal" or baseline.squad.empty:
         return pd.DataFrame(columns=columns)
@@ -59,6 +63,26 @@ def selection_regret_analysis(
     }
 
     rows: list[dict] = []
+
+    def changes(stressed: SquadSolution) -> dict[str, list]:
+        stressed_ids = (
+            set(
+                pd.to_numeric(stressed.squad["player_id"], errors="coerce")
+                .dropna()
+                .astype(int)
+            )
+            if not stressed.squad.empty and "player_id" in stressed.squad
+            else set()
+        )
+        added = sorted(stressed_ids - selected_ids)
+        removed = sorted(selected_ids - stressed_ids)
+        return {
+            "added_player_ids": added,
+            "added_player_names": [names.get(value, str(value)) for value in added],
+            "removed_player_ids": removed,
+            "removed_player_names": [names.get(value, str(value)) for value in removed],
+        }
+
     common = dict(
         players=players,
         projections=projections,
@@ -93,6 +117,7 @@ def selection_regret_analysis(
                 "constrained_objective": constrained,
                 "objective_regret": regret,
                 "constrained_status": stressed.status,
+                **changes(stressed),
             }
         )
 
@@ -151,6 +176,7 @@ def selection_regret_analysis(
                 "constrained_objective": constrained,
                 "objective_regret": regret,
                 "constrained_status": stressed.status,
+                **changes(stressed),
             }
         )
 

@@ -45,6 +45,7 @@ def estimate_decision_frequencies(
     budget: float = 100.0,
     max_per_team: int = 3,
     decay: float = 0.90,
+    bench_weight: float = 0.08,
     max_solves: int = 24,
     captain_eligible: set[int] | None = None,
 ) -> DecisionFrequencies:
@@ -82,6 +83,7 @@ def estimate_decision_frequencies(
             budget=budget,
             max_per_team=max_per_team,
             decay=decay,
+            bench_weight=bench_weight,
             captain_eligible=captain_eligible,
             projection_col="xp",
         )

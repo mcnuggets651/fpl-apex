@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -19,6 +19,7 @@ class SquadSolution:
     captain: pd.DataFrame
     vice_captain: pd.DataFrame
     bench: pd.DataFrame
+    solver: dict = field(default_factory=dict)
 
 
 def optimise_squad(

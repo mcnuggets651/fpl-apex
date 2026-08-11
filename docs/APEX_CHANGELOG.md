@@ -2,6 +2,15 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-11 — Correctness and diagnostic-contract repair candidate
+- Preserved missing preseason xG/xA/defensive returns through projection and tactical inference.
+- Aligned CVaR and independent-parity captain fields with their real producer schemas.
+- Added actual additions/removals to every constrained-regret result.
+- Added MILP incumbent, bound, achieved gap, node count and termination reason.
+- Replaced the unused bench-weight list with one explicitly wired temporary approximation.
+- Required the same sealed bundle ID in the answer contract and preserved one atomic workflow artifact before runtime cleanup.
+- Local validation: 180 tests and Ruff pass; production publication remains gated on PR review, CI and a complete AIrsenal-backed run.
+
 ## 2026-08-11 — Sealed decision surface release candidate
 - Added the content-addressed `apex-decision-bundle-v1` contract.
 - Production ingestion/projection now runs once before Pinnacle and Elite.

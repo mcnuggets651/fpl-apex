@@ -51,6 +51,7 @@ def _solution(sol) -> dict:
         "captain": _records(sol.captain),
         "vice_captain": _records(sol.vice_captain),
         "bench": _records(sol.bench),
+        "solver": sol.solver,
     }
 
 
@@ -71,6 +72,7 @@ def _robust_solution(sol) -> dict:
         "captain": _records(sol.captain),
         "vice_captain": _records(sol.vice_captain),
         "bench": _records(sol.bench),
+        "solver": sol.solver,
     }
 
 
@@ -231,6 +233,7 @@ def main() -> None:
         budget=float(settings["budget"]),
         max_per_team=int(settings["max_per_team"]),
         decay=float(settings["fixture_decay"]),
+        bench_weight=float(settings["approximate_bench_weight"]),
         captain_eligible=captain_eligible,
         projection_col="xp",
     )
@@ -263,6 +266,7 @@ def main() -> None:
         budget=float(settings["budget"]),
         max_per_team=int(settings["max_per_team"]),
         decay=float(settings["fixture_decay"]),
+        bench_weight=float(settings["approximate_bench_weight"]),
         cvar_alpha=args.cvar_alpha,
         cvar_weight=args.cvar_weight,
         captain_eligible=captain_eligible,
@@ -287,6 +291,7 @@ def main() -> None:
         budget=float(settings["budget"]),
         max_per_team=int(settings["max_per_team"]),
         decay=float(settings["fixture_decay"]),
+        bench_weight=float(settings["approximate_bench_weight"]),
         alternative_limit=args.alternatives,
         captain_eligible=captain_eligible,
     )
@@ -307,6 +312,7 @@ def main() -> None:
         budget=float(settings["budget"]),
         max_per_team=int(settings["max_per_team"]),
         decay=float(settings["fixture_decay"]),
+        bench_weight=float(settings["approximate_bench_weight"]),
         max_solves=24,
         captain_eligible=captain_eligible,
     )

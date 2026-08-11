@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 
 import numpy as np
@@ -26,6 +26,31 @@ class RobustSquadSolution:
     vice_captain: pd.DataFrame
     bench: pd.DataFrame
     scenario_scores: np.ndarray
+    solver: dict = field(default_factory=dict)
+
+
+def _solver_metadata(result, *, relative_gap: float, time_limit: int) -> dict:
+    fun = getattr(result, "fun", None)
+    dual = getattr(result, "mip_dual_bound", None)
+    return {
+        "success": bool(getattr(result, "success", False)),
+        "status_code": int(getattr(result, "status", -1)),
+        "termination_reason": str(getattr(result, "message", "unknown")),
+        "incumbent": None if fun is None or not np.isfinite(fun) else float(-fun),
+        "bound": None if dual is None or not np.isfinite(dual) else float(-dual),
+        "relative_gap": (
+            None
+            if getattr(result, "mip_gap", None) is None
+            else float(result.mip_gap)
+        ),
+        "node_count": (
+            None
+            if getattr(result, "mip_node_count", None) is None
+            else int(result.mip_node_count)
+        ),
+        "configured_relative_gap": float(relative_gap),
+        "time_limit_seconds": int(time_limit),
+    }
 
 
 def optimise_initial_cvar(
@@ -203,6 +228,8 @@ def optimise_initial_cvar(
                 for t in range(t_count):
                     ub[cv(i, t)] = 0.0
 
+    configured_gap = 0.002
+    time_limit = 180
     result = milp(
         c=-maximise,
         integrality=integrality,
@@ -212,13 +239,16 @@ def optimise_initial_cvar(
             np.asarray(lower, dtype=float),
             np.asarray(upper, dtype=float),
         ),
-        options={"time_limit": 180, "mip_rel_gap": 0.002},
+        options={"time_limit": time_limit, "mip_rel_gap": configured_gap},
+    )
+    solver = _solver_metadata(
+        result, relative_gap=configured_gap, time_limit=time_limit
     )
     if not result.success or result.x is None:
         empty = d.iloc[0:0]
         return RobustSquadSolution(
             "Infeasible", math.nan, math.nan, math.nan, alpha, risk_weight,
-            empty, empty, empty, empty, empty, np.asarray([], dtype=float),
+            empty, empty, empty, empty, empty, np.asarray([], dtype=float), solver,
         )
 
     sol = result.x
@@ -299,4 +329,5 @@ def optimise_initial_cvar(
         vice_captain=vice_df,
         bench=bench_df,
         scenario_scores=scenario_scores,
+        solver=solver,
     )
