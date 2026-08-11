@@ -96,14 +96,9 @@ def main() -> None:
         blockers.append("Pinnacle/Elite Official FPL content hashes do not match")
 
     convergence = elite.get("epsilon_convergence")
-    converged = bool(isinstance(convergence, dict) and convergence.get("converged"))
-    selector = "elite_lexicographic" if converged else "maximum_ev"
-    if selector == "elite_lexicographic":
-        selected = elite.get("elite")
-        mechanics = elite.get("elite_gw1_mechanics")
-    else:
-        selected = elite.get("maximum_ev_reference")
-        mechanics = elite.get("maximum_ev_gw1_mechanics")
+    selector = "strategy_maximum_ev"
+    selected = (pinnacle.get("deterministic_scenarios") or {}).get("unrestricted")
+    mechanics = (pinnacle.get("gw1_mechanics") or {}).get("unrestricted")
 
     if not isinstance(selected, dict) or selected.get("status") != "Optimal":
         blockers.append(f"selected canonical solution is not optimal: {selector}")
@@ -129,9 +124,8 @@ def main() -> None:
     recommendation = {
         "selector": selector,
         "selector_reason": (
-            "Elite epsilon frontier passed the explicit convergence rule"
-            if converged
-            else "Elite epsilon frontier did not pass; maximum-EV is the mandatory fallback"
+            "The unrestricted rolling-horizon maximum-EV strategy is the sole production "
+            "authority; Elite and robustness layers are diagnostics only."
         ),
         "objective": selected.get("objective"),
         "squad": squad,
@@ -144,7 +138,7 @@ def main() -> None:
     }
 
     payload = {
-        "contract": "apex-unified-recommendation-v1",
+        "contract": "apex-strategy-recommendation-v2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "canonical": True,
         "user_facing_source_of_truth": True,
@@ -155,9 +149,9 @@ def main() -> None:
         "decision_policy": {
             "primary_forecast": "canonical ensemble xp",
             "primary_selection": "maximum expected FPL points under legal FPL constraints",
-            "secondary_selection": "Elite 35/20/15/10/10/5/5 only inside an epsilon-audited near-optimal xP set",
+            "secondary_selection": "none; Elite is diagnostic-only",
             "elite_convergence_rule": ">=13/15 overlap with max-EV and same captain at 0.25%, 0.50%, 1.00%",
-            "elite_failure_fallback": "maximum_ev",
+            "elite_failure_fallback": "not applicable; Elite has no publication authority",
             "ownership_in_points_objective": False,
             "minutes_model": "first-class",
             "uncertainty": "correlated scenarios/CVaR/regret are diagnostics, not a second hidden forecast",
@@ -171,8 +165,8 @@ def main() -> None:
         "haaland_scenario": (elite.get("scenarios") or {}).get("haaland"),
         "no_haaland_scenario": (elite.get("scenarios") or {}).get("no_haaland"),
         "robustness": {
-            "cvar_scenarios": pinnacle.get("robust_scenarios"),
-            "robust_compare": pinnacle.get("robust_compare"),
+            "cvar_scenarios": pinnacle.get("robust_cvar_scenarios"),
+            "robust_compare": pinnacle.get("robustness_comparison"),
             "selection_regret": pinnacle.get("selection_regret"),
             "solver_parity": pinnacle.get("solver_parity"),
             "pinnacle_gate": pinnacle.get("pinnacle_gate"),

@@ -38,6 +38,11 @@ def main() -> None:
     parser.add_argument("--cvar-alpha", type=float, default=0.10)
     parser.add_argument("--cvar-weight", type=float, default=0.20)
     parser.add_argument("--output-dir", default="data/generated")
+    parser.add_argument(
+        "--reuse-pinnacle",
+        action="store_true",
+        help="Reuse a just-generated Pinnacle artifact after same-surface parity was embedded.",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -61,9 +66,12 @@ def main() -> None:
     if args.force:
         pinnacle_cmd.append("--force")
 
-    status = _run(pinnacle_cmd)
-    if status != 0 and not _explicit_readiness_block(pinnacle_path):
-        raise SystemExit(status)
+    if not args.reuse_pinnacle:
+        status = _run(pinnacle_cmd)
+        if status != 0 and not _explicit_readiness_block(pinnacle_path):
+            raise SystemExit(status)
+    elif not pinnacle_path.exists():
+        raise SystemExit(f"cannot reuse missing Pinnacle artifact: {pinnacle_path}")
 
     # Deliberately do not force-refresh again. Elite must consume the cached source
     # surface created by Pinnacle so the canonical builder can require identical

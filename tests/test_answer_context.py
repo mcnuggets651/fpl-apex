@@ -45,7 +45,10 @@ def _payloads():
         ],
         "robust_cvar_scenarios": {"unrestricted": {"status": "Optimal"}},
         "selection_regret": [{"player_id": 1, "regret": 1.2, "alternative_name": "Saka"}],
-        "solver_parity": {"comparison_surface": "pinnacle_ev"},
+        "solver_parity": {
+            "comparison_surface": "pinnacle_ev",
+            "official_snapshot": {"bootstrap_sha256": "a", "fixtures_sha256": "b"},
+        },
         "weekly_strategy": {"status": "Optimal"},
     }
     return canonical, pinnacle
@@ -88,3 +91,29 @@ def test_router_requires_the_correct_artifact():
     assert route_question("What transfer should I make?").mode == "transfer"
     assert route_question("Give me the best team").mode == "canonical_team"
     assert route_question("Project status on GitHub").mode == "project_status"
+
+
+def test_optional_degraded_source_does_not_override_validated_quality_fallback():
+    canonical, pinnacle = _payloads()
+    pinnacle["sources"].append(
+        {
+            "name": "official_team_strength",
+            "ok": False,
+            "configured": True,
+            "checked_at": "2026-08-11T07:30:00+00:00",
+            "version": "snapshot",
+        }
+    )
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+    assert context["safe_to_act"] is True
+
+
+def test_diagnostic_and_inferred_role_warnings_reach_answer_contract():
+    canonical, pinnacle = _payloads()
+    canonical["recommendation"]["squad"][0]["tactical_role_source"] = "statistical_inference"
+    pinnacle["pinnacle_gate"] = {"warnings": ["captain stability is provisional"]}
+    pinnacle["data_quality"] = {"warnings": ["team strength fallback active"]}
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+    assert any("captain stability" in warning for warning in context["warnings"])
+    assert any("team strength fallback" in warning for warning in context["warnings"])
+    assert any("statistical inference" in warning for warning in context["warnings"])

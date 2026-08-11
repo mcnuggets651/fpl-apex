@@ -23,10 +23,10 @@ python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0
 4. Treat expected minutes/start/appearance probabilities as first-class inputs.
 5. Solve the legal maximum-xP squad over the planning horizon.
 6. Run correlated uncertainty/CVaR, exact force/ban regret, captain stability and independent parity as robustness diagnostics.
-7. Run Elite only as a **secondary lexicographic selector** inside a near-optimal xP set.
+7. Run Elite only as a diagnostic frontier inside a near-optimal xP set.
 8. Audit Elite across epsilon = 0%, 0.25%, 0.5%, 1.0%.
-9. Elite may influence the canonical 15 only when 0.25%, 0.5% and 1.0% each retain at least 13/15 of maximum-EV and the same captain.
-10. If that convergence rule fails, maximum-EV is the automatic canonical fallback.
+9. The unrestricted rolling-horizon maximum-EV strategy is the sole canonical selection.
+10. Elite convergence is evidence only and never substitutes a different production 15.
 11. Re-optimise XI, captain, vice and bench mechanics on raw xP for the selected 15.
 12. Publish a team only when all required readiness/snapshot-consistency gates pass.
 

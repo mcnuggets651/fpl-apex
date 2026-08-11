@@ -120,7 +120,7 @@ Scenario simulation should preserve correlated football outcomes: team attack/de
 ## Required comparison
 For every Elite candidate report:
 - maximum raw ensemble xP reference
-- Elite-selected squad raw xP
+- Elite diagnostic squad raw xP
 - exact raw-xP regret
 - epsilon sensitivity frontier
 - captaincy difference

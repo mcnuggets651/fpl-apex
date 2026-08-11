@@ -7,6 +7,7 @@ an optimisation-formulation cross-check, never a source-of-truth override.
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 import sys
 
@@ -82,6 +83,11 @@ def main() -> None:
         "captain_agrees": apex_cap == external_cap,
         "only_apex": sorted(apex_squad - external_squad),
         "only_external": sorted(external_squad - apex_squad),
+        "official_snapshot": {
+            key: (report.get("official_snapshot") or {}).get(key)
+            for key in ("snapshot_id", "bootstrap_sha256", "fixtures_sha256")
+        },
+        "projection_export_sha256": hashlib.sha256(solver_path.read_bytes()).hexdigest(),
     }
     output = apex_path.parent / "solver_parity.json"
     output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
