@@ -70,6 +70,7 @@ jobs:
             --output data/generated/airsenal.csv
 
       - name: Generate Pinnacle surface for independent parity
+        id: pinnacle
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
@@ -101,29 +102,23 @@ jobs:
 
           payload = json.loads(Path("data/generated/pinnacle_latest.json").read_text())
           blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
-          allowed = (
-              "solver parity",
-              "uncertainty re-solves",
-              "deterministic/CVaR unrestricted captains disagree",
-              "zero relevant selected-player evidence rows",
-              "published captain lacks current attributable evidence",
-              "published captain lacks official or independently corroborated evidence",
-              "high-uncertainty starters lack current attributable evidence",
-              "selected-player evidence coverage gate is not ready",
-              "deterministic/CVaR unrestricted squads overlap only",
-              "deterministic/CVaR unrestricted XIs overlap only",
-          )
-          unexpected = [row for row in blockers if not any(token in row for token in allowed)]
-          if unexpected:
-              raise SystemExit("Pinnacle has non-parity blockers: " + "; ".join(unexpected))
+          if payload.get("pinnacle_ready") is not False or not blockers:
+              raise SystemExit("Pinnacle exited non-zero without an explicit readiness block")
+          print("Pinnacle explicitly withheld the production decision:")
+          for blocker in blockers:
+              print(f"- {blocker}")
           PY
+            echo "ready_for_parity=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "ready_for_parity=true" >> "$GITHUB_OUTPUT"
           python scripts/export_open_solver.py \
             reports/players.csv reports/projections.csv /tmp/apex.csv \
             --projection-col xp
 
       - name: Read pinned independent solver revision
         id: parity-pin
+        if: steps.pinnacle.outputs.ready_for_parity == 'true'
         shell: bash
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
@@ -134,6 +129,7 @@ jobs:
           PY
 
       - name: Run and embed same-surface independent parity
+        if: steps.pinnacle.outputs.ready_for_parity == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -157,6 +153,7 @@ jobs:
 
       - name: Generate single canonical Apex recommendation
         id: canonical
+        if: steps.pinnacle.outputs.ready_for_parity == 'true'
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
@@ -204,11 +201,21 @@ jobs:
           PY
           echo "ready=false" >> "$GITHUB_OUTPUT"
 
+      - name: Finalize fail-closed production status
+        if: always()
+        shell: bash
+        run: |
+          python scripts/finalize_production_status.py \
+            --run-id "${{ github.run_id }}" \
+            --reason "Apex Unified production run did not complete canonical assembly" \
+            ${{ steps.canonical.outcome == 'success' && '--canonical-step-succeeded' || '' }}
+
       - name: Report withheld canonical decision
         if: steps.canonical.outputs.ready != 'true'
         run: echo "::warning title=Apex Unified not decision-ready::The system is healthy, but the canonical decision contract withheld a team. Inspect the artifact blockers."
 
       - name: Update no-hindsight learning archive
+        if: steps.pinnacle.outputs.ready_for_parity == 'true'
         env:
           APEX_SEASON: "2026-2027"
           FPL_ENTRY_ID: "63984"
@@ -234,7 +241,8 @@ jobs:
             data/generated/decision_bundle \
             data/generated/calibration_report.json \
             data/generated/airsenal.csv \
-            data/history/deadlines
+            data/history/deadlines \
+            data/history/production_runs
           do
             if [ -e "$path" ]; then
               mkdir -p "$packet/$(dirname "$path")"
@@ -243,6 +251,7 @@ jobs:
           done
 
       - name: Publish latest canonical status and durable forecast archive
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -256,9 +265,18 @@ jobs:
           git add -f \
             data/generated/apex_recommendation_latest.json \
             data/generated/apex_recommendation_latest.md \
-            data/generated/apex_answer_context.json \
+            data/generated/apex_answer_context.json
+          for path in \
             data/generated/solver_parity.json \
             data/generated/calibration_report.json
+          do
+            if [ -e "$path" ]; then
+              git add -f "$path"
+            fi
+          done
+          if [ -d data/history/production_runs ]; then
+            git add -f data/history/production_runs
+          fi
           if [ -d data/history/deadlines ]; then
             git add -f data/history/deadlines
           fi
