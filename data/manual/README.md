@@ -42,3 +42,8 @@ Copy `tactical_roles.example.csv` to `tactical_roles.csv` only for roles you hav
 verified from current tactical evidence. `role_multiplier` is capped to 0.80–1.20 and
 defaults to 1.0. Apex does not silently infer a player's current role from an old club,
 last season's position, or transfer rumour.
+
+The same file may carry deadline-specific minutes evidence (`expected_minutes_override`,
+`start_probability_override`, `appearance_probability_override`) only when the row also
+records its evidence type, reason, source URL and update time. Set-piece shares are
+explicit 0–1 shares; blank means unknown and must never be interpreted as zero.

@@ -61,6 +61,10 @@ def test_complete_context_is_only_green_answer_contract():
     assert context["only_input_for_apex_answers"] is True
     assert context["production_result"] is not None
     assert context["selected_player_reasons"][0]["alternative"] == "Saka"
+    surfaces = context["diagnostics"]["captain_surfaces"]
+    assert surfaces["production"]["authority"] is True
+    assert surfaces["cvar_diagnostic"]["authority"] is False
+    assert "Only maximum_ev_production" in surfaces["interpretation"]
 
 
 def test_stale_or_missing_diagnostics_withhold_production_result():
