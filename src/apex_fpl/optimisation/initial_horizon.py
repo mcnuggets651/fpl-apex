@@ -44,6 +44,7 @@ def optimise_initial_horizon(
     locked: set[int] | None = None,
     banned: set[int] | None = None,
     captain_eligible: set[int] | None = None,
+    xi_eligible: set[int] | None = None,
     projection_col: str = "xp",
     reference_projection_col: str | None = None,
     min_reference_objective: float | None = None,
@@ -73,6 +74,9 @@ def optimise_initial_horizon(
     captain_eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
+    if xi_eligible is None and "xi_evidence_eligible" in players:
+        xi_eligible = set(players.loc[players["xi_evidence_eligible"].fillna(False), "player_id"].astype(int))
+    xi_eligible = None if xi_eligible is None else {int(pid) for pid in xi_eligible}
     gws = [int(gw) for gw in gameweeks]
     if not gws:
         empty = players.iloc[0:0].copy()
@@ -229,6 +233,11 @@ def optimise_initial_horizon(
             if pid not in captain_eligible:
                 for t in range(t_count):
                     ub[c(i, t)] = 0.0
+    if xi_eligible is not None:
+        for i, pid in enumerate(pids):
+            if pid not in xi_eligible:
+                for t in range(t_count):
+                    ub[x(i, t)] = 0.0
 
     configured_gap = float(max(solver_relative_gap, 0.0))
     time_limit = int(max(solver_time_limit, 1))

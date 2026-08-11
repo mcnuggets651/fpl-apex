@@ -114,6 +114,7 @@ def optimise_fixed_squad_gameweek(
     appearance: dict[int, float],
     *,
     captain_eligible: set[int] | None = None,
+    xi_eligible: set[int] | None = None,
 ) -> tuple[pd.DataFrame, GameweekMechanics]:
     """Exhaustively choose the legal XI and exact deadline mechanics for a squad."""
     eligible = None if captain_eligible is None else {int(pid) for pid in captain_eligible}
@@ -124,6 +125,8 @@ def optimise_fixed_squad_gameweek(
     }
     best: tuple[float, tuple, GameweekMechanics] | None = None
     for lineup_ids in _legal_lineups(squad):
+        if xi_eligible is not None and not set(lineup_ids).issubset({int(x) for x in xi_eligible}):
+            continue
         if eligible is not None and len(set(lineup_ids) & eligible) < 2:
             continue
         mechanics = evaluate_gameweek_mechanics_ids(
@@ -158,6 +161,7 @@ def _rescore_candidate(
     *,
     decay: float,
     captain_eligible: set[int] | None,
+    xi_eligible: set[int] | None,
     projection_col: str,
     generation_rank: int,
 ) -> ExactCandidate:
@@ -176,6 +180,8 @@ def _rescore_candidate(
 
     for lineup_ids in _legal_lineups(solution.squad):
         lineup_ids = tuple(sorted(int(pid) for pid in lineup_ids))
+        if xi_eligible is not None and not set(lineup_ids).issubset(xi_eligible):
+            continue
         if eligible is not None and len(set(lineup_ids) & eligible) < 2:
             continue
         bench_ids = tuple(sorted(set(squad_ids) - set(lineup_ids)))
@@ -316,6 +322,7 @@ def optimise_exact_horizon_decision(
     candidate_regret_fraction: float = 0.005,
     near_equivalent_points: float = 0.25,
     captain_eligible: set[int] | None = None,
+    xi_eligible: set[int] | None = None,
     locked: set[int] | None = None,
     banned: set[int] | None = None,
     projection_col: str = "xp",
@@ -352,6 +359,7 @@ def optimise_exact_horizon_decision(
             locked=locked,
             banned=banned,
             captain_eligible=captain_eligible,
+            xi_eligible=xi_eligible,
             projection_col=projection_col,
             excluded_squads=excluded,
             solver_relative_gap=0.00001,
@@ -372,6 +380,7 @@ def optimise_exact_horizon_decision(
             gameweeks,
             decay=decay,
             captain_eligible=captain_eligible,
+            xi_eligible=xi_eligible,
             projection_col=projection_col,
             generation_rank=rank,
         )

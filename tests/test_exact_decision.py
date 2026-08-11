@@ -84,3 +84,19 @@ def test_exact_horizon_rejects_invalid_candidate_controls() -> None:
         optimise_exact_horizon_decision(
             _players(), _projections(), [1], candidate_regret_fraction=0.06
         )
+
+
+def test_exact_rescore_honours_pre_solve_xi_eligibility() -> None:
+    players = _players()
+    decision = optimise_exact_horizon_decision(
+        players,
+        _projections(),
+        [1],
+        candidate_limit=1,
+        captain_eligible=set(players.player_id) - {16},
+        xi_eligible=set(players.player_id) - {16},
+        locked={16},
+    )
+    assert decision.status == "Optimal"
+    assert 16 in set(decision.solution.squad.player_id)
+    assert 16 not in set(decision.solution.xi.player_id)

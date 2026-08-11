@@ -45,6 +45,9 @@ MANUAL_PROVENANCE_COLUMNS = (
     "evidence_type",
     "published_at",
     "expires_at",
+    "relevant_excerpt",
+    "content_hash",
+    "transcriber",
 )
 TRUSTED_SOURCE_TIERS = {"official_club", "official_league", "trusted_media"}
 
@@ -95,9 +98,9 @@ def load_manual_signals(
         out["availability_multiplier"], errors="raise"
     ).clip(0, 1)
     for idx, row in out.iterrows():
-        if str(row["source_tier"]).strip() not in TRUSTED_SOURCE_TIERS:
+        if str(row["source_tier"]).strip() not in {"official_club", "official_league"}:
             raise ValueError(
-                f"manual availability row {idx} has untrusted source_tier"
+                f"manual availability row {idx} must transcribe an official source"
             )
         if not str(row["source_name"]).strip() or not str(row["source_url"]).startswith(
             ("https://", "http://")
@@ -105,6 +108,13 @@ def load_manual_signals(
             raise ValueError(
                 f"manual availability row {idx} lacks verifiable source provenance"
             )
+        if not str(row["relevant_excerpt"]).strip() or not str(row["transcriber"]).strip():
+            raise ValueError(
+                f"manual availability row {idx} lacks excerpt/transcriber provenance"
+            )
+        digest = str(row["content_hash"]).strip().casefold()
+        if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+            raise ValueError(f"manual availability row {idx} has invalid content_hash")
         published = _utc(row["published_at"], "published_at")
         expires = _utc(row["expires_at"], "expires_at")
         if expires <= published:

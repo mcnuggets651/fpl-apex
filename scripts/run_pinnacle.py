@@ -18,7 +18,11 @@ from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.mechanics import optimise_gameweek_mechanics
 from apex_fpl.optimisation.stability import selection_regret_analysis
 from apex_fpl.services.chips import evaluate_chip_window
-from apex_fpl.services.decision_eligibility import captain_eligible_ids
+from apex_fpl.services.decision_eligibility import (
+    captain_eligible_ids,
+    evidence_eligibility,
+    source_health_status,
+)
 from apex_fpl.services.decision_bundle import DecisionBundle
 from apex_fpl.services.initial_plan import (
     build_initial_squad_contingencies,
@@ -302,12 +306,26 @@ def main() -> None:
     if not gws:
         raise SystemExit("Pinnacle runner has no actionable future Gameweeks")
 
-    decision_players = out.players.copy()
+    source_health = source_health_status(out.sources)
+    if source_health["ready"] is not True:
+        raise SystemExit(
+            "Pinnacle source-health gate failed: "
+            f"healthy={source_health['healthy_sources']}/{source_health['configured_sources']}; "
+            f"fresh={source_health['fresh_timestamped_items']}"
+        )
+    decision_players, evidence_eligibility_report = evidence_eligibility(
+        out.players, out.news_audit
+    )
     if "team" not in decision_players:
         raise SystemExit("sealed player universe is missing official team IDs")
     if decision_players["team"].isna().any():
         raise SystemExit("Pinnacle player universe contains missing official team IDs")
     captain_eligible = captain_eligible_ids(decision_players)
+    xi_eligible = set(
+        decision_players.loc[
+            decision_players["xi_evidence_eligible"], "player_id"
+        ].astype(int)
+    )
     if len(captain_eligible) < 2:
         raise SystemExit(
             "Pinnacle has fewer than two players who satisfy the production "
@@ -323,6 +341,7 @@ def main() -> None:
         decay=float(settings["fixture_decay"]),
         bench_weight=float(settings["approximate_bench_weight"]),
         captain_eligible=captain_eligible,
+        xi_eligible=xi_eligible,
         projection_col="xp",
     )
     deterministic = {"unrestricted": optimise_initial_horizon(**common)}
@@ -359,6 +378,7 @@ def main() -> None:
             settings.get("exact_near_equivalent_points", 0.25)
         ),
         captain_eligible=captain_eligible,
+        xi_eligible=xi_eligible,
     )
     if exact_decision.status != "Optimal":
         raise SystemExit("authoritative exact-horizon decision failed")
@@ -392,6 +412,7 @@ def main() -> None:
         cvar_alpha=args.cvar_alpha,
         cvar_weight=args.cvar_weight,
         captain_eligible=captain_eligible,
+        xi_eligible=xi_eligible,
     )
     robust = {"unrestricted": optimise_initial_cvar(**robust_common)}
     if haaland_id is not None:
@@ -604,6 +625,8 @@ def main() -> None:
             name: _solution(sol) for name, sol in deterministic.items()
         },
         "authoritative_decision": authoritative_decision,
+        "evidence_source_health": source_health,
+        "evidence_eligibility": evidence_eligibility_report,
         "selected_player_evidence": selected_player_evidence,
         "robust_cvar_scenarios": {
             name: _robust_solution(sol) for name, sol in robust.items()

@@ -106,3 +106,19 @@ def test_secondary_objective_can_choose_near_optimal_alternative_with_relaxed_fl
     )
     assert secondary.status == "Optimal"
     assert 9 in set(secondary.squad["player_id"])
+
+
+def test_xi_ineligible_player_can_remain_in_squad_but_never_start() -> None:
+    players = _players()
+    players["xi_evidence_eligible"] = True
+    players.loc[players.player_id.eq(10), "xi_evidence_eligible"] = False
+    solution = optimise_initial_horizon(
+        players,
+        _projections(),
+        [1],
+        locked={10},
+        captain_eligible=set(players.player_id) - {10},
+    )
+    assert solution.status == "Optimal"
+    assert 10 in set(solution.squad.player_id)
+    assert 10 not in set(solution.xi.player_id)

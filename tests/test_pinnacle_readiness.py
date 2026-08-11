@@ -98,7 +98,7 @@ def _payload():
             "equivalence": {"unique_optimum_proven": False},
         },
         "selected_player_evidence": {
-            "contract": "apex-player-evidence-v1",
+            "contract": "apex-player-evidence-v2",
             "coverage": {
                 "selected_players": 15,
                 "selected_players_with_current_evidence": 1,
@@ -107,6 +107,8 @@ def _payload():
                 "captain_has_current_evidence": True,
                 "high_uncertainty_starter_ids": [],
                 "high_uncertainty_starters_missing_evidence": [],
+                "selected_xi_ineligible_ids": [],
+                "captain_evidence_eligible": True,
                 "ready": True,
             },
             "dossiers": [
@@ -119,6 +121,18 @@ def _payload():
                 }
                 for i in range(15)
             ],
+        },
+        "evidence_source_health": {
+            "contract": "apex-news-source-health-v1",
+            "ready": True,
+            "configured_sources": 3,
+            "healthy_sources": 3,
+            "fresh_timestamped_items": 5,
+        },
+        "evidence_eligibility": {
+            "contract": "apex-evidence-eligibility-v2",
+            "xi_ineligible_ids": [],
+            "captain_eligible_ids": list(range(15)),
         },
         "selection_regret": [{"player_id": 1, "objective_regret": 3.0}],
         "decision_frequencies": [
@@ -165,19 +179,25 @@ def test_complete_pinnacle_payload_is_ready_with_calibration_warning():
     assert any("covariance" in warning for warning in result.warnings)
 
 
-def test_zero_relevant_evidence_cannot_be_fully_green():
+def test_stable_silence_does_not_block_when_source_health_and_eligibility_pass():
     payload = _payload()
     payload["selected_player_evidence"]["coverage"].update(
         {
             "relevant_evidence_rows": 0,
             "captain_has_current_evidence": False,
-            "ready": False,
+            "ready": True,
         }
     )
     result = evaluate_pinnacle_payload(payload)
+    assert result.ready
+
+
+def test_numeric_source_health_failure_blocks():
+    payload = _payload()
+    payload["evidence_source_health"]["ready"] = False
+    result = evaluate_pinnacle_payload(payload)
     assert not result.ready
-    assert any("zero relevant" in blocker for blocker in result.blockers)
-    assert any("captain lacks" in blocker for blocker in result.blockers)
+    assert any("source-health" in blocker for blocker in result.blockers)
 
 
 def test_missing_exact_mechanics_blocks_pinnacle():

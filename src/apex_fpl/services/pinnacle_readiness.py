@@ -230,27 +230,24 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         coverage = evidence.get("coverage") or {}
         if len(dossiers) != 15:
             blockers.append("selected-player evidence dossiers do not cover the full squad")
-        if int(coverage.get("relevant_evidence_rows", 0) or 0) < 1:
-            blockers.append("zero relevant selected-player evidence rows")
-        if coverage.get("captain_has_current_evidence") is not True:
-            blockers.append("published captain lacks current attributable evidence")
-        if (
-            "captain_has_decision_grade_evidence" in coverage
-            and coverage.get("captain_has_decision_grade_evidence") is not True
-        ):
+        if evidence.get("contract") != "apex-player-evidence-v2":
+            blockers.append("selected-player evidence contract is not v2")
+        if coverage.get("captain_evidence_eligible") is not True:
+            blockers.append("published captain is evidence-ineligible")
+        selected_ineligible = coverage.get("selected_xi_ineligible_ids") or []
+        if selected_ineligible:
             blockers.append(
-                "published captain lacks official or independently corroborated evidence"
-            )
-        missing_uncertain = coverage.get(
-            "high_uncertainty_starters_missing_evidence"
-        ) or []
-        if missing_uncertain:
-            blockers.append(
-                "high-uncertainty starters lack current attributable evidence: "
-                + ", ".join(str(pid) for pid in missing_uncertain)
+                "published XI contains evidence-ineligible players: "
+                + ", ".join(str(pid) for pid in selected_ineligible)
             )
         if coverage.get("ready") is not True:
             blockers.append("selected-player evidence coverage gate is not ready")
+    source_health = payload.get("evidence_source_health") or {}
+    if source_health.get("ready") is not True:
+        blockers.append("numerical evidence source-health gate is not ready")
+    eligibility = payload.get("evidence_eligibility") or {}
+    if eligibility.get("contract") != "apex-evidence-eligibility-v2":
+        blockers.append("pre-solve evidence-eligibility report is missing")
     objective = _number(authority, "objective")
     reconciled = _number(authority, "objective_reconciliation")
     if objective is None or reconciled is None or abs(objective - reconciled) > 1e-6:

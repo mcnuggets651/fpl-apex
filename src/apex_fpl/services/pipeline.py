@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import json
 
 import numpy as np
 import pandas as pd
@@ -368,6 +370,31 @@ def run_pipeline(
         try:
             collection = collect_news_sources(settings.news_sources or settings.news_feeds)
             headlines = collection.items
+            now_utc = pd.Timestamp(datetime.now(timezone.utc))
+            published = pd.to_datetime(
+                pd.Series([item.published for item in headlines]), utc=True, errors="coerce"
+            )
+            fresh_items = int(
+                (
+                    published.notna()
+                    & published.le(now_utc)
+                    & ((now_utc - published).dt.total_seconds() / 3600 <= 120.0)
+                ).sum()
+            )
+            source_health = {
+                "configured_sources": len(settings.news_sources or settings.news_feeds),
+                "healthy_sources": len(collection.succeeded),
+                "fresh_timestamped_items": fresh_items,
+                "failed_sources": sorted(collection.failed),
+            }
+            sources.append(
+                _status(
+                    "news_source_health",
+                    True,
+                    f"{len(collection.succeeded)} healthy; {fresh_items} fresh timestamped items",
+                    version=json.dumps(source_health, sort_keys=True, separators=(",", ":")),
+                )
+            )
             news_signal, news_audit = infer_news_signals(players, headlines)
             if not news_signal.empty:
                 players = players.merge(news_signal, on="player_id", how="left")
