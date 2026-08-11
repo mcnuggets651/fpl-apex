@@ -1,7 +1,7 @@
 # Apex Unified Recommendation
 
-Generated: 2026-08-11T09:49:28.379116+00:00
-Official surface: `6cfd4886b0ac` / `a478e20d030d`
+Generated: 2026-08-11T10:19:19.876421+00:00
+Official surface: `9139bfde4457` / `a478e20d030d`
 Canonical selector: **strategy_maximum_ev**
 Reason: The unrestricted rolling-horizon maximum-EV strategy is the sole production authority; Elite and robustness layers are diagnostics only.
 

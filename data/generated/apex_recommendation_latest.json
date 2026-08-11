@@ -1,16 +1,16 @@
 {
   "contract": "apex-strategy-recommendation-v2",
-  "generated_at": "2026-08-11T09:49:28.379116+00:00",
+  "generated_at": "2026-08-11T10:19:19.876421+00:00",
   "canonical": true,
   "user_facing_source_of_truth": true,
   "ready_to_act": true,
   "blockers": [],
   "official_snapshot": {
-    "snapshot_id": "20260811T094036Z-6ee7c3cf",
-    "retrieved_at": "2026-08-11T09:40:36.789722+00:00",
+    "snapshot_id": "20260811T101206Z-173a73ea",
+    "retrieved_at": "2026-08-11T10:12:06.891458+00:00",
     "players": 577,
     "fixtures": 380,
-    "bootstrap_sha256": "6cfd4886b0acdc5e5680cbda9c8873e482df314849a3b0275c0c5d199d324ac1",
+    "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
   "gameweeks": [
@@ -39,7 +39,7 @@
   "recommendation": {
     "selector": "strategy_maximum_ev",
     "selector_reason": "The unrestricted rolling-horizon maximum-EV strategy is the sole production authority; Elite and robustness layers are diagnostics only.",
-    "objective": 319.25263326782476,
+    "objective": 319.25263326782436,
     "squad": [
       {
         "player_id": 356,
@@ -637,10 +637,10 @@
   "epsilon_sensitivity": [
     {
       "epsilon": 0.0,
-      "raw_ev_floor": 319.25263326782476,
+      "raw_ev_floor": 319.25263326782436,
       "raw_ev_objective": 319.25263326782436,
-      "raw_ev_regret": 3.979039320256561e-13,
-      "raw_ev_regret_pct": 1.246360689190776e-15,
+      "raw_ev_regret": 0.0,
+      "raw_ev_regret_pct": 0.0,
       "squad_overlap_vs_max_ev": 15,
       "changed_player_ids_vs_max_ev": [],
       "captain": "B.Fernandes",
@@ -664,10 +664,10 @@
     },
     {
       "epsilon": 0.0025,
-      "raw_ev_floor": 318.4545016846552,
+      "raw_ev_floor": 318.4545016846548,
       "raw_ev_objective": 318.91405701440476,
-      "raw_ev_regret": 0.3385762534200012,
-      "raw_ev_regret_pct": 0.001060527676637723,
+      "raw_ev_regret": 0.3385762534196033,
+      "raw_ev_regret_pct": 0.0010605276766364779,
       "squad_overlap_vs_max_ev": 12,
       "changed_player_ids_vs_max_ev": [
         57,
@@ -698,10 +698,10 @@
     },
     {
       "epsilon": 0.005,
-      "raw_ev_floor": 317.65637010148566,
+      "raw_ev_floor": 317.65637010148527,
       "raw_ev_objective": 317.92095383935737,
-      "raw_ev_regret": 1.331679428467396,
-      "raw_ev_regret_pct": 0.004171240233280189,
+      "raw_ev_regret": 1.3316794284669982,
+      "raw_ev_regret_pct": 0.004171240233278948,
       "squad_overlap_vs_max_ev": 10,
       "changed_player_ids_vs_max_ev": [
         57,
@@ -736,10 +736,10 @@
     },
     {
       "epsilon": 0.01,
-      "raw_ev_floor": 316.0601069351465,
+      "raw_ev_floor": 316.0601069351461,
       "raw_ev_objective": 317.92095383935737,
-      "raw_ev_regret": 1.331679428467396,
-      "raw_ev_regret_pct": 0.004171240233280189,
+      "raw_ev_regret": 1.3316794284669982,
+      "raw_ev_regret_pct": 0.004171240233278948,
       "squad_overlap_vs_max_ev": 10,
       "changed_player_ids_vs_max_ev": [
         57,
@@ -6205,9 +6205,9 @@
       },
       "no-haaland": {
         "status": "Optimal",
-        "objective": 313.5644386300388,
+        "objective": 313.56443863003875,
         "mean_points": 316.6332209354133,
-        "lower_tail_cvar": 301.2893094085406,
+        "lower_tail_cvar": 301.28930940854053,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
         "scenario_p10": 305.59787931411654,
@@ -6839,7 +6839,7 @@
         "squad_changed": [],
         "xi_overlap": 11,
         "captain_agrees": false,
-        "left_objective": 319.25263326782476,
+        "left_objective": 319.25263326782436,
         "right_objective": 316.56761327440586,
         "captain_comparison": "exact_gw1_mechanics"
       },
@@ -6867,7 +6867,7 @@
         "xi_overlap": 9,
         "captain_agrees": true,
         "left_objective": 316.75349561888714,
-        "right_objective": 313.5644386300388,
+        "right_objective": 313.56443863003875,
         "captain_comparison": "exact_gw1_mechanics"
       }
     },
@@ -6918,8 +6918,8 @@
         "selected": true,
         "stress_type": "ban_selected",
         "baseline_objective": 319.2526332678,
-        "constrained_objective": 317.2951454378,
-        "objective_regret": 1.95748783,
+        "constrained_objective": 317.2951454377,
+        "objective_regret": 1.9574878301,
         "constrained_status": "Optimal"
       },
       {
@@ -6983,16 +6983,6 @@
         "constrained_status": "Optimal"
       },
       {
-        "player_id": 61,
-        "web_name": "Truffert",
-        "selected": true,
-        "stress_type": "ban_selected",
-        "baseline_objective": 319.2526332678,
-        "constrained_objective": 319.1846464971,
-        "objective_regret": 0.0679867707,
-        "constrained_status": "Optimal"
-      },
-      {
         "player_id": 88,
         "web_name": "Kayode",
         "selected": true,
@@ -7010,6 +7000,16 @@
         "baseline_objective": 319.2526332678,
         "constrained_objective": 319.1846464971,
         "objective_regret": 0.0679867707,
+        "constrained_status": "Optimal"
+      },
+      {
+        "player_id": 61,
+        "web_name": "Truffert",
+        "selected": true,
+        "stress_type": "ban_selected",
+        "baseline_objective": 319.2526332678,
+        "constrained_objective": 319.1846464972,
+        "objective_regret": 0.0679867706,
         "constrained_status": "Optimal"
       },
       {
@@ -7048,8 +7048,8 @@
         "selected": false,
         "stress_type": "force_alternative",
         "baseline_objective": 319.2526332678,
-        "constrained_objective": 316.753495619,
-        "objective_regret": 2.4991376488,
+        "constrained_objective": 316.7534956189,
+        "objective_regret": 2.4991376489,
         "constrained_status": "Optimal"
       },
       {
@@ -7197,8 +7197,8 @@
         508
       ],
       "official_snapshot": {
-        "snapshot_id": "20260811T094036Z-6ee7c3cf",
-        "bootstrap_sha256": "6cfd4886b0acdc5e5680cbda9c8873e482df314849a3b0275c0c5d199d324ac1",
+        "snapshot_id": "20260811T101206Z-173a73ea",
+        "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
       "projection_export_sha256": "9a70cb98a28c6429c6de357d79898b3d34852e83614b74ef8d4c663358c5ef0f"
@@ -7216,14 +7216,14 @@
   "internal_diagnostics": {
     "pinnacle_contract": "apex-pinnacle-v3-final",
     "elite_contract": "apex-elite-10-v4-diagnostic",
-    "pinnacle_snapshot_id": "20260811T094036Z-6ee7c3cf",
-    "elite_snapshot_id": "20260811T094847Z-3845a0ae",
+    "pinnacle_snapshot_id": "20260811T101206Z-173a73ea",
+    "elite_snapshot_id": "20260811T101843Z-95ab05b7",
     "pinnacle_content_fingerprint": [
-      "6cfd4886b0acdc5e5680cbda9c8873e482df314849a3b0275c0c5d199d324ac1",
+      "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "elite_content_fingerprint": [
-      "6cfd4886b0acdc5e5680cbda9c8873e482df314849a3b0275c0c5d199d324ac1",
+      "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "same_official_surface": true

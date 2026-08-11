@@ -1,6 +1,6 @@
 {
   "contract": "apex-answer-context-v1",
-  "generated_at": "2026-08-11T09:49:28.379192+00:00",
+  "generated_at": "2026-08-11T10:19:19.876472+00:00",
   "only_input_for_apex_answers": true,
   "safe_to_act": true,
   "blockers": [],
@@ -12,12 +12,12 @@
     "data quality warning: preseason_evidence: 604 player-match rows; return-stat observation coverage=5.6%",
     "selected-player roles still rely on statistical inference rather than verified authoritative overrides: Virgil, Gu\u00e9hi, Thiaw, Truffert, Kayode, Haaland, Thiago, Neave, Verbruggen, Petrovi\u0107, B.Fernandes, Enzo, Schade, Ndiaye, Drakes-Thomas"
   ],
-  "run_age_hours": 0.14766374166666668,
+  "run_age_hours": 0.120273615,
   "versions": {
     "canonical_contract": "apex-strategy-recommendation-v2",
     "pinnacle_contract": "apex-pinnacle-v3-final",
-    "official_snapshot_id": "20260811T094036Z-6ee7c3cf",
-    "bootstrap_sha256": "6cfd4886b0acdc5e5680cbda9c8873e482df314849a3b0275c0c5d199d324ac1",
+    "official_snapshot_id": "20260811T101206Z-173a73ea",
+    "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
   "source_health": [
@@ -25,120 +25,120 @@
       "name": "official_fpl",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:36.828739+00:00",
-      "age_hours": 0.1476529036111111,
-      "version": "6cfd4886b0ac"
+      "checked_at": "2026-08-11T10:12:06.921180+00:00",
+      "age_hours": 0.12026535888888888,
+      "version": "9139bfde4457"
     },
     {
       "name": "team_state",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:36.959954+00:00",
-      "age_hours": 0.14761645499999998,
+      "checked_at": "2026-08-11T10:12:07.182647+00:00",
+      "age_hours": 0.12019272916666666,
       "version": ""
     },
     {
       "name": "fpl_core_playerstats",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:37.019031+00:00",
-      "age_hours": 0.1476000447222222,
+      "checked_at": "2026-08-11T10:12:07.630994+00:00",
+      "age_hours": 0.12006818833333333,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
     {
       "name": "fpl_core_previous_season",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:37.478318+00:00",
-      "age_hours": 0.14747246500000002,
+      "checked_at": "2026-08-11T10:12:10.414484+00:00",
+      "age_hours": 0.11929499666666667,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
     {
       "name": "fpl_core_preseason",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:37.526813+00:00",
-      "age_hours": 0.1474589941666667,
+      "checked_at": "2026-08-11T10:12:10.853048+00:00",
+      "age_hours": 0.11917317333333333,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
     {
       "name": "tactical_inference",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:37.601565+00:00",
-      "age_hours": 0.14743822972222223,
+      "checked_at": "2026-08-11T10:12:10.909799+00:00",
+      "age_hours": 0.11915740916666667,
       "version": ""
     },
     {
       "name": "manual_availability",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-11T09:40:37.602083+00:00",
-      "age_hours": 0.14743808583333334,
+      "checked_at": "2026-08-11T10:12:10.910167+00:00",
+      "age_hours": 0.11915730694444444,
       "version": ""
     },
     {
       "name": "tactical_roles",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-11T09:40:37.602678+00:00",
-      "age_hours": 0.14743792055555557,
+      "checked_at": "2026-08-11T10:12:10.910646+00:00",
+      "age_hours": 0.11915717388888888,
       "version": ""
     },
     {
       "name": "news_feeds",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:38.397060+00:00",
-      "age_hours": 0.1472172588888889,
+      "checked_at": "2026-08-11T10:12:12.228035+00:00",
+      "age_hours": 0.1187912325,
       "version": ""
     },
     {
       "name": "fpl_core_elo",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:38.845126+00:00",
-      "age_hours": 0.14709279611111112,
+      "checked_at": "2026-08-11T10:12:13.772758+00:00",
+      "age_hours": 0.11836214277777779,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
     {
       "name": "official_team_strength",
       "ok": false,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:38.846903+00:00",
-      "age_hours": 0.1470923025,
-      "version": "6cfd4886b0ac"
+      "checked_at": "2026-08-11T10:12:13.774071+00:00",
+      "age_hours": 0.11836177805555555,
+      "version": "9139bfde4457"
     },
     {
       "name": "understat_team_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:42.406878+00:00",
-      "age_hours": 0.14610342055555556,
+      "checked_at": "2026-08-11T10:12:17.815424+00:00",
+      "age_hours": 0.11723918000000001,
       "version": ""
     },
     {
       "name": "fixture_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:42.406896+00:00",
-      "age_hours": 0.14610341555555556,
+      "checked_at": "2026-08-11T10:12:17.815439+00:00",
+      "age_hours": 0.11723917583333333,
       "version": ""
     },
     {
       "name": "airsenal",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T09:40:43.049579+00:00",
-      "age_hours": 0.1459248925,
+      "checked_at": "2026-08-11T10:12:18.301542+00:00",
+      "age_hours": 0.11710414722222222,
       "version": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717"
     },
     {
       "name": "market_odds",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-11T09:40:43.049977+00:00",
-      "age_hours": 0.14592478194444444,
+      "checked_at": "2026-08-11T10:12:18.301837+00:00",
+      "age_hours": 0.11710406527777778,
       "version": ""
     }
   ],
@@ -1404,9 +1404,9 @@
       },
       "no-haaland": {
         "status": "Optimal",
-        "objective": 313.5644386300388,
+        "objective": 313.56443863003875,
         "mean_points": 316.6332209354133,
-        "lower_tail_cvar": 301.2893094085406,
+        "lower_tail_cvar": 301.28930940854053,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
         "scenario_p10": 305.59787931411654,
@@ -2079,8 +2079,8 @@
         "selected": true,
         "stress_type": "ban_selected",
         "baseline_objective": 319.2526332678,
-        "constrained_objective": 317.2951454378,
-        "objective_regret": 1.95748783,
+        "constrained_objective": 317.2951454377,
+        "objective_regret": 1.9574878301,
         "constrained_status": "Optimal"
       },
       {
@@ -2144,16 +2144,6 @@
         "constrained_status": "Optimal"
       },
       {
-        "player_id": 61,
-        "web_name": "Truffert",
-        "selected": true,
-        "stress_type": "ban_selected",
-        "baseline_objective": 319.2526332678,
-        "constrained_objective": 319.1846464971,
-        "objective_regret": 0.0679867707,
-        "constrained_status": "Optimal"
-      },
-      {
         "player_id": 88,
         "web_name": "Kayode",
         "selected": true,
@@ -2171,6 +2161,16 @@
         "baseline_objective": 319.2526332678,
         "constrained_objective": 319.1846464971,
         "objective_regret": 0.0679867707,
+        "constrained_status": "Optimal"
+      },
+      {
+        "player_id": 61,
+        "web_name": "Truffert",
+        "selected": true,
+        "stress_type": "ban_selected",
+        "baseline_objective": 319.2526332678,
+        "constrained_objective": 319.1846464972,
+        "objective_regret": 0.0679867706,
         "constrained_status": "Optimal"
       },
       {
@@ -2209,8 +2209,8 @@
         "selected": false,
         "stress_type": "force_alternative",
         "baseline_objective": 319.2526332678,
-        "constrained_objective": 316.753495619,
-        "objective_regret": 2.4991376488,
+        "constrained_objective": 316.7534956189,
+        "objective_regret": 2.4991376489,
         "constrained_status": "Optimal"
       },
       {
@@ -2358,8 +2358,8 @@
         508
       ],
       "official_snapshot": {
-        "snapshot_id": "20260811T094036Z-6ee7c3cf",
-        "bootstrap_sha256": "6cfd4886b0acdc5e5680cbda9c8873e482df314849a3b0275c0c5d199d324ac1",
+        "snapshot_id": "20260811T101206Z-173a73ea",
+        "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
       "projection_export_sha256": "9a70cb98a28c6429c6de357d79898b3d34852e83614b74ef8d4c663358c5ef0f"
@@ -2407,16 +2407,16 @@
         "name": "tactical_roles",
         "ok": true,
         "configured": false,
-        "checked_at": "2026-08-11T09:40:37.602678+00:00",
-        "age_hours": 0.14743792055555557,
+        "checked_at": "2026-08-11T10:12:10.910646+00:00",
+        "age_hours": 0.11915717388888888,
         "version": ""
       },
       {
         "name": "news_feeds",
         "ok": true,
         "configured": true,
-        "checked_at": "2026-08-11T09:40:38.397060+00:00",
-        "age_hours": 0.1472172588888889,
+        "checked_at": "2026-08-11T10:12:12.228035+00:00",
+        "age_hours": 0.1187912325,
         "version": ""
       }
     ],
@@ -2443,7 +2443,7 @@
         "projection_confidence": 0.5608529557,
         "tactical_role": "central / defensive defender",
         "role_source": "statistical_inference",
-        "selection_regret": 1.95748783,
+        "selection_regret": 1.9574878301,
         "alternative": null,
         "reason": "Selected by the canonical optimiser on the matched projection surface; the fields above are the reproducible evidence, not a conversational override."
       },
@@ -2469,7 +2469,7 @@
         "projection_confidence": 0.5576503183,
         "tactical_role": "central / defensive defender",
         "role_source": "statistical_inference",
-        "selection_regret": 0.0679867707,
+        "selection_regret": 0.0679867706,
         "alternative": null,
         "reason": "Selected by the canonical optimiser on the matched projection surface; the fields above are the reproducible evidence, not a conversational override."
       },
@@ -2621,7 +2621,7 @@
   "production_result": {
     "selector": "strategy_maximum_ev",
     "selector_reason": "The unrestricted rolling-horizon maximum-EV strategy is the sole production authority; Elite and robustness layers are diagnostics only.",
-    "objective": 319.25263326782476,
+    "objective": 319.25263326782436,
     "squad": [
       {
         "player_id": 356,
@@ -4255,7 +4255,7 @@
       "projection_confidence": 0.5608529557,
       "tactical_role": "central / defensive defender",
       "role_source": "statistical_inference",
-      "selection_regret": 1.95748783,
+      "selection_regret": 1.9574878301,
       "alternative": null,
       "reason": "Selected by the canonical optimiser on the matched projection surface; the fields above are the reproducible evidence, not a conversational override."
     },
@@ -4281,7 +4281,7 @@
       "projection_confidence": 0.5576503183,
       "tactical_role": "central / defensive defender",
       "role_source": "statistical_inference",
-      "selection_regret": 0.0679867707,
+      "selection_regret": 0.0679867706,
       "alternative": null,
       "reason": "Selected by the canonical optimiser on the matched projection surface; the fields above are the reproducible evidence, not a conversational override."
     },

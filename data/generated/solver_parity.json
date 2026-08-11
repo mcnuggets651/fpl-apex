@@ -52,8 +52,8 @@
     508
   ],
   "official_snapshot": {
-    "snapshot_id": "20260811T094036Z-6ee7c3cf",
-    "bootstrap_sha256": "6cfd4886b0acdc5e5680cbda9c8873e482df314849a3b0275c0c5d199d324ac1",
+    "snapshot_id": "20260811T101206Z-173a73ea",
+    "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
   "projection_export_sha256": "9a70cb98a28c6429c6de357d79898b3d34852e83614b74ef8d4c663358c5ef0f"
