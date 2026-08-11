@@ -19,6 +19,14 @@ Historical datasets (including the project's historical match/player layers) sup
 ### Tier 4 — Short-lived evidence
 Official club injury updates, manager press conferences/interviews, confirmed transfers and trusted news feeds inform availability, role and minutes. They are verification inputs rather than the primary selection engine.
 
+Official HTML indexes are followed only to same-host HTTPS article pages. Apex accepts
+publication time and article copy only from structured `Article`/`NewsArticle` metadata;
+retrieval time is never substituted for publication time. Automated player matching uses
+full names where available and rejects ambiguous surnames unless the player's official club
+is named in the article. Lineup, availability, tactical-role and set-piece evidence have
+separate expiry windows. A captain or high-uncertainty starter is decision-grade only with
+an official source or two independent trusted-media sources.
+
 ### Tier 5 — Planned
 Market odds/implied probabilities, improved Bayesian minutes, ownership/EO and price-movement signals may be added only with source validation and benchmark evidence.
 

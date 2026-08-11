@@ -39,6 +39,7 @@ def test_expected_readiness_blocks_reach_canonical_withholding_path():
     readiness_blockers = (
         "zero relevant selected-player evidence rows",
         "published captain lacks current attributable evidence",
+        "published captain lacks official or independently corroborated evidence",
         "high-uncertainty starters lack current attributable evidence",
         "selected-player evidence coverage gate is not ready",
         "deterministic/CVaR unrestricted squads overlap only",

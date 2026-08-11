@@ -687,6 +687,11 @@ def main() -> None:
         "",
         f"Current relevant evidence rows: **{selected_player_evidence['coverage']['relevant_evidence_rows']}**",
         f"Captain covered: **{str(selected_player_evidence['coverage']['captain_has_current_evidence']).lower()}**",
+        "Captain decision-grade: **"
+        + str(
+            selected_player_evidence["coverage"]["captain_has_decision_grade_evidence"]
+        ).lower()
+        + "**",
         "High-uncertainty starters missing evidence: **"
         + str(len(selected_player_evidence['coverage']['high_uncertainty_starters_missing_evidence']))
         + "**",

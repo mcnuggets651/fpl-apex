@@ -95,9 +95,40 @@ _POSITIVE = [
     ),
 ]
 
+_DECISION_CONTEXT = [
+    (
+        re.compile(r"\b(?:on|take|takes|taker|taking|first[- ]choice for) (?:the )?penalt(?:y|ies)\b", re.I),
+        "set_piece",
+        "penalty responsibility evidence",
+    ),
+    (
+        re.compile(r"\b(?:take|takes|taker|taking|on) (?:the )?(?:corners|free[- ]kicks|set pieces)\b", re.I),
+        "set_piece",
+        "set-piece responsibility evidence",
+    ),
+    (
+        re.compile(r"\b(?:play(?:s|ed|ing)?|used) (?:as|at) (?:a |the )?(?:number )?(?:9|10|winger|striker|forward)\b", re.I),
+        "role",
+        "tactical role evidence",
+    ),
+]
+
+EVIDENCE_MAX_AGE_HOURS = {
+    "manager": 72.0,
+    "role": 168.0,
+    "set_piece": 336.0,
+    "availability": 168.0,
+    "transfer": 168.0,
+}
+
 
 def _aliases(row: pd.Series) -> list[str]:
-    vals = [row.get("web_name"), row.get("second_name")]
+    full_name = " ".join(
+        str(row.get(col, "")).strip()
+        for col in ("first_name", "second_name")
+        if pd.notna(row.get(col))
+    ).strip()
+    vals = [full_name, row.get("web_name"), row.get("second_name")]
     aliases = []
     for value in vals:
         if pd.notna(value) and len(str(value).strip()) >= 4:
@@ -115,11 +146,21 @@ def _age_hours(published: str, now: datetime) -> float | None:
         return None
 
 
+def _is_negated(text: str, match: re.Match) -> bool:
+    """Reject simple local negation before a risk phrase.
+
+    This is deliberately narrow; unclear prose is retained as audit-only rather
+    than using broad sentiment inference to alter minutes.
+    """
+    prefix = text[max(0, match.start() - 24) : match.start()]
+    return bool(re.search(r"\b(?:not|isn't|wasn't|no longer)\s+$", prefix, re.I))
+
+
 def infer_news_signals(
     players: pd.DataFrame,
     items: list[NewsItem],
     *,
-    max_age_hours: float = 120.0,
+    max_age_hours: float | None = None,
     now: datetime | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Map fresh trusted/official headlines to players conservatively.
@@ -170,6 +211,10 @@ def infer_news_signals(
         return pd.DataFrame(columns=signal_columns), pd.DataFrame(columns=audit_columns)
 
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    alias_owners: dict[str, set[int]] = {}
+    for _, player in players.iterrows():
+        for alias in _aliases(player):
+            alias_owners.setdefault(alias.casefold(), set()).add(int(player["player_id"]))
     audit: list[dict] = []
     for _, player in players.iterrows():
         aliases = _aliases(player)
@@ -180,15 +225,25 @@ def infer_news_signals(
             title = item.title or ""
             summary = re.sub(r"<[^>]+>", " ", item.summary or "")
             evidence_text = " ".join((title, summary))
-            if not any(
-                re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", evidence_text, re.I)
-                for alias in aliases
-            ):
+            matched_aliases = [
+                alias for alias in aliases
+                if re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", evidence_text, re.I)
+            ]
+            if not matched_aliases:
                 continue
+
+            unambiguous = any(len(alias_owners[alias.casefold()]) == 1 for alias in matched_aliases)
+            if not unambiguous:
+                team_name = str(player.get("team_name") or "").strip()
+                unambiguous = bool(
+                    team_name
+                    and re.search(rf"(?<!\w){re.escape(team_name)}(?!\w)", evidence_text, re.I)
+                )
 
             multiplier, reason, event_type = 1.0, "name mention", "general"
             for regex, value, label, kind in _NEGATIVE:
-                if regex.search(evidence_text):
+                match = regex.search(evidence_text)
+                if match and not _is_negated(evidence_text, match):
                     multiplier, reason, event_type = value, label, kind
                     break
             if multiplier == 1.0 and event_type == "general":
@@ -196,14 +251,25 @@ def infer_news_signals(
                     if regex.search(evidence_text):
                         multiplier, reason, event_type = value, label, kind
                         break
+            if multiplier == 1.0 and event_type == "general":
+                for regex, kind, label in _DECISION_CONTEXT:
+                    if regex.search(evidence_text):
+                        event_type, reason = kind, label
+                        break
 
             tier = str(item.source_tier or "unknown")
             ineligible = ""
             if tier not in TRUSTED_SOURCE_TIERS:
                 ineligible = "untrusted_or_unclassified_source_tier"
+            elif not unambiguous:
+                ineligible = "ambiguous_player_identity"
             elif age is None:
                 ineligible = "unknown_publication_time"
-            elif age > max_age_hours:
+            elif age > (
+                min(max_age_hours, EVIDENCE_MAX_AGE_HOURS.get(event_type, max_age_hours))
+                if max_age_hours is not None
+                else EVIDENCE_MAX_AGE_HOURS.get(event_type, 120.0)
+            ):
                 ineligible = "expired_publication"
             elif not str(item.link or "").startswith(("https://", "http://")):
                 ineligible = "missing_verifiable_source_url"

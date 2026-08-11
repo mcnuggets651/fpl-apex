@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
+import json
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 import xml.etree.ElementTree as ET
@@ -148,13 +149,22 @@ class _OfficialNewsHTMLParser(HTMLParser):
         self.current_href: str | None = None
         self.current_text: list[str] = []
         self.items: list[tuple[str, str]] = []
+        self._json_ld = False
+        self._json_ld_text: list[str] = []
+        self.articles: list[dict] = []
 
     @staticmethod
     def _article_href(href: str) -> bool:
         path = urlparse(href).path.casefold()
-        return "/news/" in path or "/en/news/" in path
+        return any(token in path for token in ("/news/", "/article/", "/articles/"))
 
     def handle_starttag(self, tag: str, attrs):
+        if tag.casefold() == "script":
+            attr = {str(k).casefold(): v for k, v in attrs}
+            if str(attr.get("type", "")).casefold() == "application/ld+json":
+                self._json_ld = True
+                self._json_ld_text = []
+            return
         if tag.casefold() != "a":
             return
         attr = dict(attrs)
@@ -164,12 +174,34 @@ class _OfficialNewsHTMLParser(HTMLParser):
             self.current_text = []
 
     def handle_data(self, data: str):
+        if self._json_ld:
+            self._json_ld_text.append(data)
+            return
         if self.current_href:
             text = " ".join(data.split())
             if text:
                 self.current_text.append(text)
 
     def handle_endtag(self, tag: str):
+        if tag.casefold() == "script" and self._json_ld:
+            self._json_ld = False
+            try:
+                payload = json.loads("".join(self._json_ld_text))
+                nodes = payload.get("@graph", []) if isinstance(payload, dict) else payload
+                if isinstance(nodes, dict):
+                    nodes = [nodes]
+                if isinstance(payload, dict) and not nodes:
+                    nodes = [payload]
+                for node in nodes if isinstance(nodes, list) else []:
+                    kinds = node.get("@type", []) if isinstance(node, dict) else []
+                    if isinstance(kinds, str):
+                        kinds = [kinds]
+                    if any(kind in {"Article", "NewsArticle", "ReportageNewsArticle"} for kind in kinds):
+                        self.articles.append(node)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            self._json_ld_text = []
+            return
         if tag.casefold() == "a" and self.current_href:
             title = " ".join(self.current_text).strip()
             if len(title) >= 12:
@@ -261,6 +293,20 @@ def _parse_html(
     )
     seen: set[tuple[str, str]] = set()
     items: list[NewsItem] = []
+    for article in parser.articles:
+        title = str(article.get("headline") or article.get("name") or "").strip()
+        link_value = article.get("url") or article.get("mainEntityOfPage") or url
+        if isinstance(link_value, dict):
+            link_value = link_value.get("@id") or link_value.get("url") or url
+        link = urljoin(url, str(link_value))
+        published = article.get("datePublished") or article.get("dateCreated")
+        summary = article.get("articleBody") or article.get("description") or ""
+        if title and published:
+            key = (title.casefold(), link)
+            seen.add(key)
+            items.append(
+                NewsItem(title, source, str(published), link, source_tier, retrieved_at, str(summary))
+            )
     for title, link in parser.items:
         key = (title.casefold(), link)
         if key in seen:
@@ -361,6 +407,42 @@ def collect_news_sources(sources: list[str | NewsSource | dict]) -> NewsCollecti
                 source_tier=source.tier,
                 retrieved_at=retrieved_at,
             )
+            # Official index pages often expose article links but not publication
+            # timestamps. Hydrate a bounded number of those links and accept only
+            # structured Article metadata from the destination page.
+            if "html" in response.headers.get("content-type", "").casefold():
+                hydrated: list[NewsItem] = []
+                for candidate in [row for row in parsed if row.published is None][:30]:
+                    candidate_url = urlparse(candidate.link)
+                    source_url = urlparse(url)
+                    if (
+                        candidate_url.scheme != "https"
+                        or candidate_url.netloc.casefold() != source_url.netloc.casefold()
+                    ):
+                        continue
+                    try:
+                        article_response = requests.get(
+                            candidate.link,
+                            timeout=20,
+                            headers={"User-Agent": "apex-fpl/0.1"},
+                        )
+                        article_response.raise_for_status()
+                        hydrated.extend(
+                            row
+                            for row in parse_news_document(
+                                article_response.content,
+                                candidate.link,
+                                article_response.headers.get("content-type", "text/html"),
+                                source_name=source.name,
+                                source_tier=source.tier,
+                                retrieved_at=retrieved_at,
+                            )
+                            if row.published is not None
+                        )
+                    except Exception:
+                        continue
+                parsed.extend(hydrated)
+                parsed.sort(key=lambda row: row.published is None)
             succeeded.append(url)
             for item in parsed:
                 key = (item.title.casefold().strip(), item.link)

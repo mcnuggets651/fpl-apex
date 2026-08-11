@@ -1,0 +1,17 @@
+{
+  "contract": "apex-decision-grade-ingestion-audit-v1",
+  "evaluated_at": "2026-08-11T13:51:14+00:00",
+  "base_commit": "4d2fa5764c3b60f188a2bbc81c51b61cf18d9fbd",
+  "configured_sources": 3,
+  "responsive_sources": 3,
+  "failed_sources": 0,
+  "collected_items": 81,
+  "items_with_publication_time": 80,
+  "player_matches": 26,
+  "decision_eligible_rows": 0,
+  "projection_signal_players": 0,
+  "result": "blocked_no_current_decision_relevant_evidence",
+  "interpretation": "Source transport and publication metadata are healthy, but the current general-news surface contains no fresh attributable lineup, availability, role or set-piece statement. Production readiness must remain withheld until qualifying deadline evidence exists.",
+  "promotion_effect": "none",
+  "readiness_floor_lowered": false
+}

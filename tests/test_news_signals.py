@@ -176,3 +176,68 @@ def test_long_term_contract_is_not_misclassified_as_long_term_injury():
     assert signal.empty
     assert audit.iloc[0]["evidence_type"] == "general"
     assert audit.iloc[0]["ineligibility_reason"] == "no_decision_relevant_evidence"
+
+
+def test_ambiguous_surname_requires_full_name_or_club_context():
+    players = pd.DataFrame(
+        [
+            {"player_id": 70, "first_name": "Alex", "second_name": "Smith", "web_name": "Smith", "team_name": "North FC"},
+            {"player_id": 71, "first_name": "Ben", "second_name": "Smith", "web_name": "Smith", "team_name": "South FC"},
+        ]
+    )
+    item = NewsItem(
+        title="Manager confirms Smith will start",
+        source="Trusted",
+        source_tier="trusted_media",
+        published="2026-08-11T07:00:00+00:00",
+        link="https://example.test/story",
+    )
+    signal, audit = infer_news_signals(
+        players, [item], now=datetime(2026, 8, 11, 8, tzinfo=timezone.utc)
+    )
+    assert signal.empty
+    assert set(audit["ineligibility_reason"]) == {"ambiguous_player_identity"}
+
+    item.title = "North FC manager confirms Smith will start"
+    signal, _ = infer_news_signals(
+        players, [item], now=datetime(2026, 8, 11, 8, tzinfo=timezone.utc)
+    )
+    assert signal["player_id"].tolist() == [70]
+
+
+def test_typed_set_piece_and_role_evidence_is_decision_eligible():
+    players = pd.DataFrame(
+        [{"player_id": 80, "first_name": "Role", "second_name": "Player", "web_name": "Player"}]
+    )
+    items = [
+        NewsItem(
+            title="Role Player is on penalties and playing as a number 10",
+            source="Official club",
+            source_tier="official_club",
+            published="2026-08-06T08:00:00+00:00",
+            link="https://example.test/role",
+        )
+    ]
+    signal, audit = infer_news_signals(
+        players, items, now=datetime(2026, 8, 11, 8, tzinfo=timezone.utc)
+    )
+    assert signal.iloc[0]["news_event_type"] == "set_piece"
+    assert audit.iloc[0]["eligible_for_projection"] == True  # noqa: E712
+
+
+def test_negated_injury_phrase_cannot_reduce_minutes():
+    players = pd.DataFrame(
+        [{"player_id": 81, "first_name": "Fit", "second_name": "Player", "web_name": "Player"}]
+    )
+    item = NewsItem(
+        title="Manager confirms Fit Player is not injured and will start",
+        source="Official club",
+        source_tier="official_club",
+        published="2026-08-11T07:00:00+00:00",
+        link="https://example.test/fitness",
+    )
+    signal, _ = infer_news_signals(
+        players, [item], now=datetime(2026, 8, 11, 8, tzinfo=timezone.utc)
+    )
+    assert signal.iloc[0]["news_multiplier"] == 1.0
+    assert signal.iloc[0]["news_event_type"] == "manager"
