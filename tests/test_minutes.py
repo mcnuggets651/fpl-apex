@@ -59,3 +59,66 @@ def test_current_matches_gradually_override_prior_season():
     )
     out = minutes_profile(df)
     assert out.loc[1, "start_probability"] < out.loc[0, "start_probability"]
+
+
+def test_repeated_preseason_starts_supersede_stale_squad_role():
+    df = pd.DataFrame(
+        [
+            {
+                "minutes": 0,
+                "starts": 0,
+                "previous_minutes": 300,
+                "previous_starts": 2,
+                "previous_minutes_per_match": 300 / 38,
+                "previous_start_probability": 2 / 38,
+                "preseason_minutes": 315,
+                "preseason_starts": 4,
+                "preseason_appearances": 4,
+                "status": "a",
+            },
+            {
+                "minutes": 0,
+                "starts": 0,
+                "previous_minutes": 300,
+                "previous_starts": 2,
+                "previous_minutes_per_match": 300 / 38,
+                "previous_start_probability": 2 / 38,
+                "preseason_minutes": 20,
+                "preseason_starts": 0,
+                "preseason_appearances": 1,
+                "status": "a",
+            },
+        ]
+    )
+    out = minutes_profile(df)
+    assert out.loc[0, "start_probability"] > 0.80
+    assert out.loc[0, "expected_minutes"] > 65
+    assert out.loc[0, "expected_minutes"] > out.loc[1, "expected_minutes"]
+
+
+def test_verified_lineup_override_replaces_role_prior_but_not_injury_status():
+    base = {
+        "minutes": 0,
+        "starts": 0,
+        "previous_minutes": 300,
+        "previous_starts": 2,
+        "previous_minutes_per_match": 300 / 38,
+        "previous_start_probability": 2 / 38,
+        "expected_minutes_override": 78,
+        "start_probability_override": 0.88,
+        "appearance_probability_override": 0.96,
+        "minutes_evidence_confidence": 0.90,
+    }
+    df = pd.DataFrame(
+        [
+            {**base, "status": "a"},
+            {**base, "status": "i"},
+        ]
+    )
+    out = minutes_profile(df)
+    assert out.loc[0, "expected_minutes"] == 78
+    assert out.loc[0, "start_probability"] == 0.88
+    assert out.loc[0, "appearance_probability"] == 0.96
+    assert out.loc[0, "minutes_confidence"] >= 0.90
+    assert out.loc[1, "expected_minutes"] < 5
+    assert out.loc[1, "start_probability"] < 0.05

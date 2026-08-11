@@ -25,8 +25,10 @@ Expected minutes is a first-class model input rather than a simple historic aver
 - manual and news availability multipliers
 - start, appearance, 60+ and 80+ probabilities
 - an explicit minutes-confidence score
+- evidence-volume weighting that lets repeated preseason starts supersede stale prior roles
+- optional verified deadline overrides for expected minutes, start probability, appearance probability and evidence confidence
 
-Minutes can be calibrated further, but it already has an independent modelling layer and directly scales attacking, clean-sheet, save and DEFCON expectation.
+Official injury, suspension and negative availability evidence remains a hard ceiling after any upside override. Minutes can be calibrated further, but it already has an independent modelling layer and directly scales attacking, clean-sheet, save and DEFCON expectation.
 
 ## Player attacking rates
 The transparent player model currently uses direct player rates such as xG90/xA90 and blends preseason observations according to preseason minutes. This is preferable to allocating team xG by a single historical player share, but it still has a small-sample weakness.

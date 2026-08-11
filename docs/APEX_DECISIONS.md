@@ -82,3 +82,7 @@ A replay decision may consume only immutable inputs proven available before its 
 
 ## D027 — Stateful rules are season-versioned
 Free-transfer initialization, special top-ups, chip windows and other state transitions belong to an explicit `SeasonRules` contract. Historical replay must never inherit a later season's rules silently. Before GW1 the initial squad has unlimited changes but zero bankable FTs; the first FT is available for GW2.
+
+
+## D028 — Current role evidence supersedes stale minutes priors
+The maximum-EV optimiser remains unchanged: it already maximises canonical raw xP. The conservative selection bias was traced to expected-minutes construction, where a fixed preseason blend could leave repeated current team-sheet evidence dominated by a prior-season role that no longer applied. Preseason weight now rises with repeated appearances and starts, capped at 82%, and verified deadline evidence may explicitly override expected minutes/start/appearance probabilities. Official injury, suspension and negative availability evidence is applied after those upside signals and remains a hard ceiling. Confidence and CVaR remain diagnostics; they do not discount canonical xP a second time.
