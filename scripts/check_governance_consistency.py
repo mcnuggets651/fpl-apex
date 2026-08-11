@@ -28,7 +28,7 @@ def main() -> None:
         failures.append("production workflow does not publish apex_answer_context.json")
     if "scripts/build_decision_bundle.py" not in workflow:
         failures.append("production workflow does not seal a decision bundle")
-    if "data/generated/decision_bundle/" not in workflow:
+    if "data/generated/decision_bundle" not in workflow:
         failures.append("production workflow does not retain the decision bundle artifact")
     for script_name in ("scripts/run_pinnacle.py", "scripts/run_elite.py"):
         script = Path(script_name).read_text(encoding="utf-8")

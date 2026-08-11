@@ -158,6 +158,7 @@ def main() -> None:
         budget=float(settings["budget"]),
         max_per_team=int(settings["max_per_team"]),
         decay=float(settings["fixture_decay"]),
+        bench_weight=float(settings["approximate_bench_weight"]),
         captain_eligible=captain_eligible,
     )
 

@@ -106,17 +106,17 @@ def project_players(
         premins = _num(d, "preseason_minutes", 0)
         xg90 = _blend_rate(
             _num(d, "expected_goals_per_90", 0),
-            _num(d, "preseason_xg90", 0),
+            _optional_num(d, "preseason_xg90"),
             premins,
         )
         xa90 = _blend_rate(
             _num(d, "expected_assists_per_90", 0),
-            _num(d, "preseason_xa90", 0),
+            _optional_num(d, "preseason_xa90"),
             premins,
         )
         dc90 = _blend_rate(
             _num(d, "defensive_contribution_per_90", 0),
-            _num(d, "preseason_defcon90", 0),
+            _optional_num(d, "preseason_defcon90"),
             premins,
         )
         pos = d["position"].fillna("MID")

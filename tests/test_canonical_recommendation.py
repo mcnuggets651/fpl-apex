@@ -63,6 +63,7 @@ def _pinnacle(bootstrap: str = "boot", fixtures: str = "fix") -> dict:
         "full_apex_ready": True,
         "pinnacle_ready": True,
         "pinnacle_gate": {"ready": True, "blockers": []},
+        "decision_bundle_id": "bundle-test",
         "official_snapshot": {
             "snapshot_id": "pinnacle-run-id",
             "retrieved_at": now,
@@ -85,6 +86,7 @@ def _pinnacle(bootstrap: str = "boot", fixtures: str = "fix") -> dict:
         "selection_regret": [{"player_id": row["player_id"], "regret": 1.0} for row in _rows()],
         "solver_parity": {
             "comparison_surface": "pinnacle_ev",
+            "decision_bundle_id": "bundle-test",
             "official_snapshot": {
                 "bootstrap_sha256": bootstrap,
                 "fixtures_sha256": fixtures,
@@ -99,6 +101,7 @@ def _elite(converged: bool, bootstrap: str = "boot", fixtures: str = "fix") -> d
         "contract": "elite-test",
         "safe_to_act": True,
         "full_apex_ready": True,
+        "decision_bundle_id": "bundle-test",
         "official_snapshot": {
             "snapshot_id": "elite-run-id",
             "bootstrap_sha256": bootstrap,

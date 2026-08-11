@@ -37,7 +37,7 @@ DECISION_SETTING_FIELDS = (
     "fixture_decay",
     "risk_penalty",
     "weights",
-    "bench_weights",
+    "approximate_bench_weight",
     "fpl_entry_id",
     "required_sources",
     "max_official_age_hours",
@@ -132,6 +132,7 @@ def _solution_payload(solution: SquadSolution) -> dict[str, Any]:
         "captain": _records(solution.captain),
         "vice_captain": _records(solution.vice_captain),
         "bench": _records(solution.bench),
+        "solver": solution.solver,
     }
 
 
@@ -144,6 +145,7 @@ def _solution_from_payload(payload: dict[str, Any]) -> SquadSolution:
         captain=pd.DataFrame(payload.get("captain") or []),
         vice_captain=pd.DataFrame(payload.get("vice_captain") or []),
         bench=pd.DataFrame(payload.get("bench") or []),
+        solver=dict(payload.get("solver") or {}),
     )
 
 

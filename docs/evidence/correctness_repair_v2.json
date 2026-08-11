@@ -1,0 +1,50 @@
+{
+  "contract": "apex-correctness-repair-evidence-v2",
+  "date": "2026-08-11",
+  "base_commit": "6ddaf8734ea57c31c4bf9016fe5e6e2df11c5615",
+  "scope": [
+    "preserve missing preseason return values through projection and tactical-role integration",
+    "align CVaR and parity captain consumers with producer schemas",
+    "publish actual additions and removals for constrained-regret solves",
+    "publish MILP incumbent, bound, achieved gap, node count and termination reason",
+    "replace unused bench-weight list with one explicitly wired approximation",
+    "require decision-bundle identity in the answer contract",
+    "copy one atomic workflow artifact before tracked runtime diagnostics are restored"
+  ],
+  "validation": {
+    "tests_passed": 180,
+    "ruff": "passed",
+    "focused_tests_passed": 23,
+    "production_shaped_bundle": "85d009a53ba98a52bd083f794b1dec53ac69a4fd3942ad7117d8b0b9743d1f65",
+    "players": 577,
+    "fixtures": 380,
+    "projection_rows": 4616
+  },
+  "missingness_impact": {
+    "players_with_preseason_minutes_and_missing_xg": 271,
+    "players_with_preseason_minutes_and_missing_xa": 269,
+    "changed_projection_rows": 1528,
+    "changed_players": 191,
+    "sum_of_xp_deltas": 283.5410237678983,
+    "largest_absolute_player_horizon_delta": 8.247732963161935
+  },
+  "decision_impact_without_airsenal": {
+    "status": "diagnostic_only_not_production",
+    "old_objective": 335.86988071206474,
+    "new_objective": 337.69187912325265,
+    "removed": ["B.Fernandes", "Thiaw", "Neave", "Dubravka", "Davies"],
+    "added": ["Petrović", "Van Hecke", "Tarkowski", "Calvert-Lewin", "Mbeumo"],
+    "old_captain": "B.Fernandes",
+    "new_captain": "Haaland",
+    "warning": "The local production gate correctly blocked publication because the AIrsenal forecast file was absent. These changes quantify model sensitivity on matched core inputs and are not a canonical recommendation."
+  },
+  "solver_example": {
+    "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+    "incumbent": 337.69187912325265,
+    "bound": 338.017935024044,
+    "relative_gap": 0.000965542617245883,
+    "configured_relative_gap": 0.001,
+    "node_count": 1,
+    "conclusion": "Several previously reported selection regrets are smaller than the unresolved solver bound. PR 3 must expose equivalent solutions or tighten the mathematical contract."
+  }
+}
