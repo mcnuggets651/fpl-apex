@@ -199,6 +199,8 @@ def main() -> None:
             dict.fromkeys([*payload["blockers"], *answer_context["blockers"]])
         )
         answer_context = build_answer_context(payload, pinnacle)
+    ready = bool(answer_context["safe_to_act"])
+    blockers = list(payload["blockers"])
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     (output_dir / "apex_answer_context.json").write_text(
         json.dumps(answer_context, indent=2), encoding="utf-8"
