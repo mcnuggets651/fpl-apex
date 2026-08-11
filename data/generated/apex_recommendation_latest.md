@@ -1,7 +1,7 @@
 # Apex Unified Recommendation
 
-Generated: 2026-08-11T08:51:04.204762+00:00
-Official surface: `9983377a521e` / `a478e20d030d`
+Generated: 2026-08-11T09:49:28.379116+00:00
+Official surface: `6cfd4886b0ac` / `a478e20d030d`
 Canonical selector: **strategy_maximum_ev**
 Reason: The unrestricted rolling-horizon maximum-EV strategy is the sole production authority; Elite and robustness layers are diagnostics only.
 
@@ -9,7 +9,7 @@ Reason: The unrestricted rolling-horizon maximum-EV strategy is the sole product
 
 Captain: **Haaland**
 Vice-captain: **B.Fernandes**
-Expected total with exact mechanics: **52.28**
+Expected total with exact mechanics: **51.42**
 
 ### Starting XI
 
@@ -21,11 +21,11 @@ Expected total with exact mechanics: **52.28**
 | Guéhi | Man City | DEF | 6.0 | 4.05 |
 | Enzo | Chelsea | MID | 7.0 | 3.96 |
 | Virgil | Liverpool | DEF | 6.5 | 3.88 |
-| O'Reilly | Man City | DEF | 6.5 | 3.87 |
 | Schade | Brentford | MID | 6.0 | 3.77 |
 | Verbruggen | Brighton | GK | 4.5 | 3.48 |
 | Ndiaye | Everton | MID | 6.0 | 3.46 |
 | Thiaw | Newcastle | DEF | 5.0 | 3.38 |
+| Kayode | Brentford | DEF | 4.5 | 3.19 |
 
 ### Full 15
 
@@ -33,22 +33,22 @@ Expected total with exact mechanics: **52.28**
 |:--|:--|:--:|--:|--:|
 | Virgil | Liverpool | DEF | 6.5 | 3.88 |
 | Guéhi | Man City | DEF | 6.0 | 4.05 |
-| O'Reilly | Man City | DEF | 6.5 | 3.87 |
 | Thiaw | Newcastle | DEF | 5.0 | 3.38 |
-| A.Murphy | Newcastle | DEF | 4.0 | 2.04 |
+| Truffert | Bournemouth | DEF | 5.5 | 3.03 |
+| Kayode | Brentford | DEF | 4.5 | 3.19 |
 | Haaland | Man City | FWD | 15.5 | 5.43 |
 | Thiago | Brentford | FWD | 8.0 | 4.53 |
-| Neave | Newcastle | FWD | 4.5 | 1.58 |
+| Neave | Newcastle | FWD | 4.5 | 1.29 |
 | Verbruggen | Brighton | GK | 4.5 | 3.48 |
-| Dubravka | Spurs | GK | 4.0 | 1.73 |
+| Petrović | Bournemouth | GK | 4.5 | 3.11 |
 | B.Fernandes | Man Utd | MID | 12.0 | 5.45 |
 | Enzo | Chelsea | MID | 7.0 | 3.96 |
 | Schade | Brentford | MID | 6.0 | 3.77 |
 | Ndiaye | Everton | MID | 6.0 | 3.46 |
-| Drakes-Thomas | Crystal Palace | MID | 4.5 | 2.14 |
+| Drakes-Thomas | Crystal Palace | MID | 4.5 | 1.58 |
 
-Bench GK: **Dubravka**
-Outfield bench: **A.Murphy → Drakes-Thomas → Neave**
+Bench GK: **Petrović**
+Outfield bench: **Truffert → Drakes-Thomas → Neave**
 
 ## Canonical rule
 
