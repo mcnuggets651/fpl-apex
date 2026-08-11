@@ -7,6 +7,16 @@
   "ensemble_metrics": {},
   "candidate_calibration": null,
   "holdout_validation": null,
+  "cohort_metrics": {},
+  "uncertainty_diagnostics": {},
+  "source_ablation": {},
+  "promotion_gate": {
+    "status": "blocked_insufficient_history",
+    "promote": false,
+    "reasons": [
+      "no completed genuine pre-deadline Gameweeks"
+    ]
+  },
   "auto_promoted": false,
   "note": "No completed deadline forecasts exist yet. Learning starts only from genuine pre-deadline forecasts and official outcomes."
 }

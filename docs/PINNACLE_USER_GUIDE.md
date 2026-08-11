@@ -172,9 +172,9 @@ Optional environment variables:
 
 No pre-season model can train against future 2026/27 outcomes that do not yet exist. Pinnacle does not invent that evidence.
 
-Within 30 hours of each deadline, the scheduled green run writes/refreshes the target Gameweek archive. Once Official FPL marks the Gameweek finished, the archive is completed with official points. `calibration_report.json` then reports expert error/rank metrics, a constrained candidate ensemble calibration once enough data exists, and a latest-GW walk-forward holdout check.
+Within 30 hours of each deadline, the scheduled green run writes/refreshes the target Gameweek archive. Once Official FPL marks the Gameweek finished, the archive is completed with official points. `calibration_report.json` then reports expert error/rank metrics, position/minutes cohorts, uncertainty coverage, a constrained candidate ensemble, expanding-window chronological holdouts, Gameweek-block bootstrap confidence and refitted leave-one-source-out ablations. Forecasts timestamped at or after the deadline are rejected.
 
-Weights are **not auto-promoted from one lucky sample**. Calibration remains advisory until repeated genuine out-of-sample holdouts establish a stable improvement. The same standard applies to covariance coefficients, which begin as transparent priors and can be validated as 2026/27 evidence accumulates.
+Weights are **never auto-promoted**. Calibration remains advisory until at least eight completed Gameweeks and 200 active player rows produce repeated genuine out-of-sample improvement with adequate block-bootstrap confidence. Even then, weights change only in a separate reviewed promotion PR. The same standard applies to covariance coefficients, which begin as transparent priors and can be validated as 2026/27 evidence accumulates.
 
 ## Interpretation standard
 

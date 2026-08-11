@@ -1,0 +1,33 @@
+{
+  "as_of": "2026-08-11",
+  "production_base": "203230bcd69599b5de032c9c2fd7c81cc41b7378",
+  "purpose": "Projection calibration and expert source-ablation promotion contract",
+  "archive_state": {
+    "completed_gameweeks": 0,
+    "active_rows": 0,
+    "interpretation": "The 2026/27 season has no completed genuine pre-deadline forecast outcomes yet."
+  },
+  "implemented_evidence": [
+    "strict forecast timestamp before deadline validation",
+    "MAE, RMSE, bias and rank correlation overall and by position/minutes cohort",
+    "declared 50%, 80% and 95% predictive-interval coverage",
+    "non-negative regularised expert weights",
+    "expanding-window chronological Gameweek holdouts",
+    "Gameweek-block bootstrap confidence",
+    "refitted leave-one-expert-out ablation"
+  ],
+  "promotion": {
+    "status": "blocked_insufficient_history",
+    "production_weights_changed": false,
+    "auto_promotion_allowed": false,
+    "minimum_completed_gameweeks": 8,
+    "minimum_active_rows": 200,
+    "next_action": "Accumulate official post-Gameweek outcomes for sealed pre-deadline forecasts; review any eligible challenger in a separate PR."
+  },
+  "verification": {
+    "tests_passed": 201,
+    "ruff": "passed",
+    "governance": "passed",
+    "upstream_pins": "7 of 7 passed"
+  }
+}

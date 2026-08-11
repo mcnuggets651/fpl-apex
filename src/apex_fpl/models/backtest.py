@@ -15,6 +15,19 @@ class BacktestMetrics:
     rank_correlation: float
 
 
+@dataclass(frozen=True)
+class BootstrapDifference:
+    """Gameweek-block bootstrap for candidate-minus-baseline error."""
+
+    metric: str
+    blocks: int
+    samples: int
+    mean_difference: float
+    lower_95: float
+    upper_95: float
+    probability_improves: float
+
+
 @dataclass
 class WeightCalibration:
     weights: dict[str, float]
@@ -38,6 +51,82 @@ def score_predictions(
         rmse=float(np.sqrt(np.mean(err**2))),
         bias=float(np.mean(err)),
         rank_correlation=float(d[prediction_col].rank().corr(d[actual_col].rank())),
+    )
+
+
+def interval_diagnostics(
+    df: pd.DataFrame,
+    *,
+    prediction_col: str = "xp",
+    sd_col: str = "projection_sd",
+    actual_col: str = "event_points",
+) -> dict[str, float]:
+    """Score the declared normal predictive scale without fitting it in place."""
+    required = [prediction_col, sd_col, actual_col]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise ValueError(f"interval diagnostics missing columns: {missing}")
+    d = df[required].apply(pd.to_numeric, errors="coerce").dropna()
+    d = d[d[sd_col] > 0].copy()
+    if d.empty:
+        return {"rows": 0, "coverage_50": float("nan"), "coverage_80": float("nan"),
+                "coverage_95": float("nan"), "standardised_rmse": float("nan")}
+    z = np.abs((d[actual_col] - d[prediction_col]) / d[sd_col])
+    return {
+        "rows": int(len(d)),
+        "coverage_50": float(np.mean(z <= 0.67448975)),
+        "coverage_80": float(np.mean(z <= 1.28155157)),
+        "coverage_95": float(np.mean(z <= 1.95996398)),
+        "standardised_rmse": float(np.sqrt(np.mean(np.square(z)))),
+    }
+
+
+def gameweek_block_bootstrap(
+    df: pd.DataFrame,
+    *,
+    candidate_col: str,
+    baseline_col: str,
+    actual_col: str = "event_points",
+    block_col: str = "gw",
+    metric: str = "rmse",
+    samples: int = 2000,
+    seed: int = 20260811,
+) -> BootstrapDifference:
+    """Compare forecasts while preserving within-Gameweek outcome correlation."""
+    if metric not in {"rmse", "mae"}:
+        raise ValueError("bootstrap metric must be 'rmse' or 'mae'")
+    required = [candidate_col, baseline_col, actual_col, block_col]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise ValueError(f"bootstrap file missing columns: {missing}")
+    d = df[required].copy()
+    for col in [candidate_col, baseline_col, actual_col]:
+        d[col] = pd.to_numeric(d[col], errors="coerce")
+    d = d.dropna()
+    blocks = list(d[block_col].unique())
+    if len(blocks) < 2:
+        raise ValueError("at least two complete Gameweek blocks are required")
+
+    def loss(frame: pd.DataFrame, col: str) -> float:
+        error = frame[col].to_numpy(float) - frame[actual_col].to_numpy(float)
+        return float(np.sqrt(np.mean(error**2))) if metric == "rmse" else float(np.mean(np.abs(error)))
+
+    observed = loss(d, candidate_col) - loss(d, baseline_col)
+    rng = np.random.default_rng(seed)
+    differences = np.empty(int(samples), dtype=float)
+    grouped = {block: d[d[block_col] == block] for block in blocks}
+    for idx in range(int(samples)):
+        chosen = rng.choice(blocks, size=len(blocks), replace=True)
+        sample = pd.concat([grouped[block] for block in chosen], ignore_index=True)
+        differences[idx] = loss(sample, candidate_col) - loss(sample, baseline_col)
+    return BootstrapDifference(
+        metric=metric,
+        blocks=len(blocks),
+        samples=int(samples),
+        mean_difference=float(observed),
+        lower_95=float(np.quantile(differences, 0.025)),
+        upper_95=float(np.quantile(differences, 0.975)),
+        probability_improves=float(np.mean(differences < 0)),
     )
 
 
