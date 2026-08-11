@@ -1,17 +1,170 @@
 {
   "contract": "apex-strategy-recommendation-v2",
-  "generated_at": "2026-08-11T10:19:19.876421+00:00",
+  "generated_at": "2026-08-11T10:47:40.156473+00:00",
   "canonical": true,
   "user_facing_source_of_truth": true,
   "ready_to_act": true,
   "blockers": [],
   "official_snapshot": {
-    "snapshot_id": "20260811T101206Z-173a73ea",
-    "retrieved_at": "2026-08-11T10:12:06.891458+00:00",
+    "snapshot_id": "20260811T104729Z-272993b6",
+    "retrieved_at": "2026-08-11T10:47:29.516495+00:00",
     "players": 577,
     "fixtures": 380,
-    "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
+    "bootstrap_sha256": "0372e62a9153b70261a0c7d06a87703c09233e5f6fc01697d45b5b9711e0cca8",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
+  },
+  "decision_bundle_id": "33c6cdf462d105859450e7634b258b3342602539db93df3558d4981d2d4d8862",
+  "decision_bundle": {
+    "contract": "apex-decision-bundle-v1",
+    "bundle_id": "33c6cdf462d105859450e7634b258b3342602539db93df3558d4981d2d4d8862",
+    "created_at": "2026-08-11T10:47:40.156473+00:00",
+    "git_commit": "6ddaf8734ea57c31c4bf9016fe5e6e2df11c5615",
+    "material_code_dirty": false,
+    "source_tree_sha256": "d0c88a45d99aa64e9975fd0e79464cf77235fe5aeaee9f6eb5a6b2350b5fbf63",
+    "configuration_sha256": "88864ced139602cc7245d10b6de4f9d61722b435589e71a536944dd51ceff06a",
+    "settings_sha256": "7baa1c1df5a12529954ab81e23f3e647029333802c2a784222f4a71ff8b5e635",
+    "gameweeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "official_snapshot": {
+      "snapshot_id": "20260811T104729Z-272993b6",
+      "retrieved_at": "2026-08-11T10:47:29.516495+00:00",
+      "players": 577,
+      "fixtures": 380,
+      "bootstrap_sha256": "0372e62a9153b70261a0c7d06a87703c09233e5f6fc01697d45b5b9711e0cca8",
+      "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
+    },
+    "upstreams": {
+      "airsenal": {
+        "repository": "alan-turing-institute/AIrsenal",
+        "commit": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717",
+        "role": "projection_worker",
+        "required_for_full_apex": true
+      },
+      "fpl_core_insights": {
+        "repository": "olbauday/FPL-Core-Insights",
+        "commit": "911992600f8bb66f1530ebd2ca5d3cdc22420109",
+        "role": "enrichment_data",
+        "required_for_full_apex": true
+      },
+      "open_fpl_solver": {
+        "repository": "solioanalytics/open-fpl-solver",
+        "commit": "45131c5a41d7caadb5cb626c012bfa9111dca7a2",
+        "role": "independent_optimisation_reference",
+        "required_for_full_apex": false
+      },
+      "openfpl_scout_ai": {
+        "repository": "elcaiseri/OpenFPL-Scout-AI",
+        "commit": "4ddd5e78b456d83a2dd1cc5f29736a9986b33954",
+        "role": "optional_projection_reference",
+        "required_for_full_apex": false
+      },
+      "fpl_mcp": {
+        "repository": "pradhann/FPL-MCP",
+        "commit": "e799fff65abbc335f340119b3fbe7f97adc1245e",
+        "role": "api_query_reference",
+        "required_for_full_apex": false
+      },
+      "vaastav_history": {
+        "repository": "vaastav/Fantasy-Premier-League",
+        "commit": "8c97b2adb123863c3dd581e730f1360e89815ac2",
+        "role": "historical_backtesting_only",
+        "required_for_full_apex": false
+      },
+      "fpl_optimization_tools": {
+        "repository": "ratisil/FPL-Optimization-Tools",
+        "commit": "b8d4c561646a744de1719c47cbc3dd9126836afc",
+        "role": "independent_optimisation_reference",
+        "required_for_full_apex": false
+      }
+    },
+    "material_inputs": {
+      "official_players": {
+        "rows": 577,
+        "sha256": "50e90fb1d1f647ed8286b5f8c983d2e46bc9a2197cd66ec881f60453a48a1125"
+      },
+      "official_fixtures": {
+        "rows": 380,
+        "sha256": "cebb80d93dd9dc62977d4f19a5420e8315efbdd1060047ef5dc0642275ccbe2a"
+      },
+      "fpl_core_playerstats": {
+        "rows": 570,
+        "sha256": "c6e7ead674a0eabcb8b4645c123d2d6b000031cf716df72086b3d699c4fd3302"
+      },
+      "fpl_core_previous_season": {
+        "rows": 570,
+        "sha256": "912ad25ad1bc12621188b7f5afb9fb715603af7f97acd2d378119bf1c9959091"
+      },
+      "fpl_core_preseason": {
+        "rows": 604,
+        "sha256": "a786f206c3b44c37bcd28919e97ab7cda0ec22b4d968f3a9e15509f652b35ab1"
+      },
+      "fpl_core_elo": {
+        "rows": 160,
+        "sha256": "077f6b7cf7b7c4836a66b33aeb639350981e54043f61a94c3e80ca7dedc11a86"
+      },
+      "manual_availability": {
+        "rows": 0,
+        "sha256": "452486fda18b1435eea926b9f65421e5ddc2fad621aa0f3838427cd15640f3bb"
+      },
+      "tactical_roles": {
+        "rows": 0,
+        "sha256": "ed76290ac35b3cb84dccbce392a1febaf24a60de3548dcf3904deb413a30b60f"
+      },
+      "news_evidence": {
+        "rows": 13,
+        "sha256": "6f75b2e0a8589434a997cb234734b7241967eeda093e6bbd746cac8f56ba64a1"
+      },
+      "understat_team_ratings": {
+        "rows": 20,
+        "sha256": "f833717719f7a3b4f881e566d44cff3be259f1f98685b5d03d66423028b34e83"
+      },
+      "understat_team_goal_surface": {
+        "rows": 160,
+        "sha256": "1371596c57b44489822382cb91b6e0cd4bc057dd5641c6b16497bc3d0d37da15"
+      },
+      "fixture_projection_surface": {
+        "rows": 160,
+        "sha256": "522347371a578b634151f04346855f70e9bee8de17ace0a160780771f789e252"
+      },
+      "airsenal_projection_surface": {
+        "rows": 4616,
+        "sha256": "57f6ac19693b37541e7b1ba3532a1289610975bedbc075d4656b2e0bcbc6c111"
+      },
+      "market_odds_surface": {
+        "rows": 0,
+        "sha256": "1f45160f5549e0c827b3b2d9ff22f5c6d645dd0f003527cdcbc6a4e0c9872530"
+      },
+      "final_projection_matrix": {
+        "rows": 4616,
+        "sha256": "98ad9611d927acfcae76dacbaed289c62c0d26ea431518b3a0a56c8c0fea7370"
+      }
+    },
+    "artifacts": {
+      "players": {
+        "file": "players.json",
+        "sha256": "7c38da968d53365685137c56952083b32ce851e0e3603aa4335c4d53071f631f"
+      },
+      "projections": {
+        "file": "projections.json",
+        "sha256": "98ad9611d927acfcae76dacbaed289c62c0d26ea431518b3a0a56c8c0fea7370"
+      },
+      "integrity": {
+        "file": "integrity.json",
+        "sha256": "dcf8d2dc06472c14e30f84f60a21168000053be35a0daf688e48adea5093ab77"
+      },
+      "news_audit": {
+        "file": "news_audit.json",
+        "sha256": "6f75b2e0a8589434a997cb234734b7241967eeda093e6bbd746cac8f56ba64a1"
+      }
+    }
   },
   "gameweeks": [
     1,
@@ -33,7 +186,7 @@
     "minutes_model": "first-class",
     "uncertainty": "correlated scenarios/CVaR/regret are diagnostics, not a second hidden forecast",
     "deadline_mechanics": "exact captain/vice/autosub mechanics",
-    "same_surface_check": "Official FPL bootstrap/fixtures SHA-256 hashes must match",
+    "same_surface_check": "sealed decision bundle identity and all material input hashes must match",
     "next_projection_upgrade": "empirical-Bayes shrinkage of small-sample player rates toward role/position priors"
   },
   "recommendation": {
@@ -776,7 +929,7 @@
   "haaland_scenario": {
     "maximum_ev_reference": {
       "status": "Optimal",
-      "objective": 319.25263326782436,
+      "objective": 319.2526332678249,
       "squad": [
         {
           "player_id": 356,
@@ -1462,7 +1615,7 @@
     },
     "elite_secondary_selection": {
       "status": "Optimal",
-      "objective": 60.932728365568664,
+      "objective": 60.933258515772124,
       "squad": [
         {
           "player_id": 356,
@@ -2834,9 +2987,9 @@
     },
     "gw1_mechanics": {
       "expected_xi_points": 44.76462974586902,
-      "expected_autosub_points": 1.3251130071734365,
-      "expected_captain_bonus": 5.70955020280325,
-      "expected_total_points": 51.79929295584571,
+      "expected_autosub_points": 1.32511300717343,
+      "expected_captain_bonus": 5.709550202803252,
+      "expected_total_points": 51.7992929558457,
       "captain_id": 411,
       "vice_captain_id": 426,
       "bench_gk_id": 497,
@@ -2854,9 +3007,9 @@
         "Neave"
       ]
     },
-    "raw_ev_floor": 317.65637010148527,
-    "raw_ev_regret": 1.3316794284669982,
-    "raw_ev_regret_pct": 0.004171240233278948
+    "raw_ev_floor": 317.6563701014858,
+    "raw_ev_regret": 1.3316794284675098,
+    "raw_ev_regret_pct": 0.004171240233280544
   },
   "no_haaland_scenario": {
     "maximum_ev_reference": {
@@ -3547,7 +3700,7 @@
     },
     "elite_secondary_selection": {
       "status": "Optimal",
-      "objective": 61.097576785357965,
+      "objective": 61.097829344071535,
       "squad": [
         {
           "player_id": 356,
@@ -4919,9 +5072,9 @@
     },
     "gw1_mechanics": {
       "expected_xi_points": 44.73636802190256,
-      "expected_autosub_points": 1.781732292955171,
-      "expected_captain_bonus": 5.618250795549922,
-      "expected_total_points": 52.136351110407645,
+      "expected_autosub_points": 1.7817322929551636,
+      "expected_captain_bonus": 5.61825079554992,
+      "expected_total_points": 52.13635111040764,
       "captain_id": 426,
       "vice_captain_id": 106,
       "bench_gk_id": 82,
@@ -4947,14 +5100,14 @@
     "cvar_scenarios": {
       "unrestricted": {
         "status": "Optimal",
-        "objective": 316.56761327440586,
-        "mean_points": 319.60109618088427,
-        "lower_tail_cvar": 304.43368164849227,
+        "objective": 316.3755049622607,
+        "mean_points": 319.36408827353046,
+        "lower_tail_cvar": 304.4211717171816,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
-        "scenario_p10": 307.8705292627981,
-        "scenario_p50": 319.09932568450154,
-        "scenario_p90": 333.22267604874713,
+        "scenario_p10": 308.1818867722279,
+        "scenario_p50": 318.98080011034824,
+        "scenario_p90": 330.8003475629548,
         "squad": [
           {
             "player_id": 356,
@@ -5455,27 +5608,6 @@
         ],
         "captain": [
           {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
-            "position": "MID",
-            "price": 12.0,
-            "expected_minutes": 80.6578947368,
-            "start_probability": 0.9210526316,
-            "appearance_probability": 0.9621052632,
-            "tactical_role": "central / balanced midfielder",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.74,
-            "gw1_xp": 5.167154598,
-            "xpts_3": 14.9009131011,
-            "xpts_5": 22.1153751012,
-            "xpts_8": 30.884415463,
-            "horizon_xp": 30.884415463,
-            "projection_confidence": 0.5572928174
-          }
-        ],
-        "vice_captain": [
-          {
             "player_id": 411,
             "web_name": "Haaland",
             "team_name": "Man City",
@@ -5493,6 +5625,27 @@
             "xpts_8": 31.9878199735,
             "horizon_xp": 31.9878199735,
             "projection_confidence": 0.5517781436
+          }
+        ],
+        "vice_captain": [
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "expected_minutes": 80.6578947368,
+            "start_probability": 0.9210526316,
+            "appearance_probability": 0.9621052632,
+            "tactical_role": "central / balanced midfielder",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.74,
+            "gw1_xp": 5.167154598,
+            "xpts_3": 14.9009131011,
+            "xpts_5": 22.1153751012,
+            "xpts_8": 30.884415463,
+            "horizon_xp": 30.884415463,
+            "projection_confidence": 0.5572928174
           }
         ],
         "bench": [
@@ -5576,14 +5729,14 @@
       },
       "haaland": {
         "status": "Optimal",
-        "objective": 316.56761327440586,
-        "mean_points": 319.60109618088427,
-        "lower_tail_cvar": 304.43368164849227,
+        "objective": 316.3755049622607,
+        "mean_points": 319.36408827353046,
+        "lower_tail_cvar": 304.4211717171816,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
-        "scenario_p10": 307.8705292627981,
-        "scenario_p50": 319.09932568450154,
-        "scenario_p90": 333.22267604874713,
+        "scenario_p10": 308.1818867722279,
+        "scenario_p50": 318.98080011034824,
+        "scenario_p90": 330.8003475629548,
         "squad": [
           {
             "player_id": 356,
@@ -6084,27 +6237,6 @@
         ],
         "captain": [
           {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
-            "position": "MID",
-            "price": 12.0,
-            "expected_minutes": 80.6578947368,
-            "start_probability": 0.9210526316,
-            "appearance_probability": 0.9621052632,
-            "tactical_role": "central / balanced midfielder",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.74,
-            "gw1_xp": 5.167154598,
-            "xpts_3": 14.9009131011,
-            "xpts_5": 22.1153751012,
-            "xpts_8": 30.884415463,
-            "horizon_xp": 30.884415463,
-            "projection_confidence": 0.5572928174
-          }
-        ],
-        "vice_captain": [
-          {
             "player_id": 411,
             "web_name": "Haaland",
             "team_name": "Man City",
@@ -6122,6 +6254,27 @@
             "xpts_8": 31.9878199735,
             "horizon_xp": 31.9878199735,
             "projection_confidence": 0.5517781436
+          }
+        ],
+        "vice_captain": [
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "expected_minutes": 80.6578947368,
+            "start_probability": 0.9210526316,
+            "appearance_probability": 0.9621052632,
+            "tactical_role": "central / balanced midfielder",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.74,
+            "gw1_xp": 5.167154598,
+            "xpts_3": 14.9009131011,
+            "xpts_5": 22.1153751012,
+            "xpts_8": 30.884415463,
+            "horizon_xp": 30.884415463,
+            "projection_confidence": 0.5572928174
           }
         ],
         "bench": [
@@ -6205,14 +6358,14 @@
       },
       "no-haaland": {
         "status": "Optimal",
-        "objective": 313.56443863003875,
-        "mean_points": 316.6332209354133,
-        "lower_tail_cvar": 301.28930940854053,
+        "objective": 313.3278831428779,
+        "mean_points": 316.2725059148363,
+        "lower_tail_cvar": 301.5493920550444,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
-        "scenario_p10": 305.59787931411654,
-        "scenario_p50": 316.64744720158683,
-        "scenario_p90": 328.7864132696348,
+        "scenario_p10": 304.67810283476905,
+        "scenario_p50": 315.98119695653475,
+        "scenario_p90": 327.3929021576431,
         "squad": [
           {
             "player_id": 356,
@@ -6253,25 +6406,6 @@
             "projection_confidence": 0.5608529557
           },
           {
-            "player_id": 387,
-            "web_name": "O'Reilly",
-            "team_name": "Man City",
-            "position": "DEF",
-            "price": 6.5,
-            "expected_minutes": 69.2486842105,
-            "start_probability": 0.7631578947,
-            "appearance_probability": 0.8863157895,
-            "tactical_role": "central / defensive defender",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.7386,
-            "gw1_xp": 3.6430196104,
-            "xpts_3": 10.3772294383,
-            "xpts_5": 15.5970148971,
-            "xpts_8": 21.6140046259,
-            "horizon_xp": 21.6140046259,
-            "projection_confidence": 0.5561335475
-          },
-          {
             "player_id": 445,
             "web_name": "Thiaw",
             "team_name": "Newcastle",
@@ -6308,6 +6442,25 @@
             "xpts_8": 18.4388625181,
             "horizon_xp": 18.4388625181,
             "projection_confidence": 0.524901446
+          },
+          {
+            "player_id": 113,
+            "web_name": "F.Kad\u0131o\u011flu",
+            "team_name": "Brighton",
+            "position": "DEF",
+            "price": 4.5,
+            "expected_minutes": 81.7236842105,
+            "start_probability": 0.8947368421,
+            "appearance_probability": 0.9494736842,
+            "tactical_role": "central / defensive defender",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.7289,
+            "gw1_xp": 2.8026367436,
+            "xpts_3": 8.4150371889,
+            "xpts_5": 12.8801919236,
+            "xpts_8": 18.0305561312,
+            "horizon_xp": 18.0305561312,
+            "projection_confidence": 0.5485654992
           },
           {
             "player_id": 106,
@@ -6481,23 +6634,23 @@
             "projection_confidence": 0.5701386116
           },
           {
-            "player_id": 237,
-            "web_name": "Ndiaye",
-            "team_name": "Everton",
+            "player_id": 427,
+            "web_name": "Mbeumo",
+            "team_name": "Man Utd",
             "position": "MID",
-            "price": 6.0,
-            "expected_minutes": 73.1842105263,
-            "start_probability": 0.8421052632,
-            "appearance_probability": 0.9242105263,
+            "price": 8.0,
+            "expected_minutes": 75.2724960042,
+            "start_probability": 0.9028182494,
+            "appearance_probability": 0.9533527597,
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 3.2114911684,
-            "xpts_3": 9.3971139857,
-            "xpts_5": 14.6962602583,
-            "xpts_8": 20.5166148803,
-            "horizon_xp": 20.5166148803,
-            "projection_confidence": 0.5764132712
+            "gw1_xp": 3.6812164055,
+            "xpts_3": 10.6926767169,
+            "xpts_5": 15.9320112186,
+            "xpts_8": 22.2660481446,
+            "horizon_xp": 22.2660481446,
+            "projection_confidence": 0.5555489722
           }
         ],
         "xi": [
@@ -6616,6 +6769,25 @@
             "projection_confidence": 0.5091287765
           },
           {
+            "player_id": 427,
+            "web_name": "Mbeumo",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 8.0,
+            "expected_minutes": 75.2724960042,
+            "start_probability": 0.9028182494,
+            "appearance_probability": 0.9533527597,
+            "tactical_role": "central / balanced midfielder",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.74,
+            "gw1_xp": 3.6812164055,
+            "xpts_3": 10.6926767169,
+            "xpts_5": 15.9320112186,
+            "xpts_8": 22.2660481446,
+            "horizon_xp": 22.2660481446,
+            "projection_confidence": 0.5555489722
+          },
+          {
             "player_id": 356,
             "web_name": "Virgil",
             "team_name": "Liverpool",
@@ -6633,25 +6805,6 @@
             "xpts_8": 23.7087406203,
             "horizon_xp": 23.7087406203,
             "projection_confidence": 0.5246257882
-          },
-          {
-            "player_id": 387,
-            "web_name": "O'Reilly",
-            "team_name": "Man City",
-            "position": "DEF",
-            "price": 6.5,
-            "expected_minutes": 69.2486842105,
-            "start_probability": 0.7631578947,
-            "appearance_probability": 0.8863157895,
-            "tactical_role": "central / defensive defender",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.7386,
-            "gw1_xp": 3.6430196104,
-            "xpts_3": 10.3772294383,
-            "xpts_5": 15.5970148971,
-            "xpts_8": 21.6140046259,
-            "horizon_xp": 21.6140046259,
-            "projection_confidence": 0.5561335475
           },
           {
             "player_id": 55,
@@ -6692,23 +6845,23 @@
             "projection_confidence": 0.5701386116
           },
           {
-            "player_id": 237,
-            "web_name": "Ndiaye",
-            "team_name": "Everton",
-            "position": "MID",
-            "price": 6.0,
-            "expected_minutes": 73.1842105263,
-            "start_probability": 0.8421052632,
-            "appearance_probability": 0.9242105263,
-            "tactical_role": "central / balanced midfielder",
+            "player_id": 445,
+            "web_name": "Thiaw",
+            "team_name": "Newcastle",
+            "position": "DEF",
+            "price": 5.0,
+            "expected_minutes": 77.9736842105,
+            "start_probability": 0.8684210526,
+            "appearance_probability": 0.9368421053,
+            "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.74,
-            "gw1_xp": 3.2114911684,
-            "xpts_3": 9.3971139857,
-            "xpts_5": 14.6962602583,
-            "xpts_8": 20.5166148803,
-            "horizon_xp": 20.5166148803,
-            "projection_confidence": 0.5764132712
+            "role_confidence": 0.7687,
+            "gw1_xp": 3.1352463429,
+            "xpts_3": 9.4994784305,
+            "xpts_5": 14.8989219785,
+            "xpts_8": 20.8512775053,
+            "horizon_xp": 20.8512775053,
+            "projection_confidence": 0.5581624419
           }
         ],
         "captain": [
@@ -6754,25 +6907,6 @@
           }
         ],
         "bench": [
-          {
-            "player_id": 445,
-            "web_name": "Thiaw",
-            "team_name": "Newcastle",
-            "position": "DEF",
-            "price": 5.0,
-            "expected_minutes": 77.9736842105,
-            "start_probability": 0.8684210526,
-            "appearance_probability": 0.9368421053,
-            "tactical_role": "central / defensive defender",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.7687,
-            "gw1_xp": 3.1352463429,
-            "xpts_3": 9.4994784305,
-            "xpts_5": 14.8989219785,
-            "xpts_8": 20.8512775053,
-            "horizon_xp": 20.8512775053,
-            "projection_confidence": 0.5581624419
-          },
           {
             "player_id": 88,
             "web_name": "Kayode",
@@ -6829,6 +6963,25 @@
             "xpts_8": 20.4355703199,
             "horizon_xp": 20.4355703199,
             "projection_confidence": 0.5309786827
+          },
+          {
+            "player_id": 113,
+            "web_name": "F.Kad\u0131o\u011flu",
+            "team_name": "Brighton",
+            "position": "DEF",
+            "price": 4.5,
+            "expected_minutes": 81.7236842105,
+            "start_probability": 0.8947368421,
+            "appearance_probability": 0.9494736842,
+            "tactical_role": "central / defensive defender",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.7289,
+            "gw1_xp": 2.8026367436,
+            "xpts_3": 8.4150371889,
+            "xpts_5": 12.8801919236,
+            "xpts_8": 18.0305561312,
+            "horizon_xp": 18.0305561312,
+            "projection_confidence": 0.5485654992
           }
         ]
       }
@@ -6838,36 +6991,34 @@
         "squad_overlap": 15,
         "squad_changed": [],
         "xi_overlap": 11,
-        "captain_agrees": false,
+        "captain_agrees": true,
         "left_objective": 319.25263326782436,
-        "right_objective": 316.56761327440586,
+        "right_objective": 316.3755049622607,
         "captain_comparison": "exact_gw1_mechanics"
       },
       "haaland": {
         "squad_overlap": 15,
         "squad_changed": [],
         "xi_overlap": 11,
-        "captain_agrees": false,
-        "left_objective": 319.25263326782436,
-        "right_objective": 316.56761327440586,
+        "captain_agrees": true,
+        "left_objective": 319.2526332678249,
+        "right_objective": 316.3755049622607,
         "captain_comparison": "exact_gw1_mechanics"
       },
       "no-haaland": {
-        "squad_overlap": 11,
+        "squad_overlap": 12,
         "squad_changed": [
           82,
           88,
-          113,
           226,
-          237,
           346,
-          427,
+          387,
           466
         ],
         "xi_overlap": 9,
         "captain_agrees": true,
         "left_objective": 316.75349561888714,
-        "right_objective": 313.56443863003875,
+        "right_objective": 313.3278831428779,
         "captain_comparison": "exact_gw1_mechanics"
       }
     },
@@ -6908,7 +7059,7 @@
         "selected": true,
         "stress_type": "ban_selected",
         "baseline_objective": 319.2526332678,
-        "constrained_objective": 317.1296095559,
+        "constrained_objective": 317.129609556,
         "objective_regret": 2.1230237119,
         "constrained_status": "Optimal"
       },
@@ -7008,8 +7159,8 @@
         "selected": true,
         "stress_type": "ban_selected",
         "baseline_objective": 319.2526332678,
-        "constrained_objective": 319.1846464972,
-        "objective_regret": 0.0679867706,
+        "constrained_objective": 319.1846464971,
+        "objective_regret": 0.0679867707,
         "constrained_status": "Optimal"
       },
       {
@@ -7196,19 +7347,20 @@
         346,
         508
       ],
+      "decision_bundle_id": "33c6cdf462d105859450e7634b258b3342602539db93df3558d4981d2d4d8862",
       "official_snapshot": {
-        "snapshot_id": "20260811T101206Z-173a73ea",
-        "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
+        "snapshot_id": "20260811T104729Z-272993b6",
+        "bootstrap_sha256": "0372e62a9153b70261a0c7d06a87703c09233e5f6fc01697d45b5b9711e0cca8",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
-      "projection_export_sha256": "9a70cb98a28c6429c6de357d79898b3d34852e83614b74ef8d4c663358c5ef0f"
+      "projection_export_sha256": "98ad9611d927acfcae76dacbaed289c62c0d26ea431518b3a0a56c8c0fea7370",
+      "external_solver_result_sha256": "9a70cb98a28c6429c6de357d79898b3d34852e83614b74ef8d4c663358c5ef0f"
     },
     "pinnacle_gate": {
       "ready": true,
       "blockers": [],
       "warnings": [
-        "published captain is chosen in only 31% of uncertainty re-solves where he remains in the XI; the provisional diagnostic reference is 50%",
-        "deterministic/CVaR unrestricted captains disagree",
+        "published captain is chosen in only 27% of uncertainty re-solves where he remains in the XI; the provisional diagnostic reference is 50%",
         "covariance coefficients are transparent priors until enough 2026/27 deadline outcomes exist"
       ]
     }
@@ -7216,16 +7368,19 @@
   "internal_diagnostics": {
     "pinnacle_contract": "apex-pinnacle-v3-final",
     "elite_contract": "apex-elite-10-v4-diagnostic",
-    "pinnacle_snapshot_id": "20260811T101206Z-173a73ea",
-    "elite_snapshot_id": "20260811T101843Z-95ab05b7",
+    "pinnacle_snapshot_id": "20260811T104729Z-272993b6",
+    "elite_snapshot_id": "20260811T104729Z-272993b6",
     "pinnacle_content_fingerprint": [
-      "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
+      "0372e62a9153b70261a0c7d06a87703c09233e5f6fc01697d45b5b9711e0cca8",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "elite_content_fingerprint": [
-      "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
+      "0372e62a9153b70261a0c7d06a87703c09233e5f6fc01697d45b5b9711e0cca8",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
-    "same_official_surface": true
+    "same_official_surface": true,
+    "pinnacle_decision_bundle_id": "33c6cdf462d105859450e7634b258b3342602539db93df3558d4981d2d4d8862",
+    "elite_decision_bundle_id": "33c6cdf462d105859450e7634b258b3342602539db93df3558d4981d2d4d8862",
+    "same_decision_bundle": true
   }
 }

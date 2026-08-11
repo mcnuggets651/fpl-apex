@@ -51,10 +51,12 @@
     346,
     508
   ],
+  "decision_bundle_id": "33c6cdf462d105859450e7634b258b3342602539db93df3558d4981d2d4d8862",
   "official_snapshot": {
-    "snapshot_id": "20260811T101206Z-173a73ea",
-    "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
+    "snapshot_id": "20260811T104729Z-272993b6",
+    "bootstrap_sha256": "0372e62a9153b70261a0c7d06a87703c09233e5f6fc01697d45b5b9711e0cca8",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "projection_export_sha256": "9a70cb98a28c6429c6de357d79898b3d34852e83614b74ef8d4c663358c5ef0f"
+  "projection_export_sha256": "98ad9611d927acfcae76dacbaed289c62c0d26ea431518b3a0a56c8c0fea7370",
+  "external_solver_result_sha256": "9a70cb98a28c6429c6de357d79898b3d34852e83614b74ef8d4c663358c5ef0f"
 }

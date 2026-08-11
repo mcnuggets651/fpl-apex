@@ -1,23 +1,22 @@
 {
   "contract": "apex-answer-context-v1",
-  "generated_at": "2026-08-11T10:19:19.876472+00:00",
+  "generated_at": "2026-08-11T10:56:18.954998+00:00",
   "only_input_for_apex_answers": true,
   "safe_to_act": true,
   "blockers": [],
   "warnings": [
-    "published captain is chosen in only 31% of uncertainty re-solves where he remains in the XI; the provisional diagnostic reference is 50%",
-    "deterministic/CVaR unrestricted captains disagree",
+    "published captain is chosen in only 27% of uncertainty re-solves where he remains in the XI; the provisional diagnostic reference is 50%",
     "covariance coefficients are transparent priors until enough 2026/27 deadline outcomes exist",
     "data quality fallback: official_team_strength: 20/20 teams contain zero/non-positive strength values; validated fallback fixture model is active",
     "data quality warning: preseason_evidence: 604 player-match rows; return-stat observation coverage=5.6%",
     "selected-player roles still rely on statistical inference rather than verified authoritative overrides: Virgil, Gu\u00e9hi, Thiaw, Truffert, Kayode, Haaland, Thiago, Neave, Verbruggen, Petrovi\u0107, B.Fernandes, Enzo, Schade, Ndiaye, Drakes-Thomas"
   ],
-  "run_age_hours": 0.120273615,
+  "run_age_hours": 0.14706625083333333,
   "versions": {
     "canonical_contract": "apex-strategy-recommendation-v2",
     "pinnacle_contract": "apex-pinnacle-v3-final",
-    "official_snapshot_id": "20260811T101206Z-173a73ea",
-    "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
+    "official_snapshot_id": "20260811T104729Z-272993b6",
+    "bootstrap_sha256": "0372e62a9153b70261a0c7d06a87703c09233e5f6fc01697d45b5b9711e0cca8",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
   "source_health": [
@@ -25,120 +24,120 @@
       "name": "official_fpl",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:06.921180+00:00",
-      "age_hours": 0.12026535888888888,
-      "version": "9139bfde4457"
+      "checked_at": "2026-08-11T10:47:29.554394+00:00",
+      "age_hours": 0.14705572333333333,
+      "version": "0372e62a9153"
     },
     {
       "name": "team_state",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:07.182647+00:00",
-      "age_hours": 0.12019272916666666,
+      "checked_at": "2026-08-11T10:47:29.714137+00:00",
+      "age_hours": 0.14701135027777779,
       "version": ""
     },
     {
       "name": "fpl_core_playerstats",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:07.630994+00:00",
-      "age_hours": 0.12006818833333333,
+      "checked_at": "2026-08-11T10:47:29.876223+00:00",
+      "age_hours": 0.14696632638888887,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
     {
       "name": "fpl_core_previous_season",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:10.414484+00:00",
-      "age_hours": 0.11929499666666667,
+      "checked_at": "2026-08-11T10:47:31.357081+00:00",
+      "age_hours": 0.14655497694444447,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
     {
       "name": "fpl_core_preseason",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:10.853048+00:00",
-      "age_hours": 0.11917317333333333,
+      "checked_at": "2026-08-11T10:47:31.471387+00:00",
+      "age_hours": 0.14652322527777778,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
     {
       "name": "tactical_inference",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:10.909799+00:00",
-      "age_hours": 0.11915740916666667,
+      "checked_at": "2026-08-11T10:47:31.564980+00:00",
+      "age_hours": 0.14649722722222225,
       "version": ""
     },
     {
       "name": "manual_availability",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-11T10:12:10.910167+00:00",
-      "age_hours": 0.11915730694444444,
+      "checked_at": "2026-08-11T10:47:31.565476+00:00",
+      "age_hours": 0.14649708944444445,
       "version": ""
     },
     {
       "name": "tactical_roles",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-11T10:12:10.910646+00:00",
-      "age_hours": 0.11915717388888888,
+      "checked_at": "2026-08-11T10:47:31.566210+00:00",
+      "age_hours": 0.14649688555555554,
       "version": ""
     },
     {
       "name": "news_feeds",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:12.228035+00:00",
-      "age_hours": 0.1187912325,
+      "checked_at": "2026-08-11T10:47:32.970351+00:00",
+      "age_hours": 0.14610684638888888,
       "version": ""
     },
     {
       "name": "fpl_core_elo",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:13.772758+00:00",
-      "age_hours": 0.11836214277777779,
+      "checked_at": "2026-08-11T10:47:34.094342+00:00",
+      "age_hours": 0.14579462666666665,
       "version": "911992600f8bb66f1530ebd2ca5d3cdc22420109"
     },
     {
       "name": "official_team_strength",
       "ok": false,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:13.774071+00:00",
-      "age_hours": 0.11836177805555555,
-      "version": "9139bfde4457"
+      "checked_at": "2026-08-11T10:47:34.096256+00:00",
+      "age_hours": 0.145794095,
+      "version": "0372e62a9153"
     },
     {
       "name": "understat_team_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:17.815424+00:00",
-      "age_hours": 0.11723918000000001,
+      "checked_at": "2026-08-11T10:47:37.820238+00:00",
+      "age_hours": 0.14475965555555556,
       "version": ""
     },
     {
       "name": "fixture_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:17.815439+00:00",
-      "age_hours": 0.11723917583333333,
+      "checked_at": "2026-08-11T10:47:37.820253+00:00",
+      "age_hours": 0.14475965138888888,
       "version": ""
     },
     {
       "name": "airsenal",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-11T10:12:18.301542+00:00",
-      "age_hours": 0.11710414722222222,
+      "checked_at": "2026-08-11T10:47:38.606310+00:00",
+      "age_hours": 0.14454130222222222,
       "version": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717"
     },
     {
       "name": "market_odds",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-11T10:12:18.301837+00:00",
-      "age_hours": 0.11710406527777778,
+      "checked_at": "2026-08-11T10:47:38.606835+00:00",
+      "age_hours": 0.1445411563888889,
       "version": ""
     }
   ],
@@ -146,14 +145,14 @@
     "cvar": {
       "unrestricted": {
         "status": "Optimal",
-        "objective": 316.56761327440586,
-        "mean_points": 319.60109618088427,
-        "lower_tail_cvar": 304.43368164849227,
+        "objective": 316.3755049622607,
+        "mean_points": 319.36408827353046,
+        "lower_tail_cvar": 304.4211717171816,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
-        "scenario_p10": 307.8705292627981,
-        "scenario_p50": 319.09932568450154,
-        "scenario_p90": 333.22267604874713,
+        "scenario_p10": 308.1818867722279,
+        "scenario_p50": 318.98080011034824,
+        "scenario_p90": 330.8003475629548,
         "squad": [
           {
             "player_id": 356,
@@ -654,27 +653,6 @@
         ],
         "captain": [
           {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
-            "position": "MID",
-            "price": 12.0,
-            "expected_minutes": 80.6578947368,
-            "start_probability": 0.9210526316,
-            "appearance_probability": 0.9621052632,
-            "tactical_role": "central / balanced midfielder",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.74,
-            "gw1_xp": 5.167154598,
-            "xpts_3": 14.9009131011,
-            "xpts_5": 22.1153751012,
-            "xpts_8": 30.884415463,
-            "horizon_xp": 30.884415463,
-            "projection_confidence": 0.5572928174
-          }
-        ],
-        "vice_captain": [
-          {
             "player_id": 411,
             "web_name": "Haaland",
             "team_name": "Man City",
@@ -692,6 +670,27 @@
             "xpts_8": 31.9878199735,
             "horizon_xp": 31.9878199735,
             "projection_confidence": 0.5517781436
+          }
+        ],
+        "vice_captain": [
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "expected_minutes": 80.6578947368,
+            "start_probability": 0.9210526316,
+            "appearance_probability": 0.9621052632,
+            "tactical_role": "central / balanced midfielder",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.74,
+            "gw1_xp": 5.167154598,
+            "xpts_3": 14.9009131011,
+            "xpts_5": 22.1153751012,
+            "xpts_8": 30.884415463,
+            "horizon_xp": 30.884415463,
+            "projection_confidence": 0.5572928174
           }
         ],
         "bench": [
@@ -775,14 +774,14 @@
       },
       "haaland": {
         "status": "Optimal",
-        "objective": 316.56761327440586,
-        "mean_points": 319.60109618088427,
-        "lower_tail_cvar": 304.43368164849227,
+        "objective": 316.3755049622607,
+        "mean_points": 319.36408827353046,
+        "lower_tail_cvar": 304.4211717171816,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
-        "scenario_p10": 307.8705292627981,
-        "scenario_p50": 319.09932568450154,
-        "scenario_p90": 333.22267604874713,
+        "scenario_p10": 308.1818867722279,
+        "scenario_p50": 318.98080011034824,
+        "scenario_p90": 330.8003475629548,
         "squad": [
           {
             "player_id": 356,
@@ -1283,27 +1282,6 @@
         ],
         "captain": [
           {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
-            "position": "MID",
-            "price": 12.0,
-            "expected_minutes": 80.6578947368,
-            "start_probability": 0.9210526316,
-            "appearance_probability": 0.9621052632,
-            "tactical_role": "central / balanced midfielder",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.74,
-            "gw1_xp": 5.167154598,
-            "xpts_3": 14.9009131011,
-            "xpts_5": 22.1153751012,
-            "xpts_8": 30.884415463,
-            "horizon_xp": 30.884415463,
-            "projection_confidence": 0.5572928174
-          }
-        ],
-        "vice_captain": [
-          {
             "player_id": 411,
             "web_name": "Haaland",
             "team_name": "Man City",
@@ -1321,6 +1299,27 @@
             "xpts_8": 31.9878199735,
             "horizon_xp": 31.9878199735,
             "projection_confidence": 0.5517781436
+          }
+        ],
+        "vice_captain": [
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "expected_minutes": 80.6578947368,
+            "start_probability": 0.9210526316,
+            "appearance_probability": 0.9621052632,
+            "tactical_role": "central / balanced midfielder",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.74,
+            "gw1_xp": 5.167154598,
+            "xpts_3": 14.9009131011,
+            "xpts_5": 22.1153751012,
+            "xpts_8": 30.884415463,
+            "horizon_xp": 30.884415463,
+            "projection_confidence": 0.5572928174
           }
         ],
         "bench": [
@@ -1404,14 +1403,14 @@
       },
       "no-haaland": {
         "status": "Optimal",
-        "objective": 313.56443863003875,
-        "mean_points": 316.6332209354133,
-        "lower_tail_cvar": 301.28930940854053,
+        "objective": 313.3278831428779,
+        "mean_points": 316.2725059148363,
+        "lower_tail_cvar": 301.5493920550444,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
-        "scenario_p10": 305.59787931411654,
-        "scenario_p50": 316.64744720158683,
-        "scenario_p90": 328.7864132696348,
+        "scenario_p10": 304.67810283476905,
+        "scenario_p50": 315.98119695653475,
+        "scenario_p90": 327.3929021576431,
         "squad": [
           {
             "player_id": 356,
@@ -1452,25 +1451,6 @@
             "projection_confidence": 0.5608529557
           },
           {
-            "player_id": 387,
-            "web_name": "O'Reilly",
-            "team_name": "Man City",
-            "position": "DEF",
-            "price": 6.5,
-            "expected_minutes": 69.2486842105,
-            "start_probability": 0.7631578947,
-            "appearance_probability": 0.8863157895,
-            "tactical_role": "central / defensive defender",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.7386,
-            "gw1_xp": 3.6430196104,
-            "xpts_3": 10.3772294383,
-            "xpts_5": 15.5970148971,
-            "xpts_8": 21.6140046259,
-            "horizon_xp": 21.6140046259,
-            "projection_confidence": 0.5561335475
-          },
-          {
             "player_id": 445,
             "web_name": "Thiaw",
             "team_name": "Newcastle",
@@ -1507,6 +1487,25 @@
             "xpts_8": 18.4388625181,
             "horizon_xp": 18.4388625181,
             "projection_confidence": 0.524901446
+          },
+          {
+            "player_id": 113,
+            "web_name": "F.Kad\u0131o\u011flu",
+            "team_name": "Brighton",
+            "position": "DEF",
+            "price": 4.5,
+            "expected_minutes": 81.7236842105,
+            "start_probability": 0.8947368421,
+            "appearance_probability": 0.9494736842,
+            "tactical_role": "central / defensive defender",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.7289,
+            "gw1_xp": 2.8026367436,
+            "xpts_3": 8.4150371889,
+            "xpts_5": 12.8801919236,
+            "xpts_8": 18.0305561312,
+            "horizon_xp": 18.0305561312,
+            "projection_confidence": 0.5485654992
           },
           {
             "player_id": 106,
@@ -1680,23 +1679,23 @@
             "projection_confidence": 0.5701386116
           },
           {
-            "player_id": 237,
-            "web_name": "Ndiaye",
-            "team_name": "Everton",
+            "player_id": 427,
+            "web_name": "Mbeumo",
+            "team_name": "Man Utd",
             "position": "MID",
-            "price": 6.0,
-            "expected_minutes": 73.1842105263,
-            "start_probability": 0.8421052632,
-            "appearance_probability": 0.9242105263,
+            "price": 8.0,
+            "expected_minutes": 75.2724960042,
+            "start_probability": 0.9028182494,
+            "appearance_probability": 0.9533527597,
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 3.2114911684,
-            "xpts_3": 9.3971139857,
-            "xpts_5": 14.6962602583,
-            "xpts_8": 20.5166148803,
-            "horizon_xp": 20.5166148803,
-            "projection_confidence": 0.5764132712
+            "gw1_xp": 3.6812164055,
+            "xpts_3": 10.6926767169,
+            "xpts_5": 15.9320112186,
+            "xpts_8": 22.2660481446,
+            "horizon_xp": 22.2660481446,
+            "projection_confidence": 0.5555489722
           }
         ],
         "xi": [
@@ -1815,6 +1814,25 @@
             "projection_confidence": 0.5091287765
           },
           {
+            "player_id": 427,
+            "web_name": "Mbeumo",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 8.0,
+            "expected_minutes": 75.2724960042,
+            "start_probability": 0.9028182494,
+            "appearance_probability": 0.9533527597,
+            "tactical_role": "central / balanced midfielder",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.74,
+            "gw1_xp": 3.6812164055,
+            "xpts_3": 10.6926767169,
+            "xpts_5": 15.9320112186,
+            "xpts_8": 22.2660481446,
+            "horizon_xp": 22.2660481446,
+            "projection_confidence": 0.5555489722
+          },
+          {
             "player_id": 356,
             "web_name": "Virgil",
             "team_name": "Liverpool",
@@ -1832,25 +1850,6 @@
             "xpts_8": 23.7087406203,
             "horizon_xp": 23.7087406203,
             "projection_confidence": 0.5246257882
-          },
-          {
-            "player_id": 387,
-            "web_name": "O'Reilly",
-            "team_name": "Man City",
-            "position": "DEF",
-            "price": 6.5,
-            "expected_minutes": 69.2486842105,
-            "start_probability": 0.7631578947,
-            "appearance_probability": 0.8863157895,
-            "tactical_role": "central / defensive defender",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.7386,
-            "gw1_xp": 3.6430196104,
-            "xpts_3": 10.3772294383,
-            "xpts_5": 15.5970148971,
-            "xpts_8": 21.6140046259,
-            "horizon_xp": 21.6140046259,
-            "projection_confidence": 0.5561335475
           },
           {
             "player_id": 55,
@@ -1891,23 +1890,23 @@
             "projection_confidence": 0.5701386116
           },
           {
-            "player_id": 237,
-            "web_name": "Ndiaye",
-            "team_name": "Everton",
-            "position": "MID",
-            "price": 6.0,
-            "expected_minutes": 73.1842105263,
-            "start_probability": 0.8421052632,
-            "appearance_probability": 0.9242105263,
-            "tactical_role": "central / balanced midfielder",
+            "player_id": 445,
+            "web_name": "Thiaw",
+            "team_name": "Newcastle",
+            "position": "DEF",
+            "price": 5.0,
+            "expected_minutes": 77.9736842105,
+            "start_probability": 0.8684210526,
+            "appearance_probability": 0.9368421053,
+            "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.74,
-            "gw1_xp": 3.2114911684,
-            "xpts_3": 9.3971139857,
-            "xpts_5": 14.6962602583,
-            "xpts_8": 20.5166148803,
-            "horizon_xp": 20.5166148803,
-            "projection_confidence": 0.5764132712
+            "role_confidence": 0.7687,
+            "gw1_xp": 3.1352463429,
+            "xpts_3": 9.4994784305,
+            "xpts_5": 14.8989219785,
+            "xpts_8": 20.8512775053,
+            "horizon_xp": 20.8512775053,
+            "projection_confidence": 0.5581624419
           }
         ],
         "captain": [
@@ -1953,25 +1952,6 @@
           }
         ],
         "bench": [
-          {
-            "player_id": 445,
-            "web_name": "Thiaw",
-            "team_name": "Newcastle",
-            "position": "DEF",
-            "price": 5.0,
-            "expected_minutes": 77.9736842105,
-            "start_probability": 0.8684210526,
-            "appearance_probability": 0.9368421053,
-            "tactical_role": "central / defensive defender",
-            "tactical_role_source": "statistical_inference",
-            "role_confidence": 0.7687,
-            "gw1_xp": 3.1352463429,
-            "xpts_3": 9.4994784305,
-            "xpts_5": 14.8989219785,
-            "xpts_8": 20.8512775053,
-            "horizon_xp": 20.8512775053,
-            "projection_confidence": 0.5581624419
-          },
           {
             "player_id": 88,
             "web_name": "Kayode",
@@ -2028,6 +2008,25 @@
             "xpts_8": 20.4355703199,
             "horizon_xp": 20.4355703199,
             "projection_confidence": 0.5309786827
+          },
+          {
+            "player_id": 113,
+            "web_name": "F.Kad\u0131o\u011flu",
+            "team_name": "Brighton",
+            "position": "DEF",
+            "price": 4.5,
+            "expected_minutes": 81.7236842105,
+            "start_probability": 0.8947368421,
+            "appearance_probability": 0.9494736842,
+            "tactical_role": "central / defensive defender",
+            "tactical_role_source": "statistical_inference",
+            "role_confidence": 0.7289,
+            "gw1_xp": 2.8026367436,
+            "xpts_3": 8.4150371889,
+            "xpts_5": 12.8801919236,
+            "xpts_8": 18.0305561312,
+            "horizon_xp": 18.0305561312,
+            "projection_confidence": 0.5485654992
           }
         ]
       }
@@ -2069,7 +2068,7 @@
         "selected": true,
         "stress_type": "ban_selected",
         "baseline_objective": 319.2526332678,
-        "constrained_objective": 317.1296095559,
+        "constrained_objective": 317.129609556,
         "objective_regret": 2.1230237119,
         "constrained_status": "Optimal"
       },
@@ -2169,8 +2168,8 @@
         "selected": true,
         "stress_type": "ban_selected",
         "baseline_objective": 319.2526332678,
-        "constrained_objective": 319.1846464972,
-        "objective_regret": 0.0679867706,
+        "constrained_objective": 319.1846464971,
+        "objective_regret": 0.0679867707,
         "constrained_status": "Optimal"
       },
       {
@@ -2357,19 +2356,20 @@
         346,
         508
       ],
+      "decision_bundle_id": "33c6cdf462d105859450e7634b258b3342602539db93df3558d4981d2d4d8862",
       "official_snapshot": {
-        "snapshot_id": "20260811T101206Z-173a73ea",
-        "bootstrap_sha256": "9139bfde4457e15bc8e0fd075029377725eb3907637f7e78a721ef8431a5ad6c",
+        "snapshot_id": "20260811T104729Z-272993b6",
+        "bootstrap_sha256": "0372e62a9153b70261a0c7d06a87703c09233e5f6fc01697d45b5b9711e0cca8",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
-      "projection_export_sha256": "9a70cb98a28c6429c6de357d79898b3d34852e83614b74ef8d4c663358c5ef0f"
+      "projection_export_sha256": "98ad9611d927acfcae76dacbaed289c62c0d26ea431518b3a0a56c8c0fea7370",
+      "external_solver_result_sha256": "9a70cb98a28c6429c6de357d79898b3d34852e83614b74ef8d4c663358c5ef0f"
     },
     "pinnacle_gate": {
       "ready": true,
       "blockers": [],
       "warnings": [
-        "published captain is chosen in only 31% of uncertainty re-solves where he remains in the XI; the provisional diagnostic reference is 50%",
-        "deterministic/CVaR unrestricted captains disagree",
+        "published captain is chosen in only 27% of uncertainty re-solves where he remains in the XI; the provisional diagnostic reference is 50%",
         "covariance coefficients are transparent priors until enough 2026/27 deadline outcomes exist"
       ]
     },
@@ -2407,16 +2407,16 @@
         "name": "tactical_roles",
         "ok": true,
         "configured": false,
-        "checked_at": "2026-08-11T10:12:10.910646+00:00",
-        "age_hours": 0.11915717388888888,
+        "checked_at": "2026-08-11T10:47:31.566210+00:00",
+        "age_hours": 0.14649688555555554,
         "version": ""
       },
       {
         "name": "news_feeds",
         "ok": true,
         "configured": true,
-        "checked_at": "2026-08-11T10:12:12.228035+00:00",
-        "age_hours": 0.1187912325,
+        "checked_at": "2026-08-11T10:47:32.970351+00:00",
+        "age_hours": 0.14610684638888888,
         "version": ""
       }
     ],
@@ -2469,7 +2469,7 @@
         "projection_confidence": 0.5576503183,
         "tactical_role": "central / defensive defender",
         "role_source": "statistical_inference",
-        "selection_regret": 0.0679867706,
+        "selection_regret": 0.0679867707,
         "alternative": null,
         "reason": "Selected by the canonical optimiser on the matched projection surface; the fields above are the reproducible evidence, not a conversational override."
       },
@@ -3221,78 +3221,6 @@
         ],
         "xi": [
           {
-            "player_id": 411,
-            "web_name": "Haaland",
-            "team_name": "Man City",
-            "position": "FWD",
-            "price": 15.5,
-            "xp": 5.821467179902077
-          },
-          {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
-            "position": "MID",
-            "price": 12.0,
-            "xp": 6.314691061524866
-          },
-          {
-            "player_id": 106,
-            "web_name": "Thiago",
-            "team_name": "Brentford",
-            "position": "FWD",
-            "price": 8.0,
-            "xp": 5.105236025566515
-          },
-          {
-            "player_id": 155,
-            "web_name": "Enzo",
-            "team_name": "Chelsea",
-            "position": "MID",
-            "price": 7.0,
-            "xp": 4.576303978897564
-          },
-          {
-            "player_id": 356,
-            "web_name": "Virgil",
-            "team_name": "Liverpool",
-            "position": "DEF",
-            "price": 6.5,
-            "xp": 4.617008609386013
-          },
-          {
-            "player_id": 388,
-            "web_name": "Gu\u00e9hi",
-            "team_name": "Man City",
-            "position": "DEF",
-            "price": 6.0,
-            "xp": 4.2442820554406255
-          },
-          {
-            "player_id": 94,
-            "web_name": "Schade",
-            "team_name": "Brentford",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 4.203973643126647
-          },
-          {
-            "player_id": 445,
-            "web_name": "Thiaw",
-            "team_name": "Newcastle",
-            "position": "DEF",
-            "price": 5.0,
-            "xp": 3.8192526034601353
-          },
-          {
-            "player_id": 237,
-            "web_name": "Ndiaye",
-            "team_name": "Everton",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 3.795589460908899
-          },
-          {
             "player_id": 57,
             "web_name": "Petrovi\u0107",
             "team_name": "Bournemouth",
@@ -3307,24 +3235,14 @@
             "position": "DEF",
             "price": 5.5,
             "xp": 3.983750665387246
-          }
-        ],
-        "squad": [
-          {
-            "player_id": 411,
-            "web_name": "Haaland",
-            "team_name": "Man City",
-            "position": "FWD",
-            "price": 15.5,
-            "xp": 5.821467179902077
           },
           {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
+            "player_id": 94,
+            "web_name": "Schade",
+            "team_name": "Brentford",
             "position": "MID",
-            "price": 12.0,
-            "xp": 6.314691061524866
+            "price": 6.0,
+            "xp": 4.203973643126647
           },
           {
             "player_id": 106,
@@ -3343,6 +3261,14 @@
             "xp": 4.576303978897564
           },
           {
+            "player_id": 237,
+            "web_name": "Ndiaye",
+            "team_name": "Everton",
+            "position": "MID",
+            "price": 6.0,
+            "xp": 3.795589460908899
+          },
+          {
             "player_id": 356,
             "web_name": "Virgil",
             "team_name": "Liverpool",
@@ -3356,15 +3282,23 @@
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
-            "xp": 4.2442820554406255
+            "xp": 4.244282055440626
           },
           {
-            "player_id": 94,
-            "web_name": "Schade",
-            "team_name": "Brentford",
+            "player_id": 411,
+            "web_name": "Haaland",
+            "team_name": "Man City",
+            "position": "FWD",
+            "price": 15.5,
+            "xp": 5.821467179902077
+          },
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
             "position": "MID",
-            "price": 6.0,
-            "xp": 4.203973643126647
+            "price": 12.0,
+            "xp": 6.314691061524866
           },
           {
             "player_id": 445,
@@ -3372,24 +3306,10 @@
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 3.8192526034601353
-          },
-          {
-            "player_id": 109,
-            "web_name": "Verbruggen",
-            "team_name": "Brighton",
-            "position": "GK",
-            "price": 4.5,
-            "xp": 3.765057933154432
-          },
-          {
-            "player_id": 237,
-            "web_name": "Ndiaye",
-            "team_name": "Everton",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 3.795589460908899
-          },
+            "xp": 3.819252603460135
+          }
+        ],
+        "squad": [
           {
             "player_id": 57,
             "web_name": "Petrovi\u0107",
@@ -3415,12 +3335,92 @@
             "xp": 3.451177137279184
           },
           {
+            "player_id": 94,
+            "web_name": "Schade",
+            "team_name": "Brentford",
+            "position": "MID",
+            "price": 6.0,
+            "xp": 4.203973643126647
+          },
+          {
+            "player_id": 106,
+            "web_name": "Thiago",
+            "team_name": "Brentford",
+            "position": "FWD",
+            "price": 8.0,
+            "xp": 5.105236025566515
+          },
+          {
+            "player_id": 109,
+            "web_name": "Verbruggen",
+            "team_name": "Brighton",
+            "position": "GK",
+            "price": 4.5,
+            "xp": 3.765057933154432
+          },
+          {
+            "player_id": 155,
+            "web_name": "Enzo",
+            "team_name": "Chelsea",
+            "position": "MID",
+            "price": 7.0,
+            "xp": 4.576303978897564
+          },
+          {
             "player_id": 221,
             "web_name": "Drakes-Thomas",
             "team_name": "Crystal Palace",
             "position": "MID",
             "price": 4.5,
-            "xp": 1.7932659839781242
+            "xp": 1.793265983978124
+          },
+          {
+            "player_id": 237,
+            "web_name": "Ndiaye",
+            "team_name": "Everton",
+            "position": "MID",
+            "price": 6.0,
+            "xp": 3.795589460908899
+          },
+          {
+            "player_id": 356,
+            "web_name": "Virgil",
+            "team_name": "Liverpool",
+            "position": "DEF",
+            "price": 6.5,
+            "xp": 4.617008609386013
+          },
+          {
+            "player_id": 388,
+            "web_name": "Gu\u00e9hi",
+            "team_name": "Man City",
+            "position": "DEF",
+            "price": 6.0,
+            "xp": 4.244282055440626
+          },
+          {
+            "player_id": 411,
+            "web_name": "Haaland",
+            "team_name": "Man City",
+            "position": "FWD",
+            "price": 15.5,
+            "xp": 5.821467179902077
+          },
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "xp": 6.314691061524866
+          },
+          {
+            "player_id": 445,
+            "web_name": "Thiaw",
+            "team_name": "Newcastle",
+            "position": "DEF",
+            "price": 5.0,
+            "xp": 3.819252603460135
           },
           {
             "player_id": 466,
@@ -3441,32 +3441,23 @@
         "chip": null,
         "transfers_in": [
           {
+            "player_id": 113,
+            "web_name": "F.Kad\u0131o\u011flu",
+            "team_name": "Brighton",
+            "position": "DEF",
+            "price": 4.5,
+            "xp": 3.751707206704818
+          },
+          {
             "player_id": 367,
             "web_name": "Gakpo",
             "team_name": "Liverpool",
             "position": "MID",
             "price": 7.0,
             "xp": 4.291974195288026
-          },
-          {
-            "player_id": 113,
-            "web_name": "F.Kad\u0131o\u011flu",
-            "team_name": "Brighton",
-            "position": "DEF",
-            "price": 4.5,
-            "xp": 3.7517072067048183
           }
         ],
         "transfers_out": [
-          {
-            "player_id": 237,
-            "web_name": "Ndiaye",
-            "team_name": "Everton",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 3.869368143470925,
-            "selling_price": 6.0
-          },
           {
             "player_id": 61,
             "web_name": "Truffert",
@@ -3475,6 +3466,15 @@
             "price": 5.5,
             "xp": 3.449419929906546,
             "selling_price": 5.5
+          },
+          {
+            "player_id": 237,
+            "web_name": "Ndiaye",
+            "team_name": "Everton",
+            "position": "MID",
+            "price": 6.0,
+            "xp": 3.869368143470925,
+            "selling_price": 6.0
           }
         ],
         "captain": [
@@ -3499,110 +3499,20 @@
         ],
         "xi": [
           {
-            "player_id": 411,
-            "web_name": "Haaland",
-            "team_name": "Man City",
-            "position": "FWD",
-            "price": 15.5,
-            "xp": 6.347896703041717
-          },
-          {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
-            "position": "MID",
-            "price": 12.0,
-            "xp": 5.549668639834793
-          },
-          {
-            "player_id": 106,
-            "web_name": "Thiago",
-            "team_name": "Brentford",
-            "position": "FWD",
-            "price": 8.0,
-            "xp": 5.234361914908131
-          },
-          {
-            "player_id": 155,
-            "web_name": "Enzo",
-            "team_name": "Chelsea",
-            "position": "MID",
-            "price": 7.0,
-            "xp": 4.171347641053597
-          },
-          {
-            "player_id": 356,
-            "web_name": "Virgil",
-            "team_name": "Liverpool",
-            "position": "DEF",
-            "price": 6.5,
-            "xp": 4.736379432860817
-          },
-          {
-            "player_id": 388,
-            "web_name": "Gu\u00e9hi",
-            "team_name": "Man City",
-            "position": "DEF",
-            "price": 6.0,
-            "xp": 4.77372114164503
-          },
-          {
-            "player_id": 94,
-            "web_name": "Schade",
-            "team_name": "Brentford",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 4.3645925057915225
-          },
-          {
-            "player_id": 367,
-            "web_name": "Gakpo",
-            "team_name": "Liverpool",
-            "position": "MID",
-            "price": 7.0,
-            "xp": 4.291974195288026
-          },
-          {
-            "player_id": 445,
-            "web_name": "Thiaw",
-            "team_name": "Newcastle",
-            "position": "DEF",
-            "price": 5.0,
-            "xp": 4.0790255699974995
-          },
-          {
-            "player_id": 109,
-            "web_name": "Verbruggen",
-            "team_name": "Brighton",
-            "position": "GK",
-            "price": 4.5,
-            "xp": 4.2492832986880655
-          },
-          {
             "player_id": 88,
             "web_name": "Kayode",
             "team_name": "Brentford",
             "position": "DEF",
             "price": 4.5,
             "xp": 3.816560078529424
-          }
-        ],
-        "squad": [
-          {
-            "player_id": 411,
-            "web_name": "Haaland",
-            "team_name": "Man City",
-            "position": "FWD",
-            "price": 15.5,
-            "xp": 6.347896703041717
           },
           {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
+            "player_id": 94,
+            "web_name": "Schade",
+            "team_name": "Brentford",
             "position": "MID",
-            "price": 12.0,
-            "xp": 5.549668639834793
+            "price": 6.0,
+            "xp": 4.364592505791522
           },
           {
             "player_id": 106,
@@ -3611,6 +3521,14 @@
             "position": "FWD",
             "price": 8.0,
             "xp": 5.234361914908131
+          },
+          {
+            "player_id": 109,
+            "web_name": "Verbruggen",
+            "team_name": "Brighton",
+            "position": "GK",
+            "price": 4.5,
+            "xp": 4.249283298688066
           },
           {
             "player_id": 155,
@@ -3629,22 +3547,6 @@
             "xp": 4.736379432860817
           },
           {
-            "player_id": 388,
-            "web_name": "Gu\u00e9hi",
-            "team_name": "Man City",
-            "position": "DEF",
-            "price": 6.0,
-            "xp": 4.77372114164503
-          },
-          {
-            "player_id": 94,
-            "web_name": "Schade",
-            "team_name": "Brentford",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 4.3645925057915225
-          },
-          {
             "player_id": 367,
             "web_name": "Gakpo",
             "team_name": "Liverpool",
@@ -3653,21 +3555,39 @@
             "xp": 4.291974195288026
           },
           {
+            "player_id": 388,
+            "web_name": "Gu\u00e9hi",
+            "team_name": "Man City",
+            "position": "DEF",
+            "price": 6.0,
+            "xp": 4.77372114164503
+          },
+          {
+            "player_id": 411,
+            "web_name": "Haaland",
+            "team_name": "Man City",
+            "position": "FWD",
+            "price": 15.5,
+            "xp": 6.347896703041717
+          },
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "xp": 5.549668639834793
+          },
+          {
             "player_id": 445,
             "web_name": "Thiaw",
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 4.0790255699974995
-          },
-          {
-            "player_id": 109,
-            "web_name": "Verbruggen",
-            "team_name": "Brighton",
-            "position": "GK",
-            "price": 4.5,
-            "xp": 4.2492832986880655
-          },
+            "xp": 4.0790255699975
+          }
+        ],
+        "squad": [
           {
             "player_id": 57,
             "web_name": "Petrovi\u0107",
@@ -3685,12 +3605,44 @@
             "xp": 3.816560078529424
           },
           {
+            "player_id": 94,
+            "web_name": "Schade",
+            "team_name": "Brentford",
+            "position": "MID",
+            "price": 6.0,
+            "xp": 4.364592505791522
+          },
+          {
+            "player_id": 106,
+            "web_name": "Thiago",
+            "team_name": "Brentford",
+            "position": "FWD",
+            "price": 8.0,
+            "xp": 5.234361914908131
+          },
+          {
+            "player_id": 109,
+            "web_name": "Verbruggen",
+            "team_name": "Brighton",
+            "position": "GK",
+            "price": 4.5,
+            "xp": 4.249283298688066
+          },
+          {
             "player_id": 113,
             "web_name": "F.Kad\u0131o\u011flu",
             "team_name": "Brighton",
             "position": "DEF",
             "price": 4.5,
-            "xp": 3.7517072067048183
+            "xp": 3.751707206704818
+          },
+          {
+            "player_id": 155,
+            "web_name": "Enzo",
+            "team_name": "Chelsea",
+            "position": "MID",
+            "price": 7.0,
+            "xp": 4.171347641053597
           },
           {
             "player_id": 221,
@@ -3698,7 +3650,55 @@
             "team_name": "Crystal Palace",
             "position": "MID",
             "price": 4.5,
-            "xp": 1.7851521566670647
+            "xp": 1.785152156667065
+          },
+          {
+            "player_id": 356,
+            "web_name": "Virgil",
+            "team_name": "Liverpool",
+            "position": "DEF",
+            "price": 6.5,
+            "xp": 4.736379432860817
+          },
+          {
+            "player_id": 367,
+            "web_name": "Gakpo",
+            "team_name": "Liverpool",
+            "position": "MID",
+            "price": 7.0,
+            "xp": 4.291974195288026
+          },
+          {
+            "player_id": 388,
+            "web_name": "Gu\u00e9hi",
+            "team_name": "Man City",
+            "position": "DEF",
+            "price": 6.0,
+            "xp": 4.77372114164503
+          },
+          {
+            "player_id": 411,
+            "web_name": "Haaland",
+            "team_name": "Man City",
+            "position": "FWD",
+            "price": 15.5,
+            "xp": 6.347896703041717
+          },
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "xp": 5.549668639834793
+          },
+          {
+            "player_id": 445,
+            "web_name": "Thiaw",
+            "team_name": "Newcastle",
+            "position": "DEF",
+            "price": 5.0,
+            "xp": 4.0790255699975
           },
           {
             "player_id": 466,
@@ -3706,7 +3706,7 @@
             "team_name": "Newcastle",
             "position": "FWD",
             "price": 4.5,
-            "xp": 1.4083956921252188
+            "xp": 1.408395692125219
           }
         ]
       },
@@ -3741,52 +3741,12 @@
         ],
         "xi": [
           {
-            "player_id": 411,
-            "web_name": "Haaland",
-            "team_name": "Man City",
-            "position": "FWD",
-            "price": 15.5,
-            "xp": 5.701093906107671
-          },
-          {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
-            "position": "MID",
-            "price": 12.0,
-            "xp": 5.381027359955865
-          },
-          {
-            "player_id": 106,
-            "web_name": "Thiago",
-            "team_name": "Brentford",
-            "position": "FWD",
-            "price": 8.0,
-            "xp": 5.015587539600361
-          },
-          {
-            "player_id": 155,
-            "web_name": "Enzo",
-            "team_name": "Chelsea",
-            "position": "MID",
-            "price": 7.0,
-            "xp": 4.934677406987674
-          },
-          {
-            "player_id": 356,
-            "web_name": "Virgil",
-            "team_name": "Liverpool",
-            "position": "DEF",
-            "price": 6.5,
-            "xp": 4.65818555411841
-          },
-          {
-            "player_id": 388,
-            "web_name": "Gu\u00e9hi",
-            "team_name": "Man City",
-            "position": "DEF",
-            "price": 6.0,
-            "xp": 4.030322203974396
+            "player_id": 57,
+            "web_name": "Petrovi\u0107",
+            "team_name": "Bournemouth",
+            "position": "GK",
+            "price": 4.5,
+            "xp": 4.102440324218803
           },
           {
             "player_id": 94,
@@ -3797,28 +3757,12 @@
             "xp": 4.124432808282209
           },
           {
-            "player_id": 367,
-            "web_name": "Gakpo",
-            "team_name": "Liverpool",
-            "position": "MID",
-            "price": 7.0,
-            "xp": 4.054886723927269
-          },
-          {
-            "player_id": 445,
-            "web_name": "Thiaw",
-            "team_name": "Newcastle",
-            "position": "DEF",
-            "price": 5.0,
-            "xp": 3.853488168524026
-          },
-          {
-            "player_id": 57,
-            "web_name": "Petrovi\u0107",
-            "team_name": "Bournemouth",
-            "position": "GK",
-            "price": 4.5,
-            "xp": 4.1024403242188034
+            "player_id": 106,
+            "web_name": "Thiago",
+            "team_name": "Brentford",
+            "position": "FWD",
+            "price": 8.0,
+            "xp": 5.015587539600361
           },
           {
             "player_id": 113,
@@ -3826,33 +3770,7 @@
             "team_name": "Brighton",
             "position": "DEF",
             "price": 4.5,
-            "xp": 3.5606446520727824
-          }
-        ],
-        "squad": [
-          {
-            "player_id": 411,
-            "web_name": "Haaland",
-            "team_name": "Man City",
-            "position": "FWD",
-            "price": 15.5,
-            "xp": 5.701093906107671
-          },
-          {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
-            "position": "MID",
-            "price": 12.0,
-            "xp": 5.381027359955865
-          },
-          {
-            "player_id": 106,
-            "web_name": "Thiago",
-            "team_name": "Brentford",
-            "position": "FWD",
-            "price": 8.0,
-            "xp": 5.015587539600361
+            "xp": 3.560644652072782
           },
           {
             "player_id": 155,
@@ -3871,12 +3789,62 @@
             "xp": 4.65818555411841
           },
           {
+            "player_id": 367,
+            "web_name": "Gakpo",
+            "team_name": "Liverpool",
+            "position": "MID",
+            "price": 7.0,
+            "xp": 4.054886723927269
+          },
+          {
             "player_id": 388,
             "web_name": "Gu\u00e9hi",
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
             "xp": 4.030322203974396
+          },
+          {
+            "player_id": 411,
+            "web_name": "Haaland",
+            "team_name": "Man City",
+            "position": "FWD",
+            "price": 15.5,
+            "xp": 5.701093906107671
+          },
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "xp": 5.381027359955865
+          },
+          {
+            "player_id": 445,
+            "web_name": "Thiaw",
+            "team_name": "Newcastle",
+            "position": "DEF",
+            "price": 5.0,
+            "xp": 3.853488168524026
+          }
+        ],
+        "squad": [
+          {
+            "player_id": 57,
+            "web_name": "Petrovi\u0107",
+            "team_name": "Bournemouth",
+            "position": "GK",
+            "price": 4.5,
+            "xp": 4.102440324218803
+          },
+          {
+            "player_id": 88,
+            "web_name": "Kayode",
+            "team_name": "Brentford",
+            "position": "DEF",
+            "price": 4.5,
+            "xp": 3.368652710822374
           },
           {
             "player_id": 94,
@@ -3887,20 +3855,12 @@
             "xp": 4.124432808282209
           },
           {
-            "player_id": 367,
-            "web_name": "Gakpo",
-            "team_name": "Liverpool",
-            "position": "MID",
-            "price": 7.0,
-            "xp": 4.054886723927269
-          },
-          {
-            "player_id": 445,
-            "web_name": "Thiaw",
-            "team_name": "Newcastle",
-            "position": "DEF",
-            "price": 5.0,
-            "xp": 3.853488168524026
+            "player_id": 106,
+            "web_name": "Thiago",
+            "team_name": "Brentford",
+            "position": "FWD",
+            "price": 8.0,
+            "xp": 5.015587539600361
           },
           {
             "player_id": 109,
@@ -3911,28 +3871,20 @@
             "xp": 4.022417812903638
           },
           {
-            "player_id": 57,
-            "web_name": "Petrovi\u0107",
-            "team_name": "Bournemouth",
-            "position": "GK",
-            "price": 4.5,
-            "xp": 4.1024403242188034
-          },
-          {
-            "player_id": 88,
-            "web_name": "Kayode",
-            "team_name": "Brentford",
-            "position": "DEF",
-            "price": 4.5,
-            "xp": 3.3686527108223743
-          },
-          {
             "player_id": 113,
             "web_name": "F.Kad\u0131o\u011flu",
             "team_name": "Brighton",
             "position": "DEF",
             "price": 4.5,
-            "xp": 3.5606446520727824
+            "xp": 3.560644652072782
+          },
+          {
+            "player_id": 155,
+            "web_name": "Enzo",
+            "team_name": "Chelsea",
+            "position": "MID",
+            "price": 7.0,
+            "xp": 4.934677406987674
           },
           {
             "player_id": 221,
@@ -3941,6 +3893,54 @@
             "position": "MID",
             "price": 4.5,
             "xp": 1.800041382202468
+          },
+          {
+            "player_id": 356,
+            "web_name": "Virgil",
+            "team_name": "Liverpool",
+            "position": "DEF",
+            "price": 6.5,
+            "xp": 4.65818555411841
+          },
+          {
+            "player_id": 367,
+            "web_name": "Gakpo",
+            "team_name": "Liverpool",
+            "position": "MID",
+            "price": 7.0,
+            "xp": 4.054886723927269
+          },
+          {
+            "player_id": 388,
+            "web_name": "Gu\u00e9hi",
+            "team_name": "Man City",
+            "position": "DEF",
+            "price": 6.0,
+            "xp": 4.030322203974396
+          },
+          {
+            "player_id": 411,
+            "web_name": "Haaland",
+            "team_name": "Man City",
+            "position": "FWD",
+            "price": 15.5,
+            "xp": 5.701093906107671
+          },
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "xp": 5.381027359955865
+          },
+          {
+            "player_id": 445,
+            "web_name": "Thiaw",
+            "team_name": "Newcastle",
+            "position": "DEF",
+            "price": 5.0,
+            "xp": 3.853488168524026
           },
           {
             "player_id": 466,
@@ -3979,22 +3979,22 @@
         ],
         "transfers_out": [
           {
-            "player_id": 367,
-            "web_name": "Gakpo",
-            "team_name": "Liverpool",
-            "position": "MID",
-            "price": 7.0,
-            "xp": 3.8927292162503946,
-            "selling_price": 7.0
-          },
-          {
             "player_id": 109,
             "web_name": "Verbruggen",
             "team_name": "Brighton",
             "position": "GK",
             "price": 4.5,
-            "xp": 3.8758559668409394,
+            "xp": 3.875855966840939,
             "selling_price": 4.5
+          },
+          {
+            "player_id": 367,
+            "web_name": "Gakpo",
+            "team_name": "Liverpool",
+            "position": "MID",
+            "price": 7.0,
+            "xp": 3.892729216250395,
+            "selling_price": 7.0
           }
         ],
         "captain": [
@@ -4019,110 +4019,20 @@
         ],
         "xi": [
           {
-            "player_id": 411,
-            "web_name": "Haaland",
-            "team_name": "Man City",
-            "position": "FWD",
-            "price": 15.5,
-            "xp": 6.054725624549278
-          },
-          {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
-            "position": "MID",
-            "price": 12.0,
-            "xp": 5.54618410374145
-          },
-          {
-            "player_id": 106,
-            "web_name": "Thiago",
-            "team_name": "Brentford",
-            "position": "FWD",
-            "price": 8.0,
-            "xp": 5.149619070782705
-          },
-          {
-            "player_id": 155,
-            "web_name": "Enzo",
-            "team_name": "Chelsea",
-            "position": "MID",
-            "price": 7.0,
-            "xp": 4.476850600538542
-          },
-          {
-            "player_id": 356,
-            "web_name": "Virgil",
-            "team_name": "Liverpool",
-            "position": "DEF",
-            "price": 6.5,
-            "xp": 4.269655206777393
-          },
-          {
-            "player_id": 388,
-            "web_name": "Gu\u00e9hi",
-            "team_name": "Man City",
-            "position": "DEF",
-            "price": 6.0,
-            "xp": 4.634328320940586
-          },
-          {
-            "player_id": 94,
-            "web_name": "Schade",
-            "team_name": "Brentford",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 4.260830296683158
-          },
-          {
-            "player_id": 226,
-            "web_name": "Pickford",
-            "team_name": "Everton",
-            "position": "GK",
-            "price": 5.5,
-            "xp": 4.516819282215704
-          },
-          {
-            "player_id": 445,
-            "web_name": "Thiaw",
-            "team_name": "Newcastle",
-            "position": "DEF",
-            "price": 5.0,
-            "xp": 4.412717172513628
-          },
-          {
-            "player_id": 237,
-            "web_name": "Ndiaye",
-            "team_name": "Everton",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 4.261050696507523
-          },
-          {
             "player_id": 88,
             "web_name": "Kayode",
             "team_name": "Brentford",
             "position": "DEF",
             "price": 4.5,
             "xp": 3.583768955264712
-          }
-        ],
-        "squad": [
-          {
-            "player_id": 411,
-            "web_name": "Haaland",
-            "team_name": "Man City",
-            "position": "FWD",
-            "price": 15.5,
-            "xp": 6.054725624549278
           },
           {
-            "player_id": 426,
-            "web_name": "B.Fernandes",
-            "team_name": "Man Utd",
+            "player_id": 94,
+            "web_name": "Schade",
+            "team_name": "Brentford",
             "position": "MID",
-            "price": 12.0,
-            "xp": 5.54618410374145
+            "price": 6.0,
+            "xp": 4.260830296683158
           },
           {
             "player_id": 106,
@@ -4141,6 +4051,22 @@
             "xp": 4.476850600538542
           },
           {
+            "player_id": 226,
+            "web_name": "Pickford",
+            "team_name": "Everton",
+            "position": "GK",
+            "price": 5.5,
+            "xp": 4.516819282215704
+          },
+          {
+            "player_id": 237,
+            "web_name": "Ndiaye",
+            "team_name": "Everton",
+            "position": "MID",
+            "price": 6.0,
+            "xp": 4.261050696507523
+          },
+          {
             "player_id": 356,
             "web_name": "Virgil",
             "team_name": "Liverpool",
@@ -4157,20 +4083,20 @@
             "xp": 4.634328320940586
           },
           {
-            "player_id": 94,
-            "web_name": "Schade",
-            "team_name": "Brentford",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 4.260830296683158
+            "player_id": 411,
+            "web_name": "Haaland",
+            "team_name": "Man City",
+            "position": "FWD",
+            "price": 15.5,
+            "xp": 6.054725624549278
           },
           {
-            "player_id": 226,
-            "web_name": "Pickford",
-            "team_name": "Everton",
-            "position": "GK",
-            "price": 5.5,
-            "xp": 4.516819282215704
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "xp": 5.54618410374145
           },
           {
             "player_id": 445,
@@ -4179,22 +4105,16 @@
             "position": "DEF",
             "price": 5.0,
             "xp": 4.412717172513628
-          },
-          {
-            "player_id": 237,
-            "web_name": "Ndiaye",
-            "team_name": "Everton",
-            "position": "MID",
-            "price": 6.0,
-            "xp": 4.261050696507523
-          },
+          }
+        ],
+        "squad": [
           {
             "player_id": 57,
             "web_name": "Petrovi\u0107",
             "team_name": "Bournemouth",
             "position": "GK",
             "price": 4.5,
-            "xp": 3.8946128901808637
+            "xp": 3.894612890180864
           },
           {
             "player_id": 88,
@@ -4203,6 +4123,22 @@
             "position": "DEF",
             "price": 4.5,
             "xp": 3.583768955264712
+          },
+          {
+            "player_id": 94,
+            "web_name": "Schade",
+            "team_name": "Brentford",
+            "position": "MID",
+            "price": 6.0,
+            "xp": 4.260830296683158
+          },
+          {
+            "player_id": 106,
+            "web_name": "Thiago",
+            "team_name": "Brentford",
+            "position": "FWD",
+            "price": 8.0,
+            "xp": 5.149619070782705
           },
           {
             "player_id": 113,
@@ -4210,7 +4146,15 @@
             "team_name": "Brighton",
             "position": "DEF",
             "price": 4.5,
-            "xp": 3.2866848003679254
+            "xp": 3.286684800367925
+          },
+          {
+            "player_id": 155,
+            "web_name": "Enzo",
+            "team_name": "Chelsea",
+            "position": "MID",
+            "price": 7.0,
+            "xp": 4.476850600538542
           },
           {
             "player_id": 221,
@@ -4221,12 +4165,68 @@
             "xp": 1.78544787681541
           },
           {
+            "player_id": 226,
+            "web_name": "Pickford",
+            "team_name": "Everton",
+            "position": "GK",
+            "price": 5.5,
+            "xp": 4.516819282215704
+          },
+          {
+            "player_id": 237,
+            "web_name": "Ndiaye",
+            "team_name": "Everton",
+            "position": "MID",
+            "price": 6.0,
+            "xp": 4.261050696507523
+          },
+          {
+            "player_id": 356,
+            "web_name": "Virgil",
+            "team_name": "Liverpool",
+            "position": "DEF",
+            "price": 6.5,
+            "xp": 4.269655206777393
+          },
+          {
+            "player_id": 388,
+            "web_name": "Gu\u00e9hi",
+            "team_name": "Man City",
+            "position": "DEF",
+            "price": 6.0,
+            "xp": 4.634328320940586
+          },
+          {
+            "player_id": 411,
+            "web_name": "Haaland",
+            "team_name": "Man City",
+            "position": "FWD",
+            "price": 15.5,
+            "xp": 6.054725624549278
+          },
+          {
+            "player_id": 426,
+            "web_name": "B.Fernandes",
+            "team_name": "Man Utd",
+            "position": "MID",
+            "price": 12.0,
+            "xp": 5.54618410374145
+          },
+          {
+            "player_id": 445,
+            "web_name": "Thiaw",
+            "team_name": "Newcastle",
+            "position": "DEF",
+            "price": 5.0,
+            "xp": 4.412717172513628
+          },
+          {
             "player_id": 466,
             "web_name": "Neave",
             "team_name": "Newcastle",
             "position": "FWD",
             "price": 4.5,
-            "xp": 1.4628563880127585
+            "xp": 1.462856388012758
           }
         ]
       }
@@ -4281,7 +4281,7 @@
       "projection_confidence": 0.5576503183,
       "tactical_role": "central / defensive defender",
       "role_source": "statistical_inference",
-      "selection_regret": 0.0679867706,
+      "selection_regret": 0.0679867707,
       "alternative": null,
       "reason": "Selected by the canonical optimiser on the matched projection surface; the fields above are the reproducible evidence, not a conversational override."
     },
