@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from apex_fpl.services.initial_plan import (
     initial_chip_policy,
 )
 from apex_fpl.services.pinnacle_readiness import evaluate_pinnacle_payload
+from apex_fpl.services.player_evidence import build_selected_player_evidence
 from apex_fpl.services.strategy import analyse_receding_horizon
 
 
@@ -363,6 +365,15 @@ def main() -> None:
     authoritative_decision = _exact_decision_payload(
         exact_decision, decision_players
     )
+    authoritative_gw1 = authoritative_decision["weeks"][0]
+    selected_player_evidence = build_selected_player_evidence(
+        decision_players,
+        out.news_audit,
+        _ids(exact_decision.solution.squad),
+        xi_ids=authoritative_gw1["xi_ids"],
+        captain_id=int(authoritative_gw1["captain_id"]),
+        now=datetime.fromisoformat(bundle.created_at.replace("Z", "+00:00")),
+    )
 
     scenario_surface = generate_projection_scenarios(
         decision_players,
@@ -593,6 +604,7 @@ def main() -> None:
             name: _solution(sol) for name, sol in deterministic.items()
         },
         "authoritative_decision": authoritative_decision,
+        "selected_player_evidence": selected_player_evidence,
         "robust_cvar_scenarios": {
             name: _robust_solution(sol) for name, sol in robust.items()
         },
@@ -658,7 +670,6 @@ def main() -> None:
         lines.append(f"- BLOCKER: {blocker}")
     lines.append("")
 
-    authoritative_gw1 = authoritative_decision["weeks"][0]
     lines += [
         "## Authoritative exact-horizon decision",
         "",
@@ -671,6 +682,14 @@ def main() -> None:
         f"Near-equivalent candidates: **{authoritative_decision['equivalence']['near_equivalent_candidate_count']}**",
         "",
         exact_decision.solution.squad.to_markdown(index=False),
+        "",
+        "## Selected-player evidence coverage",
+        "",
+        f"Current relevant evidence rows: **{selected_player_evidence['coverage']['relevant_evidence_rows']}**",
+        f"Captain covered: **{str(selected_player_evidence['coverage']['captain_has_current_evidence']).lower()}**",
+        "High-uncertainty starters missing evidence: **"
+        + str(len(selected_player_evidence['coverage']['high_uncertainty_starters_missing_evidence']))
+        + "**",
         "",
     ]
 

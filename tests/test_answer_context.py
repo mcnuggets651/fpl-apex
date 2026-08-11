@@ -53,6 +53,33 @@ def _payloads():
             "official_snapshot": {"bootstrap_sha256": "a", "fixtures_sha256": "b"},
         },
         "weekly_strategy": {"status": "Optimal"},
+        "selected_player_evidence": {
+            "contract": "apex-player-evidence-v1",
+            "coverage": {
+                "ready": True,
+                "relevant_evidence_rows": 1,
+                "captain_has_current_evidence": True,
+                "high_uncertainty_starters_missing_evidence": [],
+            },
+            "dossiers": [
+                {
+                    "player_id": 1,
+                    "has_current_decision_evidence": True,
+                    "current_evidence_count": 1,
+                    "evidence": [
+                        {
+                            "evidence_type": "manager",
+                            "source_name": "Official club",
+                            "source_tier": "official_club",
+                            "source_url": "https://example.test/foden",
+                            "published_at": "2026-08-11T07:00:00+00:00",
+                            "retrieved_at": "2026-08-11T07:30:00+00:00",
+                            "eligible_for_decision": True,
+                        }
+                    ],
+                }
+            ],
+        },
     }
     return canonical, pinnacle
 
@@ -69,6 +96,7 @@ def test_complete_context_is_only_green_answer_contract():
     assert surfaces["production"]["authority"] is True
     assert surfaces["cvar_diagnostic"]["authority"] is False
     assert "Only maximum_ev_production" in surfaces["interpretation"]
+    assert context["selected_player_reasons"][0]["current_evidence_count"] == 1
 
 
 def test_captain_and_regret_surfaces_follow_producer_schemas():
@@ -189,3 +217,18 @@ def test_diagnostic_and_inferred_role_warnings_reach_answer_contract():
     assert any("captain stability" in warning for warning in context["warnings"])
     assert any("team strength fallback" in warning for warning in context["warnings"])
     assert any("statistical inference" in warning for warning in context["warnings"])
+
+
+def test_zero_relevant_selected_player_evidence_blocks_answer_contract():
+    canonical, pinnacle = _payloads()
+    pinnacle["selected_player_evidence"]["coverage"].update(
+        {
+            "ready": False,
+            "relevant_evidence_rows": 0,
+            "captain_has_current_evidence": False,
+        }
+    )
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+    assert context["safe_to_act"] is False
+    assert context["production_result"] is None
+    assert any("evidence coverage" in row for row in context["blockers"])

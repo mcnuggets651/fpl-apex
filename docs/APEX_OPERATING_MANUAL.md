@@ -41,6 +41,15 @@ change.
 required sources, missing CVaR/regret/solver parity, insufficient selected-player
 minutes/role provenance, incomplete optimisation, or missing strategy state.
 
+Feed health alone is not player evidence. The published captain and every
+high-uncertainty starter require current attributable evidence from an
+official-club, official-league or trusted-media source. Positive verified start
+evidence may increase the statistical prior by at most 5–8 expected minutes and
+7–10 percentage points of start probability; official injury and suspension
+status remains the hard ceiling. Manual availability and tactical/set-piece
+overrides require source name, source tier, URL, publication time and explicit
+expiry. Stale or unverifiable rows are rejected before projection.
+
 Completion means all five are present: GitHub commit, PR, passing CI,
 reproducible evidence artifact, and merged production output when activation is
 claimed. A local experiment is never a completed release.

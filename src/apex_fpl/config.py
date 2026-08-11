@@ -20,22 +20,34 @@ def _load_env_file(path: str | Path = ".env") -> None:
         os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
 
 
-def _configured_news_feeds(raw: dict[str, Any]) -> list[str]:
+def _configured_news_sources(raw: dict[str, Any]) -> list[dict[str, str]]:
     env = [x.strip() for x in os.getenv("APEX_NEWS_FEEDS", "").split(",") if x.strip()]
     if env:
-        return env
+        return [
+            {"name": value, "url": value, "tier": "unknown"}
+            for value in env
+        ]
     path = Path("config/news_sources.yaml")
     if not path.exists():
-        return list(raw.get("news_feeds", []))
+        return [
+            {"name": str(value), "url": str(value), "tier": "unknown"}
+            for value in raw.get("news_feeds", [])
+        ]
     cfg = yaml.safe_load(path.read_text()) or {}
     feeds = cfg.get("feeds", [])
-    urls: list[str] = []
+    sources: list[dict[str, str]] = []
     for item in feeds:
         if isinstance(item, str):
-            urls.append(item)
+            sources.append({"name": item, "url": item, "tier": "unknown"})
         elif isinstance(item, dict) and item.get("url"):
-            urls.append(str(item["url"]))
-    return urls
+            sources.append(
+                {
+                    "name": str(item.get("name") or item["url"]),
+                    "url": str(item["url"]),
+                    "tier": str(item.get("tier") or "unknown"),
+                }
+            )
+    return sources
 
 
 def _optional_int(value: Any) -> int | None:
@@ -75,6 +87,7 @@ class Settings:
     odds_api_key: str | None = None
     odds_api_url: str | None = None
     news_feeds: list[str] = field(default_factory=list)
+    news_sources: list[dict[str, str]] = field(default_factory=list)
     fpl_entry_id: int | None = None
     current_squad_path: Path = Path("data/manual/current_squad.csv")
     team_state_path: Path = Path("data/manual/team_state.yaml")
@@ -102,6 +115,7 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
     if p.exists():
         raw = yaml.safe_load(p.read_text()) or {}
     default = Settings()
+    news_sources = _configured_news_sources(raw)
     s = Settings(
         season=os.getenv("APEX_SEASON", raw.get("season", default.season)),
         horizon=int(os.getenv("APEX_HORIZON", raw.get("horizon", default.horizon))),
@@ -140,7 +154,8 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         ),
         odds_api_key=os.getenv("ODDS_API_KEY") or None,
         odds_api_url=os.getenv("ODDS_API_URL") or None,
-        news_feeds=_configured_news_feeds(raw),
+        news_feeds=[row["url"] for row in news_sources],
+        news_sources=news_sources,
         fpl_entry_id=_optional_int(
             os.getenv("FPL_ENTRY_ID", raw.get("fpl_entry_id", default.fpl_entry_id))
         ),

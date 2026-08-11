@@ -359,7 +359,7 @@ def run_pipeline(
     news_audit = pd.DataFrame()
     if settings.news_feeds:
         try:
-            collection = collect_news_sources(settings.news_feeds)
+            collection = collect_news_sources(settings.news_sources or settings.news_feeds)
             headlines = collection.items
             news_signal, news_audit = infer_news_signals(players, headlines)
             if not news_signal.empty:
@@ -373,7 +373,9 @@ def run_pipeline(
                 _status(
                     "news_feeds",
                     True,
-                    f"{len(headlines)} headlines; {len(news_audit)} player matches; "
+                    f"{len(headlines)} items; {len(news_audit)} player matches; "
+                    f"{int(news_audit.get('eligible_for_projection', pd.Series(dtype=bool)).sum())} "
+                    "projection-eligible evidence rows; "
                     f"{len(collection.succeeded)} source(s) healthy{failed_detail}",
                 )
             )
@@ -736,6 +738,30 @@ def run_pipeline(
         "tactical_role_source",
         "role_multiplier",
         "role_confidence",
+        "lineup_evidence_type",
+        "context_reason",
+        "source_name",
+        "source_tier",
+        "source_url",
+        "published_at",
+        "retrieved_at",
+        "expires_at",
+        "availability_source_name",
+        "availability_source_tier",
+        "availability_source_url",
+        "availability_evidence_type",
+        "availability_published_at",
+        "availability_retrieved_at",
+        "availability_expires_at",
+        "news_reason",
+        "news_event_type",
+        "news_source_name",
+        "news_source_tier",
+        "news_source_url",
+        "news_published_at",
+        "news_retrieved_at",
+        "news_minutes_delta",
+        "news_start_probability_delta",
         "penalty_share",
         "corners_share",
         "direct_freekick_share",

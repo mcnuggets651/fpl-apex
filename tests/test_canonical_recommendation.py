@@ -94,6 +94,29 @@ def _pinnacle(bootstrap: str = "boot", fixtures: str = "fix") -> dict:
             "shortlist": {"candidate_count": 4},
             "equivalence": {"unique_optimum_proven": False},
         },
+        "selected_player_evidence": {
+            "contract": "apex-player-evidence-v1",
+            "coverage": {
+                "selected_players": 15,
+                "selected_players_with_current_evidence": 1,
+                "relevant_evidence_rows": 1,
+                "captain_id": 1,
+                "captain_has_current_evidence": True,
+                "high_uncertainty_starter_ids": [],
+                "high_uncertainty_starters_missing_evidence": [],
+                "ready": True,
+            },
+            "dossiers": [
+                {
+                    "player_id": row["player_id"],
+                    "is_captain": row["player_id"] == 1,
+                    "has_current_decision_evidence": row["player_id"] == 1,
+                    "current_evidence_count": 1 if row["player_id"] == 1 else 0,
+                    "evidence": [],
+                }
+                for row in _rows()
+            ],
+        },
         "selection_regret": [{"player_id": row["player_id"], "regret": 1.0} for row in _rows()],
         "solver_parity": {
             "comparison_surface": "pinnacle_ev",
