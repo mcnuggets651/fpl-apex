@@ -4,10 +4,11 @@ Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
 
 **Last updated:** 2026-08-11
 
-The closed-answer governance release is a validated candidate until its PR is
-merged and the production workflow publishes `apex_answer_context.json`. Local
-validation evidence is recorded in
-`docs/evidence/governance_reliability_v1.json`; this is not an activation claim.
+The sealed-decision-surface change is currently a local release candidate on
+`agent/seal-decision-bundle`. It is not production until PR review, CI, merge and
+a fresh Apex Unified artifact prove matching bundle identity end to end. Local
+validation currently passes 174 tests, Ruff, governance, upstream pins and
+workflow YAML checks.
 
 ## Production
 
@@ -16,6 +17,9 @@ validation evidence is recorded in
 - Production selector: canonical xP → rolling-horizon legal maximum-EV optimiser
   → exact Gameweek mechanics → one published recommendation. Correlated
   robustness and Elite frontiers are non-authoritative diagnostics.
+- PR #25 is merged. It corrects isolated preseason-cameo weighting and exposes
+  labelled captain/evidence surfaces.
+- Latest production publication: `a147754` on 2026-08-11.
 - PR #16 is merged. The Understat team-strength challenger is shadow-only and
   does not change canonical publication.
 - PR #14 is closed and superseded. It combined model activation, readiness
@@ -51,35 +55,33 @@ labelling the distinction.
 
 ## Latest verified canonical recommendation
 
-The post-PR #17 publication at 2026-08-09 11:36 UTC is decision-ready:
+The post-PR #25 publication at `a147754` reported:
 
-- selector: **maximum_ev**
-- reason: the Elite epsilon frontier did not converge
-- horizon objective: **319.5816697527 raw xP**
-- GW1 exact-mechanics total: **51.5251454610 xP**
+- selector: **strategy_maximum_ev**
+- GW1 exact-mechanics total: **51.42 xP**
 - captain: **Haaland**
-- vice-captain: **B.Fernandes**
-- official bootstrap SHA-256 prefix: `1b658fa96da5`
+- vice-captain: **Bruno Fernandes**
 - fixtures SHA-256 prefix: `a478e20d030d`
 
 Canonical 15:
 
 - GK: Verbruggen, Petrović
-- DEF: Virgil, Guéhi, Thiaw, Kayode, A.Murphy
-- MID: B.Fernandes, Enzo, Schade, Ndiaye, Tavernier
+- DEF: Virgil, Guéhi, Thiaw, Truffert, Kayode
+- MID: Bruno Fernandes, Enzo, Schade, Ndiaye, Drakes-Thomas
 - FWD: Haaland, Thiago, Neave
 
 GW1 XI:
 
 - Verbruggen
-- Guéhi, Virgil, Thiaw, Kayode
-- B.Fernandes, Enzo, Schade, Ndiaye
+- Virgil, Guéhi, Thiaw, Kayode
+- Bruno Fernandes, Enzo, Schade, Ndiaye
 - Haaland, Thiago
 
-Bench: Petrović; Tavernier → A.Murphy → Neave.
+Bench: Petrović; Truffert → Drakes-Thomas → Neave.
 
-This remains the official **pre-shrinkage** baseline. No shadow challenger may
-overwrite it.
+This remains the official baseline. Its `safe_to_act=true` is still under audit
+because captain surfaces disagree, selected-player authoritative role evidence is
+empty, preseason return coverage is 5.6% and calibration has not begun.
 
 ## Model status
 
@@ -126,13 +128,14 @@ the 2026/27 deadline archive as the true prospective final test.
 
 ## Immediate release sequence
 
-1. Preserve PR #14 as closed/superseded and keep shrinkage dormant.
-2. Build the remaining historical adapter, transfer/chip controller, isolated
-   scorer and 38-GW orchestrator under `FULL_SEASON_REPLAY_PROTOCOL.md`.
-3. Freeze code, policies and metrics before opening 2025/26 outcomes.
-4. Run 2025/26 as the locked strategy/mechanics benchmark.
-5. Preserve every 2026/27 pre-deadline bundle and decision for prospective
-   validation.
+1. Ship the sealed decision bundle and verify one production `bundle_id` across
+   Pinnacle, Elite, parity and canonical publication.
+2. Repair missing preseason-value propagation, diagnostic schemas and solver-gap
+   reporting.
+3. Unify squad selection and published exact-mechanics objectives.
+4. Make authoritative evidence decision-relevant and readiness-aware.
+5. Resume projection calibration and full-season replay only after the decision
+   contract is reproducible.
 
 ## Current boundaries
 

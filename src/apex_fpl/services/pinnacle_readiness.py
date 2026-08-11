@@ -269,6 +269,9 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     elif parity.get("comparison_surface") != "pinnacle_ev":
         blockers.append("independent solver parity was not computed on Pinnacle EV")
     else:
+        bundle_id = payload.get("decision_bundle_id")
+        if bundle_id and parity.get("decision_bundle_id") != bundle_id:
+            blockers.append("independent solver parity decision bundle does not match Pinnacle")
         parity_snapshot = parity.get("official_snapshot") or {}
         for field in ("bootstrap_sha256", "fixtures_sha256"):
             if parity_snapshot.get(field) != snapshot.get(field):

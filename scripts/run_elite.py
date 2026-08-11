@@ -3,20 +3,16 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 
 import pandas as pd
 
-from apex_fpl.config import load_settings
-from apex_fpl.data.http import CachedHttp
-from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.models.elite import EliteWeights, build_elite_projection_surface
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.mechanics import optimise_gameweek_mechanics
 from apex_fpl.services.decision_eligibility import captain_eligible_ids
-from apex_fpl.services.pipeline import run_pipeline
+from apex_fpl.services.decision_bundle import DecisionBundle
 
 CONVERGENCE_MIN_OVERLAP = 13
 CONVERGENCE_EPSILONS = (0.0025, 0.005, 0.01)
@@ -125,29 +121,31 @@ def _mechanics(sol, projections, gw, players, captain_eligible) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--horizon", type=int, default=8)
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Deprecated compatibility flag; source refresh occurs only when building the bundle.",
+    )
+    parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
     parser.add_argument("--output-dir", default="data/generated")
     args = parser.parse_args()
 
-    settings = load_settings()
-    out = run_pipeline(
-        settings,
-        horizon=args.horizon,
-        scenario="both",
-        force=args.force,
-        plan_transfers=False,
-    )
+    bundle = DecisionBundle.load(args.bundle_dir)
+    out = bundle.to_pipeline_output()
+    settings = bundle.settings
+    if [int(gw) for gw in out.gameweeks] != [int(gw) for gw in out.gameweeks[: args.horizon]]:
+        raise SystemExit(
+            "requested horizon does not match the sealed decision bundle; rebuild the bundle"
+        )
     if not out.safety.safe_to_act or not out.safety.full_apex_ready:
         raise SystemExit(
             "Elite blocked by Apex production gate: "
             + ("; ".join(out.safety.blockers) or "unknown production blocker")
         )
 
-    official = OfficialFPLClient(CachedHttp(settings.cache_dir)).snapshot(force=False)
-    team_ids = official.players[["player_id", "team"]].drop_duplicates("player_id")
-    players = out.players.drop(columns=["team"], errors="ignore").merge(
-        team_ids, on="player_id", how="left", validate="one_to_one"
-    )
+    players = out.players.copy()
+    if "team" not in players or players["team"].isna().any():
+        raise SystemExit("sealed player universe contains missing official team IDs")
     captain_eligible = captain_eligible_ids(players)
     if len(captain_eligible) < 2:
         raise SystemExit("Elite has fewer than two captain/vice eligible players")
@@ -157,9 +155,9 @@ def main() -> None:
     common = dict(
         players=players,
         gameweeks=out.gameweeks,
-        budget=settings.budget,
-        max_per_team=settings.max_per_team,
-        decay=settings.fixture_decay,
+        budget=float(settings["budget"]),
+        max_per_team=int(settings["max_per_team"]),
+        decay=float(settings["fixture_decay"]),
         captain_eligible=captain_eligible,
     )
 
@@ -266,7 +264,9 @@ def main() -> None:
 
     payload = {
         "contract": "apex-elite-10-v4-diagnostic",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": bundle.created_at,
+        "decision_bundle": bundle.lineage_summary(),
+        "decision_bundle_id": bundle.bundle_id,
         "safe_to_act": bool(out.safety.safe_to_act),
         "full_apex_ready": bool(out.safety.full_apex_ready),
         "official_snapshot": out.snapshot,

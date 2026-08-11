@@ -65,6 +65,8 @@ def main() -> None:
         pd.to_numeric(gw["captain"], errors="coerce").fillna(0) > 0.5
     ]
     external_cap = int(cap_rows.iloc[0]["id"]) if not cap_rows.empty else None
+    bundle = report.get("decision_bundle") or {}
+    projection_artifact = (bundle.get("artifacts") or {}).get("projections") or {}
 
     squad_overlap = len(apex_squad & external_squad)
     xi_overlap = len(apex_xi & external_xi)
@@ -83,11 +85,13 @@ def main() -> None:
         "captain_agrees": apex_cap == external_cap,
         "only_apex": sorted(apex_squad - external_squad),
         "only_external": sorted(external_squad - apex_squad),
+        "decision_bundle_id": report.get("decision_bundle_id"),
         "official_snapshot": {
             key: (report.get("official_snapshot") or {}).get(key)
             for key in ("snapshot_id", "bootstrap_sha256", "fixtures_sha256")
         },
-        "projection_export_sha256": hashlib.sha256(solver_path.read_bytes()).hexdigest(),
+        "projection_export_sha256": projection_artifact.get("sha256"),
+        "external_solver_result_sha256": hashlib.sha256(solver_path.read_bytes()).hexdigest(),
     }
     output = apex_path.parent / "solver_parity.json"
     output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

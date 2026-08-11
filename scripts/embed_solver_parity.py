@@ -18,6 +18,9 @@ def main() -> None:
     parity = json.loads(args.parity.read_text(encoding="utf-8"))
     if parity.get("comparison_surface") != "pinnacle_ev":
         raise SystemExit("refusing to embed parity that was not computed on Pinnacle EV")
+    bundle_id = payload.get("decision_bundle_id")
+    if bundle_id and parity.get("decision_bundle_id") != bundle_id:
+        raise SystemExit("refusing to embed parity from a different decision bundle")
     payload["solver_parity"] = parity
     readiness = evaluate_pinnacle_payload(payload)
     payload["pinnacle_ready"] = readiness.ready

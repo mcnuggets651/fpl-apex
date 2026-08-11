@@ -58,7 +58,11 @@ activation is connected.
 The correlated scenario coefficients are explicit priors. Fixed-XI captain frequencies are useful telemetry, but a 50% hard publication decision cannot be interpreted as calibrated probability evidence until historical coverage and discrimination are validated. The raw baseline also fails the proposed fixed-XI threshold, so this diagnostic must be separated from shrinkage promotion.
 
 ## K014 — Full-season replay path is incomplete
-The live pipeline has no injected historical clock or immutable as-of bundle, and the canonical builder is still initial-squad-oriented after GW1. A season replay also needs a deterministic chip controller, realised scorer and hash-chained team state. See `FULL_SEASON_REPLAY_PROTOCOL.md`.
+The current-season pipeline now has a sealed decision-bundle contract, but it has
+no injected historical clock or point-in-time historical ingestion adapter, and
+the canonical builder is still initial-squad-oriented after GW1. A season replay
+also needs a deterministic chip controller, realised scorer and hash-chained team
+state. See `FULL_SEASON_REPLAY_PROTOCOL.md`.
 
 ## Resolution discipline
 When an issue is fixed, retain the entry and mark it resolved with date, implementation and benchmark evidence rather than deleting it.
@@ -72,3 +76,13 @@ still requires an authoritative provider or verified match-event capture. Covari
 and captain-stability references cannot honestly be outcome-calibrated before archived
 pre-deadline forecasts have corresponding 2026/27 results; until then they are labelled
 provisional diagnostics and have no production-selection authority.
+
+## K015 — Diagnostic input surfaces were not fully sealed
+
+**Release candidate implemented; production verification pending.** Pinnacle and
+Elite previously reran the live pipeline and canonical publication compared only
+Official FPL hashes. News, tactical evidence, FPL Core, AIrsenal, configuration,
+code and projections could therefore differ without detection. The decision
+bundle work removes diagnostic refetches and requires a shared content-addressed
+identity, but this issue remains open until the PR is merged and a production
+artifact proves matched bundle IDs end to end.

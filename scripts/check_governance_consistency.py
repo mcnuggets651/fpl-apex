@@ -26,6 +26,16 @@ def main() -> None:
     workflow = Path(".github/workflows/pinnacle.yml").read_text(encoding="utf-8")
     if "apex_answer_context.json" not in workflow:
         failures.append("production workflow does not publish apex_answer_context.json")
+    if "scripts/build_decision_bundle.py" not in workflow:
+        failures.append("production workflow does not seal a decision bundle")
+    if "data/generated/decision_bundle/" not in workflow:
+        failures.append("production workflow does not retain the decision bundle artifact")
+    for script_name in ("scripts/run_pinnacle.py", "scripts/run_elite.py"):
+        script = Path(script_name).read_text(encoding="utf-8")
+        if "DecisionBundle.load" not in script:
+            failures.append(f"{script_name} does not consume the sealed decision bundle")
+        if "run_pipeline" in script or "OfficialFPLClient" in script:
+            failures.append(f"{script_name} contains an independent live retrieval path")
     if failures:
         raise SystemExit("\n".join(failures))
 

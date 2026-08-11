@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -28,6 +28,7 @@ from apex_fpl.services.data_quality import (
     assess_data_quality,
     official_strength_is_usable,
 )
+from apex_fpl.services.decision_bundle import dataframe_sha256
 from apex_fpl.services.enrichment import add_preseason_features, coalesce_context
 from apex_fpl.services.integrity import reconcile
 from apex_fpl.services.news_signals import infer_news_signals
@@ -56,6 +57,8 @@ class PipelineOutput:
     snapshot: dict
     data_quality: DataQualityAssessment
     team_state: TeamStateResolution | None = None
+    upstreams: dict = field(default_factory=dict)
+    material_inputs: dict = field(default_factory=dict)
 
 
 def _official_ep(players: pd.DataFrame, gameweeks: list[int]) -> pd.DataFrame:
@@ -81,6 +84,13 @@ def _status(
         configured=configured,
         version=version,
     )
+
+
+def _material_frame(frame: pd.DataFrame) -> dict[str, int | str]:
+    return {
+        "rows": int(len(frame)),
+        "sha256": dataframe_sha256(frame),
+    }
 
 
 def _decision_gameweeks(events: pd.DataFrame, horizon: int) -> list[int]:
@@ -190,6 +200,7 @@ def run_pipeline(
     friendlies = pd.DataFrame()
     core_client: FPLCoreClient | None = None
     core_pin = str(pins.get("fpl_core_insights", {}).get("commit", ""))
+    air = pd.DataFrame()
     try:
         core_client = FPLCoreClient(http, settings.season, ref=core_pin or "main")
         core = core_client.playerstats(force=force)
@@ -588,6 +599,7 @@ def run_pipeline(
             )
         )
 
+    odds = pd.DataFrame()
     try:
         odds = OddsAdapter(
             http,
@@ -709,6 +721,7 @@ def run_pipeline(
     ranked_cols = [
         "player_id",
         "web_name",
+        "team",
         "team_name",
         "position",
         "price",
@@ -767,17 +780,36 @@ def run_pipeline(
         upstreams=pins,
         data_quality=data_quality,
     )
+    material_inputs = {
+        "official_players": _material_frame(official.players),
+        "official_fixtures": _material_frame(official.fixtures),
+        "fpl_core_playerstats": _material_frame(core),
+        "fpl_core_previous_season": _material_frame(previous),
+        "fpl_core_preseason": _material_frame(friendlies),
+        "fpl_core_elo": _material_frame(core_elos),
+        "manual_availability": _material_frame(manual),
+        "tactical_roles": _material_frame(tactical),
+        "news_evidence": _material_frame(news_audit),
+        "understat_team_ratings": _material_frame(understat_ratings),
+        "understat_team_goal_surface": _material_frame(understat_surface),
+        "fixture_projection_surface": _material_frame(fx),
+        "airsenal_projection_surface": _material_frame(air),
+        "market_odds_surface": _material_frame(odds),
+        "final_projection_matrix": _material_frame(proj),
+    }
     return PipelineOutput(
-        ranked_out,
-        proj,
-        integrity,
-        news_audit,
-        scenarios,
-        transfer_plan,
-        sources,
-        gws,
-        safety,
-        manifest,
-        data_quality,
-        team_resolution,
+        players=ranked_out,
+        projections=proj,
+        integrity=integrity,
+        news_audit=news_audit,
+        scenarios=scenarios,
+        transfer_plan=transfer_plan,
+        sources=sources,
+        gameweeks=gws,
+        safety=safety,
+        snapshot=manifest,
+        data_quality=data_quality,
+        team_state=team_resolution,
+        upstreams=pins,
+        material_inputs=material_inputs,
     )

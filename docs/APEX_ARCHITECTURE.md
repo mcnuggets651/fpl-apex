@@ -28,6 +28,10 @@ Projection ensemble
 (mean xP, disagreement, confidence, variance, floor/ceiling)
       |
       v
+Sealed decision bundle
+(content hashes, code/config, evidence, projections, team state)
+      |
+      v
 Maximum-EV legal optimiser  <-------------------+
       |                                          |
       +--> correlated CVaR / scenarios           |
@@ -75,6 +79,13 @@ Produces transparent per-player/per-GW expected-point components. This is the mo
 ### Ensemble
 Combines experts into the canonical `xp` surface and records disagreement/uncertainty rather than hiding it.
 
+### Sealed decision bundle
+Ingestion and projection run once. The resulting player universe, projection
+matrix, evidence lineage, source timestamps, settings, upstream pins and team
+state are content-addressed by one `bundle_id`. Every optimiser and diagnostic
+consumes that bundle; diagnostic layers may not fetch or project independently.
+See `docs/DECISION_BUNDLE.md`.
+
 ### Maximum-EV optimiser
 This is the primary selection baseline. It maximises canonical ensemble xP under budget, club, squad and formation constraints over the selected planning horizon.
 
@@ -107,7 +118,7 @@ The unified recommendation requires:
 - `safe_to_act=true`;
 - `full_apex_ready=true`;
 - `pinnacle_ready=true`;
-- matched Official FPL snapshot identity between internal selection diagnostics;
+- matched sealed decision-bundle identity between internal selection diagnostics;
 - an optimal selected solution;
 - exact GW mechanics present.
 

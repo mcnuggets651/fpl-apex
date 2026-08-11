@@ -15,8 +15,9 @@ For any substantive Apex request:
 4. Read `docs/APEX_CANONICAL_DECISION_POLICY.md`.
 5. Inspect `data/generated/apex_answer_context.json`. It is the only permitted
    input for an Apex-labelled answer.
-6. Verify `safe_to_act`, run age, snapshot hashes, source health, model versions,
-   CVaR, selection regret, solver parity, role/news evidence and strategy state.
+6. Verify `safe_to_act`, run age, decision-bundle ID, all material input hashes,
+   source health, model versions, CVaR, selection regret, solver parity,
+   role/news evidence and strategy state.
 7. Only inspect internal diagnostics to explain a blocker or improve the engine.
 8. Use live research only as a labelled gap-fill for injuries, transfers, roles
    and lineups; it cannot silently override the canonical contract.
@@ -66,6 +67,15 @@ This command produces the only user-facing files:
 - `data/generated/apex_recommendation_latest.md`
 
 `pinnacle_latest.*` and `elite_latest.*` are internal diagnostics only.
+The production runner first creates `data/generated/decision_bundle`; both
+diagnostic layers must carry its exact `bundle_id`.
+
+Validate or replay that surface with:
+
+```bash
+python scripts/audit_decision_bundle.py data/generated/decision_bundle
+python scripts/replay_decision_bundle.py data/generated/decision_bundle
+```
 
 ## If the user shows a current team
 Treat the screenshot/manual team as the current private draft if it is newer than the public FPL snapshot. Compare it against the canonical recommendation; do not replace the canonical selection policy with an ad-hoc manual selector.
