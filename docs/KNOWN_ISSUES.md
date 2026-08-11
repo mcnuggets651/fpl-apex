@@ -1,5 +1,12 @@
 # Apex FPL — Known Issues / Boundaries
 
+Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
+
+## K000 — Governance gate
+`apex_answer_context.json` is the only permitted input for Apex-labelled answers.
+Missing/stale required evidence withholds the production result instead of being
+reported as a harmless warning.
+
 ## K001 — Unpublished private FPL drafts are not public
 Before a deadline, public FPL endpoints may not expose the manager's current private draft/transfers. Use explicit manual overrides or a current screenshot when supplied.
 

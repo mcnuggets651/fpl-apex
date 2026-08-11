@@ -1,5 +1,15 @@
 # Apex FPL — Roadmap
 
+Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
+
+## Current release — closed decision governance
+
+- Generate `apex_answer_context.json` from the canonical and Pinnacle surfaces.
+- Require freshness, source health, matched hashes, CVaR, regret, solver parity,
+  selected-player evidence and strategy state.
+- Route each question mode to an explicit artifact and refuse improvisation.
+- Publish only after PR CI and a production workflow artifact prove activation.
+
 ## Completed / production foundations
 - Official FPL canonical universe and readiness gates
 - FPL Core Insights integration

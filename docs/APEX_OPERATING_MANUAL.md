@@ -1,5 +1,9 @@
 # Apex FPL — Operating Manual
 
+**This is the single authoritative operating document.** Other usage, state,
+roadmap and known-issues documents must link here and may not redefine the answer
+contract or source order.
+
 ## Purpose
 This file defines how ChatGPT or any operator should work on Apex without repeatedly reconstructing context.
 
@@ -9,9 +13,36 @@ For any substantive Apex request:
 2. Read `docs/APEX_MASTER_CONTEXT.md`.
 3. Read `docs/APEX_DECISIONS.md`.
 4. Read `docs/APEX_CANONICAL_DECISION_POLICY.md`.
-5. Inspect `data/generated/apex_recommendation_latest.json` first.
-6. Only inspect Pinnacle/Elite/CVaR/solver outputs when explaining or diagnosing the canonical decision.
-7. If code/architecture is changing, read the relevant model/architecture docs and current implementation.
+5. Inspect `data/generated/apex_answer_context.json`. It is the only permitted
+   input for an Apex-labelled answer.
+6. Verify `safe_to_act`, run age, snapshot hashes, source health, model versions,
+   CVaR, selection regret, solver parity, role/news evidence and strategy state.
+7. Only inspect internal diagnostics to explain a blocker or improve the engine.
+8. Use live research only as a labelled gap-fill for injuries, transfers, roles
+   and lineups; it cannot silently override the canonical contract.
+9. If code/architecture is changing, read the relevant model/architecture docs and current implementation.
+
+## Closed-answer contract
+
+Every substantive FPL question is routed before answering. Best-team questions
+require the canonical strategy; player-role questions require a player evidence
+dossier; player comparisons require one matched snapshot plus objective regret;
+transfers require current entry state and a rolling-horizon solve; project-status
+claims require GitHub release evidence; improvement questions require validation
+gaps and benchmark evidence. If the required artifact is absent, report the gap.
+
+Every answer uses exactly four sections: production result, current evidence,
+unresolved risks, and proposed model improvement. Never invent or manually adjust
+a squad. Correct the input or model layer, rerun the same snapshot, and measure the
+change.
+
+`safe_to_act` must be false for stale/mismatched snapshots, unhealthy or stale
+required sources, missing CVaR/regret/solver parity, insufficient selected-player
+minutes/role provenance, incomplete optimisation, or missing strategy state.
+
+Completion means all five are present: GitHub commit, PR, passing CI,
+reproducible evidence artifact, and merged production output when activation is
+claimed. A local experiment is never a completed release.
 
 ## If the user asks for “the best team”
 1. Do **not** compare several standalone Apex approaches and make a fresh subjective choice.
