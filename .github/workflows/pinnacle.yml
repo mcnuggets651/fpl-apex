@@ -109,6 +109,8 @@ jobs:
               "published captain lacks current attributable evidence",
               "high-uncertainty starters lack current attributable evidence",
               "selected-player evidence coverage gate is not ready",
+              "deterministic/CVaR unrestricted squads overlap only",
+              "deterministic/CVaR unrestricted XIs overlap only",
           )
           unexpected = [row for row in blockers if not any(token in row for token in allowed)]
           if unexpected:
