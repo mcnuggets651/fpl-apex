@@ -38,6 +38,12 @@ def main() -> None:
     parser.add_argument("--cvar-alpha", type=float, default=0.10)
     parser.add_argument("--cvar-weight", type=float, default=0.20)
     parser.add_argument("--output-dir", default="data/generated")
+    parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
+    parser.add_argument(
+        "--reuse-bundle",
+        action="store_true",
+        help="Replay an existing sealed bundle without fetching any live input.",
+    )
     parser.add_argument(
         "--reuse-pinnacle",
         action="store_true",
@@ -46,8 +52,26 @@ def main() -> None:
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
+    bundle_dir = Path(args.bundle_dir)
     pinnacle_path = output_dir / "pinnacle_latest.json"
     elite_path = output_dir / "elite_latest.json"
+
+    if not args.reuse_bundle and not args.reuse_pinnacle:
+        bundle_cmd = [
+            sys.executable,
+            "scripts/build_decision_bundle.py",
+            "--horizon",
+            str(args.horizon),
+            "--bundle-dir",
+            str(bundle_dir),
+        ]
+        if args.force:
+            bundle_cmd.append("--force")
+        status = _run(bundle_cmd)
+        if status != 0:
+            raise SystemExit(status)
+    elif not (bundle_dir / "manifest.json").exists():
+        raise SystemExit(f"cannot reuse missing decision bundle: {bundle_dir}")
 
     pinnacle_cmd = [
         sys.executable,
@@ -62,9 +86,9 @@ def main() -> None:
         str(args.cvar_weight),
         "--output-dir",
         str(output_dir),
+        "--bundle-dir",
+        str(bundle_dir),
     ]
-    if args.force:
-        pinnacle_cmd.append("--force")
 
     if not args.reuse_pinnacle:
         status = _run(pinnacle_cmd)
@@ -84,6 +108,8 @@ def main() -> None:
             str(args.horizon),
             "--output-dir",
             str(output_dir),
+            "--bundle-dir",
+            str(bundle_dir),
         ]
     )
     if elite_status != 0:
@@ -99,6 +125,8 @@ def main() -> None:
             str(elite_path),
             "--output-dir",
             str(output_dir),
+            "--bundle-dir",
+            str(bundle_dir),
         ]
     )
     raise SystemExit(canonical_status)

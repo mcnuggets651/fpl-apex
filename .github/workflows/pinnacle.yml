@@ -80,13 +80,17 @@ jobs:
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         shell: bash
         run: |
+          python scripts/build_decision_bundle.py \
+            --horizon 8 \
+            --bundle-dir data/generated/decision_bundle \
+            --force
           set +e
           python scripts/run_pinnacle.py \
             --horizon 8 \
             --stochastic-scenarios 256 \
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
-            --force
+            --bundle-dir data/generated/decision_bundle
           status=$?
           set -e
           test -s data/generated/pinnacle_latest.json
@@ -256,6 +260,7 @@ jobs:
             data/generated/solver_parity.json
             data/generated/elite_latest.json
             data/generated/elite_latest.md
+            data/generated/decision_bundle/
             data/generated/calibration_report.json
             data/history/deadlines/
             data/generated/airsenal.csv

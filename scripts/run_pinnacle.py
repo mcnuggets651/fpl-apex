@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from apex_fpl.config import load_settings
-from apex_fpl.data.http import CachedHttp
-from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.models.scenarios import generate_projection_scenarios
 from apex_fpl.optimisation.cvar import optimise_initial_cvar
 from apex_fpl.optimisation.frequencies import estimate_decision_frequencies
@@ -21,12 +17,12 @@ from apex_fpl.optimisation.mechanics import optimise_gameweek_mechanics
 from apex_fpl.optimisation.stability import selection_regret_analysis
 from apex_fpl.services.chips import evaluate_chip_window
 from apex_fpl.services.decision_eligibility import captain_eligible_ids
+from apex_fpl.services.decision_bundle import DecisionBundle
 from apex_fpl.services.initial_plan import (
     build_initial_squad_contingencies,
     initial_chip_policy,
 )
 from apex_fpl.services.pinnacle_readiness import evaluate_pinnacle_payload
-from apex_fpl.services.pipeline import run_pipeline
 from apex_fpl.services.strategy import analyse_receding_horizon
 
 
@@ -185,7 +181,12 @@ def _mechanics_payload(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--horizon", type=int, default=8)
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Deprecated compatibility flag; source refresh occurs only when building the bundle.",
+    )
+    parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
     parser.add_argument("--alternatives", type=int, default=12)
     parser.add_argument("--stochastic-scenarios", type=int, default=256)
     parser.add_argument("--scenario-seed", type=int, default=20260807)
@@ -195,14 +196,13 @@ def main() -> None:
     parser.add_argument("--output-dir", default="data/generated")
     args = parser.parse_args()
 
-    settings = load_settings()
-    out = run_pipeline(
-        settings,
-        horizon=args.horizon,
-        scenario="both",
-        force=args.force,
-        plan_transfers=True,
-    )
+    bundle = DecisionBundle.load(args.bundle_dir)
+    out = bundle.to_pipeline_output()
+    settings = bundle.settings
+    if [int(gw) for gw in out.gameweeks] != [int(gw) for gw in out.gameweeks[: args.horizon]]:
+        raise SystemExit(
+            "requested horizon does not match the sealed decision bundle; rebuild the bundle"
+        )
     if not out.safety.safe_to_act or not out.safety.full_apex_ready:
         blockers = "; ".join(out.safety.blockers) or "unknown production blocker"
         raise SystemExit(f"Pinnacle runner blocked by Apex production gate: {blockers}")
@@ -212,11 +212,9 @@ def main() -> None:
     if not gws:
         raise SystemExit("Pinnacle runner has no actionable future Gameweeks")
 
-    official = OfficialFPLClient(CachedHttp(settings.cache_dir)).snapshot(force=False)
-    team_ids = official.players[["player_id", "team"]].drop_duplicates("player_id")
-    decision_players = out.players.drop(columns=["team"], errors="ignore").merge(
-        team_ids, on="player_id", how="left", validate="one_to_one"
-    )
+    decision_players = out.players.copy()
+    if "team" not in decision_players:
+        raise SystemExit("sealed player universe is missing official team IDs")
     if decision_players["team"].isna().any():
         raise SystemExit("Pinnacle player universe contains missing official team IDs")
     captain_eligible = captain_eligible_ids(decision_players)
@@ -230,9 +228,9 @@ def main() -> None:
         players=decision_players,
         projections=projections,
         gameweeks=gws,
-        budget=settings.budget,
-        max_per_team=settings.max_per_team,
-        decay=settings.fixture_decay,
+        budget=float(settings["budget"]),
+        max_per_team=int(settings["max_per_team"]),
+        decay=float(settings["fixture_decay"]),
         captain_eligible=captain_eligible,
         projection_col="xp",
     )
@@ -262,9 +260,9 @@ def main() -> None:
     robust_common = dict(
         players=decision_players,
         scenarios=scenario_surface,
-        budget=settings.budget,
-        max_per_team=settings.max_per_team,
-        decay=settings.fixture_decay,
+        budget=float(settings["budget"]),
+        max_per_team=int(settings["max_per_team"]),
+        decay=float(settings["fixture_decay"]),
         cvar_alpha=args.cvar_alpha,
         cvar_weight=args.cvar_weight,
         captain_eligible=captain_eligible,
@@ -286,9 +284,9 @@ def main() -> None:
         projections,
         gws,
         deterministic["unrestricted"],
-        budget=settings.budget,
-        max_per_team=settings.max_per_team,
-        decay=settings.fixture_decay,
+        budget=float(settings["budget"]),
+        max_per_team=int(settings["max_per_team"]),
+        decay=float(settings["fixture_decay"]),
         alternative_limit=args.alternatives,
         captain_eligible=captain_eligible,
     )
@@ -306,9 +304,9 @@ def main() -> None:
     frequencies = estimate_decision_frequencies(
         decision_players,
         scenario_surface,
-        budget=settings.budget,
-        max_per_team=settings.max_per_team,
-        decay=settings.fixture_decay,
+        budget=float(settings["budget"]),
+        max_per_team=int(settings["max_per_team"]),
+        decay=float(settings["fixture_decay"]),
         max_solves=24,
         captain_eligible=captain_eligible,
     )
@@ -324,7 +322,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     regret.to_csv(report_dir / "pinnacle_selection_regret.csv", index=False)
     scenario_summary = _scenario_player_summary(
-        decision_players, scenario_surface, settings.fixture_decay
+        decision_players, scenario_surface, float(settings["fixture_decay"])
     )
     scenario_summary.to_csv(
         report_dir / "pinnacle_scenario_player_summary.csv", index=False
@@ -370,7 +368,18 @@ def main() -> None:
             )
             row["captain_comparison"] = "exact_gw1_mechanics"
 
-    personal_team = _load_json(report_dir / "team_state.json")
+    sealed_team = bundle.manifest.get("team_state")
+    personal_team = (
+        {
+            "generated_at": bundle.created_at,
+            "configured": sealed_team.get("configured"),
+            "ok": sealed_team.get("ok"),
+            "detail": sealed_team.get("detail"),
+            "team_state": sealed_team.get("metadata") or sealed_team.get("state"),
+        }
+        if isinstance(sealed_team, dict)
+        else None
+    )
     weekly_strategy = None
     chip_window = None
     initial_contingencies = None
@@ -382,8 +391,8 @@ def main() -> None:
             gws,
             team_state,
             out.transfer_plan,
-            max_per_team=settings.max_per_team,
-            decay=settings.fixture_decay,
+            max_per_team=int(settings["max_per_team"]),
+            decay=float(settings["fixture_decay"]),
             projection_col="xp",
             captain_eligible=captain_eligible,
         ).to_dict()
@@ -393,8 +402,8 @@ def main() -> None:
             gws,
             team_state,
             out.transfer_plan,
-            max_per_team=settings.max_per_team,
-            decay=settings.fixture_decay,
+            max_per_team=int(settings["max_per_team"]),
+            decay=float(settings["fixture_decay"]),
             projection_col="xp",
             captain_eligible=captain_eligible,
         ).to_dict()
@@ -404,20 +413,23 @@ def main() -> None:
             decision_players,
             projections,
             gws,
-            budget=settings.budget,
-            max_per_team=settings.max_per_team,
-            decay=settings.fixture_decay,
+            budget=float(settings["budget"]),
+            max_per_team=int(settings["max_per_team"]),
+            decay=float(settings["fixture_decay"]),
             captain_eligible=captain_eligible,
         )
 
     chip_policy = initial_chip_policy(gws)
 
-    production_report = _load_json(report_dir / "latest.json") or {}
     solver_parity = _load_json(output_dir / "solver_parity.json")
+    if isinstance(solver_parity, dict) and solver_parity.get("decision_bundle_id") != bundle.bundle_id:
+        solver_parity = None
     payload = {
         "contract": "apex-pinnacle-v3-final",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "fpl_entry_id": settings.fpl_entry_id,
+        "generated_at": bundle.created_at,
+        "decision_bundle": bundle.lineage_summary(),
+        "decision_bundle_id": bundle.bundle_id,
+        "fpl_entry_id": settings.get("fpl_entry_id"),
         "gameweeks": gws,
         "safe_to_act": True,
         "full_apex_ready": True,
@@ -454,7 +466,7 @@ def main() -> None:
             ),
         },
         "official_snapshot": out.snapshot,
-        "upstreams": production_report.get("upstreams", {}),
+        "upstreams": bundle.manifest.get("upstreams", {}),
         "sources": [s.to_dict() for s in out.sources],
         "data_quality": out.data_quality.to_dict(),
         "personal_team": personal_team,

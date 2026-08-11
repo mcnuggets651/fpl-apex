@@ -42,7 +42,14 @@ jobs:
         shell: bash
         run: |
           pip install -e .
-          python scripts/run_pinnacle.py --horizon 8 --stochastic-scenarios 256
+          python scripts/build_decision_bundle.py \
+            --horizon 8 \
+            --bundle-dir data/generated/decision_bundle \
+            --force
+          python scripts/run_pinnacle.py \
+            --horizon 8 \
+            --stochastic-scenarios 256 \
+            --bundle-dir data/generated/decision_bundle
           python scripts/export_open_solver.py \
             reports/players.csv reports/projections.csv /tmp/apex.csv \
             --projection-col xp
@@ -111,4 +118,5 @@ jobs:
             data/generated/solver_parity.json
             data/generated/pinnacle_latest.json
             data/generated/pinnacle_latest.md
+            data/generated/decision_bundle/
           retention-days: 30

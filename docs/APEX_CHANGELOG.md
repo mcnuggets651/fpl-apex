@@ -2,6 +2,14 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-11 — Sealed decision surface release candidate
+- Added the content-addressed `apex-decision-bundle-v1` contract.
+- Production ingestion/projection now runs once before Pinnacle and Elite.
+- Added hashes for every material evidence and projection surface, upstream/code/config lineage, tamper checks and credential redaction.
+- Added offline lineage audit/replay commands and retained bundles as workflow artifacts.
+- Canonical and solver-parity gates now reject mismatched bundle identities.
+- Local validation: 174 tests, Ruff, governance, upstream pins and workflow YAML all pass. This remains an unmerged release candidate until PR/CI/production verification completes.
+
 ## 2026-08-08 — Project Brain v1
 - Added canonical project context, decisions, architecture, model spec, data-source map, operating manual, roadmap, charter, current-state record, benchmarks, known issues, vision and session log.
 - Established mandatory continuity/startup protocol for future Apex work.

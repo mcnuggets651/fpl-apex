@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from apex_fpl.services.answer_context import build_answer_context
+from apex_fpl.services.decision_bundle import DecisionBundle
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -69,10 +70,12 @@ def main() -> None:
     parser.add_argument("--pinnacle", default="data/generated/pinnacle_latest.json")
     parser.add_argument("--elite", default="data/generated/elite_latest.json")
     parser.add_argument("--output-dir", default="data/generated")
+    parser.add_argument("--bundle-dir")
     args = parser.parse_args()
 
     pinnacle = _load(Path(args.pinnacle))
     elite = _load(Path(args.elite))
+    bundle = DecisionBundle.load(args.bundle_dir) if args.bundle_dir else None
 
     blockers: list[str] = []
     if not pinnacle.get("safe_to_act"):
@@ -94,6 +97,18 @@ def main() -> None:
         blockers.append("diagnostic Official FPL content hashes are missing")
     elif pinnacle_fp != elite_fp:
         blockers.append("Pinnacle/Elite Official FPL content hashes do not match")
+
+    pinnacle_bundle_id = pinnacle.get("decision_bundle_id")
+    elite_bundle_id = elite.get("decision_bundle_id")
+    if pinnacle_bundle_id or elite_bundle_id or bundle is not None:
+        if not pinnacle_bundle_id or not elite_bundle_id:
+            blockers.append("Pinnacle/Elite sealed decision bundle identity is missing")
+        elif pinnacle_bundle_id != elite_bundle_id:
+            blockers.append("Pinnacle/Elite sealed decision bundle identities do not match")
+        if bundle is not None and (
+            pinnacle_bundle_id != bundle.bundle_id or elite_bundle_id != bundle.bundle_id
+        ):
+            blockers.append("diagnostics do not match the supplied sealed decision bundle")
 
     convergence = elite.get("epsilon_convergence")
     selector = "strategy_maximum_ev"
@@ -139,12 +154,18 @@ def main() -> None:
 
     payload = {
         "contract": "apex-strategy-recommendation-v2",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": (
+            bundle.created_at
+            if bundle is not None
+            else pinnacle.get("generated_at") or datetime.now(timezone.utc).isoformat()
+        ),
         "canonical": True,
         "user_facing_source_of_truth": True,
         "ready_to_act": ready,
         "blockers": blockers,
         "official_snapshot": pinnacle.get("official_snapshot"),
+        "decision_bundle_id": pinnacle_bundle_id,
+        "decision_bundle": pinnacle.get("decision_bundle"),
         "gameweeks": pinnacle.get("gameweeks") or elite.get("gameweeks") or [],
         "decision_policy": {
             "primary_forecast": "canonical ensemble xp",
@@ -156,7 +177,11 @@ def main() -> None:
             "minutes_model": "first-class",
             "uncertainty": "correlated scenarios/CVaR/regret are diagnostics, not a second hidden forecast",
             "deadline_mechanics": "exact captain/vice/autosub mechanics",
-            "same_surface_check": "Official FPL bootstrap/fixtures SHA-256 hashes must match",
+            "same_surface_check": (
+                "sealed decision bundle identity and all material input hashes must match"
+                if pinnacle_bundle_id or elite_bundle_id
+                else "Official FPL bootstrap/fixtures SHA-256 hashes must match"
+            ),
             "next_projection_upgrade": "empirical-Bayes shrinkage of small-sample player rates toward role/position priors",
         },
         "recommendation": recommendation,
@@ -179,6 +204,13 @@ def main() -> None:
             "pinnacle_content_fingerprint": pinnacle_fp,
             "elite_content_fingerprint": elite_fp,
             "same_official_surface": pinnacle_fp == elite_fp and None not in pinnacle_fp,
+            "pinnacle_decision_bundle_id": pinnacle_bundle_id,
+            "elite_decision_bundle_id": elite_bundle_id,
+            "same_decision_bundle": bool(
+                pinnacle_bundle_id
+                and elite_bundle_id
+                and pinnacle_bundle_id == elite_bundle_id
+            ),
         },
     }
 

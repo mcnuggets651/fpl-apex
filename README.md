@@ -26,6 +26,10 @@ python scripts/run_apex.py \
   --force
 ```
 
+The runner fetches and projects once into a content-addressed sealed decision
+bundle. Pinnacle, Elite and the canonical builder must all carry the same
+`bundle_id`; see `docs/DECISION_BUNDLE.md` for lineage audit and offline replay.
+
 If `ready_to_act` is false, Apex withholds a team and reports the blockers instead of choosing manually among diagnostic outputs.
 
 ## Canonical decision policy

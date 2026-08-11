@@ -2,6 +2,30 @@
 
 Append concise records after meaningful project sessions. This is continuity context, not a replacement for Git history.
 
+## 2026-08-11 — Decision-surface architecture repair, PR 1
+
+### Finding
+Pinnacle and Elite independently reran the live pipeline. Canonical publication
+checked only Official FPL hashes, so other evidence, configuration and projections
+could drift while still being described as the same surface.
+
+### Implementation
+- Added a content-addressed, credential-safe decision bundle.
+- Added exact hashes for all material inputs and persisted player/projection frames.
+- Removed live retrieval from Pinnacle and Elite.
+- Added bundle-aware parity and canonical gates.
+- Added lineage audit, offline replay and workflow artifact retention.
+
+### Local evidence
+- 174/174 tests pass.
+- Ruff, governance, seven upstream pins and all workflow YAML files pass.
+- A production-shaped smoke capture sealed 577 players, 380 fixtures, 604
+  preseason rows and 4,616 player/Gameweek projections, then passed a fresh
+  artifact/hash audit.
+
+### Boundary
+No production activation claim until PR, CI, merge and fresh Apex Unified output.
+
 ## 2026-08-08 — Shrinkage must revalidate frontier stability
 ### Context
 Final architecture review agreed that empirical-Bayes shrinkage should not be judged only by player-level forecast error. Some apparent Elite epsilon instability may currently be caused by noisy low-minute player rates rather than genuine squad-selection uncertainty.

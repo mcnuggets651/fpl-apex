@@ -88,6 +88,7 @@ jobs:
             data/generated/apex_recommendation_latest.md
             data/generated/pinnacle_latest.json
             data/generated/elite_latest.json
+            data/generated/decision_bundle/
             reports/
             data/generated/airsenal.csv
           retention-days: 30

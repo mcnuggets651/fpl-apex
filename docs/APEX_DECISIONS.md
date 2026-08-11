@@ -86,3 +86,12 @@ Free-transfer initialization, special top-ups, chip windows and other state tran
 
 ## D028 — Current role evidence supersedes stale minutes priors
 The maximum-EV optimiser remains unchanged: it already maximises canonical raw xP. The conservative selection bias was traced to expected-minutes construction, where a fixed preseason blend could leave repeated current team-sheet evidence dominated by a prior-season role that no longer applied. Preseason weight now rises with repeated appearances and starts, capped at 82%, and verified deadline evidence may explicitly override expected minutes/start/appearance probabilities. Official injury, suspension and negative availability evidence is applied after those upside signals and remains a hard ceiling. Confidence and CVaR remain diagnostics; they do not discount canonical xP a second time.
+
+## D029 — Every decision layer consumes one sealed bundle
+Ingestion and projection execute once per production run. The player universe,
+projection matrix, settings, source timestamps, upstream pins, material evidence
+hashes and team state are sealed under one content-addressed `bundle_id`.
+Pinnacle, Elite, parity and canonical publication must carry that same identity.
+Independent live refetches inside diagnostic layers are prohibited because an
+Official-only hash comparison cannot prove that news, tactical evidence,
+AIrsenal, FPL Core, configuration or projections were identical.

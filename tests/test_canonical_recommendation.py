@@ -164,6 +164,17 @@ def test_mismatched_official_surface_withholds_recommendation(tmp_path: Path) ->
     assert any("content hashes do not match" in blocker for blocker in payload["blockers"])
 
 
+def test_mismatched_decision_bundle_withholds_recommendation(tmp_path: Path) -> None:
+    pinnacle = _pinnacle()
+    elite = _elite(True)
+    pinnacle["decision_bundle_id"] = "bundle-a"
+    elite["decision_bundle_id"] = "bundle-b"
+    result, payload = _run(tmp_path, pinnacle, elite)
+    assert result.returncode == 2
+    assert payload["ready_to_act"] is False
+    assert any("bundle identities do not match" in blocker for blocker in payload["blockers"])
+
+
 def test_answer_context_block_returns_nonzero_and_withheld_markdown(tmp_path: Path) -> None:
     pinnacle = _pinnacle()
     pinnacle["solver_parity"] = None
