@@ -46,9 +46,9 @@ claimed. A local experiment is never a completed release.
 
 ## If the user asks for “the best team”
 1. Do **not** compare several standalone Apex approaches and make a fresh subjective choice.
-2. Load `data/generated/apex_recommendation_latest.json`.
-3. If `ready_to_act` is false, report the blockers and do not invent a team.
-4. If `ready_to_act` is true, present `recommendation` as **the** Apex team.
+2. Load `data/generated/apex_answer_context.json` only.
+3. If `safe_to_act` is false, report the blockers and do not invent a team.
+4. If `safe_to_act` is true, present `production_result` as **the** Apex team.
 5. Report XI, captain, vice and bench order from the canonical contract.
 6. Use epsilon/Pinnacle/CVaR/regret evidence only to explain confidence or fragility.
 7. Show Haaland/no-Haaland or another alternative only when explicitly requested, and label it as a scenario rather than a competing recommendation.
@@ -61,6 +61,7 @@ python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0
 ```
 
 This command produces the only user-facing files:
+- `data/generated/apex_answer_context.json`
 - `data/generated/apex_recommendation_latest.json`
 - `data/generated/apex_recommendation_latest.md`
 
