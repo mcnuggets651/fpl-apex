@@ -66,6 +66,7 @@ def optimise_initial_cvar(
     locked: set[int] | None = None,
     banned: set[int] | None = None,
     captain_eligible: set[int] | None = None,
+    xi_eligible: set[int] | None = None,
 ) -> RobustSquadSolution:
     """Solve a legal initial FPL squad against correlated forecast scenarios.
 
@@ -82,6 +83,9 @@ def optimise_initial_cvar(
     captain_eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
+    if xi_eligible is None and "xi_evidence_eligible" in players:
+        xi_eligible = set(players.loc[players["xi_evidence_eligible"].fillna(False), "player_id"].astype(int))
+    xi_eligible = None if xi_eligible is None else {int(pid) for pid in xi_eligible}
     alpha = float(cvar_alpha)
     risk_weight = float(cvar_weight)
     if not 0.01 <= alpha <= 0.50:
@@ -227,6 +231,11 @@ def optimise_initial_cvar(
             if pid not in captain_eligible:
                 for t in range(t_count):
                     ub[cv(i, t)] = 0.0
+    if xi_eligible is not None:
+        for i, pid in enumerate(pids):
+            if pid not in xi_eligible:
+                for t in range(t_count):
+                    ub[xv(i, t)] = 0.0
 
     configured_gap = 0.002
     time_limit = 180

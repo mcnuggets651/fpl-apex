@@ -29,13 +29,14 @@ free_transfers: 2
 Optional explicit overrides for information you have verified:
 
 ```csv
-player_id,availability_multiplier,confidence,reason,source_name,source_tier,source_url,evidence_type,published_at,expires_at
-123,0.2,0.95,official club says ruled out,Example FC,official_club,https://example.com/team-news,official_availability,2026-08-11T07:00:00Z,2026-08-15T13:30:00Z
+player_id,availability_multiplier,confidence,reason,source_name,source_tier,source_url,evidence_type,published_at,expires_at,relevant_excerpt,content_hash,transcriber
+123,0.2,0.95,official club says ruled out,Example FC,official_club,https://example.com/team-news,official_availability,2026-08-11T07:00:00Z,2026-08-15T13:30:00Z,Player is ruled out for Saturday,<64-character SHA-256>,analyst-id
 ```
 
 The multiplier changes expected minutes. The official FPL status/chance remains part of the calculation, so this is an additional evidence layer rather than an identity override.
-Every material override must have a verifiable URL, trusted source tier, separate
-publication time and explicit expiry. Apex rejects stale or unverifiable rows.
+Every material override must transcribe an official club/league source and include a
+verifiable URL, separate publication time, explicit expiry, relevant excerpt,
+SHA-256 content hash and transcriber identity. Apex rejects stale or unverifiable rows.
 
 
 ## Tactical roles

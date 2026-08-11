@@ -241,3 +241,26 @@ def test_negated_injury_phrase_cannot_reduce_minutes():
     )
     assert signal.iloc[0]["news_multiplier"] == 1.0
     assert signal.iloc[0]["news_event_type"] == "manager"
+
+
+def test_multi_player_article_cannot_cross_assign_adjacent_claims():
+    players = pd.DataFrame(
+        [
+            {"player_id": 90, "first_name": "Fit", "second_name": "One", "web_name": "One"},
+            {"player_id": 91, "first_name": "Risk", "second_name": "Two", "web_name": "Two"},
+        ]
+    )
+    item = NewsItem(
+        title="Fit One will start. Risk Two ruled out with injury.",
+        source="Official club",
+        source_tier="official_club",
+        published="2026-08-11T07:00:00+00:00",
+        link="https://example.test/team-news",
+    )
+    signal, audit = infer_news_signals(
+        players, [item], now=datetime(2026, 8, 11, 8, tzinfo=timezone.utc)
+    )
+    by_id = signal.set_index("player_id")
+    assert by_id.loc[90, "news_multiplier"] == 1.0
+    assert by_id.loc[91, "news_multiplier"] < 1.0
+    assert audit.set_index("player_id").loc[90, "evidence_type"] == "manager"

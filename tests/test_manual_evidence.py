@@ -18,6 +18,9 @@ def _row() -> dict:
         "evidence_type": "official_availability",
         "published_at": "2026-08-07T07:00:00Z",
         "expires_at": "2026-08-10T07:00:00Z",
+        "relevant_excerpt": "Example is ruled out.",
+        "content_hash": "a" * 64,
+        "transcriber": "codex:test",
     }
 
 
@@ -51,3 +54,12 @@ def test_unverifiable_manual_availability_is_rejected(tmp_path):
         load_manual_signals(
             path, now=datetime(2026, 8, 8, tzinfo=timezone.utc)
         )
+
+
+def test_manual_transcription_cannot_promote_trusted_media_to_official(tmp_path):
+    path = tmp_path / "availability.csv"
+    row = _row()
+    row["source_tier"] = "trusted_media"
+    pd.DataFrame([row]).to_csv(path, index=False)
+    with pytest.raises(ValueError, match="official source"):
+        load_manual_signals(path, now=datetime(2026, 8, 8, tzinfo=timezone.utc))

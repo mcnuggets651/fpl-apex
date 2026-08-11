@@ -56,6 +56,15 @@ def optimise_transfer_plan(
     captain_eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
+    xi_eligible = (
+        set(
+            players.loc[
+                players["xi_evidence_eligible"].fillna(False), "player_id"
+            ].astype(int)
+        )
+        if "xi_evidence_eligible" in players
+        else None
+    )
     selling_prices = selling_prices or {}
     if not gameweeks:
         return TransferPlan("Infeasible", float("nan"), [])
@@ -278,6 +287,11 @@ def optimise_transfer_plan(
             if pid not in captain_eligible:
                 for t in range(T):
                     ub[q(C0, i, t)] = 0
+    if xi_eligible is not None:
+        for i, pid in enumerate(pids):
+            if pid not in xi_eligible:
+                for t in range(T):
+                    ub[q(X0, i, t)] = 0
 
     A = lil_matrix((len(rows), m), dtype=float)
     for r, coeffs in enumerate(rows):

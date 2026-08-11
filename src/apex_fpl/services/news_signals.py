@@ -232,6 +232,19 @@ def infer_news_signals(
             if not matched_aliases:
                 continue
 
+            # Bind the claim to text that actually names this player. This prevents
+            # a multi-player article's adjacent injury/return sentence from being
+            # cross-assigned merely because both names occur somewhere in the page.
+            segments = re.split(r"(?<=[.!?])\s+", evidence_text)
+            attributable_text = " ".join(
+                segment
+                for segment in segments
+                if any(
+                    re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", segment, re.I)
+                    for alias in matched_aliases
+                )
+            )
+
             unambiguous = any(len(alias_owners[alias.casefold()]) == 1 for alias in matched_aliases)
             if not unambiguous:
                 team_name = str(player.get("team_name") or "").strip()
@@ -242,18 +255,18 @@ def infer_news_signals(
 
             multiplier, reason, event_type = 1.0, "name mention", "general"
             for regex, value, label, kind in _NEGATIVE:
-                match = regex.search(evidence_text)
-                if match and not _is_negated(evidence_text, match):
+                match = regex.search(attributable_text)
+                if match and not _is_negated(attributable_text, match):
                     multiplier, reason, event_type = value, label, kind
                     break
             if multiplier == 1.0 and event_type == "general":
                 for regex, value, label, kind in _POSITIVE:
-                    if regex.search(evidence_text):
+                    if regex.search(attributable_text):
                         multiplier, reason, event_type = value, label, kind
                         break
             if multiplier == 1.0 and event_type == "general":
                 for regex, kind, label in _DECISION_CONTEXT:
-                    if regex.search(evidence_text):
+                    if regex.search(attributable_text):
                         event_type, reason = kind, label
                         break
 

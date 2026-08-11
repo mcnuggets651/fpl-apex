@@ -23,6 +23,16 @@ def _number(value: Any, default: float = 0.0) -> float:
     return default if pd.isna(parsed) else float(parsed)
 
 
+def _event_fingerprint(item: dict[str, Any]) -> str:
+    text = " ".join(
+        str(item.get(key) or "") for key in ("headline", "summary")
+    ).casefold()
+    normalised = " ".join(
+        "".join(ch if ch.isalnum() else " " for ch in text).split()
+    )
+    return normalised or str(item.get("source_url") or "")
+
+
 def _valid_current_source(
     *,
     tier: Any,
@@ -165,6 +175,7 @@ def build_selected_player_evidence(
                             ),
                         },
                         "headline": _value(item.get("headline")),
+                        "summary": _value(item.get("summary")),
                         "ineligibility_reason": _value(
                             item.get("ineligibility_reason")
                         ),
@@ -183,7 +194,18 @@ def build_selected_player_evidence(
             for item in current
             if str(item.get("source_tier") or "") == "trusted_media"
         }
-        decision_grade = bool(official_current or len(trusted_current_sources) >= 2)
+        trusted_current_events = {
+            _event_fingerprint(item)
+            for item in current
+            if str(item.get("source_tier") or "") == "trusted_media"
+        }
+        decision_grade = bool(
+            official_current
+            or (
+                len(trusted_current_sources) >= 2
+                and len(trusted_current_events) >= 2
+            )
+        )
         minutes_confidence = _number(row.get("minutes_confidence"))
         role_confidence = _number(row.get("role_confidence"))
         high_uncertainty = player_id in xi and (
@@ -203,6 +225,11 @@ def build_selected_player_evidence(
                 "role_source": _value(row.get("tactical_role_source")),
                 "role_confidence": role_confidence,
                 "high_uncertainty_starter": high_uncertainty,
+                "evidence_state": _value(row.get("evidence_state")),
+                "xi_evidence_eligible": bool(row.get("xi_evidence_eligible", True)),
+                "captain_evidence_eligible": bool(
+                    row.get("captain_evidence_eligible", True)
+                ),
                 "has_current_decision_evidence": bool(current),
                 "has_decision_grade_evidence": decision_grade,
                 "current_evidence_count": len(current),
@@ -220,6 +247,11 @@ def build_selected_player_evidence(
         if not row["has_decision_grade_evidence"]
     ]
     covered = [row for row in dossiers if row["has_current_decision_evidence"]]
+    selected_xi_ineligible = [
+        row["player_id"]
+        for row in dossiers
+        if row["in_starting_xi"] and not row["xi_evidence_eligible"]
+    ]
     coverage = {
         "selected_players": len(dossiers),
         "selected_players_with_current_evidence": len(covered),
@@ -235,11 +267,14 @@ def build_selected_player_evidence(
         "high_uncertainty_starter_ids": [row["player_id"] for row in high_uncertainty],
         "high_uncertainty_starters_missing_evidence": missing_high_uncertainty,
         "high_uncertainty_starters_missing_decision_grade_evidence": missing_high_uncertainty,
+        "selected_xi_ineligible_ids": selected_xi_ineligible,
+        "captain_evidence_eligible": bool(
+            captain and captain["captain_evidence_eligible"]
+        ),
         "ready": bool(
             captain
-            and captain["has_decision_grade_evidence"]
-            and not missing_high_uncertainty
-            and covered
+            and captain["captain_evidence_eligible"]
+            and not selected_xi_ineligible
         ),
     }
-    return {"contract": "apex-player-evidence-v1", "coverage": coverage, "dossiers": dossiers}
+    return {"contract": "apex-player-evidence-v2", "coverage": coverage, "dossiers": dossiers}

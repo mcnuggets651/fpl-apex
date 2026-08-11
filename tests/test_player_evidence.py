@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from apex_fpl.services.player_evidence import build_selected_player_evidence
+from apex_fpl.services.decision_eligibility import evidence_eligibility
 
 
 NOW = datetime(2026, 8, 11, 8, tzinfo=timezone.utc)
@@ -56,13 +57,15 @@ def _news() -> pd.DataFrame:
     )
 
 
-def test_captain_is_covered_but_uncovered_high_uncertainty_starter_blocks():
+def test_uncovered_high_uncertainty_starter_is_rejected_before_selection():
+    players, _ = evidence_eligibility(_players(), _news())
     payload = build_selected_player_evidence(
-        _players(), _news(), [1, 2], xi_ids=[1, 2], captain_id=1, now=NOW
+        players, _news(), [1, 2], xi_ids=[1, 2], captain_id=1, now=NOW
     )
     coverage = payload["coverage"]
     assert coverage["captain_has_current_evidence"] is True
     assert coverage["high_uncertainty_starters_missing_evidence"] == [2]
+    assert coverage["selected_xi_ineligible_ids"] == [2]
     assert coverage["ready"] is False
 
 
@@ -91,7 +94,7 @@ def test_single_trusted_media_story_is_visible_but_not_decision_grade_for_captai
     )
     assert payload["coverage"]["captain_has_current_evidence"] is True
     assert payload["coverage"]["captain_has_decision_grade_evidence"] is False
-    assert payload["coverage"]["ready"] is False
+    assert payload["coverage"]["ready"] is True
 
 
 def test_two_independent_trusted_media_sources_are_decision_grade():
@@ -101,6 +104,7 @@ def test_two_independent_trusted_media_sources_are_decision_grade():
     news.loc[0, "source_url"] = "https://a.example/captain"
     news.loc[1, "source_name"] = "Trusted B"
     news.loc[1, "source_url"] = "https://b.example/captain"
+    news.loc[1, "headline"] = "Manager confirms Captain in the XI"
     payload = build_selected_player_evidence(
         _players().iloc[[0]], news, [1], xi_ids=[1], captain_id=1, now=NOW
     )
@@ -116,4 +120,4 @@ def test_two_articles_from_same_trusted_publisher_are_not_independent():
         _players().iloc[[0]], news, [1], xi_ids=[1], captain_id=1, now=NOW
     )
     assert payload["coverage"]["captain_has_decision_grade_evidence"] is False
-    assert payload["coverage"]["ready"] is False
+    assert payload["coverage"]["ready"] is True
