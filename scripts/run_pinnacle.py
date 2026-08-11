@@ -11,6 +11,7 @@ import pandas as pd
 
 from apex_fpl.models.scenarios import generate_projection_scenarios
 from apex_fpl.optimisation.cvar import optimise_initial_cvar
+from apex_fpl.optimisation.exact_decision import optimise_exact_horizon_decision
 from apex_fpl.optimisation.frequencies import estimate_decision_frequencies
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.mechanics import optimise_gameweek_mechanics
@@ -180,6 +181,86 @@ def _mechanics_payload(
     return result
 
 
+def _named_mechanics(mechanics, names: dict[int, str]) -> dict:
+    result = mechanics.to_dict()
+    result["captain_name"] = names.get(mechanics.captain_id, str(mechanics.captain_id))
+    result["vice_captain_name"] = names.get(
+        mechanics.vice_captain_id, str(mechanics.vice_captain_id)
+    )
+    result["bench_gk_name"] = names.get(
+        mechanics.bench_gk_id, str(mechanics.bench_gk_id)
+    )
+    result["outfield_bench_order_names"] = [
+        names.get(pid, str(pid)) for pid in mechanics.outfield_bench_order
+    ]
+    return result
+
+
+def _exact_decision_payload(decision, players: pd.DataFrame) -> dict:
+    names = {
+        int(row.player_id): str(row.web_name)
+        for row in players[["player_id", "web_name"]]
+        .drop_duplicates("player_id")
+        .itertuples(index=False)
+    }
+    weeks = [
+        {
+            "gw": week.gw,
+            "discount": week.discount,
+            "discounted_expected_points": (
+                week.discount * week.mechanics.expected_total_points
+            ),
+            "xi_ids": list(week.xi_ids),
+            **_named_mechanics(week.mechanics, names),
+        }
+        for week in decision.weeks
+    ]
+    candidates = [
+        {
+            "generation_rank": candidate.generation_rank,
+            "squad_player_ids": list(candidate.squad_ids),
+            "squad_player_names": [names.get(pid, str(pid)) for pid in candidate.squad_ids],
+            "approximate_objective": candidate.approximate_objective,
+            "exact_objective": candidate.exact_objective,
+            "exact_regret": decision.objective - candidate.exact_objective,
+            "generator_solver": candidate.generator_solver,
+        }
+        for candidate in decision.candidates
+    ]
+    equivalents = {
+        tuple(candidate.squad_ids)
+        for candidate in decision.near_equivalent_candidates
+    }
+    return {
+        "contract": "apex-exact-horizon-decision-v1",
+        "status": decision.status,
+        "objective": decision.objective,
+        "objective_reconciliation": sum(
+            row["discounted_expected_points"] for row in weeks
+        ),
+        "solution": _solution(decision.solution),
+        "weeks": weeks,
+        "shortlist": {
+            "candidate_count": len(candidates),
+            "candidate_limit": decision.candidate_limit,
+            "approximate_objective_floor": decision.shortlist_floor,
+            "complete_within_configured_band": decision.shortlist_complete,
+            "generator": "flat-bench MILP with distinct-squad no-good cuts",
+            "candidates": candidates,
+        },
+        "equivalence": {
+            "unique_optimum_proven": False,
+            "near_equivalent_threshold_points": decision.near_equivalent_points,
+            "near_equivalent_candidate_count": len(equivalents),
+            "near_equivalent_squad_player_ids": [list(ids) for ids in sorted(equivalents)],
+            "interpretation": (
+                "Near-equivalent means within the disclosed exact-horizon point band; "
+                "it is not a claim that a unique global optimum was proven."
+            ),
+        },
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--horizon", type=int, default=8)
@@ -196,6 +277,11 @@ def main() -> None:
     parser.add_argument("--cvar-weight", type=float, default=0.20)
     parser.add_argument("--report-dir", default="reports")
     parser.add_argument("--output-dir", default="data/generated")
+    parser.add_argument(
+        "--exact-candidates",
+        type=int,
+        help="Override the configured exact-mechanics shortlist size.",
+    )
     args = parser.parse_args()
 
     bundle = DecisionBundle.load(args.bundle_dir)
@@ -252,6 +338,31 @@ def main() -> None:
     bad = [name for name, sol in deterministic.items() if sol.status != "Optimal"]
     if bad:
         raise SystemExit("Pinnacle EV optimiser failed: " + ", ".join(bad))
+
+    exact_decision = optimise_exact_horizon_decision(
+        decision_players,
+        projections,
+        gws,
+        budget=float(settings["budget"]),
+        max_per_team=int(settings["max_per_team"]),
+        decay=float(settings["fixture_decay"]),
+        shortlist_bench_weight=float(settings["approximate_bench_weight"]),
+        candidate_limit=int(
+            args.exact_candidates or settings.get("exact_candidate_limit", 16)
+        ),
+        candidate_regret_fraction=float(
+            settings.get("exact_candidate_regret_fraction", 0.005)
+        ),
+        near_equivalent_points=float(
+            settings.get("exact_near_equivalent_points", 0.25)
+        ),
+        captain_eligible=captain_eligible,
+    )
+    if exact_decision.status != "Optimal":
+        raise SystemExit("authoritative exact-horizon decision failed")
+    authoritative_decision = _exact_decision_payload(
+        exact_decision, decision_players
+    )
 
     scenario_surface = generate_projection_scenarios(
         decision_players,
@@ -415,7 +526,7 @@ def main() -> None:
         ).to_dict()
     elif gws[0] == 1:
         initial_contingencies = build_initial_squad_contingencies(
-            deterministic["unrestricted"],
+            exact_decision.solution,
             decision_players,
             projections,
             gws,
@@ -440,8 +551,10 @@ def main() -> None:
         "safe_to_act": True,
         "full_apex_ready": True,
         "decision_layer": {
-            "deterministic_initial_squad": "full-horizon maximum-EV MILP with per-GW XI/captain",
+            "deterministic_initial_squad": "near-optimal MILP candidate generator",
             "deterministic_projection_surface": "ensemble mean xp",
+            "authoritative_decision": "exact horizon mechanics rescore",
+            "authoritative_exact_horizon_mechanics": True,
             "stochastic_covariance_layer": True,
             "stochastic_model": scenario_surface.model_version,
             "stochastic_scenarios": scenario_surface.n_scenarios,
@@ -479,6 +592,7 @@ def main() -> None:
         "deterministic_scenarios": {
             name: _solution(sol) for name, sol in deterministic.items()
         },
+        "authoritative_decision": authoritative_decision,
         "robust_cvar_scenarios": {
             name: _robust_solution(sol) for name, sol in robust.items()
         },
@@ -533,6 +647,8 @@ def main() -> None:
         f"- CVaR objective weight: {args.cvar_weight:.0%}",
         "- exact captain/vice fallback: `true`",
         "- exact autosub expectation: `true`",
+        f"- exact-horizon candidates rescored: `{len(exact_decision.candidates)}`",
+        "- unique optimum claimed: `false`",
         "- receding-horizon transfer policy: `true`",
         "",
     ]
@@ -541,6 +657,22 @@ def main() -> None:
     for blocker in readiness.blockers:
         lines.append(f"- BLOCKER: {blocker}")
     lines.append("")
+
+    authoritative_gw1 = authoritative_decision["weeks"][0]
+    lines += [
+        "## Authoritative exact-horizon decision",
+        "",
+        f"Exact horizon objective: **{exact_decision.objective:.2f}**",
+        f"GW1 captain: **{authoritative_gw1['captain_name']}**",
+        f"GW1 vice-captain: **{authoritative_gw1['vice_captain_name']}**",
+        "GW1 bench order: **"
+        + " → ".join(authoritative_gw1["outfield_bench_order_names"])
+        + "** (outfield; GK separate)",
+        f"Near-equivalent candidates: **{authoritative_decision['equivalence']['near_equivalent_candidate_count']}**",
+        "",
+        exact_decision.solution.squad.to_markdown(index=False),
+        "",
+    ]
 
     for name, sol in deterministic.items():
         mechanics = gw1_mechanics[name]

@@ -45,15 +45,57 @@ def _regret_by_player(rows: Any) -> dict[int, dict[str, Any]]:
     return result
 
 
+def _exact_candidate_regret(pinnacle: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    authority = pinnacle.get("authoritative_decision") or {}
+    solution = authority.get("solution") or {}
+    selected = {
+        int(row["player_id"])
+        for row in solution.get("squad") or []
+        if isinstance(row, dict) and row.get("player_id") is not None
+    }
+    try:
+        objective = float(authority["objective"])
+    except (KeyError, TypeError, ValueError):
+        return {}
+    candidates = (authority.get("shortlist") or {}).get("candidates") or []
+    result: dict[int, dict[str, Any]] = {}
+    for player_id in selected:
+        alternatives = [
+            row
+            for row in candidates
+            if isinstance(row, dict)
+            and player_id not in {int(pid) for pid in row.get("squad_player_ids") or []}
+        ]
+        if not alternatives:
+            continue
+        best = max(alternatives, key=lambda row: float(row.get("exact_objective") or 0.0))
+        alternative_ids = {int(pid) for pid in best.get("squad_player_ids") or []}
+        added_names = [
+            str(name)
+            for pid, name in zip(
+                best.get("squad_player_ids") or [],
+                best.get("squad_player_names") or [],
+            )
+            if int(pid) in alternative_ids - selected
+        ]
+        result[player_id] = {
+            "objective_regret": objective - float(best.get("exact_objective") or 0.0),
+            "added_player_names": added_names,
+            "surface": "exact_horizon_candidate_frontier",
+        }
+    return result
+
+
 def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> list[dict]:
     recommendation = canonical.get("recommendation") or {}
-    regret = _regret_by_player(pinnacle.get("selection_regret"))
+    approximate_regret = _regret_by_player(pinnacle.get("selection_regret"))
+    exact_regret = _exact_candidate_regret(pinnacle)
     reasons: list[dict] = []
     for player in recommendation.get("squad") or []:
         if not isinstance(player, dict):
             continue
         player_id = int(player.get("player_id") or 0)
-        regret_row = regret.get(player_id, {})
+        regret_row = exact_regret.get(player_id) or approximate_regret.get(player_id, {})
         reasons.append(
             {
                 "player_id": player_id,
@@ -70,8 +112,9 @@ def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any])
                 or regret_row.get("best_replacement_name")
                 or regret_row.get("alternative_name"),
                 "reason": (
-                    "Selected by the canonical optimiser on the matched projection surface; "
-                    "the fields above are the reproducible evidence, not a conversational override."
+                    "Selected by the authoritative exact-horizon Decision on the matched "
+                    "projection surface; the fields above are reproducible evidence, not "
+                    "a conversational override."
                 ),
             }
         )
@@ -99,7 +142,7 @@ def _captain_surfaces(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> di
             "objective": "maximum expected FPL points with exact GW1 mechanics",
         },
         "deterministic_diagnostic": {
-            "label": "pinnacle_ev_mechanics",
+            "label": "shortlist_generator_gw1_mechanics",
             "captain_id": deterministic.get("captain_id"),
             "captain": deterministic.get("captain_name"),
             "authority": False,
@@ -247,6 +290,9 @@ def build_answer_context(
             "solver_parity": parity,
             "pinnacle_gate": pinnacle.get("pinnacle_gate"),
             "captain_surfaces": _captain_surfaces(canonical, pinnacle),
+            "exact_horizon_equivalence": (
+                (pinnacle.get("authoritative_decision") or {}).get("equivalence")
+            ),
         },
         "news_role_evidence": {
             "sources": [

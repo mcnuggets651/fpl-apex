@@ -9,8 +9,12 @@ weights:
   airsenal: 0.20
   market: 0.10
 fixture_decay: 0.90
-# Temporary horizon approximation until PR 3 rescoring applies exact bench order/autosubs.
+# Used only to generate the near-optimal MILP shortlist. The authoritative decision
+# is rescored with exact XI, captain/vice and autosub mechanics across the horizon.
 approximate_bench_weight: 0.08
+exact_candidate_limit: 16
+exact_candidate_regret_fraction: 0.005
+exact_near_equivalent_points: 0.25
 risk_penalty: 0.15
 understat_enabled: true
 understat_history_seasons: 5

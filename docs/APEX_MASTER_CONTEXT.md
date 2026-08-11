@@ -16,14 +16,15 @@ Build the strongest auditable Fantasy Premier League decision engine possible: m
 2. Never select a squad from memory or generic FPL opinion when current generated outputs exist.
 3. Raw ensemble expected points (`xp`) are the canonical forecast.
 4. Expected minutes/start/appearance probability is a first-class model input.
-5. The legal maximum-xP optimiser is the primary selection baseline.
+5. The legal maximum-xP optimiser generates the near-optimal candidate frontier.
 6. Elite is a diagnostic frontier inside an epsilon-audited near-optimal xP set.
-7. The rolling-horizon maximum-EV strategy remains canonical regardless of Elite convergence.
+7. Exact full-horizon mechanics rescoring produces the only canonical `Decision`, regardless of Elite convergence.
 8. CVaR, regret, captain stability and independent solvers are robustness diagnostics, not separate user-facing teams.
 9. Ownership is excluded from the pure maximum-points objective.
 10. Every recommendation must be reproducible, explainable and traceable to a current run.
 11. A red data/readiness/snapshot-consistency gate blocks an Apex-labelled recommendation.
 12. Football randomness cannot be eliminated; confidence must never be presented as certainty.
+13. Never claim a unique optimum when solver bounds or the disclosed equivalence band contain alternatives.
 
 ## One production recommendation
 Apex has **one** user-facing decision contract:
@@ -40,7 +41,7 @@ python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0
 When the user asks for “the Apex team”, this contract is the answer. Internal Pinnacle, Elite, CVaR, regret and solver outputs exist to construct/challenge that answer, not to create several competing Apex teams.
 
 ## Unified decision flow
-Official FPL → validated enrichment → first-class minutes model → canonical player xP ensemble → rolling-horizon maximum-EV legal optimiser → exact captain/vice/bench mechanics → **one canonical recommendation**, with correlated robustness and Elite epsilon audits attached as diagnostics.
+Official FPL → validated enrichment → first-class minutes model → canonical player xP ensemble → near-optimal legal squad shortlist → exact full-horizon XI/captain/vice/bench/autosub rescoring → **one canonical Decision**, with equivalence, correlated robustness and Elite epsilon audits attached as diagnostics.
 
 ### Elite convergence diagnostic
 Elite reports whether the 0.25%, 0.50% and 1.00% epsilon solutions each:
@@ -51,7 +52,7 @@ This evidence never changes the canonical maximum-EV selection.
 
 ## Internal diagnostic layers
 ### Maximum-EV / Pinnacle
-The auditable ground truth baseline: maximise ensemble-mean xP under FPL legality and horizon constraints.
+The auditable search baseline: maximise ensemble-mean xP under FPL legality and horizon constraints, enumerate distinct near-optimal squads, then select only after exact-mechanics horizon rescoring.
 
 ### Elite
 Secondary evidence lens only. Weight profile remains:

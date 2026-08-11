@@ -1,6 +1,10 @@
 import pandas as pd
+from itertools import product
+import pytest
 
 from apex_fpl.optimisation.mechanics import (
+    _can_replace_slot,
+    _probability,
     best_captain_vice,
     expected_autosub_points,
     optimise_gameweek_mechanics,
@@ -88,3 +92,44 @@ def test_mechanics_restricts_captain_and_vice_to_evidence_eligible_players():
     )
     assert out.captain_id == 8
     assert out.vice_captain_id == 9
+
+
+def test_aggregated_autosub_expectation_matches_player_state_enumeration():
+    squad = _squad()
+    xi_ids = [1, 3, 4, 5, 8, 9, 10, 11, 13, 14, 15]
+    xi = squad[squad.player_id.isin(xi_ids)].copy()
+    bench = squad[~squad.player_id.isin(xi_ids)].copy()
+    order = (12, 6, 7)
+    appearance = {int(pid): 0.70 + (int(pid) % 5) * 0.05 for pid in squad.player_id}
+    xp = {int(pid): 1.5 + int(pid) / 3 for pid in squad.player_id}
+
+    aggregated = expected_autosub_points(
+        xi, bench, xp, appearance, outfield_order=order
+    )
+
+    positions = dict(zip(squad.player_id.astype(int), squad.position.astype(str)))
+    starters = sorted(pid for pid in xi_ids if positions[pid] != "GK")
+    slot_positions = [positions[pid] for pid in starters]
+    brute = (1.0 - appearance[1]) * xp[2]
+    for starter_bits in product((0, 1), repeat=len(starters)):
+        p_start = _probability(
+            starter_bits, [appearance[pid] for pid in starters]
+        )
+        missing = {idx for idx, bit in enumerate(starter_bits) if not bit}
+        for bench_bits in product((0, 1), repeat=3):
+            state_probability = p_start * _probability(
+                bench_bits, [appearance[pid] for pid in order]
+            )
+            live_slots = list(slot_positions)
+            missing_slots = set(missing)
+            for pid, appears in zip(order, bench_bits):
+                if not appears or not missing_slots:
+                    continue
+                slot = _can_replace_slot(live_slots, missing_slots, positions[pid])
+                if slot is None:
+                    continue
+                live_slots[slot] = positions[pid]
+                missing_slots.remove(slot)
+                brute += state_probability * xp[pid] / appearance[pid]
+
+    assert aggregated == pytest.approx(brute)

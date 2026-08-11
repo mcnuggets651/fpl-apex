@@ -157,6 +157,8 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         blockers.append("fewer than 128 stochastic projection scenarios")
     if decision.get("exact_gw_mechanics") is not True:
         blockers.append("exact captain/vice/autosub mechanics are not active")
+    if decision.get("authoritative_exact_horizon_mechanics") is not True:
+        blockers.append("authoritative exact mechanics are not active across the horizon")
     if decision.get("captain_eligibility_enforced_in_all_solves") is not True:
         blockers.append("captain/vice evidence floors are not enforced in every solve")
     if decision.get("receding_horizon_transfers") is not True:
@@ -184,6 +186,57 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             blockers.append(f"outfield bench order invalid: {name}")
         _check_captain_evidence(deterministic, mechanics, name, blockers)
 
+    authority = payload.get("authoritative_decision")
+    if not isinstance(authority, dict) or authority.get("status") != "Optimal":
+        blockers.append("authoritative exact-horizon decision is missing or not optimal")
+        authority = {}
+    authoritative_solution = authority.get("solution")
+    if isinstance(authoritative_solution, dict):
+        _check_solution(
+            {"authoritative": authoritative_solution},
+            "authoritative",
+            "exact-horizon",
+            blockers,
+        )
+    else:
+        blockers.append("authoritative exact-horizon solution is missing")
+        authoritative_solution = {}
+    authoritative_weeks = authority.get("weeks") or []
+    if len(authoritative_weeks) != len(gameweeks):
+        blockers.append("authoritative decision does not cover every horizon Gameweek")
+    for row in authoritative_weeks:
+        if not isinstance(row, dict):
+            blockers.append("authoritative Gameweek mechanics row is invalid")
+            continue
+        if row.get("captain_id") == row.get("vice_captain_id"):
+            blockers.append("authoritative captain and vice are identical")
+        if len(row.get("xi_ids") or []) != 11:
+            blockers.append("authoritative Gameweek XI does not contain 11 players")
+        if len(row.get("outfield_bench_order") or []) != 3:
+            blockers.append("authoritative Gameweek bench order is invalid")
+    if authoritative_weeks and isinstance(authoritative_solution, dict):
+        _check_captain_evidence(
+            {"authoritative": authoritative_solution},
+            {"authoritative": authoritative_weeks[0]},
+            "authoritative",
+            blockers,
+        )
+    objective = _number(authority, "objective")
+    reconciled = _number(authority, "objective_reconciliation")
+    if objective is None or reconciled is None or abs(objective - reconciled) > 1e-6:
+        blockers.append("authoritative exact-horizon objective does not reconcile")
+    shortlist = authority.get("shortlist") or {}
+    if int(shortlist.get("candidate_count", 0) or 0) < 1:
+        blockers.append("authoritative exact-mechanics shortlist is empty")
+    elif shortlist.get("complete_within_configured_band") is not True:
+        warnings.append(
+            "exact-mechanics shortlist hit its configured candidate limit before "
+            "exhausting the disclosed near-optimal band"
+        )
+    equivalence = authority.get("equivalence") or {}
+    if equivalence.get("unique_optimum_proven") is not False:
+        blockers.append("authoritative decision must not claim an unproven unique optimum")
+
     regret = payload.get("selection_regret") or []
     if not regret:
         blockers.append("selection-regret stress test is empty")
@@ -192,7 +245,11 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     if not frequencies:
         blockers.append("decision-frequency audit is empty")
     else:
-        chosen_captain = (mechanics.get("unrestricted") or {}).get("captain_id")
+        chosen_captain = (
+            authoritative_weeks[0].get("captain_id")
+            if authoritative_weeks and isinstance(authoritative_weeks[0], dict)
+            else None
+        )
         captain_row = next(
             (
                 row

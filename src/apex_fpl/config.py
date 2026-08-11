@@ -65,6 +65,9 @@ class Settings:
         "market": 0.10,
     })
     approximate_bench_weight: float = 0.08
+    exact_candidate_limit: int = 16
+    exact_candidate_regret_fraction: float = 0.005
+    exact_near_equivalent_points: float = 0.25
     cache_dir: Path = Path("data/cache")
     snapshot_dir: Path = Path("data/snapshots")
     report_dir: Path = Path("reports")
@@ -109,6 +112,21 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         weights=raw.get("weights", default.weights),
         approximate_bench_weight=float(
             raw.get("approximate_bench_weight", default.approximate_bench_weight)
+        ),
+        exact_candidate_limit=int(
+            raw.get("exact_candidate_limit", default.exact_candidate_limit)
+        ),
+        exact_candidate_regret_fraction=float(
+            raw.get(
+                "exact_candidate_regret_fraction",
+                default.exact_candidate_regret_fraction,
+            )
+        ),
+        exact_near_equivalent_points=float(
+            raw.get(
+                "exact_near_equivalent_points",
+                default.exact_near_equivalent_points,
+            )
         ),
         cache_dir=Path(os.getenv("APEX_CACHE_DIR", "data/cache")),
         snapshot_dir=Path(os.getenv("APEX_SNAPSHOT_DIR", "data/snapshots")),

@@ -97,6 +97,36 @@ def test_captain_and_regret_surfaces_follow_producer_schemas():
     assert surfaces["independent_parity_diagnostic"]["apex_captain_id"] == 8
 
 
+def test_exact_candidate_frontier_owns_selected_player_regret():
+    canonical, pinnacle = _payloads()
+    pinnacle["authoritative_decision"] = {
+        "objective": 100.0,
+        "solution": {"squad": [{"player_id": 1}, {"player_id": 2}]},
+        "shortlist": {
+            "candidates": [
+                {
+                    "squad_player_ids": [1, 2],
+                    "squad_player_names": ["Foden", "Saka"],
+                    "exact_objective": 100.0,
+                },
+                {
+                    "squad_player_ids": [2, 3],
+                    "squad_player_names": ["Saka", "Palmer"],
+                    "exact_objective": 99.8,
+                },
+            ]
+        },
+        "equivalence": {"unique_optimum_proven": False},
+    }
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+    reason = context["selected_player_reasons"][0]
+    assert round(reason["selection_regret"], 6) == 0.2
+    assert reason["alternative"] == "Palmer"
+    assert context["diagnostics"]["exact_horizon_equivalence"] == {
+        "unique_optimum_proven": False
+    }
+
+
 def test_stale_or_missing_diagnostics_withhold_production_result():
     canonical, pinnacle = _payloads()
     canonical["official_snapshot"]["retrieved_at"] = "2026-08-09T07:00:00+00:00"

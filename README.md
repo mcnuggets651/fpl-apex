@@ -40,13 +40,13 @@ The production hierarchy is:
 2. Validated FPL Core, AIrsenal, historical, preseason, tactical, news and fixture evidence.
 3. First-class expected-minutes/start/appearance model.
 4. Canonical ensemble expected points (`xp`).
-5. Legal maximum-xP full-horizon optimiser.
+5. Legal maximum-xP MILP shortlist inside a disclosed near-optimal band.
 6. Correlated scenario/CVaR, exact regret, captain stability and independent-solver diagnostics.
 7. Elite 35/20/15/10/10/5/5 as a diagnostic frontier inside a near-optimal xP set.
 8. Epsilon frontier at 0%, 0.25%, 0.5% and 1.0%.
-9. The unrestricted rolling-horizon maximum-EV strategy is always canonical.
+9. Exact XI/captain/vice/bench/autosub rescoring across every horizon Gameweek produces the sole canonical `Decision`.
 10. Elite convergence cannot substitute a different production 15.
-11. Exact XI, captain, vice and bench mechanics are recalculated on raw xP.
+11. Near-equivalent candidates are disclosed and Apex does not claim an unproven unique optimum.
 12. Publish one recommendation only when readiness and snapshot-consistency gates are green.
 
 Full policy: [`docs/APEX_CANONICAL_DECISION_POLICY.md`](docs/APEX_CANONICAL_DECISION_POLICY.md).
