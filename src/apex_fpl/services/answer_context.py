@@ -90,12 +90,18 @@ def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any])
     recommendation = canonical.get("recommendation") or {}
     approximate_regret = _regret_by_player(pinnacle.get("selection_regret"))
     exact_regret = _exact_candidate_regret(pinnacle)
+    dossier_by_player = {
+        int(row["player_id"]): row
+        for row in ((pinnacle.get("selected_player_evidence") or {}).get("dossiers") or [])
+        if isinstance(row, dict) and row.get("player_id") is not None
+    }
     reasons: list[dict] = []
     for player in recommendation.get("squad") or []:
         if not isinstance(player, dict):
             continue
         player_id = int(player.get("player_id") or 0)
         regret_row = exact_regret.get(player_id) or approximate_regret.get(player_id, {})
+        dossier = dossier_by_player.get(player_id, {})
         reasons.append(
             {
                 "player_id": player_id,
@@ -106,6 +112,11 @@ def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any])
                 "projection_confidence": player.get("projection_confidence"),
                 "tactical_role": player.get("tactical_role"),
                 "role_source": player.get("tactical_role_source"),
+                "has_current_decision_evidence": dossier.get(
+                    "has_current_decision_evidence"
+                ),
+                "current_evidence_count": dossier.get("current_evidence_count", 0),
+                "evidence": dossier.get("evidence") or [],
                 "selection_regret": regret_row.get("regret")
                 or regret_row.get("objective_regret"),
                 "alternative": (regret_row.get("added_player_names") or [None])[0]
@@ -240,6 +251,14 @@ def build_answer_context(
         blockers.append("strategy/transfer state is missing")
 
     selected = selected_player_reasons(canonical, pinnacle)
+    player_evidence = pinnacle.get("selected_player_evidence")
+    if not isinstance(player_evidence, dict):
+        blockers.append("selected-player evidence dossier artifact is missing")
+        evidence_coverage = {}
+    else:
+        evidence_coverage = player_evidence.get("coverage") or {}
+        if evidence_coverage.get("ready") is not True:
+            blockers.append("selected-player evidence coverage is not ready")
     for player in selected:
         if player.get("expected_minutes") is None or player.get("start_probability") is None:
             blockers.append(f"selected player lacks expected-minutes evidence: {player['web_name']}")
@@ -299,6 +318,7 @@ def build_answer_context(
                 row for row in source_health if row["name"] in {"news_feeds", "tactical_roles"}
             ],
             "selected_players": selected,
+            "coverage": evidence_coverage,
         },
         "production_result": canonical.get("recommendation") if safe else None,
         "canonical_strategy": strategy if safe else None,

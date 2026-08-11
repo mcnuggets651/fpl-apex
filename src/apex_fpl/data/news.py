@@ -16,8 +16,18 @@ import requests
 class NewsItem:
     title: str
     source: str
-    published: str
+    published: str | None
     link: str
+    source_tier: str = "unknown"
+    retrieved_at: str = ""
+    summary: str = ""
+
+
+@dataclass(frozen=True)
+class NewsSource:
+    name: str
+    url: str
+    tier: str
 
 
 @dataclass
@@ -27,15 +37,91 @@ class NewsCollectionResult:
     failed: dict[str, str]
 
 
-def load_manual_signals(path: str | Path = "data/manual/availability.csv") -> pd.DataFrame:
+MANUAL_PROVENANCE_COLUMNS = (
+    "source_name",
+    "source_tier",
+    "source_url",
+    "evidence_type",
+    "published_at",
+    "expires_at",
+)
+TRUSTED_SOURCE_TIERS = {"official_club", "official_league", "trusted_media"}
+
+
+def _utc(value: object, field: str) -> pd.Timestamp:
+    parsed = pd.to_datetime(value, utc=True, errors="coerce")
+    if pd.isna(parsed):
+        raise ValueError(f"manual availability row requires valid {field}")
+    return parsed
+
+
+def load_manual_signals(
+    path: str | Path = "data/manual/availability.csv",
+    *,
+    now: datetime | None = None,
+) -> pd.DataFrame:
     p = Path(path)
     if not p.exists():
-        return pd.DataFrame(columns=["player_id", "availability_multiplier", "confidence", "reason"])
+        return pd.DataFrame(
+            columns=[
+                "player_id",
+                "availability_multiplier",
+                "confidence",
+                "reason",
+                *MANUAL_PROVENANCE_COLUMNS,
+                "retrieved_at",
+            ]
+        )
     df = pd.read_csv(p)
     required = {"player_id", "availability_multiplier"}
     if not required.issubset(df.columns):
         raise ValueError(f"manual availability file requires {sorted(required)}")
-    return df
+    missing = set(MANUAL_PROVENANCE_COLUMNS) - set(df.columns)
+    if missing:
+        raise ValueError(
+            "manual availability overrides require provenance fields: "
+            + ", ".join(sorted(missing))
+        )
+    now_value = pd.Timestamp(now or datetime.now(timezone.utc))
+    now_utc = (
+        now_value.tz_localize("UTC")
+        if now_value.tzinfo is None
+        else now_value.tz_convert("UTC")
+    )
+    out = df.copy()
+    out["player_id"] = pd.to_numeric(out["player_id"], errors="raise").astype(int)
+    out["availability_multiplier"] = pd.to_numeric(
+        out["availability_multiplier"], errors="raise"
+    ).clip(0, 1)
+    for idx, row in out.iterrows():
+        if str(row["source_tier"]).strip() not in TRUSTED_SOURCE_TIERS:
+            raise ValueError(
+                f"manual availability row {idx} has untrusted source_tier"
+            )
+        if not str(row["source_name"]).strip() or not str(row["source_url"]).startswith(
+            ("https://", "http://")
+        ):
+            raise ValueError(
+                f"manual availability row {idx} lacks verifiable source provenance"
+            )
+        published = _utc(row["published_at"], "published_at")
+        expires = _utc(row["expires_at"], "expires_at")
+        if expires <= published:
+            raise ValueError(f"manual availability row {idx} expires before publication")
+        if now_utc > expires:
+            raise ValueError(f"manual availability row {idx} is expired")
+    out["retrieved_at"] = now_utc.isoformat()
+    return out.rename(
+        columns={
+            "source_name": "availability_source_name",
+            "source_tier": "availability_source_tier",
+            "source_url": "availability_source_url",
+            "evidence_type": "availability_evidence_type",
+            "published_at": "availability_published_at",
+            "expires_at": "availability_expires_at",
+            "retrieved_at": "availability_retrieved_at",
+        }
+    )
 
 
 def _text(node: ET.Element | None, tags: list[str], default: str = "") -> str:
@@ -92,32 +178,42 @@ class _OfficialNewsHTMLParser(HTMLParser):
             self.current_text = []
 
 
-def _parse_xml(content: bytes, url: str) -> list[NewsItem]:
+def _parse_xml(
+    content: bytes,
+    url: str,
+    *,
+    source_name: str | None = None,
+    source_tier: str = "unknown",
+    retrieved_at: str = "",
+) -> list[NewsItem]:
     root = ET.fromstring(content)
-    source = urlparse(url).netloc
+    source = source_name or urlparse(url).netloc
     channel = root.find("channel")
     items: list[NewsItem] = []
     if channel is not None:
-        source = _text(channel, ["title"], source)
+        source = source_name or _text(channel, ["title"], source)
         entries = channel.findall("item")[:60]
         for entry in entries:
-            published = _text(entry, ["pubDate"], datetime.now(timezone.utc).isoformat())
+            published = _text(entry, ["pubDate"], "") or None
             try:
                 published = parsedate_to_datetime(published).isoformat()
             except Exception:
-                pass
+                published = None
             items.append(
                 NewsItem(
                     _text(entry, ["title"]),
                     source,
                     published,
                     _text(entry, ["link"]),
+                    source_tier,
+                    retrieved_at,
+                    _text(entry, ["description", "summary"]),
                 )
             )
         return items
 
     ns = {"a": "http://www.w3.org/2005/Atom"}
-    source = _text(root, ["{http://www.w3.org/2005/Atom}title"], source)
+    source = source_name or _text(root, ["{http://www.w3.org/2005/Atom}title"], source)
     for entry in root.findall("a:entry", ns)[:60]:
         link_node = entry.find("a:link", ns)
         link = link_node.attrib.get("href", "") if link_node is not None else ""
@@ -131,19 +227,38 @@ def _parse_xml(content: bytes, url: str) -> list[NewsItem]:
                         "{http://www.w3.org/2005/Atom}updated",
                         "{http://www.w3.org/2005/Atom}published",
                     ],
-                    datetime.now(timezone.utc).isoformat(),
-                ),
+                    "",
+                ) or None,
                 link,
+                source_tier,
+                retrieved_at,
+                _text(
+                    entry,
+                    [
+                        "{http://www.w3.org/2005/Atom}summary",
+                        "{http://www.w3.org/2005/Atom}content",
+                    ],
+                ),
             )
         )
     return items
 
 
-def _parse_html(content: bytes, url: str) -> list[NewsItem]:
+def _parse_html(
+    content: bytes,
+    url: str,
+    *,
+    source_name: str | None = None,
+    source_tier: str = "unknown",
+    retrieved_at: str = "",
+) -> list[NewsItem]:
     parser = _OfficialNewsHTMLParser(url)
     parser.feed(content.decode("utf-8", errors="ignore"))
-    source = "Premier League" if "premierleague.com" in urlparse(url).netloc else urlparse(url).netloc
-    now = datetime.now(timezone.utc).isoformat()
+    source = source_name or (
+        "Premier League"
+        if "premierleague.com" in urlparse(url).netloc
+        else urlparse(url).netloc
+    )
     seen: set[tuple[str, str]] = set()
     items: list[NewsItem] = []
     for title, link in parser.items:
@@ -151,33 +266,67 @@ def _parse_html(content: bytes, url: str) -> list[NewsItem]:
         if key in seen:
             continue
         seen.add(key)
-        items.append(NewsItem(title, source, now, link))
+        # Link-list pages expose retrieval time, not publication time. Unknown
+        # publication time is retained as missing and cannot drive projections.
+        items.append(NewsItem(title, source, None, link, source_tier, retrieved_at))
         if len(items) >= 80:
             break
     return items
 
 
-def parse_news_document(content: bytes, url: str, content_type: str = "") -> list[NewsItem]:
+def parse_news_document(
+    content: bytes,
+    url: str,
+    content_type: str = "",
+    *,
+    source_name: str | None = None,
+    source_tier: str = "unknown",
+    retrieved_at: str = "",
+) -> list[NewsItem]:
     """Parse RSS/Atom, with a narrow official-news HTML fallback."""
     media_type = content_type.partition(";")[0].strip().casefold()
     if media_type in {"text/html", "application/xhtml+xml"}:
-        return _parse_html(content, url)
+        return _parse_html(
+            content,
+            url,
+            source_name=source_name,
+            source_tier=source_tier,
+            retrieved_at=retrieved_at,
+        )
 
     looks_xml = "xml" in media_type or content.lstrip().startswith(
         (b"<?xml", b"<rss", b"<feed")
     )
     if looks_xml:
         try:
-            return _parse_xml(content, url)
+            return _parse_xml(
+                content,
+                url,
+                source_name=source_name,
+                source_tier=source_tier,
+                retrieved_at=retrieved_at,
+            )
         except ET.ParseError:
             pass
     try:
-        return _parse_xml(content, url)
+        return _parse_xml(
+            content,
+            url,
+            source_name=source_name,
+            source_tier=source_tier,
+            retrieved_at=retrieved_at,
+        )
     except ET.ParseError:
-        return _parse_html(content, url)
+        return _parse_html(
+            content,
+            url,
+            source_name=source_name,
+            source_tier=source_tier,
+            retrieved_at=retrieved_at,
+        )
 
 
-def collect_news_sources(urls: list[str]) -> NewsCollectionResult:
+def collect_news_sources(sources: list[str | NewsSource | dict]) -> NewsCollectionResult:
     """Collect each configured source independently and preserve outage details.
 
     One broken media feed must not throw away healthy official/trusted evidence.
@@ -188,14 +337,29 @@ def collect_news_sources(urls: list[str]) -> NewsCollectionResult:
     succeeded: list[str] = []
     failed: dict[str, str] = {}
     seen: set[tuple[str, str]] = set()
-    for url in urls:
+    for configured in sources:
+        if isinstance(configured, NewsSource):
+            source = configured
+        elif isinstance(configured, dict):
+            source = NewsSource(
+                name=str(configured.get("name") or configured.get("url") or "unknown"),
+                url=str(configured.get("url") or ""),
+                tier=str(configured.get("tier") or "unknown"),
+            )
+        else:
+            source = NewsSource(urlparse(str(configured)).netloc, str(configured), "unknown")
+        url = source.url
         try:
+            retrieved_at = datetime.now(timezone.utc).isoformat()
             response = requests.get(url, timeout=20, headers={"User-Agent": "apex-fpl/0.1"})
             response.raise_for_status()
             parsed = parse_news_document(
                 response.content,
                 url,
                 response.headers.get("content-type", ""),
+                source_name=source.name,
+                source_tier=source.tier,
+                retrieved_at=retrieved_at,
             )
             succeeded.append(url)
             for item in parsed:

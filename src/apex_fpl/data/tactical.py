@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -19,12 +20,31 @@ ROLE_COLUMNS = [
     "minutes_evidence_confidence",
     "lineup_evidence_type",
     "context_reason",
+    "source_name",
+    "source_tier",
     "source_url",
-    "updated_at",
+    "published_at",
+    "retrieved_at",
+    "expires_at",
 ]
 
+TRUSTED_SOURCE_TIERS = {"official_club", "official_league", "trusted_media"}
+MATERIAL_OVERRIDE_COLUMNS = (
+    "penalty_share",
+    "corners_share",
+    "direct_freekick_share",
+    "indirect_freekick_share",
+    "expected_minutes_override",
+    "start_probability_override",
+    "appearance_probability_override",
+)
 
-def load_tactical_roles(path: Path) -> pd.DataFrame:
+
+def load_tactical_roles(
+    path: Path,
+    *,
+    now: datetime | None = None,
+) -> pd.DataFrame:
     """Load verified tactical/set-piece overrides keyed by official FPL ID.
 
     ``role_multiplier`` is deliberately modest. Optional set-piece shares are
@@ -78,8 +98,49 @@ def load_tactical_roles(path: Path) -> pd.DataFrame:
         out["expected_minutes_override"], errors="coerce"
     ).clip(0, 90)
 
-    for col in ["lineup_evidence_type", "context_reason", "source_url", "updated_at"]:
+    for col in [
+        "lineup_evidence_type",
+        "context_reason",
+        "source_name",
+        "source_tier",
+        "source_url",
+        "published_at",
+        "expires_at",
+    ]:
         if col not in out:
             out[col] = pd.NA
+
+    material = (
+        out[list(MATERIAL_OVERRIDE_COLUMNS)].notna().any(axis=1)
+        | out["role_multiplier"].ne(1.0)
+        | out["tactical_role"].astype(str).ne("verified-role")
+    )
+    now_value = pd.Timestamp(now or datetime.now(timezone.utc))
+    now_utc = (
+        now_value.tz_localize("UTC")
+        if now_value.tzinfo is None
+        else now_value.tz_convert("UTC")
+    )
+    for idx, row in out.loc[material].iterrows():
+        if str(row["source_tier"]).strip() not in TRUSTED_SOURCE_TIERS:
+            raise ValueError(f"tactical override row {idx} has untrusted source_tier")
+        if not str(row["source_name"]).strip() or not str(row["source_url"]).startswith(
+            ("https://", "http://")
+        ):
+            raise ValueError(f"tactical override row {idx} lacks verifiable provenance")
+        if not str(row["lineup_evidence_type"]).strip():
+            raise ValueError(f"tactical override row {idx} lacks evidence type")
+        published = pd.to_datetime(row["published_at"], utc=True, errors="coerce")
+        expires = pd.to_datetime(row["expires_at"], utc=True, errors="coerce")
+        if pd.isna(published) or pd.isna(expires):
+            raise ValueError(
+                f"tactical override row {idx} requires valid published_at and expires_at"
+            )
+        if expires <= published:
+            raise ValueError(f"tactical override row {idx} expires before publication")
+        if now_utc > expires:
+            raise ValueError(f"tactical override row {idx} is expired")
+
+    out["retrieved_at"] = now_utc.isoformat()
 
     return out[ROLE_COLUMNS].drop_duplicates("player_id", keep="last")

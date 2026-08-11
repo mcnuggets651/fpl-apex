@@ -221,6 +221,29 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             "authoritative",
             blockers,
         )
+
+    evidence = payload.get("selected_player_evidence")
+    if not isinstance(evidence, dict):
+        blockers.append("selected-player evidence dossiers are missing")
+    else:
+        dossiers = evidence.get("dossiers") or []
+        coverage = evidence.get("coverage") or {}
+        if len(dossiers) != 15:
+            blockers.append("selected-player evidence dossiers do not cover the full squad")
+        if int(coverage.get("relevant_evidence_rows", 0) or 0) < 1:
+            blockers.append("zero relevant selected-player evidence rows")
+        if coverage.get("captain_has_current_evidence") is not True:
+            blockers.append("published captain lacks current attributable evidence")
+        missing_uncertain = coverage.get(
+            "high_uncertainty_starters_missing_evidence"
+        ) or []
+        if missing_uncertain:
+            blockers.append(
+                "high-uncertainty starters lack current attributable evidence: "
+                + ", ".join(str(pid) for pid in missing_uncertain)
+            )
+        if coverage.get("ready") is not True:
+            blockers.append("selected-player evidence coverage gate is not ready")
     objective = _number(authority, "objective")
     reconciled = _number(authority, "objective_reconciliation")
     if objective is None or reconciled is None or abs(objective - reconciled) > 1e-6:

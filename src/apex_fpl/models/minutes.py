@@ -117,6 +117,17 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         hist_start_prob,
     )
 
+    # Current, attributable starting-role evidence can raise a healthy player's
+    # statistical prior by only a small, source-tiered amount. The producer caps
+    # these deltas; this consumer defensively re-caps them so malformed inputs can
+    # never manufacture a near-certain starter.
+    news_minutes_delta = _series(df, "news_minutes_delta", 0.0).clip(0, 8.0)
+    news_start_delta = _series(
+        df, "news_start_probability_delta", 0.0
+    ).clip(0, 0.10)
+    base_minutes = np.minimum(base_minutes + news_minutes_delta, 85.0)
+    base_start = np.minimum(base_start + news_start_delta, 0.95)
+
     # Explicit deadline evidence from official press conferences, club releases or
     # a verified projected XI may replace the statistical role prior. Overrides are
     # inputs to expected value, not confidence multipliers or optimiser bonuses.
@@ -167,14 +178,20 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         0.95,
     )
     evidence_confidence = _optional_series(df, "minutes_evidence_confidence")
+    news_confidence = _optional_series(df, "news_confidence")
     confidence = np.where(
         evidence_confidence.notna(),
         np.maximum(confidence, evidence_confidence.clip(0, 0.95)),
         confidence,
     )
+    confidence = np.where(
+        news_confidence.notna(),
+        np.maximum(confidence, news_confidence.clip(0, 0.92)),
+        confidence,
+    )
     # Explicit news/manual overrides are useful evidence, but also signal that the
     # situation may be moving. They should not create false certainty.
-    override_present = (manual < 0.999) | (news < 0.999)
+    override_present = (manual < 0.999) | (news < 0.999) | (news_minutes_delta > 0)
     confidence = np.where(override_present, np.minimum(confidence, 0.82), confidence)
 
     return pd.DataFrame({

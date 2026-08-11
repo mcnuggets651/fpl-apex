@@ -97,6 +97,29 @@ def _payload():
             },
             "equivalence": {"unique_optimum_proven": False},
         },
+        "selected_player_evidence": {
+            "contract": "apex-player-evidence-v1",
+            "coverage": {
+                "selected_players": 15,
+                "selected_players_with_current_evidence": 1,
+                "relevant_evidence_rows": 1,
+                "captain_id": 1,
+                "captain_has_current_evidence": True,
+                "high_uncertainty_starter_ids": [],
+                "high_uncertainty_starters_missing_evidence": [],
+                "ready": True,
+            },
+            "dossiers": [
+                {
+                    "player_id": i,
+                    "is_captain": i == 1,
+                    "has_current_decision_evidence": i == 1,
+                    "current_evidence_count": 1 if i == 1 else 0,
+                    "evidence": [],
+                }
+                for i in range(15)
+            ],
+        },
         "selection_regret": [{"player_id": 1, "objective_regret": 3.0}],
         "decision_frequencies": [
             {
@@ -140,6 +163,21 @@ def test_complete_pinnacle_payload_is_ready_with_calibration_warning():
     assert result.ready
     assert not result.blockers
     assert any("covariance" in warning for warning in result.warnings)
+
+
+def test_zero_relevant_evidence_cannot_be_fully_green():
+    payload = _payload()
+    payload["selected_player_evidence"]["coverage"].update(
+        {
+            "relevant_evidence_rows": 0,
+            "captain_has_current_evidence": False,
+            "ready": False,
+        }
+    )
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("zero relevant" in blocker for blocker in result.blockers)
+    assert any("captain lacks" in blocker for blocker in result.blockers)
 
 
 def test_missing_exact_mechanics_blocks_pinnacle():

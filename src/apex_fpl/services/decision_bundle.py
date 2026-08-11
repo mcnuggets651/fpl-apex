@@ -172,8 +172,10 @@ def _settings_payload(settings: Settings, horizon: int) -> dict[str, Any]:
     payload["horizon"] = int(horizon)
     # Record configured external surfaces without persisting credentials or URLs.
     payload["source_configuration"] = {
-        "news_feeds_count": len(settings.news_feeds),
-        "news_feeds_sha256": canonical_json_sha256(sorted(settings.news_feeds)),
+        "news_feeds_count": len(settings.news_sources or settings.news_feeds),
+        "news_feeds_sha256": canonical_json_sha256(
+            settings.news_sources or sorted(settings.news_feeds)
+        ),
         "odds_endpoint_sha256": (
             hashlib.sha256(settings.odds_api_url.encode("utf-8")).hexdigest()
             if settings.odds_api_url

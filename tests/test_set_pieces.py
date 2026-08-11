@@ -20,12 +20,42 @@ def test_verified_set_piece_shares_override_order_prior(tmp_path):
                 "corners_share": 0.5,
                 "direct_freekick_share": 0.6,
                 "indirect_freekick_share": 0.4,
+                "lineup_evidence_type": "official_set_piece_confirmation",
+                "source_name": "Example FC",
+                "source_tier": "official_club",
+                "source_url": "https://example.test/set-pieces",
+                "published_at": "2026-08-07T07:00:00Z",
+                "expires_at": "2026-08-14T07:00:00Z",
             }
         ]
     ).to_csv(context, index=False)
-    loaded = load_tactical_roles(context).iloc[0]
+    loaded = load_tactical_roles(
+        context, now=pd.Timestamp("2026-08-08T07:00:00Z").to_pydatetime()
+    ).iloc[0]
     assert loaded["penalty_share"] == pytest.approx(0.8)
     assert loaded["direct_freekick_share"] == pytest.approx(0.6)
+
+
+def test_stale_or_unverifiable_tactical_override_is_rejected(tmp_path):
+    context = tmp_path / "tactical_roles.csv"
+    pd.DataFrame(
+        [
+            {
+                "player_id": 1,
+                "expected_minutes_override": 80,
+                "lineup_evidence_type": "projected_xi",
+                "source_name": "Unknown",
+                "source_tier": "trusted_media",
+                "source_url": "https://example.test/old",
+                "published_at": "2026-08-01T07:00:00Z",
+                "expires_at": "2026-08-02T07:00:00Z",
+            }
+        ]
+    ).to_csv(context, index=False)
+    with pytest.raises(ValueError, match="expired"):
+        load_tactical_roles(
+            context, now=pd.Timestamp("2026-08-08T07:00:00Z").to_pydatetime()
+        )
 
 
 def test_projection_carries_auditable_component_breakdown():
