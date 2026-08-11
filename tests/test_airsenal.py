@@ -89,6 +89,25 @@ def test_validator_rejects_stale_or_wrong_version(tmp_path: Path):
     assert "version mismatch" in detail
 
 
+def test_validator_rejects_mixed_generation_rows(tmp_path: Path):
+    path = tmp_path / "airsenal.csv"
+    frame = _forecast()
+    frame.loc[frame["gw"] == 2, "generated_at"] = (
+        datetime.now(timezone.utc) - timedelta(hours=1)
+    ).isoformat()
+    frame.to_csv(path, index=False)
+    out = AIrsenalProjectionAdapter(str(path)).load(valid_ids=set(range(1, 7)))
+    ok, detail = validate_airsenal_forecast(
+        out,
+        set(range(1, 7)),
+        [1, 2],
+        expected_source_version=PIN,
+        min_player_coverage=0.8,
+    )
+    assert not ok
+    assert "mixes multiple AIrsenal generations" in detail
+
+
 def test_validator_rejects_non_finite_or_implausible_expected_points(tmp_path: Path):
     path = tmp_path / "airsenal.csv"
     bad = _forecast()

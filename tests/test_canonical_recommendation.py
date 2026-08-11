@@ -198,6 +198,7 @@ def test_mismatched_official_surface_withholds_recommendation(tmp_path: Path) ->
     result, payload = _run(tmp_path, _pinnacle(), _elite(True, fixtures="different"))
     assert result.returncode == 2
     assert payload["ready_to_act"] is False
+    assert payload["recommendation"] is None
     assert any("content hashes do not match" in blocker for blocker in payload["blockers"])
 
 
@@ -219,5 +220,6 @@ def test_answer_context_block_returns_nonzero_and_withheld_markdown(tmp_path: Pa
     markdown = (tmp_path / "out" / "apex_recommendation_latest.md").read_text(encoding="utf-8")
     assert result.returncode == 2
     assert payload["ready_to_act"] is False
+    assert payload["recommendation"] is None
     assert "NOT READY" in markdown
     assert "Captain:" not in markdown

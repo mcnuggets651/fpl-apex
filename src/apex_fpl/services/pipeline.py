@@ -32,7 +32,7 @@ from apex_fpl.services.decision_bundle import dataframe_sha256
 from apex_fpl.services.enrichment import add_preseason_features, coalesce_context
 from apex_fpl.services.integrity import reconcile
 from apex_fpl.services.news_signals import infer_news_signals
-from apex_fpl.services.provenance import SourceStatus, load_upstream_pins
+from apex_fpl.services.provenance import SourceStatus, load_upstream_pins, validate_core_pin
 from apex_fpl.services.safety import SafetyAssessment, assess_safety
 from apex_fpl.services.snapshots import write_official_snapshot
 from apex_fpl.services.team_state import (
@@ -200,8 +200,15 @@ def run_pipeline(
     friendlies = pd.DataFrame()
     core_client: FPLCoreClient | None = None
     core_pin = str(pins.get("fpl_core_insights", {}).get("commit", ""))
+    core_ok, core_detail, core_runtime = validate_core_pin(
+        pins.get("fpl_core_insights", {}),
+        max_age_hours=settings.max_core_age_hours,
+    )
+    pins.setdefault("fpl_core_insights", {})["runtime_freshness"] = core_runtime
     air = pd.DataFrame()
     try:
+        if not core_ok:
+            raise RuntimeError(core_detail)
         core_client = FPLCoreClient(http, settings.season, ref=core_pin or "main")
         core = core_client.playerstats(force=force)
         sources.append(

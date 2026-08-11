@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 
@@ -61,6 +62,12 @@ def main() -> None:
     players = pd.read_csv(players_path)
     now = datetime.now(timezone.utc)
     now_ts = pd.Timestamp(now)
+    canonical_path = Path("data/generated/apex_recommendation_latest.json")
+    canonical = (
+        json.loads(canonical_path.read_text(encoding="utf-8"))
+        if canonical_path.exists()
+        else {}
+    )
 
     # Capture only a genuine pre-deadline snapshot. Repeated six-hour runs overwrite
     # the same GW file, so the final archive is the freshest validated forecast that
@@ -83,7 +90,16 @@ def main() -> None:
                 deadline_time=deadline.isoformat(),
             )
             path = archive_dir / f"gw{gw:02d}_forecast.csv"
-            frame.to_csv(path, index=False)
+            csv_bytes = frame.to_csv(index=False).encode("utf-8")
+            forecast_sha = hashlib.sha256(csv_bytes).hexdigest()
+            bundle_id = str(canonical.get("decision_bundle_id") or forecast_sha)
+            capture_dir = archive_dir / f"gw{gw:02d}_captures"
+            capture_dir.mkdir(parents=True, exist_ok=True)
+            capture_path = capture_dir / f"{bundle_id}.csv"
+            if not capture_path.exists():
+                capture_path.write_bytes(csv_bytes)
+            if not path.exists() or path.read_bytes() != csv_bytes:
+                path.write_bytes(csv_bytes)
             metadata = {
                 "gw": gw,
                 "deadline_time": deadline.isoformat(),
@@ -92,11 +108,24 @@ def main() -> None:
                 "official_snapshot": latest.get("official_snapshot", {}),
                 "upstreams": latest.get("upstreams", {}),
                 "sources": latest.get("sources", []),
+                "decision_bundle_id": canonical.get("decision_bundle_id"),
+                "forecast_sha256": forecast_sha,
+                "material_inputs": (canonical.get("decision_bundle") or {}).get(
+                    "material_inputs", {}
+                ),
             }
-            (archive_dir / f"gw{gw:02d}_metadata.json").write_text(
-                json.dumps(metadata, indent=2, default=str) + "\n",
-                encoding="utf-8",
+            metadata_path = archive_dir / f"gw{gw:02d}_metadata.json"
+            previous = (
+                json.loads(metadata_path.read_text(encoding="utf-8"))
+                if metadata_path.exists()
+                else {}
             )
+            metadata["outcome_revisions"] = previous.get("outcome_revisions", [])
+            if previous.get("forecast_sha256") != forecast_sha:
+                metadata_path.write_text(
+                    json.dumps(metadata, indent=2, default=str) + "\n",
+                    encoding="utf-8",
+                )
             print(f"Archived green GW{gw} forecast {hours:.1f}h before deadline")
 
     # Attach official outcomes only after FPL itself marks the event finished.
@@ -106,10 +135,6 @@ def main() -> None:
         if not path.exists() or not bool(event.get("finished", False)):
             continue
         frame = pd.read_csv(path)
-        if "event_points" in frame.columns and pd.to_numeric(
-            frame["event_points"], errors="coerce"
-        ).notna().all():
-            continue
         live = http.get_json(
             f"{BASE}/event/{gw}/live/",
             f"official_event_{gw}_live",
@@ -118,9 +143,31 @@ def main() -> None:
         points = parse_event_live_points(live)
         if not points:
             continue
-        frame = attach_actual_points(frame, points, retrieved_at=now.isoformat())
-        frame.to_csv(path, index=False)
-        print(f"Attached official FPL outcomes to GW{gw} archive")
+        updated = attach_actual_points(frame, points, retrieved_at=now.isoformat())
+        old_points = pd.to_numeric(frame.get("event_points"), errors="coerce")
+        new_points = pd.to_numeric(updated["event_points"], errors="coerce")
+        if old_points.equals(new_points):
+            continue
+        updated.to_csv(path, index=False)
+        metadata_path = archive_dir / f"gw{gw:02d}_metadata.json"
+        metadata = (
+            json.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata_path.exists()
+            else {"gw": gw}
+        )
+        revisions = list(metadata.get("outcome_revisions") or [])
+        revisions.append(
+            {
+                "retrieved_at": now.isoformat(),
+                "points_sha256": hashlib.sha256(
+                    json.dumps(points, sort_keys=True).encode("utf-8")
+                ).hexdigest(),
+                "changed_rows": int((old_points != new_points).fillna(True).sum()),
+            }
+        )
+        metadata["outcome_revisions"] = revisions
+        metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+        print(f"Attached/revised official FPL outcomes for GW{gw} archive")
 
     completed = load_completed_archive(archive_dir)
     report = build_learning_report(completed)

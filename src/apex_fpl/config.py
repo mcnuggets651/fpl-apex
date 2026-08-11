@@ -102,6 +102,7 @@ class Settings:
     ])
     max_official_age_hours: float = 26.0
     max_airsenal_age_hours: float = 36.0
+    max_core_age_hours: float = 18.0
     min_airsenal_player_coverage: float = 0.95
     understat_enabled: bool = True
     understat_history_seasons: int = 5
@@ -169,6 +170,9 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         ),
         max_airsenal_age_hours=float(
             raw.get("max_airsenal_age_hours", default.max_airsenal_age_hours)
+        ),
+        max_core_age_hours=float(
+            os.getenv("APEX_MAX_CORE_AGE_HOURS", raw.get("max_core_age_hours", default.max_core_age_hours))
         ),
         min_airsenal_player_coverage=float(
             raw.get("min_airsenal_player_coverage", default.min_airsenal_player_coverage)

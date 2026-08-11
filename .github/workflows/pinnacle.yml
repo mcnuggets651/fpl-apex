@@ -11,8 +11,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: apex-unified
-  cancel-in-progress: true
+  group: apex-production-write
+  cancel-in-progress: false
 
 jobs:
   apex:
@@ -242,11 +242,15 @@ jobs:
             fi
           done
 
-      - name: Publish only the canonical Apex recommendation
-        if: steps.canonical.outputs.ready == 'true'
+      - name: Publish latest canonical status and durable forecast archive
         shell: bash
         run: |
           set -euo pipefail
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" != "${{ github.sha }}" ]; then
+            echo "Material repository state changed during solve; aborting publication so Apex can rerun on the new head."
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f \
@@ -264,22 +268,18 @@ jobs:
           fi
           git commit -m "data: publish canonical Apex recommendation [skip ci]"
 
-          # The live model also refreshes internal diagnostic files. Those are
-          # intentionally not part of the canonical publish commit, but tracked
-          # runtime changes would make git rebase refuse to start. Revert only
-          # the remaining uncommitted tracked changes; the canonical files above
-          # are already safely recorded in HEAD.
-          echo "Discarding uncommitted runtime diagnostics before rebase:"
+          # The live model also refreshes internal diagnostic files. Revert only
+          # uncommitted tracked diagnostics after the canonical files are safely
+          # recorded in HEAD.
+          echo "Discarding uncommitted runtime diagnostics:"
           git status --short
           git restore --worktree .
 
-          git fetch origin main
-          git rebase origin/main
           git push origin HEAD:main
 
-      - name: Confirm publication withheld when canonical gate is blocked
+      - name: Confirm team was withheld while current NOT READY status was published
         if: steps.canonical.outputs.ready != 'true'
-        run: echo "Internal diagnostics retained as artifacts only; no blocked or alternative team was published to main."
+        run: echo "The current teamless NOT READY contract and healthy forecast archive were published; blocked candidates remain artifact-only."
 
       - uses: actions/upload-artifact@v4
         if: always()

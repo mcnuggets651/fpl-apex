@@ -45,6 +45,7 @@ DECISION_SETTING_FIELDS = (
     "required_sources",
     "max_official_age_hours",
     "max_airsenal_age_hours",
+    "max_core_age_hours",
     "min_airsenal_player_coverage",
     "understat_enabled",
     "understat_history_seasons",
