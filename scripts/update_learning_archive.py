@@ -80,6 +80,7 @@ def main() -> None:
                 gw,
                 generated_at=str(latest.get("generated_at", now.isoformat())),
                 snapshot_id=str((latest.get("official_snapshot") or {}).get("snapshot_id", "")),
+                deadline_time=deadline.isoformat(),
             )
             path = archive_dir / f"gw{gw:02d}_forecast.csv"
             frame.to_csv(path, index=False)

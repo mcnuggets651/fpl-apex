@@ -2,6 +2,12 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-11 — Projection calibration and ablation contract
+- Added strict no-hindsight deadline validation, cohort and interval diagnostics,
+  expanding-window holdouts, Gameweek-block bootstrap and refitted source ablations.
+- Kept production ensemble weights frozen because no completed 2026/27 deadline
+  outcomes exist; any future promotion remains a separate reviewed change.
+
 ## 2026-08-11 — Correctness and diagnostic-contract repair candidate
 - Preserved missing preseason xG/xA/defensive returns through projection and tactical inference.
 - Aligned CVaR and independent-parity captain fields with their real producer schemas.

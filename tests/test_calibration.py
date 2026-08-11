@@ -4,7 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from apex_fpl.models.backtest import calibrate_ensemble_weights
+from apex_fpl.models.backtest import (
+    calibrate_ensemble_weights,
+    gameweek_block_bootstrap,
+    interval_diagnostics,
+)
 
 
 def test_calibration_learns_more_weight_for_better_expert():
@@ -34,3 +38,31 @@ def test_calibration_refuses_tiny_sample():
     )
     with pytest.raises(ValueError, match="not enough complete calibration rows"):
         calibrate_ensemble_weights(df, ["a", "b"], min_rows=10)
+
+
+def test_gameweek_bootstrap_preserves_blocks_and_detects_better_candidate():
+    rows = []
+    for gw in range(1, 7):
+        for actual in [0.0, 2.0, 5.0, 9.0]:
+            rows.append(
+                {"gw": gw, "event_points": actual, "candidate": actual + 0.1,
+                 "baseline": actual + 2.0}
+            )
+    result = gameweek_block_bootstrap(
+        pd.DataFrame(rows), candidate_col="candidate", baseline_col="baseline", samples=200
+    )
+    assert result.blocks == 6
+    assert result.mean_difference < 0
+    assert result.probability_improves == 1.0
+    assert result.upper_95 < 0
+
+
+def test_interval_diagnostics_scores_declared_scale():
+    frame = pd.DataFrame(
+        {"xp": [2.0, 2.0, 2.0, 2.0], "projection_sd": [1.0] * 4,
+         "event_points": [2.0, 2.5, 3.0, 5.0]}
+    )
+    result = interval_diagnostics(frame)
+    assert result["rows"] == 4
+    assert result["coverage_50"] == 0.5
+    assert result["coverage_95"] == 0.75
