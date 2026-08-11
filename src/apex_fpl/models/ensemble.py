@@ -128,18 +128,22 @@ def blend_projection(
     # fallback remains the transparent Apex model and is attributed accordingly.
     for key in EXPERT_COLUMNS:
         contrib = np.zeros(n, dtype=float)
+        effective_weight = np.zeros(n, dtype=float)
         if key in expert_values:
             values = expert_values[key]
             valid = np.isfinite(values) & (denominator > 0)
+            effective_weight[valid] = (
+                expert_weights[key] / np.maximum(denominator[valid], 1e-12)
+            )
             contrib[valid] = (
-                values[valid]
-                * expert_weights[key]
-                / np.maximum(denominator[valid], 1e-12)
+                values[valid] * effective_weight[valid]
             )
         out[f"xp_expert_{key}"] = contrib
+        out[f"effective_weight_{key}"] = effective_weight
     no_expert = denominator <= 0
     if np.any(no_expert):
         out.loc[no_expert, "xp_expert_apex_model"] = fallback[no_expert]
+        out.loc[no_expert, "effective_weight_apex_model"] = 1.0
 
     # ``projection_sd`` includes the transparent model's match-outcome variance.
     # That is useful for points-distribution reporting, but it is not uncertainty

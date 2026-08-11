@@ -173,10 +173,17 @@ def validate_airsenal_forecast(
 
     if "generated_at" not in forecast or forecast["generated_at"].isna().all():
         return False, "missing generated_at provenance; re-export with scripts/export_airsenal.py"
-    generated = pd.to_datetime(forecast["generated_at"], utc=True, errors="coerce")
-    if generated.isna().all():
+    requested_rows = forecast[forecast["gw"].isin(gameweeks)]
+    generated = pd.to_datetime(requested_rows["generated_at"], utc=True, errors="coerce")
+    if generated.isna().any():
         return False, "invalid generated_at provenance"
-    newest = generated.max()
+    generations = generated.drop_duplicates()
+    if len(generations) != 1:
+        return False, (
+            "export mixes multiple AIrsenal generations across required rows: "
+            f"{[stamp.isoformat() for stamp in generations[:5]]}"
+        )
+    newest = generations.iloc[0]
     now = datetime.now(timezone.utc)
     age_hours = (now - newest.to_pydatetime()).total_seconds() / 3600
     if age_hours < -0.25:
@@ -186,7 +193,7 @@ def validate_airsenal_forecast(
 
     versions = {
         str(value).strip()
-        for value in forecast.get("source_version", pd.Series(dtype=str)).dropna().tolist()
+        for value in requested_rows.get("source_version", pd.Series(dtype=str)).dropna().tolist()
         if str(value).strip()
     }
     if expected_source_version:
@@ -200,7 +207,7 @@ def validate_airsenal_forecast(
 
     tags = {
         str(value).strip()
-        for value in forecast.get("prediction_tag", pd.Series(dtype=str)).dropna().tolist()
+        for value in requested_rows.get("prediction_tag", pd.Series(dtype=str)).dropna().tolist()
         if str(value).strip()
     }
     if not tags:

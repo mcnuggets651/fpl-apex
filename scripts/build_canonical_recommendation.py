@@ -235,6 +235,11 @@ def main() -> None:
         answer_context = build_answer_context(payload, pinnacle)
     ready = bool(answer_context["safe_to_act"])
     blockers = list(payload["blockers"])
+    if not ready:
+        # A withheld current contract must never carry an actionable decision.
+        # Detailed blocked candidates remain available in the sealed workflow
+        # packet, not on the user-facing canonical surface.
+        payload["recommendation"] = None
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     (output_dir / "apex_answer_context.json").write_text(
         json.dumps(answer_context, indent=2), encoding="utf-8"

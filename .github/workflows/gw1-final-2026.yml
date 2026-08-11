@@ -87,6 +87,7 @@ jobs:
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
+          APEX_MAX_CORE_AGE_HOURS: "12"
           FPL_ENTRY_ID: "63984"
           AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}

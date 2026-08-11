@@ -20,6 +20,7 @@ understat_enabled: true
 understat_history_seasons: 5
 understat_team_model_mode: shadow
 max_official_age_hours: 26
+max_core_age_hours: 18
 required_sources:
   - official_fpl
   - fpl_core_playerstats
