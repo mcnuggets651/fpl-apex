@@ -32,17 +32,19 @@ def test_unified_artifact_is_copied_before_runtime_diagnostics_are_restored():
     assert "data/generated/decision_bundle" in workflow[seal:restore]
 
 
-def test_expected_evidence_blocks_reach_canonical_withholding_path():
+def test_expected_readiness_blocks_reach_canonical_withholding_path():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "pinnacle.yml"
     workflow = path.read_text(encoding="utf-8")
 
-    evidence_blockers = (
+    readiness_blockers = (
         "zero relevant selected-player evidence rows",
         "published captain lacks current attributable evidence",
         "high-uncertainty starters lack current attributable evidence",
         "selected-player evidence coverage gate is not ready",
+        "deterministic/CVaR unrestricted squads overlap only",
+        "deterministic/CVaR unrestricted XIs overlap only",
     )
-    for blocker in evidence_blockers:
+    for blocker in readiness_blockers:
         assert blocker in workflow
 
     early_gate = workflow.index("Pinnacle has non-parity blockers")
