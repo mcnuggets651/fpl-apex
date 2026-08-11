@@ -1,0 +1,62 @@
+{
+  "comparison_surface": "pinnacle_ev",
+  "projection_surface": "ensemble_mean_xp",
+  "gameweek": 1,
+  "apex_squad": [
+    94,
+    106,
+    109,
+    155,
+    221,
+    237,
+    356,
+    387,
+    388,
+    411,
+    426,
+    445,
+    451,
+    466,
+    497
+  ],
+  "external_squad": [
+    57,
+    68,
+    88,
+    94,
+    106,
+    109,
+    155,
+    237,
+    356,
+    388,
+    411,
+    426,
+    445,
+    451,
+    466
+  ],
+  "squad_overlap": 12,
+  "squad_overlap_pct": 0.8,
+  "xi_overlap": 10,
+  "xi_overlap_pct": 0.9090909090909091,
+  "apex_captain": 426,
+  "external_captain": 426,
+  "captain_agrees": true,
+  "only_apex": [
+    221,
+    387,
+    497
+  ],
+  "only_external": [
+    57,
+    68,
+    88
+  ],
+  "official_snapshot": {
+    "snapshot_id": "20260811T084401Z-2b86b9d1",
+    "bootstrap_sha256": "9983377a521eead0405c49e1f4d822916a2a426f37ddc1a43c68529cdb1fcc69",
+    "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
+  },
+  "projection_export_sha256": "97043fddf625af77f9436131939cac8688f4eb7b5f262cc568451b60a13f7161"
+}
