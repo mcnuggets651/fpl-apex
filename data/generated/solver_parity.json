@@ -53,12 +53,12 @@
     248,
     508
   ],
-  "decision_bundle_id": "5032796b139c5c819e4937d5912656c7b1efcd2121a0cb1c9ed631d254f718ff",
+  "decision_bundle_id": "9893b09d21c710ccecc3b2447d6fe2ec8b7e02383875ace4d2e401d5fcc7ecc9",
   "official_snapshot": {
-    "snapshot_id": "20260811T110619Z-e06bd8e7",
-    "bootstrap_sha256": "7cfbafb853192aec9e5b8b163a3100cc235a60ce7d033fbd984a5ec5fe8f30a6",
+    "snapshot_id": "20260811T114738Z-0ede75b3",
+    "bootstrap_sha256": "5bbed76c66c8a212e8577cc92b0b1150d5f86345f75d430f21bf2a9631648968",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "projection_export_sha256": "6d1ef59b2e1a7eb2127afd56bf25724cd6e05afa76ee43cf6c642fc487998576",
+  "projection_export_sha256": "e8fe5bd334efd5a4a2d3b1c8fd2b4a8fa074b8c597eb4ad750245798fa09e574",
   "external_solver_result_sha256": "8576c51242282add285797ced0983dfaa628e9bd2fe07aa3ec03c670bbacb9ea"
 }

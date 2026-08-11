@@ -1,28 +1,28 @@
 {
   "contract": "apex-strategy-recommendation-v2",
-  "generated_at": "2026-08-11T11:06:27.630525+00:00",
+  "generated_at": "2026-08-11T11:47:49.999830+00:00",
   "canonical": true,
   "user_facing_source_of_truth": true,
   "ready_to_act": true,
   "blockers": [],
   "official_snapshot": {
-    "snapshot_id": "20260811T110619Z-e06bd8e7",
-    "retrieved_at": "2026-08-11T11:06:19.322884+00:00",
+    "snapshot_id": "20260811T114738Z-0ede75b3",
+    "retrieved_at": "2026-08-11T11:47:38.196259+00:00",
     "players": 577,
     "fixtures": 380,
-    "bootstrap_sha256": "7cfbafb853192aec9e5b8b163a3100cc235a60ce7d033fbd984a5ec5fe8f30a6",
+    "bootstrap_sha256": "5bbed76c66c8a212e8577cc92b0b1150d5f86345f75d430f21bf2a9631648968",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "decision_bundle_id": "5032796b139c5c819e4937d5912656c7b1efcd2121a0cb1c9ed631d254f718ff",
+  "decision_bundle_id": "9893b09d21c710ccecc3b2447d6fe2ec8b7e02383875ace4d2e401d5fcc7ecc9",
   "decision_bundle": {
     "contract": "apex-decision-bundle-v1",
-    "bundle_id": "5032796b139c5c819e4937d5912656c7b1efcd2121a0cb1c9ed631d254f718ff",
-    "created_at": "2026-08-11T11:06:27.630525+00:00",
-    "git_commit": "589ce06ec9bc50acc8d0324a7914e82db6ecceac",
+    "bundle_id": "9893b09d21c710ccecc3b2447d6fe2ec8b7e02383875ace4d2e401d5fcc7ecc9",
+    "created_at": "2026-08-11T11:47:49.999830+00:00",
+    "git_commit": "0f42b0500e9bdf430d76075dc3e829897b4241c8",
     "material_code_dirty": false,
-    "source_tree_sha256": "dc10d1b5ecc3dda0ce07bbb2286b2ebde9ebba3e8d8b489fef443f89278bda1e",
-    "configuration_sha256": "3e700c38d8147948af9c163bc3fd8419e0f82c6685d82a33c91ddada341a6401",
-    "settings_sha256": "5115a9c3ce724745a1a88870ed29f662da0d7d8d5fccd86aca25083d0aaaca62",
+    "source_tree_sha256": "6b1e5f291f9817cd5b5223d1993de24c0e70a814af0c93ad711220573924beb9",
+    "configuration_sha256": "a87d755c0f9f8ca81eedcdcd6ce143d61ae353ad4aafa78d03ab9a90255925f9",
+    "settings_sha256": "7b48e6cd200410de38d20adaf73b477fd51a2ac74da98219d273ca48f738b4e4",
     "gameweeks": [
       1,
       2,
@@ -34,11 +34,11 @@
       8
     ],
     "official_snapshot": {
-      "snapshot_id": "20260811T110619Z-e06bd8e7",
-      "retrieved_at": "2026-08-11T11:06:19.322884+00:00",
+      "snapshot_id": "20260811T114738Z-0ede75b3",
+      "retrieved_at": "2026-08-11T11:47:38.196259+00:00",
       "players": 577,
       "fixtures": 380,
-      "bootstrap_sha256": "7cfbafb853192aec9e5b8b163a3100cc235a60ce7d033fbd984a5ec5fe8f30a6",
+      "bootstrap_sha256": "5bbed76c66c8a212e8577cc92b0b1150d5f86345f75d430f21bf2a9631648968",
       "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     },
     "upstreams": {
@@ -88,7 +88,7 @@
     "material_inputs": {
       "official_players": {
         "rows": 577,
-        "sha256": "5d11afd7350dfae9254e2428e332b947c21db58ec7f39990463348aded535337"
+        "sha256": "52f769a5f2b67cf6cea5ec13f194d8b335a539017615263784d038991d863cfe"
       },
       "official_fixtures": {
         "rows": 380,
@@ -119,16 +119,16 @@
         "sha256": "ed76290ac35b3cb84dccbce392a1febaf24a60de3548dcf3904deb413a30b60f"
       },
       "news_evidence": {
-        "rows": 13,
-        "sha256": "d3a4cda67ede8a6d7d4fac2ba41ea9f59273f68174dd86ed85885951fbf05f4d"
+        "rows": 10,
+        "sha256": "90e2ca8029610caae0ea1329760050e777bde43eb2c5265cb1783a18c907d947"
       },
       "understat_team_ratings": {
         "rows": 20,
-        "sha256": "79c0caaa618a1a225c184d8b7521237bbed1307aa0f99e359fc99df522bcaed3"
+        "sha256": "b42d0f154d24083a0a185ef5e344b5a63638e3b92ec83efec8b9fd90c5c4f922"
       },
       "understat_team_goal_surface": {
         "rows": 160,
-        "sha256": "de0dcd6e9e41e8cb598fa62f521424b45bcdf4cecc657b7cdfdd661075e59bbc"
+        "sha256": "385a665aa81d69dd99703a8a8e74e9219e1377e5dd91ee22d529ee8263f2580c"
       },
       "fixture_projection_surface": {
         "rows": 160,
@@ -136,7 +136,7 @@
       },
       "airsenal_projection_surface": {
         "rows": 4616,
-        "sha256": "c8aa4ff7dfb4e47e5dbf5fca5cad9125d97c3d8fcc7a9c4eb3445ea8dec1983d"
+        "sha256": "5f4d185e9936288718c6266eea92c5fd135342b5a92354c613c39fbe2045a9ee"
       },
       "market_odds_surface": {
         "rows": 0,
@@ -144,17 +144,17 @@
       },
       "final_projection_matrix": {
         "rows": 4616,
-        "sha256": "6d1ef59b2e1a7eb2127afd56bf25724cd6e05afa76ee43cf6c642fc487998576"
+        "sha256": "e8fe5bd334efd5a4a2d3b1c8fd2b4a8fa074b8c597eb4ad750245798fa09e574"
       }
     },
     "artifacts": {
       "players": {
         "file": "players.json",
-        "sha256": "87c4436a2a82bcd431f228f56a891465887a895ebd9af95f5643f573d18a92b4"
+        "sha256": "e804c31652d93212f469cd68111ad699ce8abe3c639f0ddec22729bd1e10d9d8"
       },
       "projections": {
         "file": "projections.json",
-        "sha256": "6d1ef59b2e1a7eb2127afd56bf25724cd6e05afa76ee43cf6c642fc487998576"
+        "sha256": "e8fe5bd334efd5a4a2d3b1c8fd2b4a8fa074b8c597eb4ad750245798fa09e574"
       },
       "integrity": {
         "file": "integrity.json",
@@ -162,7 +162,7 @@
       },
       "news_audit": {
         "file": "news_audit.json",
-        "sha256": "d3a4cda67ede8a6d7d4fac2ba41ea9f59273f68174dd86ed85885951fbf05f4d"
+        "sha256": "90e2ca8029610caae0ea1329760050e777bde43eb2c5265cb1783a18c907d947"
       }
     }
   },
@@ -178,21 +178,23 @@
   ],
   "decision_policy": {
     "primary_forecast": "canonical ensemble xp",
-    "primary_selection": "maximum expected FPL points under legal FPL constraints",
+    "primary_selection": "maximum exact-mechanics expected points among the sealed near-optimal legal squad frontier",
     "secondary_selection": "none; Elite is diagnostic-only",
     "elite_convergence_rule": ">=13/15 overlap with max-EV and same captain at 0.25%, 0.50%, 1.00%",
     "elite_failure_fallback": "not applicable; Elite has no publication authority",
     "ownership_in_points_objective": false,
     "minutes_model": "first-class",
     "uncertainty": "correlated scenarios/CVaR/regret are diagnostics, not a second hidden forecast",
-    "deadline_mechanics": "exact captain/vice/autosub mechanics",
+    "deadline_mechanics": "exact XI/captain/vice/autosub mechanics in every horizon Gameweek",
+    "unique_optimum_claimed": false,
     "same_surface_check": "sealed decision bundle identity and all material input hashes must match",
     "next_projection_upgrade": "empirical-Bayes shrinkage of small-sample player rates toward role/position priors"
   },
   "recommendation": {
-    "selector": "strategy_maximum_ev",
-    "selector_reason": "The unrestricted rolling-horizon maximum-EV strategy is the sole production authority; Elite and robustness layers are diagnostics only.",
-    "objective": 323.53058342230224,
+    "selector": "exact_horizon_maximum_ev",
+    "selector_reason": "The sealed near-optimal squad frontier is rescored across every Gameweek with exact XI, captain, vice-captain and autosub mechanics; that single Decision object is the production authority.",
+    "objective": 326.68615278238565,
+    "objective_reconciliation": 326.6861527823857,
     "squad": [
       {
         "player_id": 356,
@@ -512,23 +514,65 @@
     ],
     "xi": [
       {
-        "player_id": 426,
-        "web_name": "B.Fernandes",
-        "team_name": "Man Utd",
-        "position": "MID",
-        "price": 12.0,
-        "expected_minutes": 80.6578947368,
+        "player_id": 356,
+        "web_name": "Virgil",
+        "team_name": "Liverpool",
+        "position": "DEF",
+        "price": 6.5,
+        "expected_minutes": 90.0,
+        "start_probability": 1.0,
+        "appearance_probability": 1.0,
+        "tactical_role": "central / defensive defender",
+        "tactical_role_source": "statistical_inference",
+        "role_confidence": 0.7726,
+        "gw1_xp": 3.8839057072,
+        "xpts_3": 11.2577097837,
+        "xpts_5": 17.1373929727,
+        "xpts_8": 23.7087406203,
+        "horizon_xp": 23.7087406203,
+        "projection_confidence": 0.5246257882,
+        "decision_projection_col": "xp",
+        "display_projection_col": "xp"
+      },
+      {
+        "player_id": 388,
+        "web_name": "Gu\u00e9hi",
+        "team_name": "Man City",
+        "position": "DEF",
+        "price": 6.0,
+        "expected_minutes": 82.8947368421,
         "start_probability": 0.9210526316,
         "appearance_probability": 0.9621052632,
-        "tactical_role": "central / balanced midfielder",
+        "tactical_role": "central / defensive defender",
         "tactical_role_source": "statistical_inference",
-        "role_confidence": 0.74,
-        "gw1_xp": 5.4465261566,
-        "xpts_3": 14.9009131011,
-        "xpts_5": 22.1153751012,
-        "xpts_8": 30.884415463,
-        "horizon_xp": 30.884415463,
-        "projection_confidence": 0.5572928174,
+        "role_confidence": 0.7594,
+        "gw1_xp": 4.0491448777,
+        "xpts_3": 11.1229256259,
+        "xpts_5": 16.799061239,
+        "xpts_8": 23.3267595936,
+        "horizon_xp": 23.3267595936,
+        "projection_confidence": 0.5608529557,
+        "decision_projection_col": "xp",
+        "display_projection_col": "xp"
+      },
+      {
+        "player_id": 229,
+        "web_name": "Tarkowski",
+        "team_name": "Everton",
+        "position": "DEF",
+        "price": 6.0,
+        "expected_minutes": 85.9957340638,
+        "start_probability": 0.9904678448,
+        "appearance_probability": 0.9954245655,
+        "tactical_role": "central / defensive defender",
+        "tactical_role_source": "statistical_inference",
+        "role_confidence": 0.7816,
+        "gw1_xp": 3.9396383839,
+        "xpts_3": 10.2475782617,
+        "xpts_5": 15.962055934,
+        "xpts_8": 22.0795999829,
+        "horizon_xp": 22.0795999829,
+        "projection_confidence": 0.490652514,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -550,6 +594,69 @@
         "xpts_8": 27.1604328931,
         "horizon_xp": 27.1604328931,
         "projection_confidence": 0.5358565691,
+        "decision_projection_col": "xp",
+        "display_projection_col": "xp"
+      },
+      {
+        "player_id": 55,
+        "web_name": "Watkins",
+        "team_name": "Aston Villa",
+        "position": "FWD",
+        "price": 8.0,
+        "expected_minutes": 74.5526315789,
+        "start_probability": 0.8684210526,
+        "appearance_probability": 0.9368421053,
+        "tactical_role": "central striker",
+        "tactical_role_source": "statistical_inference",
+        "role_confidence": 0.7988,
+        "gw1_xp": 3.8735703448,
+        "xpts_3": 10.7839524639,
+        "xpts_5": 16.6708892704,
+        "xpts_8": 23.3562854602,
+        "horizon_xp": 23.3562854602,
+        "projection_confidence": 0.5475661032,
+        "decision_projection_col": "xp",
+        "display_projection_col": "xp"
+      },
+      {
+        "player_id": 226,
+        "web_name": "Pickford",
+        "team_name": "Everton",
+        "position": "GK",
+        "price": 5.5,
+        "expected_minutes": 90.0,
+        "start_probability": 1.0,
+        "appearance_probability": 1.0,
+        "tactical_role": "goalkeeper",
+        "tactical_role_source": "statistical_inference",
+        "role_confidence": 0.8,
+        "gw1_xp": 3.9786672323,
+        "xpts_3": 10.2120775548,
+        "xpts_5": 15.7460391303,
+        "xpts_8": 21.7347627861,
+        "horizon_xp": 21.7347627861,
+        "projection_confidence": 0.5639906901,
+        "decision_projection_col": "xp",
+        "display_projection_col": "xp"
+      },
+      {
+        "player_id": 426,
+        "web_name": "B.Fernandes",
+        "team_name": "Man Utd",
+        "position": "MID",
+        "price": 12.0,
+        "expected_minutes": 80.6578947368,
+        "start_probability": 0.9210526316,
+        "appearance_probability": 0.9621052632,
+        "tactical_role": "central / balanced midfielder",
+        "tactical_role_source": "statistical_inference",
+        "role_confidence": 0.74,
+        "gw1_xp": 5.4465261566,
+        "xpts_3": 14.9009131011,
+        "xpts_5": 22.1153751012,
+        "xpts_8": 30.884415463,
+        "horizon_xp": 30.884415463,
+        "projection_confidence": 0.5572928174,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -596,48 +703,6 @@
         "display_projection_col": "xp"
       },
       {
-        "player_id": 388,
-        "web_name": "Gu\u00e9hi",
-        "team_name": "Man City",
-        "position": "DEF",
-        "price": 6.0,
-        "expected_minutes": 82.8947368421,
-        "start_probability": 0.9210526316,
-        "appearance_probability": 0.9621052632,
-        "tactical_role": "central / defensive defender",
-        "tactical_role_source": "statistical_inference",
-        "role_confidence": 0.7594,
-        "gw1_xp": 4.0491448777,
-        "xpts_3": 11.1229256259,
-        "xpts_5": 16.799061239,
-        "xpts_8": 23.3267595936,
-        "horizon_xp": 23.3267595936,
-        "projection_confidence": 0.5608529557,
-        "decision_projection_col": "xp",
-        "display_projection_col": "xp"
-      },
-      {
-        "player_id": 226,
-        "web_name": "Pickford",
-        "team_name": "Everton",
-        "position": "GK",
-        "price": 5.5,
-        "expected_minutes": 90.0,
-        "start_probability": 1.0,
-        "appearance_probability": 1.0,
-        "tactical_role": "goalkeeper",
-        "tactical_role_source": "statistical_inference",
-        "role_confidence": 0.8,
-        "gw1_xp": 3.9786672323,
-        "xpts_3": 10.2120775548,
-        "xpts_5": 15.7460391303,
-        "xpts_8": 21.7347627861,
-        "horizon_xp": 21.7347627861,
-        "projection_confidence": 0.5639906901,
-        "decision_projection_col": "xp",
-        "display_projection_col": "xp"
-      },
-      {
         "player_id": 155,
         "web_name": "Enzo",
         "team_name": "Chelsea",
@@ -655,69 +720,6 @@
         "xpts_8": 23.894281253,
         "horizon_xp": 23.894281253,
         "projection_confidence": 0.5091287765,
-        "decision_projection_col": "xp",
-        "display_projection_col": "xp"
-      },
-      {
-        "player_id": 229,
-        "web_name": "Tarkowski",
-        "team_name": "Everton",
-        "position": "DEF",
-        "price": 6.0,
-        "expected_minutes": 85.9957340638,
-        "start_probability": 0.9904678448,
-        "appearance_probability": 0.9954245655,
-        "tactical_role": "central / defensive defender",
-        "tactical_role_source": "statistical_inference",
-        "role_confidence": 0.7816,
-        "gw1_xp": 3.9396383839,
-        "xpts_3": 10.2475782617,
-        "xpts_5": 15.962055934,
-        "xpts_8": 22.0795999829,
-        "horizon_xp": 22.0795999829,
-        "projection_confidence": 0.490652514,
-        "decision_projection_col": "xp",
-        "display_projection_col": "xp"
-      },
-      {
-        "player_id": 356,
-        "web_name": "Virgil",
-        "team_name": "Liverpool",
-        "position": "DEF",
-        "price": 6.5,
-        "expected_minutes": 90.0,
-        "start_probability": 1.0,
-        "appearance_probability": 1.0,
-        "tactical_role": "central / defensive defender",
-        "tactical_role_source": "statistical_inference",
-        "role_confidence": 0.7726,
-        "gw1_xp": 3.8839057072,
-        "xpts_3": 11.2577097837,
-        "xpts_5": 17.1373929727,
-        "xpts_8": 23.7087406203,
-        "horizon_xp": 23.7087406203,
-        "projection_confidence": 0.5246257882,
-        "decision_projection_col": "xp",
-        "display_projection_col": "xp"
-      },
-      {
-        "player_id": 55,
-        "web_name": "Watkins",
-        "team_name": "Aston Villa",
-        "position": "FWD",
-        "price": 8.0,
-        "expected_minutes": 74.5526315789,
-        "start_probability": 0.8684210526,
-        "appearance_probability": 0.9368421053,
-        "tactical_role": "central striker",
-        "tactical_role_source": "statistical_inference",
-        "role_confidence": 0.7988,
-        "gw1_xp": 3.8735703448,
-        "xpts_3": 10.7839524639,
-        "xpts_5": 16.6708892704,
-        "xpts_8": 23.3562854602,
-        "horizon_xp": 23.3562854602,
-        "projection_confidence": 0.5475661032,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -751,7 +753,7 @@
       "Kayode",
       "Neave"
     ],
-    "gw1_expected_total_with_mechanics": 52.9720301611145
+    "gw1_expected_total_with_mechanics": 52.972030161114525
   },
   "epsilon_convergence": {
     "converged": false,
@@ -2987,7 +2989,7 @@
     },
     "gw1_mechanics": {
       "expected_xi_points": 45.16832867871486,
-      "expected_autosub_points": 1.2925000748248443,
+      "expected_autosub_points": 1.2925000748248463,
       "expected_captain_bonus": 5.663323487570072,
       "expected_total_points": 52.124152241109776,
       "captain_id": 411,
@@ -3700,7 +3702,7 @@
     },
     "elite_secondary_selection": {
       "status": "Optimal",
-      "objective": 60.806550062521374,
+      "objective": 60.806550062521474,
       "squad": [
         {
           "player_id": 356,
@@ -5072,9 +5074,9 @@
     },
     "gw1_mechanics": {
       "expected_xi_points": 45.598628778341116,
-      "expected_autosub_points": 1.282284303063992,
+      "expected_autosub_points": 1.2822843030639979,
       "expected_captain_bonus": 5.61825079554992,
-      "expected_total_points": 52.49916387695502,
+      "expected_total_points": 52.49916387695503,
       "captain_id": 426,
       "vice_captain_id": 106,
       "bench_gk_id": 109,
@@ -5100,14 +5102,14 @@
     "cvar_scenarios": {
       "unrestricted": {
         "status": "Optimal",
-        "objective": 320.4304585920917,
-        "mean_points": 323.43903408062215,
+        "objective": 320.4304585920918,
+        "mean_points": 323.4390340806222,
         "lower_tail_cvar": 308.39615663796997,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
         "scenario_p10": 311.6140054203543,
         "scenario_p50": 322.49692390519954,
-        "scenario_p90": 335.45733675619596,
+        "scenario_p90": 335.457336756196,
         "squad": [
           {
             "player_id": 356,
@@ -5730,9 +5732,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 320.4205192762072,
-          "bound": 321.059521288232,
-          "relative_gap": 0.0019942605843978525,
+          "incumbent": 320.4205192762546,
+          "bound": 320.7491702848383,
+          "relative_gap": 0.0010256865238408247,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -6370,9 +6372,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 319.4302230492462,
-          "bound": 320.06582211562045,
-          "relative_gap": 0.0019897900089318253,
+          "incumbent": 319.4302230490095,
+          "bound": 319.97824259826996,
+          "relative_gap": 0.0017156158363148307,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -6380,14 +6382,14 @@
       },
       "no-haaland": {
         "status": "Optimal",
-        "objective": 320.4304585920917,
-        "mean_points": 323.43903408062215,
+        "objective": 320.4304585920918,
+        "mean_points": 323.4390340806222,
         "lower_tail_cvar": 308.39615663796997,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
         "scenario_p10": 311.6140054203543,
         "scenario_p50": 322.49692390519954,
-        "scenario_p90": 335.45733675619596,
+        "scenario_p90": 335.457336756196,
         "squad": [
           {
             "player_id": 356,
@@ -7011,8 +7013,8 @@
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
           "incumbent": 320.42051927618786,
-          "bound": 320.42154810273047,
-          "relative_gap": 3.2108634769472544e-06,
+          "bound": 320.4215481027698,
+          "relative_gap": 3.2108635997098227e-06,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -7029,7 +7031,7 @@
         "xi_overlap": 11,
         "captain_agrees": true,
         "left_objective": 323.53058342230224,
-        "right_objective": 320.4304585920917,
+        "right_objective": 320.4304585920918,
         "captain_comparison": "exact_gw1_mechanics"
       },
       "haaland": {
@@ -7057,7 +7059,7 @@
         "xi_overlap": 11,
         "captain_agrees": true,
         "left_objective": 323.53058342209283,
-        "right_objective": 320.4304585920917,
+        "right_objective": 320.4304585920918,
         "captain_comparison": "exact_gw1_mechanics"
       }
     },
@@ -7908,19 +7910,20 @@
         248,
         508
       ],
-      "decision_bundle_id": "5032796b139c5c819e4937d5912656c7b1efcd2121a0cb1c9ed631d254f718ff",
+      "decision_bundle_id": "9893b09d21c710ccecc3b2447d6fe2ec8b7e02383875ace4d2e401d5fcc7ecc9",
       "official_snapshot": {
-        "snapshot_id": "20260811T110619Z-e06bd8e7",
-        "bootstrap_sha256": "7cfbafb853192aec9e5b8b163a3100cc235a60ce7d033fbd984a5ec5fe8f30a6",
+        "snapshot_id": "20260811T114738Z-0ede75b3",
+        "bootstrap_sha256": "5bbed76c66c8a212e8577cc92b0b1150d5f86345f75d430f21bf2a9631648968",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
-      "projection_export_sha256": "6d1ef59b2e1a7eb2127afd56bf25724cd6e05afa76ee43cf6c642fc487998576",
+      "projection_export_sha256": "e8fe5bd334efd5a4a2d3b1c8fd2b4a8fa074b8c597eb4ad750245798fa09e574",
       "external_solver_result_sha256": "8576c51242282add285797ced0983dfaa628e9bd2fe07aa3ec03c670bbacb9ea"
     },
     "pinnacle_gate": {
       "ready": true,
       "blockers": [],
       "warnings": [
+        "exact-mechanics shortlist hit its configured candidate limit before exhausting the disclosed near-optimal band",
         "published captain is chosen in only 42% of uncertainty re-solves where he remains in the XI; the provisional diagnostic reference is 50%",
         "covariance coefficients are transparent priors until enough 2026/27 deadline outcomes exist"
       ]
@@ -7929,19 +7932,19 @@
   "internal_diagnostics": {
     "pinnacle_contract": "apex-pinnacle-v3-final",
     "elite_contract": "apex-elite-10-v4-diagnostic",
-    "pinnacle_snapshot_id": "20260811T110619Z-e06bd8e7",
-    "elite_snapshot_id": "20260811T110619Z-e06bd8e7",
+    "pinnacle_snapshot_id": "20260811T114738Z-0ede75b3",
+    "elite_snapshot_id": "20260811T114738Z-0ede75b3",
     "pinnacle_content_fingerprint": [
-      "7cfbafb853192aec9e5b8b163a3100cc235a60ce7d033fbd984a5ec5fe8f30a6",
+      "5bbed76c66c8a212e8577cc92b0b1150d5f86345f75d430f21bf2a9631648968",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "elite_content_fingerprint": [
-      "7cfbafb853192aec9e5b8b163a3100cc235a60ce7d033fbd984a5ec5fe8f30a6",
+      "5bbed76c66c8a212e8577cc92b0b1150d5f86345f75d430f21bf2a9631648968",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "same_official_surface": true,
-    "pinnacle_decision_bundle_id": "5032796b139c5c819e4937d5912656c7b1efcd2121a0cb1c9ed631d254f718ff",
-    "elite_decision_bundle_id": "5032796b139c5c819e4937d5912656c7b1efcd2121a0cb1c9ed631d254f718ff",
+    "pinnacle_decision_bundle_id": "9893b09d21c710ccecc3b2447d6fe2ec8b7e02383875ace4d2e401d5fcc7ecc9",
+    "elite_decision_bundle_id": "9893b09d21c710ccecc3b2447d6fe2ec8b7e02383875ace4d2e401d5fcc7ecc9",
     "same_decision_bundle": true
   }
 }
