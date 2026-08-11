@@ -19,6 +19,24 @@ deadline.
 
 No report may describe the 2025/26 replay as blind or untouched.
 
+## PR 7 execution status (2026-08-11)
+
+The deterministic season engine, legality layer, state/hash chain and isolated
+realised scorer are implemented. The 2025/26 Apex result is **not yet runnable**:
+the available historical repositories contain 38 official result files but no
+immutable pre-deadline Apex bundles, and only 11 weekly Official-FPL xP extracts.
+Those result files must never be transformed into apparent deadline inputs.
+
+Accordingly, no Apex total is published and no comparison with the user's 2,160
+points is claimed. `docs/evidence/full_season_replay_pr7_2026-08-11.json` is the
+machine-readable data-readiness decision. Run the repeatable audit with:
+
+```bash
+PYTHONPATH=src python scripts/audit_full_season_replay.py \
+  --apex-store /path/to/immutable/replay-store \
+  --vaastav-root /path/to/vaastav
+```
+
 ## Information cutoff
 
 The canonical cutoff is `deadline - 120 minutes`.
@@ -96,6 +114,10 @@ The scorer uses official FPL event totals as truth and reproduces:
 - Free Hit reversion to the permanent squad, bank and purchase ledger.
 
 Every contribution and state transition must reconcile to the season total.
+
+The implementation keeps this boundary structural: decision surfaces reject
+outcome/target columns, the 38 actions are sealed first, and only
+`score_season(...)` accepts the separate outcome mapping.
 
 ## Benchmarks
 

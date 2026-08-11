@@ -143,4 +143,7 @@ the 2026/27 deadline archive as the true prospective final test.
 - Market odds remain optional until a validated feed is configured and healthy.
 - New-season expected minutes and attacking rates remain prior-heavy.
 - Elite epsilon and captain scenario coefficients are not calibrated.
-- Full-season transfer/chip execution is not yet implemented.
+- The PR 7 replay engine now executes and scores a legal 38-GW action chain, but
+  the 2025/26 Apex total is blocked because zero immutable pre-deadline Apex
+  bundles are available. Official result coverage is 38/38; Official-FPL xP
+  coverage is only 11/38. No hindsight proxy is permitted.

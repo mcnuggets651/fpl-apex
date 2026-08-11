@@ -1,0 +1,36 @@
+{
+  "apex_predeadline_bundles": {
+    "complete_gameweeks": 0,
+    "missing_gameweeks": 38,
+    "replay_eligible": false
+  },
+  "claims_allowed": {
+    "apex_season_total": false,
+    "blind_holdout": false,
+    "official_xp_baseline": false,
+    "realised_scoring": true
+  },
+  "generated_at": "2026-08-11T14:23:04.635092+00:00",
+  "implementation": {
+    "decision_outcome_process_separation": true,
+    "deterministic_38_gameweek_hash_chain": true,
+    "formation_aware_autosubs": true,
+    "free_hit_reversion": true,
+    "half_season_chip_inventory": true,
+    "isolated_realised_scorer": true,
+    "purchase_and_selling_price_ledger": true,
+    "paired_gameweek_block_bootstrap": true,
+    "target_column_firewall": true,
+    "versioned_free_transfer_transitions": true
+  },
+  "official_history": {
+    "outcome_gameweeks": 38,
+    "qualification": "scoring inputs only; mixed result files are not Apex deadline bundles",
+    "revision": "8c97b2adb123863c3dd581e730f1360e89815ac2",
+    "xp_gameweeks": [1, 2, 3, 4, 5, 6, 8, 9, 24, 29, 38]
+  },
+  "protocol": "locked pseudo-prospective integration benchmark",
+  "result": "blocked_missing_predeadline_apex_bundles",
+  "season": "2025-2026",
+  "user_benchmark_points": 2160
+}
