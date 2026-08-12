@@ -40,6 +40,24 @@ def test_unified_publishes_latest_status_even_when_decision_is_withheld():
     assert "data/history/deadlines" in publish
 
 
+def test_unified_finalizes_and_publishes_after_early_failure():
+    _, text = _workflow("pinnacle.yml")
+    finalize = text.index("- name: Finalize fail-closed production status")
+    publish = text.index("- name: Publish latest canonical status and durable forecast archive")
+    assert finalize < publish
+    assert "if: always()" in text[finalize:publish]
+    assert "scripts/finalize_production_status.py" in text[finalize:publish]
+    assert "if: always()" in text[publish : publish + 180]
+    assert "data/history/production_runs" in text[publish:]
+
+
+def test_explicit_readiness_block_skips_parity_without_failing_workflow():
+    _, text = _workflow("pinnacle.yml")
+    assert 'echo "ready_for_parity=false" >> "$GITHUB_OUTPUT"' in text
+    assert "Pinnacle exited non-zero without an explicit readiness block" in text
+    assert text.count("if: steps.pinnacle.outputs.ready_for_parity == 'true'") == 4
+
+
 def test_final_deadline_run_uses_stricter_core_age_limit():
     _, text = _workflow("gw1-final-2026.yml")
     assert 'APEX_MAX_CORE_AGE_HOURS: "12"' in text

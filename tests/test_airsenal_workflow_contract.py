@@ -32,22 +32,11 @@ def test_unified_artifact_is_copied_before_runtime_diagnostics_are_restored():
     assert "data/generated/decision_bundle" in workflow[seal:restore]
 
 
-def test_expected_readiness_blocks_reach_canonical_withholding_path():
+def test_explicit_readiness_blocks_reach_fail_closed_publication_path():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "pinnacle.yml"
     workflow = path.read_text(encoding="utf-8")
 
-    readiness_blockers = (
-        "zero relevant selected-player evidence rows",
-        "published captain lacks current attributable evidence",
-        "published captain lacks official or independently corroborated evidence",
-        "high-uncertainty starters lack current attributable evidence",
-        "selected-player evidence coverage gate is not ready",
-        "deterministic/CVaR unrestricted squads overlap only",
-        "deterministic/CVaR unrestricted XIs overlap only",
-    )
-    for blocker in readiness_blockers:
-        assert blocker in workflow
-
-    early_gate = workflow.index("Pinnacle has non-parity blockers")
-    canonical_withholding = workflow.index("Unified Apex completed but withheld a recommendation")
-    assert early_gate < canonical_withholding
+    assert 'payload.get("pinnacle_ready") is not False or not blockers' in workflow
+    assert 'echo "ready_for_parity=false" >> "$GITHUB_OUTPUT"' in workflow
+    assert "Finalize fail-closed production status" in workflow
+    assert "Publish latest canonical status and durable forecast archive" in workflow
