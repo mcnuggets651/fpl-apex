@@ -40,3 +40,12 @@ def test_explicit_readiness_blocks_reach_fail_closed_publication_path():
     assert 'echo "ready_for_parity=false" >> "$GITHUB_OUTPUT"' in workflow
     assert "Finalize fail-closed production status" in workflow
     assert "Publish latest canonical status and durable forecast archive" in workflow
+
+
+def test_parity_bootstrap_block_advances_only_to_parity_stage():
+    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "pinnacle.yml"
+    workflow = path.read_text(encoding="utf-8")
+
+    assert 'parity_bootstrap = [' in workflow
+    assert 'if blockers == parity_bootstrap:' in workflow
+    assert 'classification=$?' in workflow
