@@ -58,6 +58,13 @@ def test_explicit_readiness_block_skips_parity_without_failing_workflow():
     assert text.count("if: steps.pinnacle.outputs.ready_for_parity == 'true'") == 4
 
 
+def test_missing_parity_alone_bootstraps_independent_solver_stage():
+    _, text = _workflow("pinnacle.yml")
+    assert 'if blockers == parity_bootstrap:' in text
+    assert 'echo "ready_for_parity=true" >> "$GITHUB_OUTPUT"' in text
+    assert "scripts/export_open_solver.py" in text
+
+
 def test_final_deadline_run_uses_stricter_core_age_limit():
     _, text = _workflow("gw1-final-2026.yml")
     assert 'APEX_MAX_CORE_AGE_HOURS: "12"' in text

@@ -96,6 +96,7 @@ jobs:
           set -e
           test -s data/generated/pinnacle_latest.json
           if [ "$status" -ne 0 ]; then
+            set +e
             python - <<'PY'
           import json
           from pathlib import Path
@@ -104,10 +105,28 @@ jobs:
           blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
           if payload.get("pinnacle_ready") is not False or not blockers:
               raise SystemExit("Pinnacle exited non-zero without an explicit readiness block")
+          parity_bootstrap = [
+              "required independent solver parity snapshot is not embedded"
+          ]
+          if blockers == parity_bootstrap:
+              print(
+                  "Pinnacle surface is complete and requires the next workflow "
+                  "stage to compute independent parity."
+              )
+              raise SystemExit(2)
           print("Pinnacle explicitly withheld the production decision:")
           for blocker in blockers:
               print(f"- {blocker}")
           PY
+            classification=$?
+            set -e
+            if [ "$classification" -eq 2 ]; then
+              echo "ready_for_parity=true" >> "$GITHUB_OUTPUT"
+              python scripts/export_open_solver.py \
+                reports/players.csv reports/projections.csv /tmp/apex.csv \
+                --projection-col xp
+              exit 0
+            fi
             echo "ready_for_parity=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
