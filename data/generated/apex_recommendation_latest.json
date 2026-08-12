@@ -1,6 +1,6 @@
 {
   "contract": "apex-strategy-recommendation-v2",
-  "generated_at": "2026-08-12T16:10:13.854627+00:00",
+  "generated_at": "2026-08-12T21:28:17.027842+00:00",
   "canonical": true,
   "user_facing_source_of_truth": true,
   "ready_to_act": false,
@@ -10,19 +10,19 @@
     "independent solver XI parity is below 9/11"
   ],
   "official_snapshot": {
-    "snapshot_id": "20260812T161003Z-7f9a4144",
-    "retrieved_at": "2026-08-12T16:10:03.656201+00:00",
+    "snapshot_id": "20260812T212803Z-43a02888",
+    "retrieved_at": "2026-08-12T21:28:03.539300+00:00",
     "players": 581,
     "fixtures": 380,
-    "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
+    "bootstrap_sha256": "4e370094171513455e1e58dd9fa11ad2963cad89c8d1a16c3dcf6a4df27d960b",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
+  "decision_bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d",
   "decision_bundle": {
     "contract": "apex-decision-bundle-v1",
-    "bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
-    "created_at": "2026-08-12T16:10:13.854627+00:00",
-    "git_commit": "6bb638bacea4663753e021139c3310dc7d0382a4",
+    "bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d",
+    "created_at": "2026-08-12T21:28:17.027842+00:00",
+    "git_commit": "af1f84b090d1ba699033adeedfb3c5bbcfdf2d57",
     "material_code_dirty": false,
     "source_tree_sha256": "899bdd248b711f230da2a816a241a03dad466bacec83580ae8b3305603d4af19",
     "configuration_sha256": "851f0a6aef69699306543989cf996695b5ebe9a699ef4f0926bdc7265334d057",
@@ -38,11 +38,11 @@
       8
     ],
     "official_snapshot": {
-      "snapshot_id": "20260812T161003Z-7f9a4144",
-      "retrieved_at": "2026-08-12T16:10:03.656201+00:00",
+      "snapshot_id": "20260812T212803Z-43a02888",
+      "retrieved_at": "2026-08-12T21:28:03.539300+00:00",
       "players": 581,
       "fixtures": 380,
-      "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
+      "bootstrap_sha256": "4e370094171513455e1e58dd9fa11ad2963cad89c8d1a16c3dcf6a4df27d960b",
       "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     },
     "upstreams": {
@@ -65,11 +65,11 @@
         "runtime_freshness": {
           "commit": "de0427dd1cf0cae731eabd2b3c8579c83d789199",
           "committed_at": "2026-08-12T08:47:35+00:00",
-          "checked_at": "2026-08-12T16:10:03.841792+00:00",
+          "checked_at": "2026-08-12T21:28:03.689736+00:00",
           "max_age_hours": 18.0,
           "newer_revision_available_at_resolution": false,
           "resolved_at": "2026-08-12T13:31:17+00:00",
-          "age_hours": 7.3746782755555556
+          "age_hours": 12.674636037777779
         }
       },
       "open_fpl_solver": {
@@ -106,7 +106,7 @@
     "material_inputs": {
       "official_players": {
         "rows": 581,
-        "sha256": "2694a02c52d0a27758412f459aad3e2fa21dea63c0346bd773aee41dee20798c"
+        "sha256": "fb1dd88a6ded6bb818362db72c04e6eed30e00c4b5f55de74d435bd83d73e0cf"
       },
       "official_fixtures": {
         "rows": 380,
@@ -137,16 +137,16 @@
         "sha256": "94ca4a30bca367c8517380ed27a123c98ebbdcef1ef9eaa487feff0b79104f7f"
       },
       "news_evidence": {
-        "rows": 17,
-        "sha256": "94f0d004aa784a0721ba01a828897a36f76225a030cc07a887f31817e1affd72"
+        "rows": 23,
+        "sha256": "220a8fbc12a5460fb5a4b5f98a01dfce9dae52d0f179de70a726e58d48102bf0"
       },
       "understat_team_ratings": {
         "rows": 20,
-        "sha256": "6344756e3a0d7733ccbd34b5cf7ade37966dad929561fc042c80898e4fe92123"
+        "sha256": "4a29640d8e1033a7d59e8e92aebb1f6aafa15a70802adc8563a993b2f0669bab"
       },
       "understat_team_goal_surface": {
         "rows": 160,
-        "sha256": "d2d8d9d039e18d9bff23116d26f9810fb80a4cdbde079a4105a09bccfcfc5f43"
+        "sha256": "6fbcc3362bb0692291774e138e547d0a4cd2b12283ad19b26f07675d93aff181"
       },
       "fixture_projection_surface": {
         "rows": 160,
@@ -154,7 +154,7 @@
       },
       "airsenal_projection_surface": {
         "rows": 4648,
-        "sha256": "ccd59d6ead508fe4f50d96ed387fc3aa95474d30bb13a2814eda7d51291feb0a"
+        "sha256": "98e2ec15e6473405aca035a2d9c597701a660174e2357fb0f572ce2e9c8fe0a9"
       },
       "market_odds_surface": {
         "rows": 0,
@@ -162,17 +162,17 @@
       },
       "final_projection_matrix": {
         "rows": 4648,
-        "sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5"
+        "sha256": "c1fa9c70f33092c3694f6c415a76a42c45ba9a2fc09cb3e5055076f13a5f75e7"
       }
     },
     "artifacts": {
       "players": {
         "file": "players.json",
-        "sha256": "7cdced839d6ba4d1799d74b64835e29e00b9978f8743dc06f68a5ce8c2cd28e1"
+        "sha256": "6bd1d0d998be232d3edf2536bf602c74ee316cd0330044c55aaa47aa1105bb9b"
       },
       "projections": {
         "file": "projections.json",
-        "sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5"
+        "sha256": "c1fa9c70f33092c3694f6c415a76a42c45ba9a2fc09cb3e5055076f13a5f75e7"
       },
       "integrity": {
         "file": "integrity.json",
@@ -180,7 +180,7 @@
       },
       "news_audit": {
         "file": "news_audit.json",
-        "sha256": "94f0d004aa784a0721ba01a828897a36f76225a030cc07a887f31817e1affd72"
+        "sha256": "220a8fbc12a5460fb5a4b5f98a01dfce9dae52d0f179de70a726e58d48102bf0"
       }
     }
   },
@@ -1057,7 +1057,7 @@
     },
     "elite_secondary_selection": {
       "status": "Optimal",
-      "objective": 60.87309220952953,
+      "objective": 60.87221564860181,
       "squad": [
         {
           "player_id": 388,
@@ -3142,7 +3142,7 @@
     },
     "elite_secondary_selection": {
       "status": "Optimal",
-      "objective": 60.87511066243188,
+      "objective": 60.874572602205106,
       "squad": [
         {
           "player_id": 388,
@@ -5172,9 +5172,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 318.18583627623474,
-          "bound": 318.8162491225484,
-          "relative_gap": 0.0019812724968886475,
+          "incumbent": 318.18583627612816,
+          "bound": 318.59017294449995,
+          "relative_gap": 0.0012707563388236619,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -5812,9 +5812,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 318.18583627612657,
+          "incumbent": 318.1858362761495,
           "bound": 318.4450785296831,
-          "relative_gap": 0.0008147510794025553,
+          "relative_gap": 0.0008147510793303225,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -6453,8 +6453,8 @@
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
           "incumbent": 317.85413802795046,
-          "bound": 317.85510518757064,
-          "relative_gap": 3.0427781314688856e-06,
+          "bound": 317.85510518757087,
+          "relative_gap": 3.042778132184225e-06,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -7248,6 +7248,40 @@
         ]
       },
       {
+        "player_id": 397,
+        "web_name": "Semenyo",
+        "selected": false,
+        "stress_type": "force_alternative",
+        "baseline_objective": 321.5985015872,
+        "constrained_objective": 321.3204548371,
+        "objective_regret": 0.2780467501,
+        "constrained_status": "Optimal",
+        "added_player_ids": [
+          88,
+          226,
+          356,
+          397
+        ],
+        "added_player_names": [
+          "Kayode",
+          "Pickford",
+          "Virgil",
+          "Semenyo"
+        ],
+        "removed_player_ids": [
+          109,
+          426,
+          508,
+          534
+        ],
+        "removed_player_names": [
+          "Verbruggen",
+          "B.Fernandes",
+          "Davies",
+          "Hume"
+        ]
+      },
+      {
         "player_id": 356,
         "web_name": "Virgil",
         "selected": false,
@@ -7284,40 +7318,6 @@
       {
         "player_id": 226,
         "web_name": "Pickford",
-        "selected": false,
-        "stress_type": "force_alternative",
-        "baseline_objective": 321.5985015872,
-        "constrained_objective": 321.3204548371,
-        "objective_regret": 0.2780467501,
-        "constrained_status": "Optimal",
-        "added_player_ids": [
-          88,
-          226,
-          356,
-          397
-        ],
-        "added_player_names": [
-          "Kayode",
-          "Pickford",
-          "Virgil",
-          "Semenyo"
-        ],
-        "removed_player_ids": [
-          109,
-          426,
-          508,
-          534
-        ],
-        "removed_player_names": [
-          "Verbruggen",
-          "B.Fernandes",
-          "Davies",
-          "Hume"
-        ]
-      },
-      {
-        "player_id": 397,
-        "web_name": "Semenyo",
         "selected": false,
         "stress_type": "force_alternative",
         "baseline_objective": 321.5985015872,
@@ -7407,14 +7407,14 @@
         356,
         397
       ],
-      "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
+      "decision_bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d",
       "official_snapshot": {
-        "snapshot_id": "20260812T161003Z-7f9a4144",
-        "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
+        "snapshot_id": "20260812T212803Z-43a02888",
+        "bootstrap_sha256": "4e370094171513455e1e58dd9fa11ad2963cad89c8d1a16c3dcf6a4df27d960b",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
-      "projection_export_sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5",
-      "external_solver_result_sha256": "f619c08fa4e049a4aca8d39499f1bc3d7475f86ee417a8de679c7e66b9875a99"
+      "projection_export_sha256": "c1fa9c70f33092c3694f6c415a76a42c45ba9a2fc09cb3e5055076f13a5f75e7",
+      "external_solver_result_sha256": "b1a97d88a93f420e8847e9a5296a49ab52c5b1b86df0f00fd77451ccbd6d6c72"
     },
     "pinnacle_gate": {
       "ready": false,
@@ -7433,19 +7433,19 @@
   "internal_diagnostics": {
     "pinnacle_contract": "apex-pinnacle-v3-final",
     "elite_contract": "apex-elite-10-v4-diagnostic",
-    "pinnacle_snapshot_id": "20260812T161003Z-7f9a4144",
-    "elite_snapshot_id": "20260812T161003Z-7f9a4144",
+    "pinnacle_snapshot_id": "20260812T212803Z-43a02888",
+    "elite_snapshot_id": "20260812T212803Z-43a02888",
     "pinnacle_content_fingerprint": [
-      "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
+      "4e370094171513455e1e58dd9fa11ad2963cad89c8d1a16c3dcf6a4df27d960b",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "elite_content_fingerprint": [
-      "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
+      "4e370094171513455e1e58dd9fa11ad2963cad89c8d1a16c3dcf6a4df27d960b",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "same_official_surface": true,
-    "pinnacle_decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
-    "elite_decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
+    "pinnacle_decision_bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d",
+    "elite_decision_bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d",
     "same_decision_bundle": true
   }
 }

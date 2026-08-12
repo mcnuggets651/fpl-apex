@@ -55,12 +55,12 @@
     356,
     397
   ],
-  "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
+  "decision_bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d",
   "official_snapshot": {
-    "snapshot_id": "20260812T161003Z-7f9a4144",
-    "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
+    "snapshot_id": "20260812T212803Z-43a02888",
+    "bootstrap_sha256": "4e370094171513455e1e58dd9fa11ad2963cad89c8d1a16c3dcf6a4df27d960b",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "projection_export_sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5",
-  "external_solver_result_sha256": "f619c08fa4e049a4aca8d39499f1bc3d7475f86ee417a8de679c7e66b9875a99"
+  "projection_export_sha256": "c1fa9c70f33092c3694f6c415a76a42c45ba9a2fc09cb3e5055076f13a5f75e7",
+  "external_solver_result_sha256": "b1a97d88a93f420e8847e9a5296a49ab52c5b1b86df0f00fd77451ccbd6d6c72"
 }

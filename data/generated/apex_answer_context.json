@@ -1,6 +1,6 @@
 {
   "contract": "apex-answer-context-v1",
-  "generated_at": "2026-08-12T16:16:19.793080+00:00",
+  "generated_at": "2026-08-12T21:34:47.780153+00:00",
   "only_input_for_apex_answers": true,
   "safe_to_act": false,
   "blockers": [
@@ -17,143 +17,143 @@
     "data quality warning: preseason_evidence: 976 player-match rows; return-stat observation coverage=5.9%",
     "selected-player roles still rely on statistical inference rather than verified authoritative overrides: Gu\u00e9hi, Thiaw, F.Kad\u0131o\u011flu, Kayode, Davies, Haaland, Thiago, Neave, Verbruggen, Petrovi\u0107, B.Fernandes, Mbeumo, Enzo, Schade, Tavernier"
   ],
-  "run_age_hours": 0.10448246638888889,
-  "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
+  "run_age_hours": 0.11228912583333334,
+  "decision_bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d",
   "versions": {
     "canonical_contract": "apex-strategy-recommendation-v2",
     "pinnacle_contract": "apex-pinnacle-v3-final",
-    "official_snapshot_id": "20260812T161003Z-7f9a4144",
-    "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
+    "official_snapshot_id": "20260812T212803Z-43a02888",
+    "bootstrap_sha256": "4e370094171513455e1e58dd9fa11ad2963cad89c8d1a16c3dcf6a4df27d960b",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554",
-    "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47"
+    "decision_bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d"
   },
   "source_health": [
     {
       "name": "official_fpl",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:03.693848+00:00",
-      "age_hours": 0.10447200888888888,
-      "version": "b743e41b4bf2"
+      "checked_at": "2026-08-12T21:28:03.578378+00:00",
+      "age_hours": 0.11227827083333333,
+      "version": "4e3700941715"
     },
     {
       "name": "team_state",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:03.840153+00:00",
-      "age_hours": 0.1044313686111111,
+      "checked_at": "2026-08-12T21:28:03.688647+00:00",
+      "age_hours": 0.11224764055555556,
       "version": ""
     },
     {
       "name": "fpl_core_playerstats",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:03.960881+00:00",
-      "age_hours": 0.10439783305555556,
+      "checked_at": "2026-08-12T21:28:03.893451+00:00",
+      "age_hours": 0.11219075055555557,
       "version": "de0427dd1cf0cae731eabd2b3c8579c83d789199"
     },
     {
       "name": "fpl_core_previous_season",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:05.385985+00:00",
-      "age_hours": 0.10400197083333335,
+      "checked_at": "2026-08-12T21:28:05.781373+00:00",
+      "age_hours": 0.11166632777777778,
       "version": "de0427dd1cf0cae731eabd2b3c8579c83d789199"
     },
     {
       "name": "fpl_core_preseason",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:05.474886+00:00",
-      "age_hours": 0.10397727611111111,
+      "checked_at": "2026-08-12T21:28:05.945465+00:00",
+      "age_hours": 0.11162074666666667,
       "version": "de0427dd1cf0cae731eabd2b3c8579c83d789199"
     },
     {
       "name": "tactical_inference",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:05.551942+00:00",
-      "age_hours": 0.10395587166666666,
+      "checked_at": "2026-08-12T21:28:06.043400+00:00",
+      "age_hours": 0.1115935425,
       "version": ""
     },
     {
       "name": "manual_availability",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-12T16:10:05.552795+00:00",
-      "age_hours": 0.10395563472222222,
+      "checked_at": "2026-08-12T21:28:06.044167+00:00",
+      "age_hours": 0.11159332944444444,
       "version": ""
     },
     {
       "name": "tactical_roles",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-12T16:10:05.553512+00:00",
-      "age_hours": 0.10395543555555556,
+      "checked_at": "2026-08-12T21:28:06.044995+00:00",
+      "age_hours": 0.11159309944444445,
       "version": ""
     },
     {
       "name": "news_source_health",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:06.456785+00:00",
-      "age_hours": 0.10370452638888888,
-      "version": "{\"configured_sources\":3,\"failed_sources\":[],\"fresh_timestamped_items\":50,\"healthy_sources\":3}"
+      "checked_at": "2026-08-12T21:28:07.970327+00:00",
+      "age_hours": 0.11105828499999999,
+      "version": "{\"configured_sources\":3,\"failed_sources\":[],\"fresh_timestamped_items\":48,\"healthy_sources\":3}"
     },
     {
       "name": "news_feeds",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:07.293611+00:00",
-      "age_hours": 0.10347207472222221,
+      "checked_at": "2026-08-12T21:28:08.861467+00:00",
+      "age_hours": 0.11081074611111111,
       "version": ""
     },
     {
       "name": "fpl_core_elo",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:08.223088+00:00",
-      "age_hours": 0.10321388666666667,
+      "checked_at": "2026-08-12T21:28:10.374775+00:00",
+      "age_hours": 0.11039038277777777,
       "version": "de0427dd1cf0cae731eabd2b3c8579c83d789199"
     },
     {
       "name": "official_team_strength",
       "ok": false,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:08.224753+00:00",
-      "age_hours": 0.10321342416666666,
-      "version": "b743e41b4bf2"
+      "checked_at": "2026-08-12T21:28:10.376633+00:00",
+      "age_hours": 0.11038986666666667,
+      "version": "4e3700941715"
     },
     {
       "name": "understat_team_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:11.534807+00:00",
-      "age_hours": 0.10229396472222221,
+      "checked_at": "2026-08-12T21:28:14.455462+00:00",
+      "age_hours": 0.1092568586111111,
       "version": ""
     },
     {
       "name": "fixture_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:11.534824+00:00",
-      "age_hours": 0.10229396,
+      "checked_at": "2026-08-12T21:28:14.455475+00:00",
+      "age_hours": 0.109256855,
       "version": ""
     },
     {
       "name": "airsenal",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T16:10:12.159470+00:00",
-      "age_hours": 0.10212044722222222,
+      "checked_at": "2026-08-12T21:28:15.251169+00:00",
+      "age_hours": 0.10903582888888888,
       "version": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717"
     },
     {
       "name": "market_odds",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-12T16:10:12.159938+00:00",
-      "age_hours": 0.10212031722222223,
+      "checked_at": "2026-08-12T21:28:15.251716+00:00",
+      "age_hours": 0.10903567694444444,
       "version": ""
     }
   ],
@@ -791,9 +791,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 318.18583627623474,
-          "bound": 318.8162491225484,
-          "relative_gap": 0.0019812724968886475,
+          "incumbent": 318.18583627612816,
+          "bound": 318.59017294449995,
+          "relative_gap": 0.0012707563388236619,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -1431,9 +1431,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 318.18583627612657,
+          "incumbent": 318.1858362761495,
           "bound": 318.4450785296831,
-          "relative_gap": 0.0008147510794025553,
+          "relative_gap": 0.0008147510793303225,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -2072,8 +2072,8 @@
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
           "incumbent": 317.85413802795046,
-          "bound": 317.85510518757064,
-          "relative_gap": 3.0427781314688856e-06,
+          "bound": 317.85510518757087,
+          "relative_gap": 3.042778132184225e-06,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -2838,6 +2838,40 @@
         ]
       },
       {
+        "player_id": 397,
+        "web_name": "Semenyo",
+        "selected": false,
+        "stress_type": "force_alternative",
+        "baseline_objective": 321.5985015872,
+        "constrained_objective": 321.3204548371,
+        "objective_regret": 0.2780467501,
+        "constrained_status": "Optimal",
+        "added_player_ids": [
+          88,
+          226,
+          356,
+          397
+        ],
+        "added_player_names": [
+          "Kayode",
+          "Pickford",
+          "Virgil",
+          "Semenyo"
+        ],
+        "removed_player_ids": [
+          109,
+          426,
+          508,
+          534
+        ],
+        "removed_player_names": [
+          "Verbruggen",
+          "B.Fernandes",
+          "Davies",
+          "Hume"
+        ]
+      },
+      {
         "player_id": 356,
         "web_name": "Virgil",
         "selected": false,
@@ -2874,40 +2908,6 @@
       {
         "player_id": 226,
         "web_name": "Pickford",
-        "selected": false,
-        "stress_type": "force_alternative",
-        "baseline_objective": 321.5985015872,
-        "constrained_objective": 321.3204548371,
-        "objective_regret": 0.2780467501,
-        "constrained_status": "Optimal",
-        "added_player_ids": [
-          88,
-          226,
-          356,
-          397
-        ],
-        "added_player_names": [
-          "Kayode",
-          "Pickford",
-          "Virgil",
-          "Semenyo"
-        ],
-        "removed_player_ids": [
-          109,
-          426,
-          508,
-          534
-        ],
-        "removed_player_names": [
-          "Verbruggen",
-          "B.Fernandes",
-          "Davies",
-          "Hume"
-        ]
-      },
-      {
-        "player_id": 397,
-        "web_name": "Semenyo",
         "selected": false,
         "stress_type": "force_alternative",
         "baseline_objective": 321.5985015872,
@@ -2997,14 +2997,14 @@
         356,
         397
       ],
-      "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
+      "decision_bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d",
       "official_snapshot": {
-        "snapshot_id": "20260812T161003Z-7f9a4144",
-        "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
+        "snapshot_id": "20260812T212803Z-43a02888",
+        "bootstrap_sha256": "4e370094171513455e1e58dd9fa11ad2963cad89c8d1a16c3dcf6a4df27d960b",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
-      "projection_export_sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5",
-      "external_solver_result_sha256": "f619c08fa4e049a4aca8d39499f1bc3d7475f86ee417a8de679c7e66b9875a99"
+      "projection_export_sha256": "c1fa9c70f33092c3694f6c415a76a42c45ba9a2fc09cb3e5055076f13a5f75e7",
+      "external_solver_result_sha256": "b1a97d88a93f420e8847e9a5296a49ab52c5b1b86df0f00fd77451ccbd6d6c72"
     },
     "pinnacle_gate": {
       "ready": false,
@@ -3214,16 +3214,16 @@
         "name": "tactical_roles",
         "ok": true,
         "configured": false,
-        "checked_at": "2026-08-12T16:10:05.553512+00:00",
-        "age_hours": 0.10395543555555556,
+        "checked_at": "2026-08-12T21:28:06.044995+00:00",
+        "age_hours": 0.11159309944444445,
         "version": ""
       },
       {
         "name": "news_feeds",
         "ok": true,
         "configured": true,
-        "checked_at": "2026-08-12T16:10:07.293611+00:00",
-        "age_hours": 0.10347207472222221,
+        "checked_at": "2026-08-12T21:28:08.861467+00:00",
+        "age_hours": 0.11081074611111111,
         "version": ""
       }
     ],
@@ -3303,26 +3303,7 @@
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
-        "evidence": [
-          {
-            "evidence_type": "general",
-            "source_name": "Sky Sports Football",
-            "source_tier": "trusted_media",
-            "source_url": "https://www.skysports.com/football/news/12040/13566218/chris-davies-interview-birmingham-city-managers-tactical-change-could-take-this-ambitious-club-up-from-the-championship",
-            "published_at": "2026-08-12T10:00:00",
-            "retrieved_at": "2026-08-12T16:10:06.291773+00:00",
-            "expires_at": null,
-            "eligible_for_decision": false,
-            "effect": {
-              "minutes_multiplier": 1.0,
-              "minutes_delta": 0.0,
-              "start_probability_delta": 0.0
-            },
-            "headline": "What next for Birmingham City? Why Davies is changing his approach",
-            "summary": "Birmingham City is a football club transformed. Over 20,000 season tickets have been sold for the forthcoming Championship season, with 14,000 more on the waiting list. Fan parks surround St Andrew's these days. The buzz around the place is palpable.",
-            "ineligibility_reason": "ambiguous_player_identity"
-          }
-        ],
+        "evidence": [],
         "selection_regret": 1.285164898144501,
         "alternative": "Pickford",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
@@ -3450,7 +3431,26 @@
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
-        "evidence": [],
+        "evidence": [
+          {
+            "evidence_type": "general",
+            "source_name": "Sky Sports Football",
+            "source_tier": "trusted_media",
+            "source_url": "https://www.skysports.com/football/news/12040/13572395/enzo-fernandez-transfer-news-chelsea-set-man-city-deadline-to-bid-for-midfielder",
+            "published_at": "2026-08-12T21:49:00",
+            "retrieved_at": "2026-08-12T21:28:07.442939+00:00",
+            "expires_at": null,
+            "eligible_for_decision": false,
+            "effect": {
+              "minutes_multiplier": 1.0,
+              "minutes_delta": 0.0,
+              "start_probability_delta": 0.0
+            },
+            "headline": "Chelsea set Man City deadline to bid for Fernandez",
+            "summary": "Chelsea have told Manchester City they have a deadline of 5pm this Friday to make an offer for Enzo Fernandez.",
+            "ineligibility_reason": "no_decision_relevant_evidence"
+          }
+        ],
         "selection_regret": 1.7553760184,
         "alternative": "Watkins",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
@@ -3582,26 +3582,7 @@
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
-      "evidence": [
-        {
-          "evidence_type": "general",
-          "source_name": "Sky Sports Football",
-          "source_tier": "trusted_media",
-          "source_url": "https://www.skysports.com/football/news/12040/13566218/chris-davies-interview-birmingham-city-managers-tactical-change-could-take-this-ambitious-club-up-from-the-championship",
-          "published_at": "2026-08-12T10:00:00",
-          "retrieved_at": "2026-08-12T16:10:06.291773+00:00",
-          "expires_at": null,
-          "eligible_for_decision": false,
-          "effect": {
-            "minutes_multiplier": 1.0,
-            "minutes_delta": 0.0,
-            "start_probability_delta": 0.0
-          },
-          "headline": "What next for Birmingham City? Why Davies is changing his approach",
-          "summary": "Birmingham City is a football club transformed. Over 20,000 season tickets have been sold for the forthcoming Championship season, with 14,000 more on the waiting list. Fan parks surround St Andrew's these days. The buzz around the place is palpable.",
-          "ineligibility_reason": "ambiguous_player_identity"
-        }
-      ],
+      "evidence": [],
       "selection_regret": 1.285164898144501,
       "alternative": "Pickford",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
@@ -3729,7 +3710,26 @@
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
-      "evidence": [],
+      "evidence": [
+        {
+          "evidence_type": "general",
+          "source_name": "Sky Sports Football",
+          "source_tier": "trusted_media",
+          "source_url": "https://www.skysports.com/football/news/12040/13572395/enzo-fernandez-transfer-news-chelsea-set-man-city-deadline-to-bid-for-midfielder",
+          "published_at": "2026-08-12T21:49:00",
+          "retrieved_at": "2026-08-12T21:28:07.442939+00:00",
+          "expires_at": null,
+          "eligible_for_decision": false,
+          "effect": {
+            "minutes_multiplier": 1.0,
+            "minutes_delta": 0.0,
+            "start_probability_delta": 0.0
+          },
+          "headline": "Chelsea set Man City deadline to bid for Fernandez",
+          "summary": "Chelsea have told Manchester City they have a deadline of 5pm this Friday to make an offer for Enzo Fernandez.",
+          "ineligibility_reason": "no_decision_relevant_evidence"
+        }
+      ],
       "selection_regret": 1.7553760184,
       "alternative": "Watkins",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
