@@ -1,8 +1,9 @@
 # Apex Unified Recommendation — NOT READY
 
-Generated: 2026-08-12T14:05:31.922795+00:00
+Generated: 2026-08-12T15:11:47.747071+00:00
 
-The production run stopped before canonical assembly:
+The unified engine withheld a team because the canonical gate is blocked:
 
-- Apex Unified production run did not complete canonical assembly
-- required independent solver parity snapshot is not embedded
+- Pinnacle decision-readiness gate is not green
+- independent solver squad parity is below 12/15
+- independent solver XI parity is below 9/11
