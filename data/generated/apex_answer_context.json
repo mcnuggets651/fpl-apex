@@ -1,11 +1,15 @@
 {
   "contract": "apex-answer-context-v1",
-  "generated_at": "2026-08-12T09:14:09.776892+00:00",
+  "generated_at": "2026-08-12T10:34:36.694702+00:00",
   "safe_to_act": false,
   "ready_to_act": false,
   "blockers": [
-    "Apex Unified production run did not complete canonical assembly"
+    "Apex Unified production run did not complete canonical assembly",
+    "data quality failed: official_team_strength: 20/20 teams contain zero/non-positive strength values; no validated fallback fixture model is active",
+    "data quality failed: fpl_core_playerstats: official-player coverage=0.0%",
+    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (26.1h old; max 18.0h)",
+    "required source unhealthy: fixture_model: official strength unavailable (20/20 teams contain zero/non-positive strength values); reconciled Elo coverage is incomplete (0/160)"
   ],
-  "decision_bundle_id": "2bb4a90e01134c0e36a67a9299f4617ffdc4a3601d8f9db0e4ccb9a097c4670c",
+  "decision_bundle_id": "e1e650a64a473d369ad2650a589ebd72556f04af0d9f244ac01e55c9a6370d51",
   "recommendation": null
 }

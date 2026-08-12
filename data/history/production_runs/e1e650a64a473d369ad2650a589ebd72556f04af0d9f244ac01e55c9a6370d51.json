@@ -1,0 +1,24 @@
+{
+  "contract": "apex-production-run-v1",
+  "run_id": "31587860227",
+  "generated_at": "2026-08-12T10:34:36.694702+00:00",
+  "status": "not_ready",
+  "decision_bundle_id": "e1e650a64a473d369ad2650a589ebd72556f04af0d9f244ac01e55c9a6370d51",
+  "official_snapshot": {
+    "snapshot_id": "20260812T103429Z-7ae2329d",
+    "bootstrap_sha256": "f2f3b0009052cb18fb3a5899c6f168e3cd646977691c9faada801c2c1d6f4cd4",
+    "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
+  },
+  "blockers": [
+    "Apex Unified production run did not complete canonical assembly",
+    "data quality failed: official_team_strength: 20/20 teams contain zero/non-positive strength values; no validated fallback fixture model is active",
+    "data quality failed: fpl_core_playerstats: official-player coverage=0.0%",
+    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (26.1h old; max 18.0h)",
+    "required source unhealthy: fixture_model: official strength unavailable (20/20 teams contain zero/non-positive strength values); reconciled Elo coverage is incomplete (0/160)"
+  ],
+  "rejected_stale_diagnostics": {
+    "solver_parity.json": "c68d994b154e71908b77073071d7957d4b07394db6625524efdca3041a014dab",
+    "elite_latest.json": "e3fcaac2938d10eaa67b2487323f7e6af22b131c7de9cce10c57d78374f502bd"
+  },
+  "manifest_sha256": "8f5b7b3e1e0592a4eb541ea82ea832fcaa7530db6094233cf25b272aca13adfd"
+}
