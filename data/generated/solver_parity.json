@@ -55,12 +55,12 @@
     356,
     397
   ],
-  "decision_bundle_id": "5e173fa6c2cd85341b5c649808ef729fe4627681eafcf47a3856dddbc9eb6c9b",
+  "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
   "official_snapshot": {
-    "snapshot_id": "20260812T151133Z-f23ad3ac",
-    "bootstrap_sha256": "eb560c52aaccead76266f8529c5cafc46680c657801cbc2433917ce2f9db0730",
+    "snapshot_id": "20260812T161003Z-7f9a4144",
+    "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "projection_export_sha256": "9e90b39ba32568f34795f986178f4edcc197e925cfc5beaf0358702d14a3fbbc",
+  "projection_export_sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5",
   "external_solver_result_sha256": "f619c08fa4e049a4aca8d39499f1bc3d7475f86ee417a8de679c7e66b9875a99"
 }

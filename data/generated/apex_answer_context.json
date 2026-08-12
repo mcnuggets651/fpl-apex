@@ -1,6 +1,6 @@
 {
   "contract": "apex-answer-context-v1",
-  "generated_at": "2026-08-12T15:17:42.039459+00:00",
+  "generated_at": "2026-08-12T16:16:19.793080+00:00",
   "only_input_for_apex_answers": true,
   "safe_to_act": false,
   "blockers": [
@@ -17,143 +17,143 @@
     "data quality warning: preseason_evidence: 976 player-match rows; return-stat observation coverage=5.9%",
     "selected-player roles still rely on statistical inference rather than verified authoritative overrides: Gu\u00e9hi, Thiaw, F.Kad\u0131o\u011flu, Kayode, Davies, Haaland, Thiago, Neave, Verbruggen, Petrovi\u0107, B.Fernandes, Mbeumo, Enzo, Schade, Tavernier"
   ],
-  "run_age_hours": 0.1024095136111111,
-  "decision_bundle_id": "5e173fa6c2cd85341b5c649808ef729fe4627681eafcf47a3856dddbc9eb6c9b",
+  "run_age_hours": 0.10448246638888889,
+  "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
   "versions": {
     "canonical_contract": "apex-strategy-recommendation-v2",
     "pinnacle_contract": "apex-pinnacle-v3-final",
-    "official_snapshot_id": "20260812T151133Z-f23ad3ac",
-    "bootstrap_sha256": "eb560c52aaccead76266f8529c5cafc46680c657801cbc2433917ce2f9db0730",
+    "official_snapshot_id": "20260812T161003Z-7f9a4144",
+    "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554",
-    "decision_bundle_id": "5e173fa6c2cd85341b5c649808ef729fe4627681eafcf47a3856dddbc9eb6c9b"
+    "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47"
   },
   "source_health": [
     {
       "name": "official_fpl",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:33.399858+00:00",
-      "age_hours": 0.10239988916666667,
-      "version": "eb560c52aacc"
+      "checked_at": "2026-08-12T16:10:03.693848+00:00",
+      "age_hours": 0.10447200888888888,
+      "version": "b743e41b4bf2"
     },
     {
       "name": "team_state",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:33.531580+00:00",
-      "age_hours": 0.10236329972222222,
+      "checked_at": "2026-08-12T16:10:03.840153+00:00",
+      "age_hours": 0.1044313686111111,
       "version": ""
     },
     {
       "name": "fpl_core_playerstats",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:34.091484+00:00",
-      "age_hours": 0.10220777083333332,
+      "checked_at": "2026-08-12T16:10:03.960881+00:00",
+      "age_hours": 0.10439783305555556,
       "version": "de0427dd1cf0cae731eabd2b3c8579c83d789199"
     },
     {
       "name": "fpl_core_previous_season",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:36.246527+00:00",
-      "age_hours": 0.10160914777777778,
+      "checked_at": "2026-08-12T16:10:05.385985+00:00",
+      "age_hours": 0.10400197083333335,
       "version": "de0427dd1cf0cae731eabd2b3c8579c83d789199"
     },
     {
       "name": "fpl_core_preseason",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:36.617162+00:00",
-      "age_hours": 0.10150619361111111,
+      "checked_at": "2026-08-12T16:10:05.474886+00:00",
+      "age_hours": 0.10397727611111111,
       "version": "de0427dd1cf0cae731eabd2b3c8579c83d789199"
     },
     {
       "name": "tactical_inference",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:36.702099+00:00",
-      "age_hours": 0.10148259999999999,
+      "checked_at": "2026-08-12T16:10:05.551942+00:00",
+      "age_hours": 0.10395587166666666,
       "version": ""
     },
     {
       "name": "manual_availability",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-12T15:11:36.702803+00:00",
-      "age_hours": 0.10148240444444445,
+      "checked_at": "2026-08-12T16:10:05.552795+00:00",
+      "age_hours": 0.10395563472222222,
       "version": ""
     },
     {
       "name": "tactical_roles",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-12T15:11:36.703495+00:00",
-      "age_hours": 0.10148221222222222,
+      "checked_at": "2026-08-12T16:10:05.553512+00:00",
+      "age_hours": 0.10395543555555556,
       "version": ""
     },
     {
       "name": "news_source_health",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:38.288493+00:00",
-      "age_hours": 0.101041935,
-      "version": "{\"configured_sources\":3,\"failed_sources\":[],\"fresh_timestamped_items\":49,\"healthy_sources\":3}"
+      "checked_at": "2026-08-12T16:10:06.456785+00:00",
+      "age_hours": 0.10370452638888888,
+      "version": "{\"configured_sources\":3,\"failed_sources\":[],\"fresh_timestamped_items\":50,\"healthy_sources\":3}"
     },
     {
       "name": "news_feeds",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:39.073256+00:00",
-      "age_hours": 0.10082394527777779,
+      "checked_at": "2026-08-12T16:10:07.293611+00:00",
+      "age_hours": 0.10347207472222221,
       "version": ""
     },
     {
       "name": "fpl_core_elo",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:41.447611+00:00",
-      "age_hours": 0.10016440222222223,
+      "checked_at": "2026-08-12T16:10:08.223088+00:00",
+      "age_hours": 0.10321388666666667,
       "version": "de0427dd1cf0cae731eabd2b3c8579c83d789199"
     },
     {
       "name": "official_team_strength",
       "ok": false,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:41.449247+00:00",
-      "age_hours": 0.10016394777777778,
-      "version": "eb560c52aacc"
+      "checked_at": "2026-08-12T16:10:08.224753+00:00",
+      "age_hours": 0.10321342416666666,
+      "version": "b743e41b4bf2"
     },
     {
       "name": "understat_team_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:45.389765+00:00",
-      "age_hours": 0.09906935944444445,
+      "checked_at": "2026-08-12T16:10:11.534807+00:00",
+      "age_hours": 0.10229396472222221,
       "version": ""
     },
     {
       "name": "fixture_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:45.389780+00:00",
-      "age_hours": 0.09906935527777777,
+      "checked_at": "2026-08-12T16:10:11.534824+00:00",
+      "age_hours": 0.10229396,
       "version": ""
     },
     {
       "name": "airsenal",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-12T15:11:46.063681+00:00",
-      "age_hours": 0.09888216055555556,
+      "checked_at": "2026-08-12T16:10:12.159470+00:00",
+      "age_hours": 0.10212044722222222,
       "version": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717"
     },
     {
       "name": "market_odds",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-12T15:11:46.064159+00:00",
-      "age_hours": 0.09888202777777778,
+      "checked_at": "2026-08-12T16:10:12.159938+00:00",
+      "age_hours": 0.10212031722222223,
       "version": ""
     }
   ],
@@ -791,9 +791,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 318.1858362767346,
-          "bound": 318.56341343874806,
-          "relative_gap": 0.001186656095166502,
+          "incumbent": 318.18583627623474,
+          "bound": 318.8162491225484,
+          "relative_gap": 0.0019812724968886475,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -1431,9 +1431,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 318.1858362761258,
-          "bound": 318.4386683868374,
-          "relative_gap": 0.0007946051705838365,
+          "incumbent": 318.18583627612657,
+          "bound": 318.4450785296831,
+          "relative_gap": 0.0008147510794025553,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -2997,13 +2997,13 @@
         356,
         397
       ],
-      "decision_bundle_id": "5e173fa6c2cd85341b5c649808ef729fe4627681eafcf47a3856dddbc9eb6c9b",
+      "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
       "official_snapshot": {
-        "snapshot_id": "20260812T151133Z-f23ad3ac",
-        "bootstrap_sha256": "eb560c52aaccead76266f8529c5cafc46680c657801cbc2433917ce2f9db0730",
+        "snapshot_id": "20260812T161003Z-7f9a4144",
+        "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
-      "projection_export_sha256": "9e90b39ba32568f34795f986178f4edcc197e925cfc5beaf0358702d14a3fbbc",
+      "projection_export_sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5",
       "external_solver_result_sha256": "f619c08fa4e049a4aca8d39499f1bc3d7475f86ee417a8de679c7e66b9875a99"
     },
     "pinnacle_gate": {
@@ -3214,16 +3214,16 @@
         "name": "tactical_roles",
         "ok": true,
         "configured": false,
-        "checked_at": "2026-08-12T15:11:36.703495+00:00",
-        "age_hours": 0.10148221222222222,
+        "checked_at": "2026-08-12T16:10:05.553512+00:00",
+        "age_hours": 0.10395543555555556,
         "version": ""
       },
       {
         "name": "news_feeds",
         "ok": true,
         "configured": true,
-        "checked_at": "2026-08-12T15:11:39.073256+00:00",
-        "age_hours": 0.10082394527777779,
+        "checked_at": "2026-08-12T16:10:07.293611+00:00",
+        "age_hours": 0.10347207472222221,
         "version": ""
       }
     ],
@@ -3310,7 +3310,7 @@
             "source_tier": "trusted_media",
             "source_url": "https://www.skysports.com/football/news/12040/13566218/chris-davies-interview-birmingham-city-managers-tactical-change-could-take-this-ambitious-club-up-from-the-championship",
             "published_at": "2026-08-12T10:00:00",
-            "retrieved_at": "2026-08-12T15:11:38.036224+00:00",
+            "retrieved_at": "2026-08-12T16:10:06.291773+00:00",
             "expires_at": null,
             "eligible_for_decision": false,
             "effect": {
@@ -3589,7 +3589,7 @@
           "source_tier": "trusted_media",
           "source_url": "https://www.skysports.com/football/news/12040/13566218/chris-davies-interview-birmingham-city-managers-tactical-change-could-take-this-ambitious-club-up-from-the-championship",
           "published_at": "2026-08-12T10:00:00",
-          "retrieved_at": "2026-08-12T15:11:38.036224+00:00",
+          "retrieved_at": "2026-08-12T16:10:06.291773+00:00",
           "expires_at": null,
           "eligible_for_decision": false,
           "effect": {

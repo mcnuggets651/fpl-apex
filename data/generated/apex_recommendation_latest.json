@@ -1,6 +1,6 @@
 {
   "contract": "apex-strategy-recommendation-v2",
-  "generated_at": "2026-08-12T15:11:47.747071+00:00",
+  "generated_at": "2026-08-12T16:10:13.854627+00:00",
   "canonical": true,
   "user_facing_source_of_truth": true,
   "ready_to_act": false,
@@ -10,19 +10,19 @@
     "independent solver XI parity is below 9/11"
   ],
   "official_snapshot": {
-    "snapshot_id": "20260812T151133Z-f23ad3ac",
-    "retrieved_at": "2026-08-12T15:11:33.365210+00:00",
+    "snapshot_id": "20260812T161003Z-7f9a4144",
+    "retrieved_at": "2026-08-12T16:10:03.656201+00:00",
     "players": 581,
     "fixtures": 380,
-    "bootstrap_sha256": "eb560c52aaccead76266f8529c5cafc46680c657801cbc2433917ce2f9db0730",
+    "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "decision_bundle_id": "5e173fa6c2cd85341b5c649808ef729fe4627681eafcf47a3856dddbc9eb6c9b",
+  "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
   "decision_bundle": {
     "contract": "apex-decision-bundle-v1",
-    "bundle_id": "5e173fa6c2cd85341b5c649808ef729fe4627681eafcf47a3856dddbc9eb6c9b",
-    "created_at": "2026-08-12T15:11:47.747071+00:00",
-    "git_commit": "b0dbd3fa161e3f8304534504183cd600c53d9868",
+    "bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
+    "created_at": "2026-08-12T16:10:13.854627+00:00",
+    "git_commit": "6bb638bacea4663753e021139c3310dc7d0382a4",
     "material_code_dirty": false,
     "source_tree_sha256": "899bdd248b711f230da2a816a241a03dad466bacec83580ae8b3305603d4af19",
     "configuration_sha256": "851f0a6aef69699306543989cf996695b5ebe9a699ef4f0926bdc7265334d057",
@@ -38,11 +38,11 @@
       8
     ],
     "official_snapshot": {
-      "snapshot_id": "20260812T151133Z-f23ad3ac",
-      "retrieved_at": "2026-08-12T15:11:33.365210+00:00",
+      "snapshot_id": "20260812T161003Z-7f9a4144",
+      "retrieved_at": "2026-08-12T16:10:03.656201+00:00",
       "players": 581,
       "fixtures": 380,
-      "bootstrap_sha256": "eb560c52aaccead76266f8529c5cafc46680c657801cbc2433917ce2f9db0730",
+      "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
       "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     },
     "upstreams": {
@@ -65,11 +65,11 @@
         "runtime_freshness": {
           "commit": "de0427dd1cf0cae731eabd2b3c8579c83d789199",
           "committed_at": "2026-08-12T08:47:35+00:00",
-          "checked_at": "2026-08-12T15:11:33.533222+00:00",
+          "checked_at": "2026-08-12T16:10:03.841792+00:00",
           "max_age_hours": 18.0,
           "newer_revision_available_at_resolution": false,
           "resolved_at": "2026-08-12T13:31:17+00:00",
-          "age_hours": 6.399592561666666
+          "age_hours": 7.3746782755555556
         }
       },
       "open_fpl_solver": {
@@ -106,7 +106,7 @@
     "material_inputs": {
       "official_players": {
         "rows": 581,
-        "sha256": "78a7a0e8fdefd22ffe9b6a59f45a2f5bc2261b588d610ca991b53895a6e38e05"
+        "sha256": "2694a02c52d0a27758412f459aad3e2fa21dea63c0346bd773aee41dee20798c"
       },
       "official_fixtures": {
         "rows": 380,
@@ -137,16 +137,16 @@
         "sha256": "94ca4a30bca367c8517380ed27a123c98ebbdcef1ef9eaa487feff0b79104f7f"
       },
       "news_evidence": {
-        "rows": 14,
-        "sha256": "bf8202bf1195bd61d29646bf2939087af3e51f46d4b37af507acf186891cd463"
+        "rows": 17,
+        "sha256": "94f0d004aa784a0721ba01a828897a36f76225a030cc07a887f31817e1affd72"
       },
       "understat_team_ratings": {
         "rows": 20,
-        "sha256": "cb85ce65b167bd59cb1fd2ce15a0895d31679f13d206777d11bee387ffa86025"
+        "sha256": "6344756e3a0d7733ccbd34b5cf7ade37966dad929561fc042c80898e4fe92123"
       },
       "understat_team_goal_surface": {
         "rows": 160,
-        "sha256": "3db6cb9765402c1ed5bf71413afc0e263f48846dbc274104fac486ec21461582"
+        "sha256": "d2d8d9d039e18d9bff23116d26f9810fb80a4cdbde079a4105a09bccfcfc5f43"
       },
       "fixture_projection_surface": {
         "rows": 160,
@@ -154,7 +154,7 @@
       },
       "airsenal_projection_surface": {
         "rows": 4648,
-        "sha256": "ae00047ccb9691cae7bacae08f6e6d885d92faba270ee2ad0f8fa6d27879ccdf"
+        "sha256": "ccd59d6ead508fe4f50d96ed387fc3aa95474d30bb13a2814eda7d51291feb0a"
       },
       "market_odds_surface": {
         "rows": 0,
@@ -162,17 +162,17 @@
       },
       "final_projection_matrix": {
         "rows": 4648,
-        "sha256": "9e90b39ba32568f34795f986178f4edcc197e925cfc5beaf0358702d14a3fbbc"
+        "sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5"
       }
     },
     "artifacts": {
       "players": {
         "file": "players.json",
-        "sha256": "5d2b15345a97d5e63d673ff5ec615d7854c55d6d53b8e82f1696cdc572e84699"
+        "sha256": "7cdced839d6ba4d1799d74b64835e29e00b9978f8743dc06f68a5ce8c2cd28e1"
       },
       "projections": {
         "file": "projections.json",
-        "sha256": "9e90b39ba32568f34795f986178f4edcc197e925cfc5beaf0358702d14a3fbbc"
+        "sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5"
       },
       "integrity": {
         "file": "integrity.json",
@@ -180,7 +180,7 @@
       },
       "news_audit": {
         "file": "news_audit.json",
-        "sha256": "bf8202bf1195bd61d29646bf2939087af3e51f46d4b37af507acf186891cd463"
+        "sha256": "94f0d004aa784a0721ba01a828897a36f76225a030cc07a887f31817e1affd72"
       }
     }
   },
@@ -3142,7 +3142,7 @@
     },
     "elite_secondary_selection": {
       "status": "Optimal",
-      "objective": 60.87511066243184,
+      "objective": 60.87511066243188,
       "squad": [
         {
           "player_id": 388,
@@ -5172,9 +5172,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 318.1858362767346,
-          "bound": 318.56341343874806,
-          "relative_gap": 0.001186656095166502,
+          "incumbent": 318.18583627623474,
+          "bound": 318.8162491225484,
+          "relative_gap": 0.0019812724968886475,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -5812,9 +5812,9 @@
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 318.1858362761258,
-          "bound": 318.4386683868374,
-          "relative_gap": 0.0007946051705838365,
+          "incumbent": 318.18583627612657,
+          "bound": 318.4450785296831,
+          "relative_gap": 0.0008147510794025553,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -7407,13 +7407,13 @@
         356,
         397
       ],
-      "decision_bundle_id": "5e173fa6c2cd85341b5c649808ef729fe4627681eafcf47a3856dddbc9eb6c9b",
+      "decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
       "official_snapshot": {
-        "snapshot_id": "20260812T151133Z-f23ad3ac",
-        "bootstrap_sha256": "eb560c52aaccead76266f8529c5cafc46680c657801cbc2433917ce2f9db0730",
+        "snapshot_id": "20260812T161003Z-7f9a4144",
+        "bootstrap_sha256": "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
-      "projection_export_sha256": "9e90b39ba32568f34795f986178f4edcc197e925cfc5beaf0358702d14a3fbbc",
+      "projection_export_sha256": "91a8002c20c2bfad1d003c4ffc077edca11ad8343312c0fa59b7b3d3ddc2d7d5",
       "external_solver_result_sha256": "f619c08fa4e049a4aca8d39499f1bc3d7475f86ee417a8de679c7e66b9875a99"
     },
     "pinnacle_gate": {
@@ -7433,19 +7433,19 @@
   "internal_diagnostics": {
     "pinnacle_contract": "apex-pinnacle-v3-final",
     "elite_contract": "apex-elite-10-v4-diagnostic",
-    "pinnacle_snapshot_id": "20260812T151133Z-f23ad3ac",
-    "elite_snapshot_id": "20260812T151133Z-f23ad3ac",
+    "pinnacle_snapshot_id": "20260812T161003Z-7f9a4144",
+    "elite_snapshot_id": "20260812T161003Z-7f9a4144",
     "pinnacle_content_fingerprint": [
-      "eb560c52aaccead76266f8529c5cafc46680c657801cbc2433917ce2f9db0730",
+      "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "elite_content_fingerprint": [
-      "eb560c52aaccead76266f8529c5cafc46680c657801cbc2433917ce2f9db0730",
+      "b743e41b4bf2398cf81f66aa28661637da8afdc77d9a9648c0b07565b4cdbdcb",
       "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
     ],
     "same_official_surface": true,
-    "pinnacle_decision_bundle_id": "5e173fa6c2cd85341b5c649808ef729fe4627681eafcf47a3856dddbc9eb6c9b",
-    "elite_decision_bundle_id": "5e173fa6c2cd85341b5c649808ef729fe4627681eafcf47a3856dddbc9eb6c9b",
+    "pinnacle_decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
+    "elite_decision_bundle_id": "5911eb42cca70b7192702709de3c40e0402da00c8fdcf7b5eee4a10fb51b7e47",
     "same_decision_bundle": true
   }
 }
