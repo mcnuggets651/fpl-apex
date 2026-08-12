@@ -267,6 +267,38 @@ def _exact_decision_payload(decision, players: pd.DataFrame) -> dict:
     }
 
 
+def _write_blocked_payload(
+    bundle: DecisionBundle,
+    blockers: list[str],
+    output_dir: Path,
+) -> None:
+    """Persist a current, teamless Pinnacle diagnostic before a readiness exit."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    gate = {"ready": False, "blockers": blockers, "warnings": []}
+    payload = {
+        "contract": "apex-pinnacle-v3-final",
+        "generated_at": bundle.created_at,
+        "decision_bundle": bundle.lineage_summary(),
+        "decision_bundle_id": bundle.bundle_id,
+        "gameweeks": [],
+        "safe_to_act": False,
+        "full_apex_ready": False,
+        "pinnacle_ready": False,
+        "pinnacle_gate": gate,
+        "recommendation": None,
+    }
+    (output_dir / "pinnacle_latest.json").write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )
+    (output_dir / "pinnacle_latest.md").write_text(
+        "# Apex Pinnacle decision — NOT READY\n\n"
+        f"Generated: {bundle.created_at}\n\n"
+        + "\n".join(f"- {blocker}" for blocker in blockers)
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--horizon", type=int, default=8)
@@ -293,13 +325,17 @@ def main() -> None:
     bundle = DecisionBundle.load(args.bundle_dir)
     out = bundle.to_pipeline_output()
     settings = bundle.settings
+    output_dir = Path(args.output_dir)
     if [int(gw) for gw in out.gameweeks] != [int(gw) for gw in out.gameweeks[: args.horizon]]:
         raise SystemExit(
             "requested horizon does not match the sealed decision bundle; rebuild the bundle"
         )
     if not out.safety.safe_to_act or not out.safety.full_apex_ready:
-        blockers = "; ".join(out.safety.blockers) or "unknown production blocker"
-        raise SystemExit(f"Pinnacle runner blocked by Apex production gate: {blockers}")
+        blockers = list(out.safety.blockers) or ["unknown production blocker"]
+        _write_blocked_payload(bundle, blockers, output_dir)
+        raise SystemExit(
+            "Pinnacle runner blocked by Apex production gate: " + "; ".join(blockers)
+        )
 
     gws = out.gameweeks
     projections = out.projections
@@ -466,7 +502,6 @@ def main() -> None:
         )
 
     report_dir = Path(args.report_dir)
-    output_dir = Path(args.output_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     regret.to_csv(report_dir / "pinnacle_selection_regret.csv", index=False)

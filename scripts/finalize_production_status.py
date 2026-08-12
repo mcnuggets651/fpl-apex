@@ -58,6 +58,13 @@ def main() -> None:
         return
 
     blockers = [str(args.reason)]
+    pinnacle_path = output_dir / "pinnacle_latest.json"
+    if _diagnostic_matches(pinnacle_path, bundle_id):
+        pinnacle = _load(pinnacle_path)
+        blockers.extend(
+            str(row)
+            for row in ((pinnacle.get("pinnacle_gate") or {}).get("blockers") or [])
+        )
     latest = _load(Path("reports/latest.json"))
     for row in (latest.get("data_quality") or {}).get("failures") or []:
         blockers.append(str(row))
