@@ -1,11 +1,11 @@
 # Apex Unified Recommendation — NOT READY
 
-Generated: 2026-08-12T10:34:36.694702+00:00
+Generated: 2026-08-12T10:41:27.691691+00:00
 
 The production run stopped before canonical assembly:
 
 - Apex Unified production run did not complete canonical assembly
 - data quality failed: official_team_strength: 20/20 teams contain zero/non-positive strength values; no validated fallback fixture model is active
 - data quality failed: fpl_core_playerstats: official-player coverage=0.0%
-- required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (26.1h old; max 18.0h)
+- required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (26.2h old; max 18.0h)
 - required source unhealthy: fixture_model: official strength unavailable (20/20 teams contain zero/non-positive strength values); reconciled Elo coverage is incomplete (0/160)
