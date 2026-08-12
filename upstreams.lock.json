@@ -10,9 +10,10 @@
     },
     "fpl_core_insights": {
       "repository": "olbauday/FPL-Core-Insights",
-      "commit": "8a52fc38996c2fbd1e04dfe0daa33c2c7e04f65f",
-      "committed_at": "2026-08-11T08:31:18+00:00",
-      "resolved_at": "2026-08-11T08:45:00+00:00",
+      "commit": "de0427dd1cf0cae731eabd2b3c8579c83d789199",
+      "committed_at": "2026-08-12T08:47:35+00:00",
+      "resolved_at": "2026-08-12T13:31:17+00:00",
+      "resolved_age_hours": 4.73,
       "newer_revision_available": false,
       "resolution_policy": "moving main resolved to immutable latest verified commit",
       "role": "enrichment_data",
