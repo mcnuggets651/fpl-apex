@@ -106,3 +106,41 @@ def test_matching_old_contract_is_replaced_when_canonical_step_failed(tmp_path):
     payload = json.loads((generated / "apex_recommendation_latest.json").read_text())
     assert payload["ready_to_act"] is False
     assert payload["recommendation"] is None
+
+
+def test_current_pinnacle_blockers_are_preserved_in_canonical_not_ready(tmp_path):
+    generated = tmp_path / "generated"
+    bundle = generated / "decision_bundle"
+    archive = tmp_path / "history"
+    bundle.mkdir(parents=True)
+    (bundle / "manifest.json").write_text(
+        json.dumps({"bundle_id": "fresh", "created_at": "2026-08-12T09:14:00+00:00"})
+    )
+    (generated / "pinnacle_latest.json").write_text(
+        json.dumps(
+            {
+                "decision_bundle_id": "fresh",
+                "pinnacle_ready": False,
+                "pinnacle_gate": {"blockers": ["Core coverage is incomplete"]},
+            }
+        )
+    )
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--output-dir",
+            str(generated),
+            "--bundle-dir",
+            str(bundle),
+            "--archive-dir",
+            str(archive),
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    payload = json.loads((generated / "apex_recommendation_latest.json").read_text())
+    assert "Core coverage is incomplete" in payload["blockers"]
+    assert (generated / "pinnacle_latest.json").exists()
