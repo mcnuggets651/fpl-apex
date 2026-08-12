@@ -1,0 +1,21 @@
+{
+  "contract": "apex-production-run-v1",
+  "run_id": "31604662219",
+  "generated_at": "2026-08-12T14:05:31.922795+00:00",
+  "status": "not_ready",
+  "decision_bundle_id": "527ac0507b4b70afd38ed64398da1cda0bd4e613edec71f9309782aa396c238b",
+  "official_snapshot": {
+    "snapshot_id": "20260812T140521Z-44aa14b3",
+    "bootstrap_sha256": "11b31d259b67332e4972818c751f5bc114161e4a2d8c8773d6792b478a5940f1",
+    "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
+  },
+  "blockers": [
+    "Apex Unified production run did not complete canonical assembly",
+    "required independent solver parity snapshot is not embedded"
+  ],
+  "rejected_stale_diagnostics": {
+    "solver_parity.json": "c68d994b154e71908b77073071d7957d4b07394db6625524efdca3041a014dab",
+    "elite_latest.json": "e3fcaac2938d10eaa67b2487323f7e6af22b131c7de9cce10c57d78374f502bd"
+  },
+  "manifest_sha256": "5ffbf926f9392e08f18b74ab316d1b5943541d27fc3bee0e93e6899b47cb6213"
+}
