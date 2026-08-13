@@ -23,3 +23,25 @@ def test_forecast_uncertainty_excludes_match_outcome_variance():
     ).iloc[0]
     assert out["projection_sd"] >= 10.0
     assert out["forecast_uncertainty_sd"] < 2.0
+
+
+def test_risk_is_diagnostic_and_cannot_lower_canonical_expected_points():
+    df = pd.DataFrame(
+        [{
+            "apex_xp": 7.0,
+            "official_xp": 7.0,
+            "apex_sd": 4.0,
+            "minutes_confidence": 0.35,
+            "role_confidence": 0.35,
+        }]
+    )
+    out = blend_projection(
+        df,
+        {"apex_model": 0.5, "official_ep": 0.5},
+        0.20,
+    ).iloc[0]
+    assert out["xp"] == 7.0
+    assert out["canonical_ev_xp"] == 7.0
+    assert out["risk_adjusted_xp"] == 7.0
+    assert out["downside_adjusted_xp"] < 7.0
+    assert out["projection_confidence"] < 1.0
