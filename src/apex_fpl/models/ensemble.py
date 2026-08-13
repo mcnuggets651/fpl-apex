@@ -133,18 +133,22 @@ def blend_projection(
     # Exact additive contribution of every configured expert to canonical xp.
     # Missing experts contribute zero. If no expert is available, the existing
     # fallback remains the transparent Apex model and is attributed accordingly.
-    for key in EXPERT_COLUMNS:
+    for key, column in EXPERT_COLUMNS.items():
         contrib = np.zeros(n, dtype=float)
         effective_weight = np.zeros(n, dtype=float)
+        source_present = np.zeros(n, dtype=bool)
         if key in expert_values:
             values = expert_values[key]
-            valid = np.isfinite(values) & (denominator > 0)
+            source_present = np.isfinite(values)
+            valid = source_present & (denominator > 0)
             effective_weight[valid] = (
                 expert_weights[key] / np.maximum(denominator[valid], 1e-12)
             )
             contrib[valid] = values[valid] * effective_weight[valid]
         out[f"xp_expert_{key}"] = contrib
         out[f"effective_weight_{key}"] = effective_weight
+        out[f"configured_weight_{key}"] = max(float(weights.get(key, 0.0)), 0.0)
+        out[f"source_present_{key}"] = source_present
     no_expert = denominator <= 0
     if np.any(no_expert):
         out.loc[no_expert, "xp_expert_apex_model"] = fallback[no_expert]
