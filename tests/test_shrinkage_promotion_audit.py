@@ -37,7 +37,7 @@ def test_parity_shadow_reconstructs_production_preseason_blend() -> None:
             "preseason_xa90": 0.1,
         }
     ])
-    pre_weight = 0.35 * 0.5
+    pre_weight = 0.35
     model_xg = 1.0 * (1 - pre_weight) + 0.5 * pre_weight
     model_xa = 0.2 * (1 - pre_weight) + 0.1 * pre_weight
     projections = pd.DataFrame([
