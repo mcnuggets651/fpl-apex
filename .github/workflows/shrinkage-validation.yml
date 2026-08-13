@@ -6,7 +6,10 @@ on:
     paths:
       - "src/apex_fpl/models/shrinkage.py"
       - "scripts/validate_shrinkage_continuous.py"
+      - "scripts/shrinkage_shadow_surface.py"
+      - "scripts/audit_shrinkage_promotion.py"
       - "tests/test_shrinkage.py"
+      - "tests/test_shrinkage_promotion_audit.py"
       - "docs/SHRINKAGE_VALIDATION_V2.md"
       - "docs/evidence/shrinkage_validation_v2_summary.json"
       - ".github/workflows/shrinkage-validation.yml"
@@ -17,17 +20,17 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install Apex test environment
-        run: pip install -e '.[dev]'
+      - name: Install Apex + genuine AIrsenal worker
+        run: pip install -e '.[dev,airsenal]'
       - name: Unit tests
-        run: pytest -q tests/test_shrinkage.py
+        run: pytest -q tests/test_shrinkage.py tests/test_shrinkage_promotion_audit.py
       - name: Continuous-evidence chronological validation
         id: calibration
         continue-on-error: true
@@ -36,15 +39,45 @@ jobs:
             --window-gws 4 \
             --force \
             --output reports/shrinkage_validation.json
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/airsenal.db
+          key: airsenal-2627-${{ runner.os }}-v3
+      - name: Refresh genuine AIrsenal forecasts
+        env:
+          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
+        run: |
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            airsenal_setup_initial_db --fpl_team_id 1
+          fi
+          python scripts/update_airsenal_worker.py
+          python scripts/run_airsenal_worker.py \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output data/generated/airsenal.csv
+      - name: Live raw-vs-shrunk exact decision audit
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/audit_shrinkage_promotion.py \
+            --horizon 8 \
+            --force \
+            --output-dir reports/shrinkage_promotion
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: shrinkage-validation-${{ github.run_id }}
-          path: reports/shrinkage_validation.json
+          path: |
+            reports/shrinkage_validation.json
+            reports/shrinkage_promotion/
           retention-days: 90
-      - name: Enforce shadow evidence gate
+      - name: Enforce historical shadow evidence gate
         if: steps.calibration.outcome != 'success'
         run: |
           echo "Continuous-evidence shrinkage did not pass the chronological shadow gate."
-          echo "Inspect the artifact; production activation is never authorised by this workflow."
+          echo "Inspect the artifact; live use is not authorised by this workflow."
           exit 1
