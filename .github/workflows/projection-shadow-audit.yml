@@ -10,8 +10,10 @@ on:
       - "src/apex_fpl/services/decision_eligibility.py"
       - "src/apex_fpl/services/projection_audit.py"
       - "scripts/run_projection_audit.py"
+      - "scripts/audit_projection_truth.py"
       - "scripts/audit_max_ev_policy.py"
       - "tests/test_projection_audit.py"
+      - "tests/test_projection_truth_audit.py"
       - "tests/test_minute_states.py"
       - ".github/workflows/projection-shadow-audit.yml"
 
@@ -34,6 +36,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_projection_audit.py \
+            tests/test_projection_truth_audit.py \
             tests/test_minute_states.py \
             tests/test_evidence_eligibility.py \
             tests/test_player_evidence.py \
@@ -66,6 +69,17 @@ jobs:
             --horizon 8 \
             --force \
             --output-dir reports/projection_audit
+      - name: Run projection truth audit
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/audit_projection_truth.py \
+            --horizon 8 \
+            --force \
+            --output-dir reports/projection_truth
       - name: Run same-surface max-EV policy audit
         env:
           APEX_SEASON: "2026-2027"
@@ -83,6 +97,7 @@ jobs:
           name: projection-shadow-audit-${{ github.run_id }}
           path: |
             reports/projection_audit/
+            reports/projection_truth/
             reports/max_ev_policy_audit.json
             reports/team_goal_ratings.csv
             reports/team_goal_surface.csv
