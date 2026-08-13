@@ -61,11 +61,12 @@ def fixture_multipliers(
 ) -> pd.DataFrame:
     """Create per-team/per-fixture attack, defence and clean-sheet priors.
 
-    Official FPL home/away attack/defence ratings remain the base because they are
-    part of the live canonical feed. When current FPL Core Elo values reconcile to
-    the same official team IDs, Apex applies a deliberately modest independent Elo
-    adjustment. A 400-point Elo advantage changes expected goals by roughly 15%,
-    preventing Elo from overpowering the official-strength signal.
+    Official FPL home/away attack/defence ratings remain the base when they are
+    usable. Reconciled FPL Core Elo is a deliberately modest fallback adjustment
+    to that native/neutral goal surface. A validated external team-goal surface is
+    already a complete expected-goals model, so Elo is not multiplied into it;
+    any Understat/Elo hybrid must be explicitly calibrated and constructed as its
+    own surface rather than created accidentally by double-counting evidence.
     """
     cols = [
         "team",
@@ -163,7 +164,8 @@ def fixture_multipliers(
 
         home_prior = team_goals.get((gw, home, away, True))
         away_prior = team_goals.get((gw, away, home, False))
-        if home_prior is not None and away_prior is not None:
+        external_surface = home_prior is not None and away_prior is not None
+        if external_surface:
             home_lambda = float(home_prior["expected_team_goals"])
             away_lambda = float(away_prior["expected_team_goals"])
             team_goal_source = str(
@@ -183,10 +185,10 @@ def fixture_multipliers(
         home_elo, away_elo = np.nan, np.nan
         home_elo_mult, away_elo_mult = 1.0, 1.0
         found = elo.get((gw, home, away, True))
-        if found:
+        if found and not external_surface:
             home_elo, away_elo = found
-            # Elo is useful independent evidence, but should not dominate FPL's
-            # own live strength ratings. The 0.45 exponent shrinks the raw factor.
+            # Elo is useful independent evidence, but should not dominate the
+            # native/neutral fixture prior. The 0.45 exponent shrinks the factor.
             raw = float(np.clip(math.exp((home_elo - away_elo) / 1200.0), 0.72, 1.38))
             home_elo_mult = raw**0.45
             away_elo_mult = (1.0 / raw) ** 0.45
