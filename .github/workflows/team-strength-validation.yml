@@ -6,8 +6,11 @@ on:
     paths:
       - "src/apex_fpl/models/team_goals.py"
       - "src/apex_fpl/data/understat.py"
+      - "src/apex_fpl/data/core_insights.py"
       - "scripts/validate_team_strength.py"
       - "scripts/validate_team_strength_blend.py"
+      - "scripts/validate_fixture_fallback_selection.py"
+      - "tests/test_fixture_elo.py"
       - ".github/workflows/team-strength-validation.yml"
 
 permissions:
@@ -30,21 +33,20 @@ jobs:
           ruff check \
             scripts/validate_team_strength.py \
             scripts/validate_team_strength_blend.py \
+            scripts/validate_fixture_fallback_selection.py \
             src/apex_fpl/models/team_goals.py \
-            src/apex_fpl/data/understat.py
-      - name: Replacement evidence
-        id: replacement
-        continue-on-error: true
-        run: python scripts/validate_team_strength.py --output reports/team_strength_validation.json
-      - name: Combination evidence
-        run: python scripts/validate_team_strength_blend.py --output reports/team_strength_blend_validation.json
+            src/apex_fpl/data/understat.py \
+            src/apex_fpl/data/core_insights.py \
+            tests/test_fixture_elo.py
+      - name: Elo reconciliation regression
+        run: pytest -q tests/test_fixture_elo.py
+      - name: Clean fallback selection evidence
+        run: python scripts/validate_fixture_fallback_selection.py --output reports/fixture_fallback_selection.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: team-strength-validation-${{ github.run_id }}
-          path: |
-            reports/team_strength_validation.json
-            reports/team_strength_blend_validation.json
+          path: reports/fixture_fallback_selection.json
           retention-days: 30
       - name: Enforce evidence integrity
         run: |
@@ -52,13 +54,11 @@ jobs:
           import json
           from pathlib import Path
 
-          replacement = json.loads(Path('reports/team_strength_validation.json').read_text())
-          blend = json.loads(Path('reports/team_strength_blend_validation.json').read_text())
-          assert replacement['challenger_validated_vs_neutral_fallback'] is True
-          assert replacement['production_elo_head_to_head_2025_26']['n_matches'] >= 300
-          assert blend['holdout_n_matches'] >= 150
-          assert blend['blend_candidate_ready_for_shadow_integration'] is True
-          assert replacement['production_changed'] is False
-          assert blend['production_changed'] is False
-          print('Evidence generated successfully; production promotion remains a report-level decision.')
+          report = json.loads(Path('reports/fixture_fallback_selection.json').read_text())
+          assert report['production_changed'] is False
+          assert report['core_scope'] == 'Premier League only; cup rows explicitly excluded'
+          assert report['understat_vs_neutral_replacement']['n_matches'] >= 700
+          assert report['epl_elo_understat_overlap_2025_26'] >= 300
+          assert report['untouched_holdout']['n_matches'] >= 150
+          print('Clean no-hindsight fallback evidence generated; production promotion remains gated by the report result.')
           PY
