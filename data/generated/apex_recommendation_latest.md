@@ -1,9 +1,11 @@
 # Apex Unified Recommendation — NOT READY
 
-Generated: 2026-08-12T21:28:17.027842+00:00
+Generated: 2026-08-13T06:06:37.570006+00:00
 
-The unified engine withheld a team because the canonical gate is blocked:
+The production run stopped before canonical assembly:
 
-- Pinnacle decision-readiness gate is not green
-- independent solver squad parity is below 12/15
-- independent solver XI parity is below 9/11
+- Apex Unified production run did not complete canonical assembly
+- data quality failed: official_team_strength: 20/20 teams contain zero/non-positive strength values; no validated fallback fixture model is active
+- data quality failed: fpl_core_playerstats: official-player coverage=0.0%
+- required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (21.3h old; max 18.0h)
+- required source unhealthy: fixture_model: official strength unavailable (20/20 teams contain zero/non-positive strength values); reconciled Elo coverage is incomplete (0/160)
