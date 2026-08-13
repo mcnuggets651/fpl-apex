@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "config/apex.yaml"
+      - "src/apex_fpl/models/fixtures.py"
       - "src/apex_fpl/models/team_goals.py"
       - "src/apex_fpl/data/understat.py"
       - "src/apex_fpl/data/core_insights.py"
@@ -11,6 +13,7 @@ on:
       - "scripts/validate_team_strength_blend.py"
       - "scripts/validate_fixture_fallback_selection.py"
       - "tests/test_fixture_elo.py"
+      - "docs/evidence/fixture_fallback_selection_*.json"
       - ".github/workflows/team-strength-validation.yml"
 
 permissions:
@@ -34,11 +37,12 @@ jobs:
             scripts/validate_team_strength.py \
             scripts/validate_team_strength_blend.py \
             scripts/validate_fixture_fallback_selection.py \
+            src/apex_fpl/models/fixtures.py \
             src/apex_fpl/models/team_goals.py \
             src/apex_fpl/data/understat.py \
             src/apex_fpl/data/core_insights.py \
             tests/test_fixture_elo.py
-      - name: Elo reconciliation regression
+      - name: Elo and fixture-surface regressions
         run: pytest -q tests/test_fixture_elo.py
       - name: Clean fallback selection evidence
         run: python scripts/validate_fixture_fallback_selection.py --output reports/fixture_fallback_selection.json
@@ -48,7 +52,7 @@ jobs:
           name: team-strength-validation-${{ github.run_id }}
           path: reports/fixture_fallback_selection.json
           retention-days: 30
-      - name: Enforce evidence integrity
+      - name: Enforce promotion evidence
         run: |
           python - <<'PY'
           import json
@@ -58,7 +62,8 @@ jobs:
           assert report['production_changed'] is False
           assert report['core_scope'] == 'Premier League only; cup rows explicitly excluded'
           assert report['understat_vs_neutral_replacement']['n_matches'] >= 700
+          assert report['understat_vs_neutral_replacement']['pass'] is True
           assert report['epl_elo_understat_overlap_2025_26'] >= 300
           assert report['untouched_holdout']['n_matches'] >= 150
-          print('Clean no-hindsight fallback evidence generated; production promotion remains gated by the report result.')
+          print('Understat replacement gate passed on clean no-hindsight evidence; live hybrid remains conditional on complete EPL Elo.')
           PY
