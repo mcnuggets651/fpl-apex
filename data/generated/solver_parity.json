@@ -22,45 +22,35 @@
   "external_squad": [
     57,
     68,
-    82,
     94,
     106,
+    109,
     113,
     155,
-    248,
-    356,
     388,
-    397,
     411,
+    426,
     427,
     445,
-    508
+    466,
+    508,
+    534
   ],
-  "squad_overlap": 11,
-  "squad_overlap_pct": 0.7333333333333333,
-  "xi_overlap": 8,
-  "xi_overlap_pct": 0.7272727272727273,
+  "squad_overlap": 15,
+  "squad_overlap_pct": 1.0,
+  "xi_overlap": 11,
+  "xi_overlap_pct": 1.0,
   "apex_captain": 411,
   "external_captain": 411,
   "captain_agrees": true,
-  "only_apex": [
-    109,
-    426,
-    466,
-    534
-  ],
-  "only_external": [
-    82,
-    248,
-    356,
-    397
-  ],
-  "decision_bundle_id": "1d950604a37bfc7b18044296170a0b0f18246e284a262e34cfe6beedf934f53d",
+  "only_apex": [],
+  "only_external": [],
+  "decision_bundle_id": "daaacef75a42fa2476d2f2fce6f94fa329b5e0f5ca4d1cef7675ac59e42c632a",
   "official_snapshot": {
-    "snapshot_id": "20260812T212803Z-43a02888",
-    "bootstrap_sha256": "4e370094171513455e1e58dd9fa11ad2963cad89c8d1a16c3dcf6a4df27d960b",
+    "snapshot_id": "20260813T082001Z-bde8d83c",
+    "bootstrap_sha256": "61f61f2cf09b7260c60b3605308191071e886375d7dc61ba8f36c8e09ae81777",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "projection_export_sha256": "c1fa9c70f33092c3694f6c415a76a42c45ba9a2fc09cb3e5055076f13a5f75e7",
-  "external_solver_result_sha256": "b1a97d88a93f420e8847e9a5296a49ab52c5b1b86df0f00fd77451ccbd6d6c72"
+  "projection_export_sha256": "3722b213a1b88c6c8bb2d8175fb0b7f0e2dce9d6424c83827923f7f65e351194",
+  "external_solver_result_sha256": "ecfdc034796eac52a34b173530688ac5ecf09ac559526fb77bd1c77e1dbb913a"
 }
