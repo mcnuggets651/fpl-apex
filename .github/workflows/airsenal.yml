@@ -56,30 +56,6 @@ jobs:
           cd workers/airsenal
           uv sync
 
-      - name: Resolve live eight-Gameweek horizon
-        id: horizon
-        shell: bash
-        run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import urllib.request
-
-          req = urllib.request.Request(
-              "https://fantasy.premierleague.com/api/bootstrap-static/",
-              headers={"User-Agent": "apex-fpl-airsenal-worker/1.0"},
-          )
-          with urllib.request.urlopen(req, timeout=30) as response:
-              data = json.load(response)
-          unfinished = [int(e["id"]) for e in data["events"] if not e.get("finished", False)]
-          if not unfinished:
-              raise SystemExit("No unfinished FPL Gameweeks remain")
-          start = min(unfinished)
-          end = min(38, start + 7)
-          print(f"start={start}")
-          print(f"end={end}")
-          print("gameweeks=" + ",".join(str(gw) for gw in range(start, end + 1)))
-          PY
-
       - name: Build/update AIrsenal database and forecasts
         env:
           AIRSENAL_HOME: ${{ github.workspace }}/.airsenal
@@ -112,21 +88,13 @@ jobs:
             "$AIRSENAL_DB_FILE" \
             workers/airsenal
 
+          # Use the canonical wrapper for live horizon resolution, exclusive-end
+          # AIrsenal semantics, official-ID export and horizon-completeness checks.
           cd workers/airsenal
-          uv run airsenal_run_prediction \
-            --gameweek_start "${{ steps.horizon.outputs.start }}" \
-            --gameweek_end "${{ steps.horizon.outputs.end }}"
-
-      - name: Export genuine AIrsenal forecast by official FPL ID
-        env:
-          AIRSENAL_DB_FILE: ${{ github.workspace }}/.airsenal/data.db
-          AIRSENAL_SOURCE_VERSION: ${{ steps.pin.outputs.sha }}
-        shell: bash
-        run: |
-          python scripts/export_airsenal.py \
-            "$AIRSENAL_DB_FILE" \
-            LATEST \
-            data/generated/airsenal.csv
+          uv run python "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py" \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output "$GITHUB_WORKSPACE/data/generated/airsenal.csv"
 
       - name: Install and validate Apex integration
         shell: bash
