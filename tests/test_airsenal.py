@@ -274,3 +274,47 @@ def test_worker_runs_prediction_then_official_id_export(tmp_path: Path, monkeypa
     assert calls[0][1] is True and calls[1][1] is True
     assert calls[0][2]["AIRSENAL_DB_FILE"] == str(db_path.resolve())
     assert calls[0][2]["AIRSENAL_SOURCE_VERSION"] == PIN
+
+
+def test_worker_uses_exclusive_end_at_season_boundary(tmp_path: Path, monkeypatch):
+    worker = _worker_module()
+    db_path = tmp_path / "airsenal.db"
+    db_path.write_bytes(b"database")
+    output = tmp_path / "airsenal.csv"
+    calls = []
+
+    monkeypatch.setattr(worker, "_official_horizon", lambda horizon: ([37, 38], {999}))
+
+    def fake_run(command, *, check, env):
+        calls.append((command, check, env))
+        if command[0] == sys.executable:
+            pd.DataFrame(
+                [
+                    {"player_id": 999, "gw": 37, "xp": 6.5},
+                    {"player_id": 999, "gw": 38, "xp": 6.0},
+                ]
+            ).to_csv(output, index=False)
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_airsenal_worker.py",
+            "--db",
+            str(db_path),
+            "--horizon",
+            "8",
+            "--output",
+            str(output),
+        ],
+    )
+    worker.main()
+
+    assert calls[0][0] == [
+        "airsenal_run_prediction",
+        "--gameweek_start",
+        "37",
+        "--gameweek_end",
+        "39",
+    ]
