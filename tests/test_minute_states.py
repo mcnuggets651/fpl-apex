@@ -17,15 +17,15 @@ def test_minute_states_are_mutually_exclusive_and_expectation_preserving():
         [0.25],
     )
     row = states.iloc[0]
-    assert abs(float(row.sum()) - 1.0) < 1e-12
-    assert row["minutes_state_p0"] == 0.15
-    assert row["minutes_state_p1_29"] == 0.15
-    assert row["minutes_state_p30_59"] == 0.10
-    assert row["minutes_state_p60_79"] == 0.35
-    assert row["minutes_state_p80_90"] == 0.25
-    # Old appearance formula p_app + p60 is exactly preserved.
-    assert abs(expected_appearance_points(states)[0] - 1.45) < 1e-12
-    assert abs(clean_sheet_eligibility_probability(states)[0] - 0.60) < 1e-12
+    assert np.isclose(float(row.sum()), 1.0)
+    assert np.isclose(row["minutes_state_p0"], 0.15)
+    assert np.isclose(row["minutes_state_p1_29"], 0.15)
+    assert np.isclose(row["minutes_state_p30_59"], 0.10)
+    assert np.isclose(row["minutes_state_p60_79"], 0.35)
+    assert np.isclose(row["minutes_state_p80_90"], 0.25)
+    # Old appearance formula p_app + p60 is exactly preserved in expectation.
+    assert np.isclose(expected_appearance_points(states)[0], 1.45)
+    assert np.isclose(clean_sheet_eligibility_probability(states)[0], 0.60)
 
 
 def test_minutes_profile_publishes_state_surface_without_changing_expected_minutes():
