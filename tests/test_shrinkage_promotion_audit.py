@@ -4,19 +4,20 @@ import importlib.util
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 
-def helper_module():
-    path = Path(__file__).parents[1] / "scripts" / "shrinkage_shadow_surface.py"
-    spec = importlib.util.spec_from_file_location("shrinkage_shadow_surface", path)
+def load_module(name: str, filename: str):
+    path = Path(__file__).parents[1] / "scripts" / filename
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_shadow_replaces_only_apex_weighted_attack_contribution() -> None:
-    module = helper_module()
+def test_parity_shadow_reconstructs_production_preseason_blend() -> None:
+    module = load_module("shrinkage_shadow_parity", "shrinkage_shadow_parity.py")
     players = pd.DataFrame([
         {
             "player_id": 1,
@@ -27,48 +28,68 @@ def test_shadow_replaces_only_apex_weighted_attack_contribution() -> None:
             "previous_minutes": 90.0,
             "expected_goals_per_90": 1.0,
             "previous_expected_goals_per_90": 1.0,
-            "expected_assists_per_90": 0.0,
-            "previous_expected_assists_per_90": 0.0,
+            "expected_assists_per_90": 0.2,
+            "previous_expected_assists_per_90": 0.2,
             "defensive_contribution_per_90": 0.0,
             "previous_defensive_contribution_per_90": 0.0,
+            "preseason_minutes": 135.0,
+            "preseason_xg90": 0.5,
+            "preseason_xa90": 0.1,
+        }
+    ])
+    pre_weight = 0.35 * 0.5
+    model_xg = 1.0 * (1 - pre_weight) + 0.5 * pre_weight
+    model_xa = 0.2 * (1 - pre_weight) + 0.1 * pre_weight
+    projections = pd.DataFrame([
+        {
+            "player_id": 1,
+            "gw": 1,
+            "model_xg90": model_xg,
+            "model_xa90": model_xa,
+            "xp_attack": 4.0,
+            "apex_xp": 6.0,
+            "xp": 5.0,
+            "xp_expert_apex_model": 3.0,
+            "effective_weight_apex_model": 0.5,
+        }
+    ])
+    audit, shadow = module.parity_shadow(projections, players)
+    assert abs(audit.loc[0, "raw_model_xg90"] - model_xg) < 1e-12
+    assert abs(audit.loc[0, "raw_model_xa90"] - model_xa) < 1e-12
+    assert "shrunk_blended_xp_v2" in shadow.columns
+
+
+def test_parity_shadow_fails_when_reconstructed_rate_differs_from_production() -> None:
+    module = load_module("shrinkage_shadow_parity", "shrinkage_shadow_parity.py")
+    players = pd.DataFrame([
+        {
+            "player_id": 1,
+            "web_name": "Example",
+            "position": "MID",
+            "price": 5.5,
+            "minutes": 0.0,
+            "previous_minutes": 90.0,
+            "expected_goals_per_90": 1.0,
+            "previous_expected_goals_per_90": 1.0,
+            "expected_assists_per_90": 0.2,
+            "previous_expected_assists_per_90": 0.2,
+            "defensive_contribution_per_90": 0.0,
+            "previous_defensive_contribution_per_90": 0.0,
+            "preseason_minutes": 0.0,
         }
     ])
     projections = pd.DataFrame([
         {
             "player_id": 1,
             "gw": 1,
-            "model_xg90": 1.0,
-            "model_xa90": 0.0,
-            "xp_attack": 5.0,
-            "apex_xp": 7.0,
-            "xp": 6.0,
-            "xp_expert_apex_model": 3.5,
+            "model_xg90": 0.7,
+            "model_xa90": 0.2,
+            "xp_attack": 4.0,
+            "apex_xp": 6.0,
+            "xp": 5.0,
+            "xp_expert_apex_model": 3.0,
             "effective_weight_apex_model": 0.5,
         }
     ])
-    _, audit, shadow = module.build_shadow(projections, players)
-    assert audit.loc[0, "shrunk_xg90"] < audit.loc[0, "raw_xg90"]
-    assert shadow.loc[0, "shrunk_apex_xp"] < shadow.loc[0, "raw_apex_xp"]
-    expected = 6.0 - 3.5 + 0.5 * shadow.loc[0, "shrunk_apex_xp"]
-    assert abs(shadow.loc[0, "shrunk_blended_xp"] - expected) < 1e-9
-
-
-def test_horizon_gap_marks_low_evidence_player() -> None:
-    module = helper_module()
-    shadow = pd.DataFrame([
-        {"player_id": 1, "gw": 1, "raw_apex_xp": 5.0, "shrunk_apex_xp": 3.0, "airsenal_xp": 2.0},
-        {"player_id": 1, "gw": 2, "raw_apex_xp": 5.0, "shrunk_apex_xp": 3.0, "airsenal_xp": 2.0},
-    ])
-    audit = pd.DataFrame([
-        {
-            "player_id": 1,
-            "web_name": "Example",
-            "position": "MID",
-            "price": 5.5,
-            "xg90_combined_effective_evidence_minutes": 90.0,
-            "xa90_combined_effective_evidence_minutes": 90.0,
-        }
-    ])
-    gaps = module.horizon_gaps(shadow, audit, [1, 2], 1.0)
-    assert gaps.loc[0, "evidence_minutes"] == 90.0
-    assert gaps.loc[0, "shrunk_gap"] < gaps.loc[0, "raw_gap"]
+    with pytest.raises(ValueError, match="production input parity failed"):
+        module.parity_shadow(projections, players)
