@@ -7,6 +7,7 @@ on:
       - "src/apex_fpl/models/ensemble.py"
       - "src/apex_fpl/models/minute_states.py"
       - "src/apex_fpl/models/minutes.py"
+      - "src/apex_fpl/models/projection.py"
       - "src/apex_fpl/services/decision_eligibility.py"
       - "src/apex_fpl/services/projection_audit.py"
       - "scripts/run_projection_audit.py"
