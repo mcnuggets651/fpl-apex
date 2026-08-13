@@ -1,0 +1,22 @@
+{
+  "contract": "apex-production-run-v1",
+  "run_id": "31690453689",
+  "generated_at": "2026-08-13T10:20:21.993757+00:00",
+  "status": "not_ready",
+  "decision_bundle_id": "d731fe1017d4255e9d04ae6af60d6d39e66076027df321e8b344c2d500a68da5",
+  "official_snapshot": {
+    "snapshot_id": "20260813T102009Z-10862194",
+    "bootstrap_sha256": "33f01bad76b5319233af942ecbfee274a7977242af8e51ff23b4e182667472c2",
+    "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
+  },
+  "blockers": [
+    "Apex Unified production run did not complete canonical assembly",
+    "data quality failed: official_team_strength: 20/20 teams contain zero/non-positive strength values; no validated fallback fixture model is active",
+    "required source unhealthy: fixture_model: official strength unavailable (20/20 teams contain zero/non-positive strength values); reconciled Elo coverage is incomplete (2/160)"
+  ],
+  "rejected_stale_diagnostics": {
+    "solver_parity.json": "4f06a9d750456b29f00369604dde975a380ccb537e710afe7c537bbc24b38213",
+    "elite_latest.json": "e3fcaac2938d10eaa67b2487323f7e6af22b131c7de9cce10c57d78374f502bd"
+  },
+  "manifest_sha256": "ca01cae83df1919f46a480bbe1d595034f41ebe09d59569d7803362926d0334d"
+}
