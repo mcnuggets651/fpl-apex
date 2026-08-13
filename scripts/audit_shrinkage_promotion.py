@@ -11,7 +11,7 @@ from apex_fpl.config import load_settings
 from apex_fpl.optimisation.exact_decision import optimise_exact_horizon_decision
 from apex_fpl.services.decision_eligibility import captain_eligible_ids, evidence_eligibility
 from apex_fpl.services.pipeline import run_pipeline
-from shrinkage_shadow_parity import parity_shadow
+from shrinkage_shadow_parity import load_projection_evidence_players, parity_shadow
 
 
 def decision_payload(decision):
@@ -44,7 +44,6 @@ def build_gaps(shadow: pd.DataFrame, audit: pd.DataFrame, gameweeks: list[int], 
     frame["discount"] = frame["gw"].map(discounts).fillna(0.0)
     frame["raw_h"] = pd.to_numeric(frame["apex_xp"], errors="coerce").fillna(0.0) * frame["discount"]
     effective = pd.to_numeric(frame["effective_weight_apex_model"], errors="coerce").fillna(0.0)
-    old_contrib = pd.to_numeric(frame["xp_expert_apex_model"], errors="coerce").fillna(0.0)
     blended = pd.to_numeric(frame["xp"], errors="coerce").fillna(0.0)
     shrunk_blended = pd.to_numeric(frame["shrunk_blended_xp_v2"], errors="coerce").fillna(0.0)
     raw_apex = pd.to_numeric(frame["apex_xp"], errors="coerce").fillna(0.0)
@@ -71,7 +70,8 @@ def main():
 
     settings = load_settings()
     pipeline = run_pipeline(settings, horizon=args.horizon, scenario="both", force=args.force, plan_transfers=False)
-    audit, shadow = parity_shadow(pipeline.projections, pipeline.players)
+    projection_players = load_projection_evidence_players(settings)
+    audit, shadow = parity_shadow(pipeline.projections, projection_players)
 
     previous_coverage = float((pd.to_numeric(audit["previous_minutes"], errors="coerce").fillna(0.0) > 0).mean())
     evidence_coverage = float((pd.to_numeric(audit["evidence_minutes"], errors="coerce").fillna(0.0) > 0).mean())
@@ -137,6 +137,7 @@ def main():
         "eligibility_contract": eligibility,
         "notes": [
             "Production raw xG/xA must reconstruct to numerical tolerance before the shadow solve can run.",
+            "The shrinkage evidence frame is rebuilt from the same cached Official, pinned Core and preseason sources used by production.",
             "Fixtures, minutes, availability, set pieces, DEFCON, prices, source weights and exact mechanics are unchanged.",
             "Bonus is held constant so the direct attacking-return effect is isolated.",
             "AIrsenal gap reduction is diagnostic only and is not an optimisation target.",
