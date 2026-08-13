@@ -161,7 +161,10 @@ jobs:
           cp /tmp/apex.csv "$RUNNER_TEMP/open-fpl-solver/data/apex.csv"
           cd "$RUNNER_TEMP/open-fpl-solver"
           uv sync
-          uv run python run/solve.py --datasource apex --horizon 8
+          uv run python run/solve.py \
+            --config "$GITHUB_WORKSPACE/config/open_solver_parity.json" \
+            --datasource apex \
+            --horizon 8
           cd "$GITHUB_WORKSPACE"
           RESULT="$(ls -t "$RUNNER_TEMP"/open-fpl-solver/data/results/apex_*.csv | head -1)"
           python scripts/compare_solver_parity.py \
