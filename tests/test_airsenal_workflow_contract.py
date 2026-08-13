@@ -21,6 +21,17 @@ def test_production_workflows_do_not_require_a_manager_team_to_refresh_airsenal(
         assert "scripts/run_apex.py" in workflow, name
 
 
+def test_scheduled_airsenal_workflow_uses_canonical_horizon_wrapper():
+    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "airsenal.yml"
+    workflow = path.read_text(encoding="utf-8")
+
+    assert 'uv run python "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py"' in workflow
+    assert "--horizon 8" in workflow
+    assert "uv run airsenal_run_prediction" not in workflow
+    assert "Resolve live eight-Gameweek horizon" not in workflow
+    assert "Export genuine AIrsenal forecast by official FPL ID" not in workflow
+
+
 def test_unified_artifact_is_copied_before_runtime_diagnostics_are_restored():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "pinnacle.yml"
     workflow = path.read_text(encoding="utf-8")
