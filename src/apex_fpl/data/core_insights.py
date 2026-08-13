@@ -167,12 +167,14 @@ class FPLCoreClient:
         gameweeks: list[int],
         force: bool = False,
     ) -> pd.DataFrame:
-        """Return FPL-team-ID Elo context for requested fixture Gameweeks.
+        """Return FPL-team-ID Elo context for requested Premier League fixtures.
 
         FPL Core fixture files use the historical team ``code`` column (e.g.
         Arsenal=3, Man City=43), while its current ``teams.csv`` also includes
-        the official FPL ``id`` 1..20. This method performs that mapping once and
-        exposes only official FPL IDs to the rest of Apex.
+        the official FPL ``id`` 1..20. The per-Gameweek fixture files can also
+        contain cup matches. Only rows explicitly labelled ``prem`` are valid for
+        the FPL fixture surface; otherwise cup Elo can masquerade as league
+        coverage when future Premier League Elo values are still unpublished.
         """
         teams = self.teams(force=force)
         required_team_cols = {"code", "id"}
@@ -204,6 +206,10 @@ class FPLCoreClient:
                     f"FPL Core GW{gw} fixtures missing Elo columns: "
                     f"{sorted(required - set(fixtures.columns))}"
                 )
+            if "tournament" in fixtures.columns:
+                fixtures = fixtures[
+                    fixtures["tournament"].astype(str).str.casefold().eq("prem")
+                ]
             current = fixtures[
                 pd.to_numeric(fixtures["gameweek"], errors="coerce") == int(gw)
             ]
