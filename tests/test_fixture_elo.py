@@ -45,6 +45,45 @@ def test_core_elo_maps_historical_team_code_to_official_fpl_id(monkeypatch):
     assert away["team_elo"] == 1660
 
 
+def test_core_elo_excludes_cup_rows_from_gameweek_files(monkeypatch):
+    client = FPLCoreClient(DummyHttp(), "2026-2027", ref="pin")
+
+    def fake_csv(name: str, force: bool = False):
+        if name == "teams.csv":
+            return pd.DataFrame(
+                [
+                    {"code": 17, "id": 18, "name": "Nottingham Forest"},
+                    {"code": 2, "id": 13, "name": "Leeds"},
+                ]
+            )
+        if name == "By Gameweek/GW2/fixtures.csv":
+            return pd.DataFrame(
+                [
+                    {
+                        "gameweek": 2,
+                        "home_team": 17,
+                        "home_team_elo": 1822.17,
+                        "away_team": 2,
+                        "away_team_elo": 1797.39,
+                        "tournament": "efl-cup",
+                    },
+                    {
+                        "gameweek": 2,
+                        "home_team": 17,
+                        "home_team_elo": None,
+                        "away_team": 2,
+                        "away_team_elo": None,
+                        "tournament": "prem",
+                    },
+                ]
+            )
+        raise AssertionError(name)
+
+    monkeypatch.setattr(client, "_csv", fake_csv)
+    out = client.fixture_elos([2])
+    assert out.empty
+
+
 def test_elo_strengthens_fixture_prior_without_overpowering_official_strength():
     teams = pd.DataFrame(
         [
