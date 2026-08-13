@@ -1,0 +1,120 @@
+{
+  "contract": "apex-fixture-fallback-selection-v1",
+  "production_changed": false,
+  "core_ref": "082c90d4a6245c66b26f23f04bc0cbd3a918d696",
+  "core_scope": "Premier League only; cup rows explicitly excluded",
+  "understat_config": {
+    "half_life_days": 180.0,
+    "prior_matches": 5.0
+  },
+  "understat_vs_neutral_replacement": {
+    "holdout_seasons": [2024, 2025],
+    "n_matches": 760,
+    "metrics": {
+      "n_matches": 760,
+      "challenger_xg_rmse": 0.8245522718559308,
+      "baseline_xg_rmse": 0.912983095058295,
+      "xg_rmse_ratio": 0.903140787949948,
+      "challenger_clean_sheet_brier": 0.1767655111795585,
+      "baseline_clean_sheet_brier": 0.1853614074099512,
+      "challenger_goal_poisson_nll": 1.467462494560321,
+      "baseline_goal_poisson_nll": 1.5052295288067057,
+      "xg_squared_error_delta_bootstrap": {
+        "n_matches": 760,
+        "mean_delta": -0.3073033656788939,
+        "ci95_low": -0.3986471231715571,
+        "ci95_high": -0.21828089067464967
+      },
+      "clean_sheet_brier_delta_bootstrap": {
+        "n_matches": 760,
+        "mean_delta": -0.017191792460785425,
+        "ci95_low": -0.02413158073786413,
+        "ci95_high": -0.010574669022928971
+      },
+      "goal_nll_delta_bootstrap": {
+        "n_matches": 760,
+        "mean_delta": -0.07553406849276893,
+        "ci95_low": -0.1090768753848284,
+        "ci95_high": -0.04297145936737578
+      }
+    },
+    "pass": true
+  },
+  "epl_elo_understat_overlap_2025_26": 380,
+  "hybrid_calibration": {
+    "gws": "1-19",
+    "grid": [0.0, 0.25, 0.5, 0.75, 1.0],
+    "selected_attack_understat_weight": 0.5,
+    "selected_clean_sheet_understat_weight": 1.0
+  },
+  "untouched_holdout": {
+    "gws": "20-38",
+    "n_matches": 190,
+    "metrics": {
+      "understat": {
+        "xg_rmse": 0.7035610399861956,
+        "clean_sheet_brier": 0.17818015329804196,
+        "goal_poisson_nll": 1.4496329585876873
+      },
+      "elo": {
+        "xg_rmse": 0.7046380766790615,
+        "clean_sheet_brier": 0.18157004714684885,
+        "goal_poisson_nll": 1.4406068785645634
+      },
+      "component": {
+        "xg_rmse": 0.6841823739897446,
+        "clean_sheet_brier": 0.17818015329804196,
+        "goal_poisson_nll": 1.4376289085133411
+      }
+    },
+    "comparisons": {
+      "component_vs_understat": {
+        "xg_squared_error_delta_bootstrap": {
+          "n_matches": 190,
+          "mean_delta": -0.053785232216429134,
+          "ci95_low": -0.10119229115899997,
+          "ci95_high": -0.006252701109725902
+        },
+        "clean_sheet_brier_delta_bootstrap": {
+          "n_matches": 190,
+          "mean_delta": 0.0,
+          "ci95_low": 0.0,
+          "ci95_high": 0.0
+        },
+        "goal_nll_delta_bootstrap": {
+          "n_matches": 190,
+          "mean_delta": -0.024008100148691546,
+          "ci95_low": -0.04482350948870678,
+          "ci95_high": -0.003717446533257229
+        }
+      },
+      "component_vs_elo": {
+        "xg_squared_error_delta_bootstrap": {
+          "n_matches": 190,
+          "mean_delta": -0.05681859645544885,
+          "ci95_low": -0.10704005118846847,
+          "ci95_high": -0.007946296493896065
+        },
+        "clean_sheet_brier_delta_bootstrap": {
+          "n_matches": 190,
+          "mean_delta": -0.006779787697613774,
+          "ci95_low": -0.018346890003814103,
+          "ci95_high": 0.004425769231193136
+        },
+        "goal_nll_delta_bootstrap": {
+          "n_matches": 190,
+          "mean_delta": -0.005955940102444371,
+          "ci95_low": -0.028529790336916175,
+          "ci95_high": 0.01614229224588518
+        }
+      }
+    },
+    "hybrid_metric_dominance": true,
+    "historical_choice": "component_hybrid"
+  },
+  "live_selection": {
+    "selected": "understat_time_decay_v1",
+    "reason": "Validated pure Understat replacement is live-operational; current Premier League Elo coverage is absent after cup rows are excluded, so the historically stronger hybrid is not live-safe yet.",
+    "hybrid_deferred_until_complete_live_epl_elo": true
+  }
+}
