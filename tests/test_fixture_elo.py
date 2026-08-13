@@ -135,6 +135,74 @@ def test_elo_strengthens_fixture_prior_without_overpowering_official_strength():
     assert elo_home["team_elo"] == 2050
 
 
+def test_external_team_goal_surface_is_not_multiplied_by_elo():
+    teams = pd.DataFrame(
+        [
+            {"id": 1, "strength": 0},
+            {"id": 2, "strength": 0},
+        ]
+    )
+    fixtures = pd.DataFrame([{"event": 1, "team_h": 1, "team_a": 2}])
+    surface = pd.DataFrame(
+        [
+            {
+                "gw": 1,
+                "team": 1,
+                "opponent": 2,
+                "is_home": True,
+                "expected_team_goals": 2.0,
+                "expected_goals_against": 0.8,
+                "clean_sheet_prob": 0.45,
+                "team_goal_source": "validated_understat",
+            },
+            {
+                "gw": 1,
+                "team": 2,
+                "opponent": 1,
+                "is_home": False,
+                "expected_team_goals": 0.8,
+                "expected_goals_against": 2.0,
+                "clean_sheet_prob": 0.14,
+                "team_goal_source": "validated_understat",
+            },
+        ]
+    )
+    elos = pd.DataFrame(
+        [
+            {
+                "gw": 1,
+                "team": 1,
+                "opponent": 2,
+                "is_home": True,
+                "team_elo": 2050,
+                "opponent_elo": 1650,
+            },
+            {
+                "gw": 1,
+                "team": 2,
+                "opponent": 1,
+                "is_home": False,
+                "team_elo": 1650,
+                "opponent_elo": 2050,
+            },
+        ]
+    )
+    out = fixture_multipliers(
+        fixtures,
+        teams,
+        [1],
+        core_elos=elos,
+        use_official_strength=False,
+        team_goal_surface=surface,
+    )
+    home = out[out.team == 1].iloc[0]
+    away = out[out.team == 2].iloc[0]
+    assert home["expected_team_goals"] == 2.0
+    assert away["expected_team_goals"] == 0.8
+    assert home["elo_multiplier"] == 1.0
+    assert pd.isna(home["team_elo"])
+
+
 def test_zeroed_official_strength_uses_neutral_goal_baseline_not_lower_clip():
     teams = pd.DataFrame(
         [
