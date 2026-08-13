@@ -6,13 +6,14 @@ import pandas as pd
 from apex_fpl.data.news import TRUSTED_SOURCE_TIERS
 
 
-# Prospective 2026/27 evidence floors. These are deliberately shared by the
-# optimisers and the publication gate: an ineligible captain must never be
-# allowed to win a solve and then be rejected only after the fact.
-MIN_CAPTAIN_EXPECTED_MINUTES = 60.0
-MIN_CAPTAIN_START_PROBABILITY = 0.50
-MIN_CAPTAIN_APPEARANCE_PROBABILITY = 0.75
-MIN_CAPTAIN_PROJECTION_CONFIDENCE = 0.40
+# Compatibility symbols retained for existing readiness/report consumers. They are
+# intentionally zero: quantitative uncertainty is not a hard captain floor. Expected
+# minutes/availability already reduce xP, and exact captain/vice mechanics price
+# no-show fallback. Only attributable adverse evidence can exclude pre-solve.
+MIN_CAPTAIN_EXPECTED_MINUTES = 0.0
+MIN_CAPTAIN_START_PROBABILITY = 0.0
+MIN_CAPTAIN_APPEARANCE_PROBABILITY = 0.0
+MIN_CAPTAIN_PROJECTION_CONFIDENCE = 0.0
 MIN_SOURCE_HEALTH_RATIO = 2 / 3
 MIN_HEALTHY_NEWS_SOURCES = 2
 MIN_FRESH_NEWS_ITEMS = 1
@@ -77,11 +78,13 @@ def evidence_eligibility(
     players: pd.DataFrame,
     news_audit: pd.DataFrame,
 ) -> tuple[pd.DataFrame, dict]:
-    """Apply the three-state policy before any production solve.
+    """Apply an EV-first evidence policy before production solves.
 
-    Stable quantitative evidence remains eligible when news is silent. Only a
-    current adverse event, or genuinely uncertain/contradictory evidence, removes
-    XI/captain eligibility; squad and bench eligibility are never removed here.
+    Quantitative uncertainty is recorded, not converted into a second minutes
+    penalty. A player remains XI/captain eligible when the best forecast already
+    prices uncertain minutes/role into xP. Only official adverse status, genuinely
+    corroborated negative evidence, or an unresolved positive/negative contradiction
+    can remove XI/captain eligibility. Squad and bench eligibility are never removed.
     """
     out = players.copy()
     out["evidence_state"] = "stable_silence"
@@ -90,6 +93,7 @@ def evidence_eligibility(
     uncertain = minutes.lt(0.75) | roles.lt(0.65)
     xi_ok = pd.Series(True, index=out.index)
     reasons: dict[int, list[str]] = {}
+    uncertainty_ids: list[int] = []
 
     audit = news_audit.copy()
     if not audit.empty and "eligible_for_projection" in audit:
@@ -134,20 +138,24 @@ def evidence_eligibility(
             xi_ok.loc[idx] = False
             out.loc[idx, "evidence_state"] = "credible_negative"
             reasons[pid] = ["current decision-grade negative evidence"]
-        elif uncertain.loc[idx] and not role_supported:
-            xi_ok.loc[idx] = False
-            out.loc[idx, "evidence_state"] = "uncertain_unsupported"
-            reasons[pid] = ["quantitatively uncertain without decision-grade support"]
         elif uncertain.loc[idx]:
-            out.loc[idx, "evidence_state"] = "uncertain_supported"
+            uncertainty_ids.append(pid)
+            out.loc[idx, "evidence_state"] = (
+                "uncertain_supported" if role_supported else "uncertain_unverified"
+            )
 
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
-    base_captains = captain_eligible_ids(out)
-    out["captain_evidence_eligible"] = out["player_id"].astype(int).isin(base_captains) & xi_ok
+    # Captain eligibility follows the same evidence ceiling as XI eligibility. Raw
+    # expected points plus exact no-show vice fallback determine captain value; we
+    # do not impose an additional minutes/start-probability safety preference.
+    out["captain_evidence_eligible"] = xi_ok.astype(bool)
     return out, {
+        # Keep the existing schema ID because the report shape is backwards
+        # compatible; the explicit policy field records the semantic change.
         "contract": "apex-evidence-eligibility-v2",
-        "policy": "three_state_pre_solve",
+        "policy": "adverse_evidence_only_pre_solve",
         "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()),
+        "uncertainty_diagnostic_ids": sorted(uncertainty_ids),
         "captain_eligible_ids": sorted(
             out.loc[out["captain_evidence_eligible"], "player_id"].astype(int).tolist()
         ),
@@ -156,30 +164,18 @@ def evidence_eligibility(
 
 
 def captain_eligible_ids(players: pd.DataFrame) -> set[int]:
-    """Return players with complete evidence above every captaincy floor."""
-    required = {
-        "player_id",
-        "expected_minutes",
-        "start_probability",
-        "appearance_probability",
-        "projection_confidence",
-    }
-    if not required.issubset(players.columns):
-        return set()
+    """Return evidence-eligible captain IDs without a duplicate minutes floor.
 
+    Expected minutes, start probability and appearance probability are already
+    inputs to canonical xP and to exact captain/vice no-show mechanics. Requiring
+    arbitrary numerical floors here would systematically favour secure minutes over
+    greater expected FPL points.
+    """
+    if "player_id" not in players.columns:
+        return set()
     d = players.drop_duplicates("player_id").copy()
-    numeric = d[list(required)].apply(pd.to_numeric, errors="coerce")
-    eligible = (
-        numeric["player_id"].notna()
-        & numeric["expected_minutes"].ge(MIN_CAPTAIN_EXPECTED_MINUTES)
-        & numeric["start_probability"].ge(MIN_CAPTAIN_START_PROBABILITY)
-        & numeric["appearance_probability"].ge(
-            MIN_CAPTAIN_APPEARANCE_PROBABILITY
-        )
-        & numeric["projection_confidence"].ge(
-            MIN_CAPTAIN_PROJECTION_CONFIDENCE
-        )
-    )
+    ids = pd.to_numeric(d["player_id"], errors="coerce")
+    eligible = ids.notna()
     if "captain_evidence_eligible" in d:
         eligible &= d["captain_evidence_eligible"].fillna(False).astype(bool)
-    return set(numeric.loc[eligible, "player_id"].astype(int))
+    return set(ids.loc[eligible].astype(int))

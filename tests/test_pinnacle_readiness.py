@@ -131,6 +131,7 @@ def _payload():
         },
         "evidence_eligibility": {
             "contract": "apex-evidence-eligibility-v2",
+            "policy": "adverse_evidence_only_pre_solve",
             "xi_ineligible_ids": [],
             "captain_eligible_ids": list(range(15)),
         },
@@ -227,12 +228,12 @@ def test_pre_gw1_requires_contingency_route_and_conservative_chip_policy():
     assert any("chip policy" in blocker for blocker in result.blockers)
 
 
-def test_unsupported_low_start_low_confidence_captain_blocks_pinnacle():
+def test_low_minutes_low_confidence_captain_is_not_blocked_without_adverse_evidence():
     payload = _payload()
     captain = payload["deterministic_scenarios"]["unrestricted"]["squad"][1]
     captain.update(
         {
-            "web_name": "Unsupported",
+            "web_name": "Explosive",
             "expected_minutes": 46.2,
             "start_probability": 0.20,
             "appearance_probability": 0.616,
@@ -241,10 +242,8 @@ def test_unsupported_low_start_low_confidence_captain_blocks_pinnacle():
     )
     payload["authoritative_decision"]["solution"]["squad"][1].update(captain)
     result = evaluate_pinnacle_payload(payload)
-    assert not result.ready
-    assert any("captain Unsupported" in blocker for blocker in result.blockers)
-    assert any("start probability" in blocker for blocker in result.blockers)
-    assert any("projection confidence" in blocker for blocker in result.blockers)
+    assert result.ready
+    assert not any("captain Explosive" in blocker for blocker in result.blockers)
 
 
 def test_low_uncalibrated_captain_frequency_is_a_warning():

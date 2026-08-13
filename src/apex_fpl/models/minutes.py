@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from apex_fpl.models.minute_states import minute_state_probabilities
+
 
 def availability_probability(row: pd.Series) -> float:
     status = str(row.get("status", "a"))
@@ -30,6 +32,10 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     when they are strong enough. Official availability remains the hard ceiling:
     upside evidence can raise a healthy player's role estimate, but cannot erase
     an injury, suspension or explicit negative availability signal.
+
+    Expected minutes are an input to expected FPL points, not a standalone safety
+    score. The returned mutually-exclusive minute states make threshold mechanics
+    explicit without rewarding probability of 90 minutes for its own sake.
     """
     mins = _series(df, "minutes", 0)
     starts = _series(df, "starts", 0)
@@ -163,6 +169,8 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     conditional_60 = 1.0 / (1.0 + np.exp(-(np.asarray(expected, dtype=float) - 58.0) / 8.0))
     p60 = np.minimum(appearance, np.clip(0.15 * appearance + 0.85 * conditional_60 * start, 0, 1))
     p80 = np.minimum(p60, np.clip((np.asarray(expected, dtype=float) - 45) / 40, 0, 1) * start)
+    states = minute_state_probabilities(start, appearance, p60, p80)
+    states.index = df.index
 
     prior_evidence = np.clip(_optional_series(df, "previous_starts").fillna(0) / 20.0, 0, 1)
     historic_evidence = np.clip(
@@ -194,7 +202,7 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     override_present = (manual < 0.999) | (news < 0.999) | (news_minutes_delta > 0)
     confidence = np.where(override_present, np.minimum(confidence, 0.82), confidence)
 
-    return pd.DataFrame({
+    result = pd.DataFrame({
         "expected_minutes": expected,
         "start_probability": start,
         "appearance_probability": appearance,
@@ -204,6 +212,9 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         "preseason_role_weight": preseason_weight,
         "preseason_effective_games": effective_preseason_games,
     }, index=df.index)
+    for column in states.columns:
+        result[column] = states[column]
+    return result
 
 
 def expected_minutes(df: pd.DataFrame) -> pd.Series:

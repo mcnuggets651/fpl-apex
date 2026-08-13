@@ -5,9 +5,14 @@ on:
   pull_request:
     paths:
       - "src/apex_fpl/models/ensemble.py"
+      - "src/apex_fpl/models/minute_states.py"
+      - "src/apex_fpl/models/minutes.py"
+      - "src/apex_fpl/services/decision_eligibility.py"
       - "src/apex_fpl/services/projection_audit.py"
       - "scripts/run_projection_audit.py"
+      - "scripts/audit_max_ev_policy.py"
       - "tests/test_projection_audit.py"
+      - "tests/test_minute_states.py"
       - ".github/workflows/projection-shadow-audit.yml"
 
 permissions:
@@ -16,7 +21,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,7 +31,13 @@ jobs:
       - name: Install Apex + genuine AIrsenal worker
         run: pip install -e '.[dev,airsenal]'
       - name: Unit tests
-        run: pytest -q tests/test_projection_audit.py
+        run: |
+          pytest -q \
+            tests/test_projection_audit.py \
+            tests/test_minute_states.py \
+            tests/test_evidence_eligibility.py \
+            tests/test_player_evidence.py \
+            tests/test_pinnacle_readiness.py
       - name: Cache AIrsenal database
         uses: actions/cache@v4
         with:
@@ -55,12 +66,24 @@ jobs:
             --horizon 8 \
             --force \
             --output-dir reports/projection_audit
+      - name: Run same-surface max-EV policy audit
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/audit_max_ev_policy.py \
+            --horizon 8 \
+            --force \
+            --output reports/max_ev_policy_audit.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: projection-shadow-audit-${{ github.run_id }}
           path: |
             reports/projection_audit/
+            reports/max_ev_policy_audit.json
             reports/team_goal_ratings.csv
             reports/team_goal_surface.csv
             data/generated/airsenal.csv

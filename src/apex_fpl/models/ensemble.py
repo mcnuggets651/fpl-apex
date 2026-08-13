@@ -42,11 +42,17 @@ def blend_projection(
     weights: dict[str, float],
     risk_penalty: float,
 ) -> pd.DataFrame:
-    """Blend experts with missing-source reweighting and quantified uncertainty.
+    """Blend expert forecasts while keeping expected value separate from risk.
 
-    The canonical ``xp`` remains exactly the same weighted mean as before. The
-    additional ``xp_expert_*`` columns expose each expert's exact additive share of
-    that mean so downstream diagnostics can explain a decision without guessing.
+    ``xp`` and ``canonical_ev_xp`` are the best estimate of expected FPL points.
+    Forecast confidence and downside diagnostics describe uncertainty around that
+    mean; they do not automatically lower the mean a second time after uncertain
+    minutes/availability have already been incorporated into the expert forecasts.
+
+    ``risk_adjusted_xp`` remains as a backward-compatible alias of canonical EV so
+    legacy planning/readiness callers cannot silently optimise a safety-discounted
+    objective. ``downside_adjusted_xp`` preserves the old risk-discounted diagnostic
+    for reporting and robustness analysis only.
     """
     out = _allocate_gameweek_experts(base.copy())
     n = len(out)
@@ -119,6 +125,7 @@ def blend_projection(
     )
 
     out["xp"] = mean
+    out["canonical_ev_xp"] = mean
     out["expert_count"] = expert_count
     out["expert_coverage"] = coverage
     out["expert_disagreement_sd"] = disagreement_sd
@@ -135,9 +142,7 @@ def blend_projection(
             effective_weight[valid] = (
                 expert_weights[key] / np.maximum(denominator[valid], 1e-12)
             )
-            contrib[valid] = (
-                values[valid] * effective_weight[valid]
-            )
+            contrib[valid] = values[valid] * effective_weight[valid]
         out[f"xp_expert_{key}"] = contrib
         out[f"effective_weight_{key}"] = effective_weight
     no_expert = denominator <= 0
@@ -146,20 +151,23 @@ def blend_projection(
         out.loc[no_expert, "effective_weight_apex_model"] = 1.0
 
     # ``projection_sd`` includes the transparent model's match-outcome variance.
-    # That is useful for points-distribution reporting, but it is not uncertainty
-    # about the latent expected-points forecast and must not drive decision
-    # stability re-solves. Keep a separate epistemic scale built from expert
-    # disagreement and an explicit evidence-gap allowance.
+    # That is useful for distribution reporting, but it is not uncertainty about
+    # the latent expected-points mean and must not silently reduce canonical EV.
     evidence_gap_sd = np.maximum(mean, 0.0) * (0.05 + 0.25 * (1.0 - confidence))
     out["forecast_uncertainty_sd"] = np.sqrt(
         disagreement_sd**2 + evidence_gap_sd**2
     )
     out["projection_sd"] = total_sd
     out["projection_confidence"] = confidence
+
+    # Preserve the previous downside-discounted surface for diagnostics only.
     penalty_scale = 1.15 - 0.30 * confidence
-    out["risk_adjusted_xp"] = np.maximum(
+    out["downside_adjusted_xp"] = np.maximum(
         mean - risk_penalty * total_sd * penalty_scale, 0
     )
+    # Backward-compatible legacy name deliberately resolves to EV so any older
+    # optimiser still maximises expected points rather than a hidden safety score.
+    out["risk_adjusted_xp"] = mean
     out["projection_floor_80"] = np.maximum(mean - 1.2816 * total_sd, 0)
     out["projection_ceiling_80"] = mean + 1.2816 * total_sd
     return out

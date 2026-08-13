@@ -57,7 +57,7 @@ def _news() -> pd.DataFrame:
     )
 
 
-def test_uncovered_high_uncertainty_starter_is_rejected_before_selection():
+def test_uncovered_high_uncertainty_starter_is_flagged_but_not_rejected():
     players, _ = evidence_eligibility(_players(), _news())
     payload = build_selected_player_evidence(
         players, _news(), [1, 2], xi_ids=[1, 2], captain_id=1, now=NOW
@@ -65,8 +65,8 @@ def test_uncovered_high_uncertainty_starter_is_rejected_before_selection():
     coverage = payload["coverage"]
     assert coverage["captain_has_current_evidence"] is True
     assert coverage["high_uncertainty_starters_missing_evidence"] == [2]
-    assert coverage["selected_xi_ineligible_ids"] == [2]
-    assert coverage["ready"] is False
+    assert coverage["selected_xi_ineligible_ids"] == []
+    assert coverage["ready"] is True
 
 
 def test_current_tactical_provenance_covers_high_uncertainty_starter():
