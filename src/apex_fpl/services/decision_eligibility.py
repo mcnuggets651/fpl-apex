@@ -6,11 +6,14 @@ import pandas as pd
 from apex_fpl.data.news import TRUSTED_SOURCE_TIERS
 
 
-# News/source-health floors remain production safety gates. Player-level numerical
-# uncertainty is deliberately *not* a hard XI/captain floor: expected minutes and
-# availability already reduce expected points, and exact captain/vice mechanics
-# already price no-show fallback. Only attributable adverse evidence may exclude a
-# player before a max-EV solve.
+# Compatibility symbols retained for existing readiness/report consumers. They are
+# intentionally zero: quantitative uncertainty is not a hard captain floor. Expected
+# minutes/availability already reduce xP, and exact captain/vice mechanics price
+# no-show fallback. Only attributable adverse evidence can exclude pre-solve.
+MIN_CAPTAIN_EXPECTED_MINUTES = 0.0
+MIN_CAPTAIN_START_PROBABILITY = 0.0
+MIN_CAPTAIN_APPEARANCE_PROBABILITY = 0.0
+MIN_CAPTAIN_PROJECTION_CONFIDENCE = 0.0
 MIN_SOURCE_HEALTH_RATIO = 2 / 3
 MIN_HEALTHY_NEWS_SOURCES = 2
 MIN_FRESH_NEWS_ITEMS = 1
@@ -144,10 +147,12 @@ def evidence_eligibility(
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
     # Captain eligibility follows the same evidence ceiling as XI eligibility. Raw
     # expected points plus exact no-show vice fallback determine captain value; we
-    # do not impose an additional 60-minute/start-probability safety preference.
+    # do not impose an additional minutes/start-probability safety preference.
     out["captain_evidence_eligible"] = xi_ok.astype(bool)
     return out, {
-        "contract": "apex-evidence-eligibility-v3-max-ev",
+        # Keep the existing schema ID because the report shape is backwards
+        # compatible; the explicit policy field records the semantic change.
+        "contract": "apex-evidence-eligibility-v2",
         "policy": "adverse_evidence_only_pre_solve",
         "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()),
         "uncertainty_diagnostic_ids": sorted(uncertainty_ids),
