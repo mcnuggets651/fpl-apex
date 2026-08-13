@@ -80,6 +80,23 @@ def main():
             f"shrinkage evidence coverage invalid: previous={previous_coverage:.1%}, evidence={evidence_coverage:.1%}"
         )
 
+    xg_zero = pd.to_numeric(audit["xg90_evidence_minutes"], errors="coerce").fillna(0.0).le(0.0)
+    xa_zero = pd.to_numeric(audit["xa90_evidence_minutes"], errors="coerce").fillna(0.0).le(0.0)
+    xg_changed = (
+        pd.to_numeric(audit["shrunk_model_xg90"], errors="coerce").fillna(0.0)
+        - pd.to_numeric(audit["raw_model_xg90"], errors="coerce").fillna(0.0)
+    ).abs().gt(1e-12)
+    xa_changed = (
+        pd.to_numeric(audit["shrunk_model_xa90"], errors="coerce").fillna(0.0)
+        - pd.to_numeric(audit["raw_model_xa90"], errors="coerce").fillna(0.0)
+    ).abs().gt(1e-12)
+    prior_only_injected = (xg_zero & xg_changed) | (xa_zero & xa_changed)
+    prior_only_injected_count = int(prior_only_injected.sum())
+    if prior_only_injected_count:
+        raise RuntimeError(
+            f"prior-only attacking rates leaked into live shadow for {prior_only_injected_count} players"
+        )
+
     decision_players, eligibility = evidence_eligibility(pipeline.players, pipeline.news_audit)
     common = dict(
         players=decision_players,
@@ -98,14 +115,16 @@ def main():
     shrunk = optimise_exact_horizon_decision(projections=shadow, projection_col="shrunk_blended_xp_v2", **common)
 
     gaps = build_gaps(shadow, audit, pipeline.gameweeks, settings.fixture_decay)
-    low = gaps[gaps["evidence_minutes"] < 270.0]
+    low = gaps[(gaps["evidence_minutes"] > 0.0) & (gaps["evidence_minutes"] < 270.0)]
+    prior_only = gaps[gaps["evidence_minutes"] <= 0.0]
     high = gaps[gaps["raw_gap"] >= 3.0]
     historical = json.loads(Path("docs/evidence/shrinkage_validation_v2_summary.json").read_text())
     history_ok = bool(historical.get("attack_rate_shadow_gate_pass", False))
     independent = bool(historical.get("independent_final_holdout", False))
     low_ok = bool(not low.empty and low["shrunk_gap"].mean() < low["raw_gap"].mean())
     high_ok = bool(not high.empty and high["shrunk_gap"].mean() < high["raw_gap"].mean())
-    candidate = bool(history_ok and low_ok and high_ok and shrunk.status == "Optimal")
+    prior_safety_ok = prior_only_injected_count == 0
+    candidate = bool(history_ok and low_ok and high_ok and prior_safety_ok and shrunk.status == "Optimal")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -114,16 +133,21 @@ def main():
     raw_payload = decision_payload(raw)
     shrunk_payload = decision_payload(shrunk)
     report = {
-        "contract": "apex-shrinkage-promotion-gate-v2",
+        "contract": "apex-shrinkage-promotion-gate-v3",
         "diagnostic_only": True,
         "production_input_parity_required": True,
-        "live_change": "competitive_xg_xa_shrinkage_then_identical_preseason_blend; xp_attack_only",
+        "live_change": "evidence-qualified competitive_xg_xa_shrinkage_then_identical_preseason_blend; xp_attack_only",
         "previous_evidence_coverage": previous_coverage,
         "competitive_evidence_coverage": evidence_coverage,
         "promotion_candidate": candidate,
         "holdout_independent": independent,
         "eligible_for_live_use": bool(candidate and independent),
         "history_gate_pass": history_ok,
+        "prior_safety_gate_pass": prior_safety_ok,
+        "zero_evidence_xg_count": int(xg_zero.sum()),
+        "zero_evidence_xa_count": int(xa_zero.sum()),
+        "prior_only_injected_count": prior_only_injected_count,
+        "prior_only_player_count": int(len(prior_only)),
         "raw_decision": raw_payload,
         "shrunk_decision": shrunk_payload,
         "squad_overlap": len(set(raw_payload.get("squad_ids", [])) & set(shrunk_payload.get("squad_ids", []))),
@@ -137,10 +161,12 @@ def main():
         "eligibility_contract": eligibility,
         "notes": [
             "Production raw xG/xA must reconstruct to numerical tolerance before the shadow solve can run.",
-            "The shrinkage evidence frame is rebuilt from the same cached Official, pinned Core and preseason sources used by production.",
+            "Zero-evidence metrics preserve the production raw rate; a cohort prior alone cannot change live xP.",
+            "Low-but-nonzero competitive evidence still receives empirical-Bayes shrinkage.",
             "Fixtures, minutes, availability, set pieces, DEFCON, prices, source weights and exact mechanics are unchanged.",
             "Bonus is held constant so the direct attacking-return effect is isolated.",
             "AIrsenal gap reduction is diagnostic only and is not an optimisation target.",
+            "Independent final holdout remains mandatory for eligible_for_live_use=true.",
         ],
     }
     (output_dir / "shrinkage_promotion_gate.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
