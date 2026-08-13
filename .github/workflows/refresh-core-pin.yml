@@ -28,6 +28,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install upstream verification dependency
+        run: python -m pip install requests
+
       - name: Resolve current FPL Core commit
         id: core
         shell: bash

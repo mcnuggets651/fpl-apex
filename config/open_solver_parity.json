@@ -1,0 +1,32 @@
+{
+  "preseason": true,
+  "objective": "decay",
+  "decay_base": 0.9,
+  "bench_weights": {
+    "0": 0.08,
+    "1": 0.08,
+    "2": 0.08,
+    "3": 0.08
+  },
+  "vcap_weight": 0.0,
+  "itb_value": 0.0,
+  "ft_value": 0.0,
+  "ft_value_list": {},
+  "ft_use_penalty": 0.0,
+  "no_transfer_gws": [2, 3, 4, 5, 6, 7, 8],
+  "xmin_lb": 0,
+  "ev_per_price_cutoff": 0,
+  "keep_top_ev_percent": 100,
+  "chip_limits": {
+    "bb": 0,
+    "wc": 0,
+    "fh": 0,
+    "tc": 0
+  },
+  "use_bb": [],
+  "use_wc": [],
+  "use_fh": [],
+  "use_tc": [],
+  "gap": 0,
+  "single_solve": true
+}
