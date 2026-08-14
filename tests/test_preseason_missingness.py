@@ -29,6 +29,37 @@ def test_missing_preseason_return_is_not_converted_to_measured_zero():
     assert not bool(out["preseason_xg_observed"])
 
 
+def test_missing_preseason_xg_preserves_reliable_return_proxy_evidence():
+    players = pd.DataFrame({"player_id": [1]})
+    friendlies = pd.DataFrame(
+        [
+            {
+                "player_id": 1,
+                "match_id": 10,
+                "minutes_played": 90,
+                "start_min": 0,
+                "goals": 2,
+                "assists": 1,
+                "total_shots": 6,
+                "shots_on_target": 4,
+                "chances_created": 3,
+                "touches_opposition_box": 9,
+                "xg": np.nan,
+                "xa": np.nan,
+                "defensive_contributions": np.nan,
+            }
+        ]
+    )
+    out = add_preseason_features(players, friendlies).iloc[0]
+    assert pd.isna(out["preseason_xg90"])
+    assert not bool(out["preseason_xg_observed"])
+    assert out["preseason_goals90"] == 2.0
+    assert out["preseason_assists90"] == 1.0
+    assert out["preseason_shots90"] == 6.0
+    assert bool(out["preseason_goals_observed"])
+    assert bool(out["preseason_shots_observed"])
+
+
 def test_missing_preseason_rate_cannot_pull_down_historical_rate():
     result = _blend_rate(
         pd.Series([0.60]),

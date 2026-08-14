@@ -131,23 +131,45 @@ def coalesce_context(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> pd.DataFrame:
+    """Attach preseason role and attacking evidence without inventing missing xG/xA.
+
+    Core friendlies expose reliable event counts (goals, assists, shots and chances)
+    even when advanced xG/xA is unavailable for a fixture. Those observations are
+    retained as separate evidence for a validated fallback challenger; they do not
+    silently become xG/xA in production.
+    """
+    rate_sources = {
+        "xg": "xg",
+        "xa": "xa",
+        "defcon": "defensive_contributions",
+        "goals": "goals",
+        "assists": "assists",
+        "shots": "total_shots",
+        "shots_on_target": "shots_on_target",
+        "chances_created": "chances_created",
+        "box_touches": "touches_opposition_box",
+    }
     if friendlies.empty:
         out = players.copy()
         out["preseason_minutes"] = 0.0
         out["preseason_starts"] = 0.0
         out["preseason_appearances"] = 0.0
-        for stat in ("xg", "xa", "defcon"):
+        for stat in rate_sources:
             out[f"preseason_{stat}90"] = np.nan
             out[f"preseason_{stat}_observed"] = False
         return out
+
     f = friendlies.copy()
-    for col in ["minutes_played", "xg", "xa", "defensive_contributions", "start_min"]:
+    numeric_cols = ["minutes_played", "start_min", *rate_sources.values()]
+    for col in numeric_cols:
         if col in f.columns:
             f[col] = pd.to_numeric(f[col], errors="coerce")
-    f["is_start"] = (f.get("start_min", pd.Series(0, index=f.index)).fillna(0) <= 1).astype(int)
-    for col in ("xg", "xa", "defensive_contributions"):
-        if col not in f.columns:
-            f[col] = np.nan
+    f["is_start"] = (
+        f.get("start_min", pd.Series(0, index=f.index)).fillna(0) <= 1
+    ).astype(int)
+    for source in rate_sources.values():
+        if source not in f.columns:
+            f[source] = np.nan
 
     grouped = f.groupby("player_id", as_index=False)
     agg = grouped.agg(
@@ -155,40 +177,34 @@ def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> p
         preseason_starts=("is_start", "sum"),
         preseason_appearances=("match_id", "nunique"),
     )
-    sums = grouped[["xg", "xa", "defensive_contributions"]].sum(min_count=1)
-    sums = sums.rename(
-        columns={
-            "xg": "preseason_xg",
-            "xa": "preseason_xa",
-            "defensive_contributions": "preseason_defcon",
-        }
-    )
+    source_columns = list(dict.fromkeys(rate_sources.values()))
+    sums = grouped[source_columns].sum(min_count=1)
+    rename = {source: f"preseason_{stat}" for stat, source in rate_sources.items()}
+    sums = sums.rename(columns=rename)
     agg = agg.merge(sums, on="player_id", how="left", validate="one_to_one")
-    mins = np.maximum(pd.to_numeric(agg["preseason_minutes"], errors="coerce").fillna(0), 1)
-    for stat in ("xg", "xa", "defcon"):
+
+    mins = np.maximum(
+        pd.to_numeric(agg["preseason_minutes"], errors="coerce").fillna(0),
+        1,
+    )
+    for stat in rate_sources:
         total = pd.to_numeric(agg[f"preseason_{stat}"], errors="coerce")
         agg[f"preseason_{stat}90"] = total * 90 / mins
         agg[f"preseason_{stat}_observed"] = total.notna()
+
     keep = [
         "player_id",
         "preseason_minutes",
         "preseason_starts",
         "preseason_appearances",
-        "preseason_xg90",
-        "preseason_xa90",
-        "preseason_defcon90",
-        "preseason_xg_observed",
-        "preseason_xa_observed",
-        "preseason_defcon_observed",
+        *[f"preseason_{stat}90" for stat in rate_sources],
+        *[f"preseason_{stat}_observed" for stat in rate_sources],
     ]
     out = players.merge(agg[keep], on="player_id", how="left")
     out[["preseason_minutes", "preseason_starts", "preseason_appearances"]] = out[
         ["preseason_minutes", "preseason_starts", "preseason_appearances"]
     ].fillna(0.0)
-    for col in (
-        "preseason_xg_observed",
-        "preseason_xa_observed",
-        "preseason_defcon_observed",
-    ):
+    for stat in rate_sources:
+        col = f"preseason_{stat}_observed"
         out[col] = out[col].fillna(False).astype(bool)
     return out
