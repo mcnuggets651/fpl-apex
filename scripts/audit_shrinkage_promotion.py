@@ -42,13 +42,13 @@ def build_gaps(shadow: pd.DataFrame, audit: pd.DataFrame, gameweeks: list[int], 
     discounts = {int(gw): float(decay) ** i for i, gw in enumerate(gameweeks)}
     frame = shadow.copy()
     frame["discount"] = frame["gw"].map(discounts).fillna(0.0)
+    frame["raw_h"] = pd.to_numeric(frame["apex_xp"], errors="coerce").fillna(0.0) * frame["discount"]
     effective = pd.to_numeric(frame["effective_weight_apex_model"], errors="coerce").fillna(0.0)
-    production_blended = pd.to_numeric(frame["xp"], errors="coerce").fillna(0.0)
-    raw_blended = pd.to_numeric(frame["raw_counterfactual_blended_xp_v1"], errors="coerce").fillna(0.0)
-    production_apex = pd.to_numeric(frame["apex_xp"], errors="coerce").fillna(0.0)
-    raw_apex = production_apex + (raw_blended - production_blended) / effective.where(effective > 0, 1.0)
-    frame["raw_h"] = raw_apex * frame["discount"]
-    frame["shrunk_h"] = production_apex * frame["discount"]
+    blended = pd.to_numeric(frame["xp"], errors="coerce").fillna(0.0)
+    shrunk_blended = pd.to_numeric(frame["shrunk_blended_xp_v2"], errors="coerce").fillna(0.0)
+    raw_apex = pd.to_numeric(frame["apex_xp"], errors="coerce").fillna(0.0)
+    shrunk_apex = raw_apex + (shrunk_blended - blended) / effective.where(effective > 0, 1.0)
+    frame["shrunk_h"] = shrunk_apex * frame["discount"]
     frame["air_h"] = pd.to_numeric(frame.get("airsenal_xp"), errors="coerce").fillna(0.0) * frame["discount"]
     gaps = frame.groupby("player_id", as_index=False).agg(
         raw_apex=("raw_h", "sum"),
@@ -94,7 +94,7 @@ def main():
     prior_only_injected_count = int(prior_only_injected.sum())
     if prior_only_injected_count:
         raise RuntimeError(
-            f"prior-only attacking rates leaked into activated production for {prior_only_injected_count} players"
+            f"prior-only attacking rates leaked into live shadow for {prior_only_injected_count} players"
         )
 
     decision_players, eligibility = evidence_eligibility(pipeline.players, pipeline.news_audit)
@@ -111,12 +111,8 @@ def main():
         captain_eligible=captain_eligible_ids(decision_players),
         xi_eligible=set(decision_players.loc[decision_players["xi_evidence_eligible"], "player_id"].astype(int)),
     )
-    raw = optimise_exact_horizon_decision(
-        projections=shadow,
-        projection_col="raw_counterfactual_blended_xp_v1",
-        **common,
-    )
-    shrunk = optimise_exact_horizon_decision(projections=shadow, projection_col="xp", **common)
+    raw = optimise_exact_horizon_decision(projections=shadow, projection_col="xp", **common)
+    shrunk = optimise_exact_horizon_decision(projections=shadow, projection_col="shrunk_blended_xp_v2", **common)
 
     gaps = build_gaps(shadow, audit, pipeline.gameweeks, settings.fixture_decay)
     low = gaps[(gaps["evidence_minutes"] > 0.0) & (gaps["evidence_minutes"] < 270.0)]
@@ -137,10 +133,10 @@ def main():
     raw_payload = decision_payload(raw)
     shrunk_payload = decision_payload(shrunk)
     report = {
-        "contract": "apex-shrinkage-activated-audit-v4",
+        "contract": "apex-shrinkage-promotion-gate-v3",
         "diagnostic_only": True,
         "production_input_parity_required": True,
-        "live_change": "activated_evidence_qualified_competitive_xg_xa_shrinkage_then_identical_preseason_blend; raw_counterfactual_holds_bonus_constant",
+        "live_change": "evidence-qualified competitive_xg_xa_shrinkage_then_identical_preseason_blend; xp_attack_only",
         "previous_evidence_coverage": previous_coverage,
         "competitive_evidence_coverage": evidence_coverage,
         "promotion_candidate": candidate,
@@ -164,14 +160,13 @@ def main():
         "named_diagnostics": gaps[gaps["web_name"].astype(str).str.casefold().isin({"dowman", "welbeck"})].to_dict("records"),
         "eligibility_contract": eligibility,
         "notes": [
-            "Activated production xG/xA must equal the independently reconstructed evidence-qualified posterior to numerical tolerance.",
-            "The raw A/B arm is a reconstructed counterfactual; production itself is never shrunk a second time.",
-            "Zero-evidence metrics preserve the raw rate; a cohort prior alone cannot change live xP.",
-            "Low-but-nonzero competitive evidence receives empirical-Bayes shrinkage.",
+            "Production raw xG/xA must reconstruct to numerical tolerance before the shadow solve can run.",
+            "Zero-evidence metrics preserve the production raw rate; a cohort prior alone cannot change live xP.",
+            "Low-but-nonzero competitive evidence still receives empirical-Bayes shrinkage.",
             "Fixtures, minutes, availability, set pieces, DEFCON, prices, source weights and exact mechanics are unchanged.",
-            "The raw counterfactual holds bonus constant so the direct attacking-return effect remains isolated.",
+            "Bonus is held constant so the direct attacking-return effect is isolated.",
             "AIrsenal gap reduction is diagnostic only and is not an optimisation target.",
-            "Independent final holdout remains reported separately from preseason-provisional activation policy.",
+            "Independent final holdout remains mandatory for eligible_for_live_use=true.",
         ],
     }
     (output_dir / "shrinkage_promotion_gate.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
