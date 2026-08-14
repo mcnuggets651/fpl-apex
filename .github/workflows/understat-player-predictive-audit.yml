@@ -22,8 +22,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install Apex
-        run: pip install -e .
+      - name: Install Apex + audit dependencies
+        run: pip install -e ".[dev]"
       - name: Unit tests
         run: pytest -q tests/test_understat.py tests/test_understat_players.py
       - name: Lint bounded change
