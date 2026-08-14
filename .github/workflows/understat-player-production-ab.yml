@@ -4,10 +4,12 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "src/apex_fpl/models/projection.py"
       - "src/apex_fpl/evaluation/understat_player_ab.py"
       - "scripts/audit_understat_player_production_ab.py"
       - "scripts/audit_understat_player_cvar_phase.py"
       - "scripts/run_understat_player_production_ab_bounded.py"
+      - "tests/test_projection.py"
       - "tests/test_understat_player_ab.py"
       - ".github/workflows/understat-player-production-ab.yml"
 
@@ -31,16 +33,19 @@ jobs:
       - name: Unit tests
         run: |
           pytest -q \
+            tests/test_projection.py \
             tests/test_understat.py \
             tests/test_understat_players.py \
             tests/test_understat_player_ab.py
       - name: Lint bounded change
         run: |
           ruff check \
+            src/apex_fpl/models/projection.py \
             src/apex_fpl/evaluation/understat_player_ab.py \
             scripts/audit_understat_player_production_ab.py \
             scripts/audit_understat_player_cvar_phase.py \
             scripts/run_understat_player_production_ab_bounded.py \
+            tests/test_projection.py \
             tests/test_understat_player_ab.py
       - name: Cache AIrsenal database
         uses: actions/cache@v4
@@ -73,6 +78,7 @@ jobs:
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
+          APEX_UNDERSTAT_PLAYER_MODEL_MODE: "shadow"
           AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         run: |
