@@ -2,6 +2,8 @@
 
 This CLI is deliberately fail-closed: it records missing replay/preseason evidence
 without changing fixture decay, preseason attacking rates, or the minutes model.
+Raw cumulative xP remains a forecast quantity; any decayed horizon value is reported
+only as decision utility and can never be promoted merely by changing its label.
 """
 from __future__ import annotations
 
