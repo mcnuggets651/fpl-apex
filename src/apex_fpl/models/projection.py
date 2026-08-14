@@ -7,10 +7,6 @@ import pandas as pd
 
 from apex_fpl.models.bonus import expected_bonus_proxy
 from apex_fpl.models.defcon import expected_defensive_contribution_points
-from apex_fpl.models.shrinkage import position_price_tier_groups, shrink_player_rates
-
-
-ATTACK_RATE_MODEL = "evidence_qualified_empirical_bayes_preseason_provisional_v1"
 
 
 def _num(df: pd.DataFrame, col: str, default: float = 0.0) -> pd.Series:
@@ -39,47 +35,6 @@ def _blend_rate(
     # that return statistic was actually observed by the source.
     pre_weight = np.clip(mins / 270.0, 0, 0.35) * pre_raw.notna().astype(float)
     return p * (1 - pre_weight) + pre * pre_weight
-
-
-def _evidence_qualified_attack_rates(players: pd.DataFrame) -> pd.DataFrame:
-    """Apply historically validated xG/xA shrinkage only when evidence exists.
-
-    The posterior operates on competitive evidence only. A cohort prior is not
-    player-specific evidence, so zero-evidence metrics preserve the exact raw
-    production rate. Existing preseason blending remains downstream and unchanged.
-    DEFCON is deliberately untouched because its shrinkage candidate failed its gate.
-    """
-    prepared = players.copy()
-    prepared["shrinkage_group"] = position_price_tier_groups(prepared)
-    shrunk = shrink_player_rates(prepared).reset_index(drop=True)
-
-    raw_xg = _optional_num(prepared, "expected_goals_per_90")
-    raw_xa = _optional_num(prepared, "expected_assists_per_90")
-    xg_evidence = pd.to_numeric(
-        shrunk["xg90_combined_effective_evidence_minutes"], errors="coerce"
-    ).fillna(0.0)
-    xa_evidence = pd.to_numeric(
-        shrunk["xa90_combined_effective_evidence_minutes"], errors="coerce"
-    ).fillna(0.0)
-
-    use_xg = xg_evidence.gt(0.0)
-    use_xa = xa_evidence.gt(0.0)
-    prepared["expected_goals_per_90"] = raw_xg.where(
-        ~use_xg,
-        pd.to_numeric(shrunk["shrunk_xg90"], errors="coerce"),
-    )
-    prepared["expected_assists_per_90"] = raw_xa.where(
-        ~use_xa,
-        pd.to_numeric(shrunk["shrunk_xa90"], errors="coerce"),
-    )
-    prepared["raw_expected_goals_per_90"] = raw_xg
-    prepared["raw_expected_assists_per_90"] = raw_xa
-    prepared["xg90_shrinkage_evidence_minutes"] = xg_evidence
-    prepared["xa90_shrinkage_evidence_minutes"] = xa_evidence
-    prepared["xg90_shrinkage_applied"] = use_xg
-    prepared["xa90_shrinkage_applied"] = use_xa
-    prepared["attack_rate_model"] = ATTACK_RATE_MODEL
-    return prepared
 
 
 def _appearance_probabilities(expected_mins: pd.Series) -> tuple[np.ndarray, np.ndarray]:
@@ -112,7 +67,6 @@ def project_players(
     gameweeks: list[int],
 ) -> pd.DataFrame:
     """Generate one transparent projection row per player/fixture."""
-    players = _evidence_qualified_attack_rates(players)
     rows = []
     for gw in gameweeks:
         fx_cols = [
@@ -271,13 +225,6 @@ def project_players(
                     "xp_set_piece_prior": max(_at(set_piece, idx), 0.0),
                     "model_xg90": max(_at(xg90, idx), 0.0),
                     "model_xa90": max(_at(xa90, idx), 0.0),
-                    "raw_expected_goals_per_90": _at(_num(d, "raw_expected_goals_per_90", 0), idx),
-                    "raw_expected_assists_per_90": _at(_num(d, "raw_expected_assists_per_90", 0), idx),
-                    "xg90_shrinkage_evidence_minutes": _at(_num(d, "xg90_shrinkage_evidence_minutes", 0), idx),
-                    "xa90_shrinkage_evidence_minutes": _at(_num(d, "xa90_shrinkage_evidence_minutes", 0), idx),
-                    "xg90_shrinkage_applied": bool(row.get("xg90_shrinkage_applied", False)),
-                    "xa90_shrinkage_applied": bool(row.get("xa90_shrinkage_applied", False)),
-                    "attack_rate_model": str(row.get("attack_rate_model", ATTACK_RATE_MODEL)),
                     "penalty_share": _at(penalty_share, idx),
                     "corners_share": _at(corners_share, idx),
                     "direct_freekick_share": _at(direct_share, idx),
