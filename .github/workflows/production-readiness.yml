@@ -2,8 +2,9 @@ name: Apex Unified Readiness Audit
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - agent/projection-contract-corrections
 
 permissions:
   contents: read
