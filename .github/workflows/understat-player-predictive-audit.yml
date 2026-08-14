@@ -32,17 +32,23 @@ jobs:
         env:
           APEX_SEASON: "2026-2027"
         run: |
+          mkdir -p reports
+          set +e
           python scripts/audit_understat_player_signal.py \
             --first-season 2021 \
             --last-season 2025 \
             --minimum-minutes 450 \
             --bootstrap-samples 5000 \
-            --output reports/understat_player_predictive_audit.json
+            --output reports/understat_player_predictive_audit.json \
+            2>&1 | tee reports/understat_player_predictive_audit.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: understat-player-predictive-audit-${{ github.run_id }}
           path: |
+            reports/understat_player_predictive_audit.log
             reports/understat_player_predictive_audit.json
             reports/understat_player_predictive_panel.csv
             reports/understat_player_weight_grid.csv
