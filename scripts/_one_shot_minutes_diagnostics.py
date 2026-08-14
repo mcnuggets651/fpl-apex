@@ -26,6 +26,12 @@ replace_once(
 
 replace_once(
     "tests/test_minutes.py",
-    '''def test_previous_season_prior_prevents_false_default_for_established_player():\n''',
-    '''def test_minutes_diagnostics_reconcile_incumbent_expected_minutes_and_start_probability():\n    row = pd.DataFrame(\n        [\n            {\n                "minutes": 0,\n                "starts": 0,\n                "starts_per_90": 0,\n                "previous_start_probability": 0.80,\n                "previous_minutes_per_match": 68.0,\n                "preseason_minutes": 210,\n                "preseason_starts": 3,\n                "preseason_appearances": 3,\n                "status": "a",\n            }\n        ]\n    )\n    out = minutes_profile(row).iloc[0]\n    assert out["expected_minutes"] == pytest.approx(\n        out["role_expected_minutes_pre_availability"]\n        * out["availability_probability"]\n    )\n    assert out["start_probability"] == pytest.approx(\n        out["role_start_probability_pre_availability"]\n        * out["availability_probability"]\n    )\n    assert out["historical_start_probability"] == pytest.approx(0.80)\n    assert out["preseason_start_probability"] == pytest.approx(1.0)\n\n\ndef test_previous_season_prior_prevents_false_default_for_established_player():\n''',
+    '''import pandas as pd\n\nfrom apex_fpl.models.minutes import expected_minutes, minutes_profile\n''',
+    '''import pandas as pd\nimport pytest\n\nfrom apex_fpl.models.minutes import expected_minutes, minutes_profile\n''',
+)
+
+replace_once(
+    "tests/test_minutes.py",
+    '''def test_prior_season_playing_time_produces_player_specific_preseason_prior():\n''',
+    '''def test_minutes_diagnostics_reconcile_incumbent_expected_minutes_and_start_probability():\n    row = pd.DataFrame(\n        [\n            {\n                "minutes": 0,\n                "starts": 0,\n                "starts_per_90": 0,\n                "previous_start_probability": 0.80,\n                "previous_minutes_per_match": 68.0,\n                "preseason_minutes": 210,\n                "preseason_starts": 3,\n                "preseason_appearances": 3,\n                "status": "a",\n            }\n        ]\n    )\n    out = minutes_profile(row).iloc[0]\n    assert out["expected_minutes"] == pytest.approx(\n        out["role_expected_minutes_pre_availability"]\n        * out["availability_probability"]\n    )\n    assert out["start_probability"] == pytest.approx(\n        out["role_start_probability_pre_availability"]\n        * out["availability_probability"]\n    )\n    assert out["historical_start_probability"] == pytest.approx(0.80)\n    assert out["preseason_start_probability"] == pytest.approx(1.0)\n\n\ndef test_prior_season_playing_time_produces_player_specific_preseason_prior():\n''',
 )
