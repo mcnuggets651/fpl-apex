@@ -29,6 +29,73 @@ def test_map_understat_to_current_ids_uses_unique_full_names_only():
     assert mapped.set_index("player_id").loc[1, "understat_xg90"] == pytest.approx(0.5)
 
 
+def test_map_understat_to_current_ids_falls_back_to_unique_web_name_with_team():
+    core = pd.DataFrame(
+        {
+            "player_id": [1],
+            "first_name": ["João Pedro Junqueira"],
+            "second_name": ["de Jesus"],
+            "web_name": ["João Pedro"],
+            "team_name": ["Chelsea"],
+        }
+    )
+    understat = pd.DataFrame(
+        {
+            "player_name": ["Joao Pedro"],
+            "team_name": ["Chelsea"],
+            "understat_xg90": [0.55],
+            "understat_xa90": [0.18],
+        }
+    )
+    mapped = map_understat_to_current_ids(core, understat)
+    assert mapped["player_id"].tolist() == [1]
+    assert mapped.iloc[0]["understat_match_method"] == "web_name_team"
+
+
+def test_map_understat_to_current_ids_refuses_ambiguous_web_name():
+    core = pd.DataFrame(
+        {
+            "player_id": [1, 2],
+            "first_name": ["Alpha", "Beta"],
+            "second_name": ["One", "Two"],
+            "web_name": ["Silva", "Silva"],
+            "team_name": ["Chelsea", "Chelsea"],
+        }
+    )
+    understat = pd.DataFrame(
+        {
+            "player_name": ["Silva"],
+            "team_name": ["Chelsea"],
+            "understat_xg90": [0.40],
+            "understat_xa90": [0.20],
+        }
+    )
+    mapped = map_understat_to_current_ids(core, understat)
+    assert mapped.empty
+
+
+def test_map_understat_to_current_ids_refuses_web_name_team_mismatch():
+    core = pd.DataFrame(
+        {
+            "player_id": [1],
+            "first_name": ["Long Legal"],
+            "second_name": ["Name"],
+            "web_name": ["Short Name"],
+            "team_name": ["Chelsea"],
+        }
+    )
+    understat = pd.DataFrame(
+        {
+            "player_name": ["Short Name"],
+            "team_name": ["Arsenal"],
+            "understat_xg90": [0.40],
+            "understat_xa90": [0.20],
+        }
+    )
+    mapped = map_understat_to_current_ids(core, understat)
+    assert mapped.empty
+
+
 def test_reprice_projection_surface_changes_only_matched_attacking_signal():
     players = pd.DataFrame(
         {

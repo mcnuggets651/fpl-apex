@@ -72,8 +72,19 @@ def _enrich_understat_player_rates(out: pd.DataFrame) -> pd.DataFrame:
         refresh=False,
     )
     understat = normalise_understat_players(payload, previous_year)
+    identity_cols = [
+        col
+        for col in [
+            "player_id",
+            "first_name",
+            "second_name",
+            "web_name",
+            "team_name",
+        ]
+        if col in out.columns
+    ]
     rates = map_understat_to_current_ids(
-        out[["player_id", "first_name", "second_name"]].drop_duplicates("player_id"),
+        out[identity_cols].drop_duplicates("player_id"),
         understat,
     )
     if rates.empty:
