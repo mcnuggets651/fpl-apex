@@ -32,7 +32,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install Apex + genuine AIrsenal worker
-        run: pip install -e '.[dev,airsenal]'
+        run: |
+          pip install "bpl @ git+https://github.com/anguswilliams91/bpl-next@e238f742d1ea1f72a6ce8b8466f9989d6b53a819"
+          pip install -e '.[dev,airsenal]'
       - name: Unit tests
         run: |
           pytest -q \
