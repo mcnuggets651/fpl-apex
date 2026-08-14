@@ -30,6 +30,8 @@ def test_map_understat_to_current_ids_uses_unique_full_names_only():
 
 
 def test_map_understat_to_current_ids_falls_back_to_unique_web_name_with_team():
+    # The exact legal-name stage is intentionally empty here. It must fall through
+    # to the conservative unique web-name + team route rather than fail or guess.
     core = pd.DataFrame(
         {
             "player_id": [1],
