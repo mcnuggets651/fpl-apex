@@ -1,7 +1,7 @@
 # Apex Unified Recommendation
 
-Generated: 2026-08-14T12:10:43.958506+00:00
-Official surface: `946a2a55ef56` / `a478e20d030d`
+Generated: 2026-08-14T13:07:41.866828+00:00
+Official surface: `da3ce5aa6281` / `a478e20d030d`
 Canonical selector: **exact_horizon_maximum_ev**
 Reason: The sealed near-optimal squad frontier is rescored across every Gameweek with exact XI, captain, vice-captain and autosub mechanics; that single Decision object is the production authority.
 
