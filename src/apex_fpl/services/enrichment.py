@@ -105,6 +105,12 @@ def _enrich_understat_player_rates(out: pd.DataFrame) -> pd.DataFrame:
         raise RuntimeError(
             "Understat player production enrichment has zero usable mapped rows"
         )
+    enriched["understat_player_matched"] = (
+        pd.to_numeric(enriched["understat_xg90"], errors="coerce").notna()
+        & pd.to_numeric(enriched["understat_xa90"], errors="coerce").notna()
+    )
+    if "understat_match_method" not in enriched.columns:
+        enriched["understat_match_method"] = pd.NA
     return enriched
 
 

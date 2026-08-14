@@ -857,6 +857,8 @@ def run_pipeline(
         "preseason_goals_observed",
         "preseason_assists_observed",
         "preseason_shots_observed",
+        "understat_player_matched",
+        "understat_match_method",
         "gw1_xp",
         "xpts_1",
         "xpts_3",
