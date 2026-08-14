@@ -58,8 +58,13 @@ def build_projection_decomposition(
     )
 
     for label, col in EXPERT_CONTRIBUTIONS.items():
-        d[f"canonical_{label}_contribution"] = _numeric(d, col) * d["horizon_discount"]
-    d["canonical_xp_discounted"] = _numeric(d, "xp") * d["horizon_discount"]
+        raw = _numeric(d, col)
+        d[f"raw_{label}_contribution"] = raw
+        d[f"discounted_{label}_contribution"] = raw * d["horizon_discount"]
+    d["raw_canonical_xp"] = _numeric(d, "xp")
+    d["discounted_horizon_utility_component"] = (
+        d["raw_canonical_xp"] * d["horizon_discount"]
+    )
 
     apex_xp = _numeric(d, "apex_xp")
     apex_contrib = _numeric(d, "xp_expert_apex_model")
@@ -77,11 +82,16 @@ def build_projection_decomposition(
         )
 
     aggregations: dict[str, tuple[str, str]] = {
-        "horizon_canonical_xp": ("canonical_xp_discounted", "sum"),
-        "horizon_official_contribution": ("canonical_official_contribution", "sum"),
-        "horizon_apex_contribution": ("canonical_apex_contribution", "sum"),
-        "horizon_airsenal_contribution": ("canonical_airsenal_contribution", "sum"),
-        "horizon_market_contribution": ("canonical_market_contribution", "sum"),
+        "raw_horizon_canonical_xp": ("raw_canonical_xp", "sum"),
+        "discounted_horizon_utility": ("discounted_horizon_utility_component", "sum"),
+        "raw_horizon_official_contribution": ("raw_official_contribution", "sum"),
+        "raw_horizon_apex_contribution": ("raw_apex_contribution", "sum"),
+        "raw_horizon_airsenal_contribution": ("raw_airsenal_contribution", "sum"),
+        "raw_horizon_market_contribution": ("raw_market_contribution", "sum"),
+        "discounted_horizon_official_contribution": ("discounted_official_contribution", "sum"),
+        "discounted_horizon_apex_contribution": ("discounted_apex_contribution", "sum"),
+        "discounted_horizon_airsenal_contribution": ("discounted_airsenal_contribution", "sum"),
+        "discounted_horizon_market_contribution": ("discounted_market_contribution", "sum"),
     }
     for label in APEX_COMPONENTS:
         aggregations[f"horizon_apex_{label}"] = (f"canonical_apex_{label}", "sum")
@@ -96,7 +106,7 @@ def build_projection_decomposition(
         gw1_market_contribution=("xp_expert_market", "sum"),
     )
     out = out.merge(gw1, on="player_id", how="left", validate="one_to_one")
-    return out.sort_values("horizon_canonical_xp", ascending=False).reset_index(drop=True)
+    return out.sort_values("raw_horizon_canonical_xp", ascending=False).reset_index(drop=True)
 
 
 def build_fixture_shadow_comparison(
