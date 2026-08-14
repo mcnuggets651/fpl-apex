@@ -1,0 +1,27 @@
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    target = Path(path)
+    text = target.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{path}: expected one target, found {count}")
+    target.write_text(text.replace(old, new), encoding="utf-8")
+
+
+replace_once(
+    "scripts/audit_projection_truth.py",
+    '''    frame = projections[projections["gw"].isin(gameweeks)].copy()\n    weights = {int(gw): float(decay) ** idx for idx, gw in enumerate(gameweeks)}\n    frame["_discount"] = frame["gw"].map(weights).fillna(0.0)\n    frame["_apex"] = _numeric(frame, "apex_xp").fillna(0.0) * frame["_discount"]\n    frame["_airsenal"] = _numeric(frame, "airsenal_xp").fillna(0.0) * frame["_discount"]\n    summary = frame.groupby("player_id", as_index=False).agg(\n        apex_horizon_xp=("_apex", "sum"),\n        airsenal_horizon_xp=("_airsenal", "sum"),\n        model_xg90=("model_xg90", "first"),\n        model_xa90=("model_xa90", "first"),\n    )\n    summary["apex_minus_airsenal"] = summary["apex_horizon_xp"] - summary["airsenal_horizon_xp"]\n    summary["absolute_disagreement"] = summary["apex_minus_airsenal"].abs()\n''',
+    '''    frame = projections[projections["gw"].isin(gameweeks)].copy()\n    weights = {int(gw): float(decay) ** idx for idx, gw in enumerate(gameweeks)}\n    frame["_discount"] = frame["gw"].map(weights).fillna(0.0)\n    frame["_apex_raw"] = _numeric(frame, "apex_xp").fillna(0.0)\n    frame["_airsenal_raw"] = _numeric(frame, "airsenal_xp").fillna(0.0)\n    frame["_apex_discounted_utility"] = frame["_apex_raw"] * frame["_discount"]\n    frame["_airsenal_discounted_utility"] = frame["_airsenal_raw"] * frame["_discount"]\n    summary = frame.groupby("player_id", as_index=False).agg(\n        apex_raw_horizon_xp=("_apex_raw", "sum"),\n        airsenal_raw_horizon_xp=("_airsenal_raw", "sum"),\n        apex_discounted_horizon_utility=("_apex_discounted_utility", "sum"),\n        airsenal_discounted_horizon_utility=("_airsenal_discounted_utility", "sum"),\n        model_xg90=("model_xg90", "first"),\n        model_xa90=("model_xa90", "first"),\n    )\n    summary["raw_apex_minus_airsenal_xp"] = (\n        summary["apex_raw_horizon_xp"] - summary["airsenal_raw_horizon_xp"]\n    )\n    summary["raw_absolute_disagreement_xp"] = summary["raw_apex_minus_airsenal_xp"].abs()\n    summary["discounted_apex_minus_airsenal_utility"] = (\n        summary["apex_discounted_horizon_utility"]\n        - summary["airsenal_discounted_horizon_utility"]\n    )\n    summary["discounted_absolute_disagreement_utility"] = (\n        summary["discounted_apex_minus_airsenal_utility"].abs()\n    )\n''',
+)
+replace_once(
+    "scripts/audit_projection_truth.py",
+    '''    summary["high_disagreement"] = summary["absolute_disagreement"].ge(3.0)\n    summary["low_sample_extreme_rate"] = (\n        summary["competitive_evidence_minutes"].lt(270.0)\n        & (\n            summary["xg90_position_percentile"].ge(0.90)\n            | summary["xa90_position_percentile"].ge(0.90)\n        )\n        & summary["absolute_disagreement"].ge(2.0)\n    )\n    return summary.sort_values("absolute_disagreement", ascending=False).reset_index(drop=True)\n''',
+    '''    # Source-model disagreement is a forecast diagnostic, so thresholds are\n    # evaluated on undiscounted expected points. Discounted utility remains visible\n    # for decision-policy analysis but cannot be labelled or ranked as xP.\n    summary["high_disagreement"] = summary["raw_absolute_disagreement_xp"].ge(3.0)\n    summary["low_sample_extreme_rate"] = (\n        summary["competitive_evidence_minutes"].lt(270.0)\n        & (\n            summary["xg90_position_percentile"].ge(0.90)\n            | summary["xa90_position_percentile"].ge(0.90)\n        )\n        & summary["raw_absolute_disagreement_xp"].ge(2.0)\n    )\n    return summary.sort_values(\n        "raw_absolute_disagreement_xp", ascending=False\n    ).reset_index(drop=True)\n''',
+)
+
+path = Path("tests/test_projection_truth_audit.py")
+text = path.read_text(encoding="utf-8")
+text += '''\n\ndef test_disagreement_report_separates_raw_xp_from_discounted_utility():\n    projections = pd.DataFrame(\n        {\n            "player_id": [1, 1],\n            "gw": [1, 2],\n            "apex_xp": [4.0, 4.0],\n            "airsenal_xp": [5.0, 5.0],\n            "model_xg90": [0.4, 0.4],\n            "model_xa90": [0.2, 0.2],\n        }\n    )\n    players = pd.DataFrame(\n        {\n            "player_id": [1],\n            "web_name": ["Example"],\n            "position": ["FWD"],\n            "price": [7.5],\n            "minutes": [900],\n            "previous_minutes": [1800],\n        }\n    )\n    report = MODULE.build_disagreement_report(\n        projections, players, [1, 2], decay=0.90\n    ).iloc[0]\n    assert report["apex_raw_horizon_xp"] == pytest.approx(8.0)\n    assert report["airsenal_raw_horizon_xp"] == pytest.approx(10.0)\n    assert report["raw_apex_minus_airsenal_xp"] == pytest.approx(-2.0)\n    assert report["raw_absolute_disagreement_xp"] == pytest.approx(2.0)\n    assert report["apex_discounted_horizon_utility"] == pytest.approx(7.6)\n    assert report["airsenal_discounted_horizon_utility"] == pytest.approx(9.5)\n    assert report["discounted_apex_minus_airsenal_utility"] == pytest.approx(-1.9)\n'''
+path.write_text(text, encoding="utf-8")
