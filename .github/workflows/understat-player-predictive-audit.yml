@@ -1,0 +1,55 @@
+name: Apex Understat Player Predictive Audit
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/apex_fpl/evaluation/understat_players.py"
+      - "scripts/audit_understat_player_signal.py"
+      - "tests/test_understat_players.py"
+      - ".github/workflows/understat-player-predictive-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Apex + audit dependencies
+        run: pip install -e ".[dev]"
+      - name: Unit tests
+        run: pytest -q tests/test_understat.py tests/test_understat_players.py
+      - name: Lint bounded change
+        run: ruff check src/apex_fpl/evaluation/understat_players.py scripts/audit_understat_player_signal.py tests/test_understat_players.py
+      - name: Run no-hindsight player signal audit
+        env:
+          APEX_SEASON: "2026-2027"
+        run: |
+          mkdir -p reports
+          set +e
+          python scripts/audit_understat_player_signal.py \
+            --source-season 2024 \
+            --target-season 2025 \
+            --minimum-minutes 450 \
+            --bootstrap-samples 5000 \
+            --output reports/understat_player_predictive_audit.json \
+            2>&1 | tee reports/understat_player_predictive_audit.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: understat-player-predictive-audit-${{ github.run_id }}
+          path: |
+            reports/understat_player_predictive_audit.log
+            reports/understat_player_predictive_audit.json
+            reports/understat_player_predictive_panel.csv
+            reports/understat_player_weight_grid.csv
+          retention-days: 30

@@ -9,6 +9,13 @@ from apex_fpl.models.bonus import expected_bonus_proxy
 from apex_fpl.models.defcon import expected_defensive_contribution_points
 
 
+# Production-promoted 2026-08-14 after the sealed predictive-validity and exact
+# decision A/B gates passed. These values are intentionally frozen to the audited
+# challenger; changing them requires a new predictive and decision-level audit.
+UNDERSTAT_XG_WEIGHT = 0.50
+UNDERSTAT_XA_WEIGHT = 0.30
+
+
 def _num(df: pd.DataFrame, col: str, default: float = 0.0) -> pd.Series:
     if col not in df:
         return pd.Series(default, index=df.index, dtype=float)
@@ -66,7 +73,12 @@ def project_players(
     fixture_mult: pd.DataFrame,
     gameweeks: list[int],
 ) -> pd.DataFrame:
-    """Generate one transparent projection row per player/fixture."""
+    """Generate one transparent projection row per player/fixture.
+
+    This function is intentionally data-source agnostic. Production enrichment is
+    responsible for supplying optional ``understat_xg90``/``understat_xa90``
+    columns. If they are absent, the baseline Apex attacking rates are preserved.
+    """
     rows = []
     for gw in gameweeks:
         fx_cols = [
@@ -123,12 +135,32 @@ def project_players(
         goal_pts = pos.map({"GK": 10, "DEF": 6, "MID": 5, "FWD": 4}).fillna(5)
         clean_pts = pos.map({"GK": 4, "DEF": 4, "MID": 1, "FWD": 0}).fillna(0)
 
+        # Apply the exact validated 50% xG / 30% xA player blend to the direct
+        # attacking signal only when the pipeline supplied a matched Understat rate.
+        # The separate bonus prior deliberately retains baseline model rates, exactly
+        # matching the sealed A/B contract.
+        us_xg90 = _optional_num(d, "understat_xg90")
+        us_xa90 = _optional_num(d, "understat_xa90")
+        matched = xg90.notna() & xa90.notna() & us_xg90.notna() & us_xa90.notna()
+        base_signal = xg90.fillna(0.0) * goal_pts + xa90.fillna(0.0) * 3.0
+        repricable = matched & base_signal.gt(1e-9)
+        attack_xg90 = xg90.copy()
+        attack_xa90 = xa90.copy()
+        attack_xg90.loc[repricable] = (
+            (1.0 - UNDERSTAT_XG_WEIGHT) * xg90.loc[repricable]
+            + UNDERSTAT_XG_WEIGHT * us_xg90.loc[repricable]
+        )
+        attack_xa90.loc[repricable] = (
+            (1.0 - UNDERSTAT_XA_WEIGHT) * xa90.loc[repricable]
+            + UNDERSTAT_XA_WEIGHT * us_xa90.loc[repricable]
+        )
+
         appearance = p_app + p60
         attack = (
             min_share
             * d["attack_multiplier"]
             * role_multiplier
-            * (xg90 * goal_pts + xa90 * 3.0)
+            * (attack_xg90 * goal_pts + attack_xa90 * 3.0)
         )
         if "clean_sheet_prob" in d.columns:
             cs_prob = pd.to_numeric(
@@ -225,6 +257,10 @@ def project_players(
                     "xp_set_piece_prior": max(_at(set_piece, idx), 0.0),
                     "model_xg90": max(_at(xg90, idx), 0.0),
                     "model_xa90": max(_at(xa90, idx), 0.0),
+                    "attack_model_xg90": max(_at(attack_xg90, idx), 0.0),
+                    "attack_model_xa90": max(_at(attack_xa90, idx), 0.0),
+                    "understat_player_matched": bool(_at(matched.astype(float), idx)),
+                    "understat_player_repricable": bool(_at(repricable.astype(float), idx)),
                     "penalty_share": _at(penalty_share, idx),
                     "corners_share": _at(corners_share, idx),
                     "direct_freekick_share": _at(direct_share, idx),
