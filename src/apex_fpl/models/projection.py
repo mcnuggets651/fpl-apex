@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 from pathlib import Path
 
 import numpy as np
@@ -33,18 +34,11 @@ def _optional_num(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_numeric(df[col], errors="coerce")
 
 
-def _blend_rate(
-    primary: pd.Series,
-    preseason: pd.Series,
-    preseason_minutes: pd.Series,
-) -> pd.Series:
+def _blend_rate(primary: pd.Series, preseason: pd.Series, preseason_minutes: pd.Series) -> pd.Series:
     p = pd.to_numeric(primary, errors="coerce").fillna(0)
     pre_raw = pd.to_numeric(preseason, errors="coerce")
     pre = pre_raw.fillna(0)
     mins = pd.to_numeric(preseason_minutes, errors="coerce").fillna(0)
-    # Missing preseason return data is not a measured zero. Minutes may still be
-    # useful for role/start evidence, but cannot pull an attacking rate down unless
-    # that return statistic was actually observed by the source.
     pre_weight = np.clip(mins / 270.0, 0, 0.35) * pre_raw.notna().astype(float)
     return p * (1 - pre_weight) + pre * pre_weight
 
@@ -73,20 +67,18 @@ def _at(values, idx: int) -> float:
     return float(values[idx])
 
 
-def _production_understat_player_rates(players: pd.DataFrame) -> pd.DataFrame:
-    """Return the exact prior-season player signal promoted by the sealed A/B.
+def _understat_player_mode() -> str:
+    mode = os.getenv("APEX_UNDERSTAT_PLAYER_MODEL_MODE", "production").strip().casefold()
+    if mode not in {"shadow", "production"}:
+        raise RuntimeError("APEX_UNDERSTAT_PLAYER_MODEL_MODE must be 'shadow' or 'production'")
+    return mode
 
-    Identity matching follows the audited conservative rule: only unique normalized
-    full names in the current official/FPL-Core identity universe and Understat are
-    accepted. The fetch is fail-closed; production must not silently fall back to
-    the old player attacking surface if the promoted model cannot be constructed.
-    """
+
+def _production_understat_player_rates(players: pd.DataFrame) -> pd.DataFrame:
     required = {"player_id", "first_name", "second_name"}
     missing = sorted(required - set(players.columns))
     if missing:
-        raise RuntimeError(
-            f"Understat player production blend missing identity columns: {missing}"
-        )
+        raise RuntimeError(f"Understat player production blend missing identity columns: {missing}")
     payload = fetch_understat_season(
         UNDERSTAT_PLAYER_SEASON,
         cache_dir=Path("data/cache/understat"),
@@ -102,34 +94,17 @@ def _production_understat_player_rates(players: pd.DataFrame) -> pd.DataFrame:
     return rates
 
 
-def project_players(
-    players: pd.DataFrame,
-    fixture_mult: pd.DataFrame,
-    gameweeks: list[int],
-) -> pd.DataFrame:
+def project_players(players: pd.DataFrame, fixture_mult: pd.DataFrame, gameweeks: list[int]) -> pd.DataFrame:
     """Generate one transparent projection row per player/fixture."""
-    understat_rates = _production_understat_player_rates(players)
-    projection_players = players.merge(
-        understat_rates,
-        on="player_id",
-        how="left",
-        validate="one_to_one",
-    )
+    if _understat_player_mode() == "production":
+        understat_rates = _production_understat_player_rates(players)
+    else:
+        understat_rates = pd.DataFrame(columns=["player_id", "understat_xg90", "understat_xa90"])
+    projection_players = players.merge(understat_rates, on="player_id", how="left", validate="one_to_one")
 
     rows = []
     for gw in gameweeks:
-        fx_cols = [
-            col
-            for col in [
-                "team",
-                "opponent",
-                "is_home",
-                "attack_multiplier",
-                "defence_multiplier",
-                "clean_sheet_prob",
-            ]
-            if col in fixture_mult.columns
-        ]
+        fx_cols = [col for col in ["team", "opponent", "is_home", "attack_multiplier", "defence_multiplier", "clean_sheet_prob"] if col in fixture_mult.columns]
         fx = fixture_mult[fixture_mult["gw"] == gw][fx_cols].copy()
         fx["has_fixture"] = 1.0
         d = projection_players.merge(fx, on="team", how="left")
@@ -141,40 +116,18 @@ def project_players(
         min_share = np.clip(em / 90.0, 0, 1)
         p_app, p60 = _appearance_probabilities(em)
         if "appearance_probability" in d.columns:
-            p_app = np.clip(
-                _num(d, "appearance_probability", 0.8), 0, 1
-            ).to_numpy(float)
+            p_app = np.clip(_num(d, "appearance_probability", 0.8), 0, 1).to_numpy(float)
         if "minutes_60_plus_probability" in d.columns:
-            p60 = np.minimum(
-                p_app,
-                np.clip(
-                    _num(d, "minutes_60_plus_probability", 0.6), 0, 1
-                ).to_numpy(float),
-            )
+            p60 = np.minimum(p_app, np.clip(_num(d, "minutes_60_plus_probability", 0.6), 0, 1).to_numpy(float))
         role_multiplier = np.clip(_num(d, "role_multiplier", 1.0), 0.80, 1.20)
         premins = _num(d, "preseason_minutes", 0)
-        xg90 = _blend_rate(
-            _num(d, "expected_goals_per_90", 0),
-            _optional_num(d, "preseason_xg90"),
-            premins,
-        )
-        xa90 = _blend_rate(
-            _num(d, "expected_assists_per_90", 0),
-            _optional_num(d, "preseason_xa90"),
-            premins,
-        )
-        dc90 = _blend_rate(
-            _num(d, "defensive_contribution_per_90", 0),
-            _optional_num(d, "preseason_defcon90"),
-            premins,
-        )
+        xg90 = _blend_rate(_num(d, "expected_goals_per_90", 0), _optional_num(d, "preseason_xg90"), premins)
+        xa90 = _blend_rate(_num(d, "expected_assists_per_90", 0), _optional_num(d, "preseason_xa90"), premins)
+        dc90 = _blend_rate(_num(d, "defensive_contribution_per_90", 0), _optional_num(d, "preseason_defcon90"), premins)
         pos = d["position"].fillna("MID")
         goal_pts = pos.map({"GK": 10, "DEF": 6, "MID": 5, "FWD": 4}).fillna(5)
         clean_pts = pos.map({"GK": 4, "DEF": 4, "MID": 1, "FWD": 0}).fillna(0)
 
-        # Apply the exact validated 50% xG / 30% xA player blend to the direct
-        # attacking signal only. The separate bonus prior deliberately retains the
-        # baseline model rates, exactly matching the sealed A/B contract.
         us_xg90 = _optional_num(d, "understat_xg90")
         us_xa90 = _optional_num(d, "understat_xa90")
         matched = xg90.notna() & xa90.notna() & us_xg90.notna() & us_xa90.notna()
@@ -182,67 +135,30 @@ def project_players(
         repricable = matched & base_signal.gt(1e-9)
         attack_xg90 = xg90.copy()
         attack_xa90 = xa90.copy()
-        attack_xg90.loc[repricable] = (
-            (1.0 - UNDERSTAT_XG_WEIGHT) * xg90.loc[repricable]
-            + UNDERSTAT_XG_WEIGHT * us_xg90.loc[repricable]
-        )
-        attack_xa90.loc[repricable] = (
-            (1.0 - UNDERSTAT_XA_WEIGHT) * xa90.loc[repricable]
-            + UNDERSTAT_XA_WEIGHT * us_xa90.loc[repricable]
-        )
+        attack_xg90.loc[repricable] = (1.0 - UNDERSTAT_XG_WEIGHT) * xg90.loc[repricable] + UNDERSTAT_XG_WEIGHT * us_xg90.loc[repricable]
+        attack_xa90.loc[repricable] = (1.0 - UNDERSTAT_XA_WEIGHT) * xa90.loc[repricable] + UNDERSTAT_XA_WEIGHT * us_xa90.loc[repricable]
 
         appearance = p_app + p60
-        attack = (
-            min_share
-            * d["attack_multiplier"]
-            * role_multiplier
-            * (attack_xg90 * goal_pts + attack_xa90 * 3.0)
-        )
+        attack = min_share * d["attack_multiplier"] * role_multiplier * (attack_xg90 * goal_pts + attack_xa90 * 3.0)
         if "clean_sheet_prob" in d.columns:
-            cs_prob = pd.to_numeric(
-                d["clean_sheet_prob"], errors="coerce"
-            ).fillna(0.30)
+            cs_prob = pd.to_numeric(d["clean_sheet_prob"], errors="coerce").fillna(0.30)
             cs_prob = np.clip(cs_prob, 0.04, 0.72)
         else:
             cs_prob = np.clip(0.30 * d["defence_multiplier"], 0.08, 0.60)
         clean = p60 * clean_pts * cs_prob
         defensive = expected_defensive_contribution_points(pos, dc90, min_share)
-
         saves90 = _num(d, "saves_per_90", 0)
         save_points = np.where(pos.eq("GK"), min_share * saves90 / 3.0, 0.0)
-
-        # 2026/27 bonus potential is a separate calibrated prior. It incorporates
-        # historical/current BPS but explicitly adjusts for this season's removal
-        # of the tackled penalty, reduced CBI reward and stronger goalkeeper-save BPS.
         bonus_proxy = expected_bonus_proxy(d, min_share, xg90, xa90, dc90)
 
         official_pen = _order_share(_num(d, "penalties_order", 99))
-        official_corner_indirect = _order_share(
-            _num(d, "corners_and_indirect_freekicks_order", 99)
-        )
+        official_corner_indirect = _order_share(_num(d, "corners_and_indirect_freekicks_order", 99))
         official_direct = _order_share(_num(d, "direct_freekicks_order", 99))
-        penalty_share = _with_override(
-            official_pen,
-            _optional_num(d, "penalty_share"),
-        )
-        corners_share = _with_override(
-            official_corner_indirect,
-            _optional_num(d, "corners_share"),
-        )
-        indirect_share = _with_override(
-            official_corner_indirect,
-            _optional_num(d, "indirect_freekick_share"),
-        )
-        direct_share = _with_override(
-            official_direct,
-            _optional_num(d, "direct_freekick_share"),
-        )
-        set_piece = (
-            0.34 * penalty_share
-            + 0.09 * corners_share
-            + 0.07 * indirect_share
-            + 0.12 * direct_share
-        ) * min_share * role_multiplier
+        penalty_share = _with_override(official_pen, _optional_num(d, "penalty_share"))
+        corners_share = _with_override(official_corner_indirect, _optional_num(d, "corners_share"))
+        indirect_share = _with_override(official_corner_indirect, _optional_num(d, "indirect_freekick_share"))
+        direct_share = _with_override(official_direct, _optional_num(d, "direct_freekick_share"))
+        set_piece = (0.34 * penalty_share + 0.09 * corners_share + 0.07 * indirect_share + 0.12 * direct_share) * min_share * role_multiplier
 
         fixture = d["has_fixture"].to_numpy(float)
         appearance = appearance * fixture
@@ -252,55 +168,33 @@ def project_players(
         save_points = save_points * fixture
         bonus_proxy = bonus_proxy * fixture
         set_piece = set_piece * fixture
-        xp = (
-            appearance
-            + attack
-            + clean
-            + defensive
-            + save_points
-            + bonus_proxy
-            + set_piece
-        )
-        variance = np.where(
-            fixture > 0,
-            np.maximum(0.8, 0.45 * xp + (1 - min_share) * 2.2),
-            0.01,
-        )
+        xp = appearance + attack + clean + defensive + save_points + bonus_proxy + set_piece
+        variance = np.where(fixture > 0, np.maximum(0.8, 0.45 * xp + (1 - min_share) * 2.2), 0.01)
 
         for idx, row in d.reset_index(drop=True).iterrows():
-            rows.append(
-                {
-                    "player_id": int(row["player_id"]),
-                    "gw": gw,
-                    "opponent": (
-                        int(row["opponent"])
-                        if "opponent" in row and pd.notna(row["opponent"])
-                        else None
-                    ),
-                    "is_home": (
-                        bool(row["is_home"])
-                        if "is_home" in row and pd.notna(row["is_home"])
-                        else None
-                    ),
-                    "apex_xp": max(_at(xp, idx), 0.0),
-                    "apex_sd": math.sqrt(max(_at(variance, idx), 0.01)),
-                    "xp_appearance": max(_at(appearance, idx), 0.0),
-                    "xp_attack": max(_at(attack, idx), 0.0),
-                    "xp_clean_sheet": max(_at(clean, idx), 0.0),
-                    "xp_defensive_contribution": max(_at(defensive, idx), 0.0),
-                    "xp_saves": max(_at(save_points, idx), 0.0),
-                    "xp_bonus_prior": max(_at(bonus_proxy, idx), 0.0),
-                    "xp_set_piece_prior": max(_at(set_piece, idx), 0.0),
-                    "model_xg90": max(_at(xg90, idx), 0.0),
-                    "model_xa90": max(_at(xa90, idx), 0.0),
-                    "attack_model_xg90": max(_at(attack_xg90, idx), 0.0),
-                    "attack_model_xa90": max(_at(attack_xa90, idx), 0.0),
-                    "understat_player_matched": bool(_at(matched.astype(float), idx)),
-                    "understat_player_repricable": bool(_at(repricable.astype(float), idx)),
-                    "penalty_share": _at(penalty_share, idx),
-                    "corners_share": _at(corners_share, idx),
-                    "direct_freekick_share": _at(direct_share, idx),
-                    "indirect_freekick_share": _at(indirect_share, idx),
-                }
-            )
+            rows.append({
+                "player_id": int(row["player_id"]),
+                "gw": gw,
+                "opponent": int(row["opponent"]) if "opponent" in row and pd.notna(row["opponent"]) else None,
+                "is_home": bool(row["is_home"]) if "is_home" in row and pd.notna(row["is_home"]) else None,
+                "apex_xp": max(_at(xp, idx), 0.0),
+                "apex_sd": math.sqrt(max(_at(variance, idx), 0.01)),
+                "xp_appearance": max(_at(appearance, idx), 0.0),
+                "xp_attack": max(_at(attack, idx), 0.0),
+                "xp_clean_sheet": max(_at(clean, idx), 0.0),
+                "xp_defensive_contribution": max(_at(defensive, idx), 0.0),
+                "xp_saves": max(_at(save_points, idx), 0.0),
+                "xp_bonus_prior": max(_at(bonus_proxy, idx), 0.0),
+                "xp_set_piece_prior": max(_at(set_piece, idx), 0.0),
+                "model_xg90": max(_at(xg90, idx), 0.0),
+                "model_xa90": max(_at(xa90, idx), 0.0),
+                "attack_model_xg90": max(_at(attack_xg90, idx), 0.0),
+                "attack_model_xa90": max(_at(attack_xa90, idx), 0.0),
+                "understat_player_matched": bool(_at(matched.astype(float), idx)),
+                "understat_player_repricable": bool(_at(repricable.astype(float), idx)),
+                "penalty_share": _at(penalty_share, idx),
+                "corners_share": _at(corners_share, idx),
+                "direct_freekick_share": _at(direct_share, idx),
+                "indirect_freekick_share": _at(indirect_share, idx),
+            })
     return pd.DataFrame(rows)
