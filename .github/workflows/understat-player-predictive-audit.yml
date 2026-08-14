@@ -35,8 +35,8 @@ jobs:
           mkdir -p reports
           set +e
           python scripts/audit_understat_player_signal.py \
-            --first-season 2021 \
-            --last-season 2025 \
+            --source-season 2024 \
+            --target-season 2025 \
             --minimum-minutes 450 \
             --bootstrap-samples 5000 \
             --output reports/understat_player_predictive_audit.json \
