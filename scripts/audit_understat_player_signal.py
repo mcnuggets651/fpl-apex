@@ -100,14 +100,15 @@ def main() -> None:
         validate="one_to_one",
     )
     source_understat_minutes = pd.to_numeric(panel["minutes"], errors="coerce")
-    source_core_minutes = pd.to_numeric(panel.get("core_minutes"), errors="coerce")
     target_minutes = pd.to_numeric(panel["target_minutes"], errors="coerce")
     eligible = (
         source_understat_minutes.ge(args.minimum_minutes)
         & target_minutes.ge(args.minimum_minutes)
     )
-    if source_core_minutes.notna().any():
-        eligible &= source_core_minutes.fillna(0).ge(args.minimum_minutes)
+    if "core_minutes" in panel.columns:
+        source_core_minutes = pd.to_numeric(panel["core_minutes"], errors="coerce")
+        if source_core_minutes.notna().any():
+            eligible &= source_core_minutes.fillna(0).ge(args.minimum_minutes)
     panel = panel[eligible].copy()
     if panel.empty:
         raise SystemExit("no matched no-hindsight player rows were produced")
