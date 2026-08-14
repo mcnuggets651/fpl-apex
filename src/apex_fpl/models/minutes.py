@@ -209,6 +209,18 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         "minutes_60_plus_probability": p60,
         "minutes_80_plus_probability": p80,
         "minutes_confidence": confidence,
+        # Decision-grade observability: these fields explain the incumbent model
+        # without changing it. A future decomposed challenger must be validated
+        # before it can replace expected_minutes/start_probability.
+        "historical_start_probability": hist_start_prob,
+        "historical_expected_minutes": historic_expected_minutes,
+        "preseason_start_probability": pre_start_prob,
+        "preseason_average_minutes": pre_avg_minutes,
+        "preseason_signal_minutes": preseason_signal,
+        "historical_signal_minutes": historic_signal,
+        "role_expected_minutes_pre_availability": base_minutes,
+        "role_start_probability_pre_availability": base_start,
+        "availability_probability": availability,
         "preseason_role_weight": preseason_weight,
         "preseason_effective_games": effective_preseason_games,
     }, index=df.index)
