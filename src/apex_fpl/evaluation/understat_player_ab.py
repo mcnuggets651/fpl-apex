@@ -136,17 +136,12 @@ def reprice_projection_surface(
     d["understat_zero_base_unrepriced"] = zero_base_unrepriced
     d["apex_xp"] = np.maximum(base_apex - base_attack + new_attack, 0.0)
 
-    # The transparent model variance is a deterministic function of model xP and
-    # minutes share. Recompute it so stochastic diagnostics are not left on the
-    # baseline variance after changing the Apex mean.
     if "apex_sd" in d.columns:
         em = pd.to_numeric(d["expected_minutes"], errors="coerce").fillna(0.0)
         min_share = np.clip(em / 90.0, 0.0, 1.0)
         variance = np.maximum(0.8, 0.45 * d["apex_xp"] + (1.0 - min_share) * 2.2)
         d["apex_sd"] = np.sqrt(variance)
 
-    # ``blend_projection`` expects full-GW expert values before allocating them
-    # across DGW rows. Undo the already-applied allocation from the sealed baseline.
     allocation = pd.to_numeric(
         d.get("expert_allocation_count", pd.Series(1.0, index=d.index)),
         errors="coerce",
@@ -164,12 +159,17 @@ def reprice_projection_surface(
 
     unique_players = projections[["player_id"]].drop_duplicates()
     matched_players = d.loc[matched, ["player_id"]].drop_duplicates()
-    zero_players = d.loc[zero_base_unrepriced, ["player_id"]].drop_duplicates()
+    zero_players_all = d.loc[zero_base_unrepriced, ["player_id"]].drop_duplicates()
+    zero_players_outfield = d.loc[
+        zero_base_unrepriced & ~d["position"].eq("GK"), ["player_id"]
+    ].drop_duplicates()
     diagnostics = {
         "player_rows": int(len(unique_players)),
         "matched_players": int(len(matched_players)),
         "matched_player_rate": float(len(matched_players) / len(unique_players)) if len(unique_players) else 0.0,
-        "zero_base_unrepriced_players": int(len(zero_players)),
+        "zero_base_unrepriced_players": int(len(zero_players_outfield)),
+        "zero_base_unrepriced_players_all_positions": int(len(zero_players_all)),
+        "zero_base_gate_scope": "outfield_only; goalkeeper zero attacking baselines are structurally valid",
         "xg_understat_weight": float(xg_weight),
         "xa_understat_weight": float(xa_weight),
         "bonus_prior_policy": "held_fixed_to_isolate_direct_validated_attacking_signal",
