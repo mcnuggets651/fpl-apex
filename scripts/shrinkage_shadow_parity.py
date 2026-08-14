@@ -66,17 +66,35 @@ def parity_shadow(projections: pd.DataFrame, players: pd.DataFrame):
     premins = num(p, "preseason_minutes")
     raw_xg = blend(num(p, "expected_goals_per_90"), opt(p, "preseason_xg90"), premins)
     raw_xa = blend(num(p, "expected_assists_per_90"), opt(p, "preseason_xa90"), premins)
+
+    xg_evidence = pd.to_numeric(
+        s["xg90_combined_effective_evidence_minutes"], errors="coerce"
+    ).fillna(0.0)
+    xa_evidence = pd.to_numeric(
+        s["xa90_combined_effective_evidence_minutes"], errors="coerce"
+    ).fillna(0.0)
     new_xg = blend(s["shrunk_xg90"], opt(p, "preseason_xg90"), premins)
     new_xa = blend(s["shrunk_xa90"], opt(p, "preseason_xa90"), premins)
+
+    # A cohort prior is not player-specific evidence. When there is no competitive
+    # evidence for a metric, preserve the exact production rate instead of injecting
+    # a position/price prior into live xP. Low-but-nonzero evidence still receives
+    # normal empirical-Bayes shrinkage.
+    xg_prior_only_bypassed = xg_evidence.le(0.0)
+    xa_prior_only_bypassed = xa_evidence.le(0.0)
+    new_xg = new_xg.where(~xg_prior_only_bypassed, raw_xg)
+    new_xa = new_xa.where(~xa_prior_only_bypassed, raw_xa)
+
     audit = p[[c for c in ["player_id", "web_name", "position", "price"] if c in p.columns]].copy()
     audit["raw_model_xg90"] = raw_xg.to_numpy()
     audit["raw_model_xa90"] = raw_xa.to_numpy()
     audit["shrunk_model_xg90"] = new_xg.to_numpy()
     audit["shrunk_model_xa90"] = new_xa.to_numpy()
-    audit["evidence_minutes"] = s[[
-        "xg90_combined_effective_evidence_minutes",
-        "xa90_combined_effective_evidence_minutes",
-    ]].max(axis=1).to_numpy()
+    audit["xg90_evidence_minutes"] = xg_evidence.to_numpy()
+    audit["xa90_evidence_minutes"] = xa_evidence.to_numpy()
+    audit["xg90_prior_only_bypassed"] = xg_prior_only_bypassed.to_numpy()
+    audit["xa90_prior_only_bypassed"] = xa_prior_only_bypassed.to_numpy()
+    audit["evidence_minutes"] = pd.concat([xg_evidence, xa_evidence], axis=1).max(axis=1).to_numpy()
     audit["previous_minutes"] = num(p, "previous_minutes").to_numpy()
     lookup = audit.drop_duplicates("player_id").set_index("player_id")
     out = projections.copy()

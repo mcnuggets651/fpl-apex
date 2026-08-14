@@ -93,3 +93,56 @@ def test_parity_shadow_fails_when_reconstructed_rate_differs_from_production() -
     ])
     with pytest.raises(ValueError, match="production input parity failed"):
         module.parity_shadow(projections, players)
+
+
+def test_zero_evidence_player_keeps_production_rate_instead_of_prior() -> None:
+    module = load_module("shrinkage_shadow_parity", "shrinkage_shadow_parity.py")
+    players = pd.DataFrame([
+        {
+            "player_id": 1,
+            "web_name": "NoEvidence",
+            "position": "FWD",
+            "price": 5.0,
+            "minutes": 0.0,
+            "previous_minutes": 0.0,
+            "expected_goals_per_90": 0.10,
+            "expected_assists_per_90": 0.05,
+            "defensive_contribution_per_90": 0.0,
+            "preseason_minutes": 0.0,
+        },
+        {
+            "player_id": 2,
+            "web_name": "Established",
+            "position": "FWD",
+            "price": 6.0,
+            "minutes": 900.0,
+            "previous_minutes": 900.0,
+            "expected_goals_per_90": 0.80,
+            "previous_expected_goals_per_90": 0.80,
+            "expected_assists_per_90": 0.20,
+            "previous_expected_assists_per_90": 0.20,
+            "defensive_contribution_per_90": 0.0,
+            "previous_defensive_contribution_per_90": 0.0,
+            "preseason_minutes": 0.0,
+        },
+    ])
+    projections = pd.DataFrame([
+        {
+            "player_id": 1,
+            "gw": 1,
+            "model_xg90": 0.10,
+            "model_xa90": 0.05,
+            "xp_attack": 1.0,
+            "apex_xp": 3.0,
+            "xp": 2.5,
+            "xp_expert_apex_model": 1.5,
+            "effective_weight_apex_model": 0.5,
+        }
+    ])
+    audit, shadow = module.parity_shadow(projections, players)
+    row = audit.loc[audit["player_id"].eq(1)].iloc[0]
+    assert row["xg90_prior_only_bypassed"]
+    assert row["xa90_prior_only_bypassed"]
+    assert row["shrunk_model_xg90"] == pytest.approx(row["raw_model_xg90"])
+    assert row["shrunk_model_xa90"] == pytest.approx(row["raw_model_xa90"])
+    assert shadow.loc[0, "shrunk_blended_xp_v2"] == pytest.approx(shadow.loc[0, "xp"])
