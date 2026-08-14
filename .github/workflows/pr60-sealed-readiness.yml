@@ -1,0 +1,96 @@
+name: PR60 Sealed Readiness Audit
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr60-sealed-readiness
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Apex + pinned AIrsenal worker
+        run: bash scripts/install_pinned_airsenal.sh
+
+      - name: Run deterministic repository tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          pytest -q
+          ruff check src tests scripts
+          python scripts/check_upstreams.py
+          python scripts/check_governance_consistency.py
+
+      - name: Restore Apex runtime cache
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: pr60-unified-readiness-${{ github.run_id }}
+          restore-keys: |
+            apex-unified-runtime-2627-
+            apex-pinnacle-runtime-2627-
+            apex-runtime-2627-
+
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/airsenal.db
+          key: airsenal-2627-${{ runner.os }}-v3
+
+      - name: Refresh genuine AIrsenal worker
+        env:
+          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
+        run: |
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            airsenal_setup_initial_db --fpl_team_id 1
+          fi
+          python scripts/update_airsenal_worker.py
+          python scripts/run_airsenal_worker.py \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output data/generated/airsenal.csv
+
+      - name: Run canonical Apex readiness audit
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/run_apex.py \
+            --horizon 8 \
+            --stochastic-scenarios 256 \
+            --cvar-alpha 0.10 \
+            --cvar-weight 0.20 \
+            --force
+
+      - name: Upload unified readiness artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr60-sealed-readiness-${{ github.run_id }}
+          path: |
+            data/generated/apex_recommendation_latest.json
+            data/generated/apex_recommendation_latest.md
+            data/generated/pinnacle_latest.json
+            data/generated/elite_latest.json
+            data/generated/decision_bundle/
+            reports/
+            data/generated/airsenal.csv
+          retention-days: 30
