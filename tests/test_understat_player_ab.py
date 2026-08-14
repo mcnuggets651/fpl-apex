@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from apex_fpl.evaluation.understat_player_ab import (
     map_understat_to_current_ids,
@@ -25,7 +26,7 @@ def test_map_understat_to_current_ids_uses_unique_full_names_only():
     )
     mapped = map_understat_to_current_ids(core, understat)
     assert set(mapped["player_id"]) == {1, 2}
-    assert mapped.set_index("player_id").loc[1, "understat_xg90"] == 0.5
+    assert mapped.set_index("player_id").loc[1, "understat_xg90"] == pytest.approx(0.5)
 
 
 def test_reprice_projection_surface_changes_only_matched_attacking_signal():
@@ -67,9 +68,9 @@ def test_reprice_projection_surface_changes_only_matched_attacking_signal():
         xa_weight=0.3,
     )
     rows = challenger.set_index("player_id")
-    assert rows.loc[1, "challenger_model_xg90"] == 0.6
-    assert rows.loc[1, "challenger_model_xa90"] == 0.26
+    assert rows.loc[1, "challenger_model_xg90"] == pytest.approx(0.6)
+    assert rows.loc[1, "challenger_model_xa90"] == pytest.approx(0.26)
     assert rows.loc[1, "xp"] > 5.0
-    assert rows.loc[2, "xp"] == 4.0
+    assert rows.loc[2, "xp"] == pytest.approx(4.0)
     assert diag["matched_players"] == 1
     assert diag["zero_base_unrepriced_players"] == 0
