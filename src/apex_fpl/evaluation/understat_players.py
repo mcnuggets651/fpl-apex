@@ -128,8 +128,6 @@ def latest_core_player_rates(
 
 
 def match_core_understat(core: pd.DataFrame, understat: pd.DataFrame) -> pd.DataFrame:
-    # High-precision identity bridge: only unique normalized names in each source
-    # are eligible. Ambiguous names are excluded instead of guessed.
     core_counts = core.groupby("name_key").size()
     understat_counts = understat.groupby("name_key").size()
     valid = set(core_counts[core_counts == 1].index) & set(understat_counts[understat_counts == 1].index)
@@ -182,13 +180,12 @@ def _losses(frame: pd.DataFrame, xg_weight: float, xa_weight: float) -> pd.DataF
 def calibrate_understat_player_blend(
     panel: pd.DataFrame,
     *,
-    holdout_source_season: int,
     weights: tuple[float, ...] = tuple(np.linspace(0.0, 1.0, 11)),
     bootstrap_samples: int = 5000,
     seed: int = 20260814,
 ) -> UnderstatPlayerAudit:
     required = {
-        "source_season",
+        "audit_split",
         "core_xg90",
         "core_xa90",
         "understat_xg90",
@@ -201,10 +198,10 @@ def calibrate_understat_player_blend(
     if missing:
         raise ValueError(f"player signal panel missing columns: {missing}")
     d = panel.dropna(subset=list(required)).copy()
-    train = d[d["source_season"] < int(holdout_source_season)].copy()
-    holdout = d[d["source_season"] == int(holdout_source_season)].copy()
+    train = d[d["audit_split"] == "calibration"].copy()
+    holdout = d[d["audit_split"] == "holdout"].copy()
     if train.empty or holdout.empty:
-        raise ValueError("player signal audit requires both calibration and holdout rows")
+        raise ValueError("player signal audit requires calibration and untouched holdout rows")
 
     goal_grid: list[dict] = []
     assist_grid: list[dict] = []
@@ -247,7 +244,7 @@ def calibrate_understat_player_blend(
         and (xg_weight > 0 or xa_weight > 0)
     )
     summary = {
-        "holdout_source_season": int(holdout_source_season),
+        "calibration_rows": int(len(train)),
         "rows": int(len(holdout)),
         "core_goal_nll": core_goal,
         "blend_goal_nll": blend_goal,
