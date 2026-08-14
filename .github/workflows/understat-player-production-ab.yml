@@ -6,6 +6,8 @@ on:
     paths:
       - "src/apex_fpl/evaluation/understat_player_ab.py"
       - "scripts/audit_understat_player_production_ab.py"
+      - "scripts/audit_understat_player_cvar_phase.py"
+      - "scripts/run_understat_player_production_ab_bounded.py"
       - "tests/test_understat_player_ab.py"
       - ".github/workflows/understat-player-production-ab.yml"
 
@@ -37,6 +39,8 @@ jobs:
           ruff check \
             src/apex_fpl/evaluation/understat_player_ab.py \
             scripts/audit_understat_player_production_ab.py \
+            scripts/audit_understat_player_cvar_phase.py \
+            scripts/run_understat_player_production_ab_bounded.py \
             tests/test_understat_player_ab.py
       - name: Cache AIrsenal database
         uses: actions/cache@v4
@@ -76,13 +80,37 @@ jobs:
             --horizon 8 \
             --force \
             --bundle-dir data/generated/decision_bundle
-      - name: Run identical-snapshot Understat player A/B
+      - name: Run baseline 256-scenario CVaR phase
         env:
           APEX_SEASON: "2026-2027"
         run: |
-          python scripts/audit_understat_player_production_ab.py \
+          python scripts/audit_understat_player_cvar_phase.py \
+            --surface baseline \
             --bundle-dir data/generated/decision_bundle \
             --historical-audit reports/understat_player_predictive_audit.json \
+            --stochastic-scenarios 256 \
+            --scenario-seed 20260807 \
+            --output reports/understat_player_production_ab_baseline_cvar.json
+      - name: Run challenger 256-scenario CVaR phase
+        env:
+          APEX_SEASON: "2026-2027"
+        run: |
+          python scripts/audit_understat_player_cvar_phase.py \
+            --surface challenger \
+            --bundle-dir data/generated/decision_bundle \
+            --historical-audit reports/understat_player_predictive_audit.json \
+            --stochastic-scenarios 256 \
+            --scenario-seed 20260807 \
+            --output reports/understat_player_production_ab_challenger_cvar.json
+      - name: Run exact regret and finalize identical-snapshot A/B
+        env:
+          APEX_SEASON: "2026-2027"
+        run: |
+          python scripts/run_understat_player_production_ab_bounded.py \
+            --bundle-dir data/generated/decision_bundle \
+            --historical-audit reports/understat_player_predictive_audit.json \
+            --baseline-cvar reports/understat_player_production_ab_baseline_cvar.json \
+            --challenger-cvar reports/understat_player_production_ab_challenger_cvar.json \
             --stochastic-scenarios 256 \
             --scenario-seed 20260807 \
             --output reports/understat_player_production_ab.json
@@ -95,6 +123,8 @@ jobs:
             reports/understat_player_predictive_panel.csv
             reports/understat_player_weight_grid.csv
             reports/understat_player_production_ab.json
+            reports/understat_player_production_ab_baseline_cvar.json
+            reports/understat_player_production_ab_challenger_cvar.json
             reports/understat_player_production_ab_rankings.csv
             reports/understat_player_production_ab_baseline_regret.csv
             reports/understat_player_production_ab_challenger_regret.csv
