@@ -85,8 +85,11 @@ def latest_core_player_rates(
     players: pd.DataFrame,
     season: int,
 ) -> pd.DataFrame:
+    d = stats.copy()
+    if "player_id" not in d.columns and "id" in d.columns:
+        d = d.rename(columns={"id": "player_id"})
     required = {"player_id", "expected_goals_per_90", "expected_assists_per_90"}
-    missing = sorted(required - set(stats.columns))
+    missing = sorted(required - set(d.columns))
     if missing:
         raise ValueError(f"FPL Core playerstats missing columns: {missing}")
     identity_required = {"player_id", "first_name", "second_name"}
@@ -94,7 +97,6 @@ def latest_core_player_rates(
     if missing_identity:
         raise ValueError(f"FPL Core players missing identity columns: {missing_identity}")
 
-    d = stats.copy()
     d["player_id"] = pd.to_numeric(d["player_id"], errors="coerce")
     if d["player_id"].duplicated().any():
         if "gw" not in d.columns:
