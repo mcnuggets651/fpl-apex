@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install Apex + pinned AIrsenal worker
-        run: scripts/install_pinned_airsenal.sh
+        run: bash scripts/install_pinned_airsenal.sh
       - name: Unit tests
         run: pytest -q tests/test_joint_initial_path.py
       - name: Cache AIrsenal database
