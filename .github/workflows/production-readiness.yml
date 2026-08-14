@@ -21,8 +21,8 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install Apex and pinned AIrsenal worker
-        run: pip install -e '.[dev,airsenal]'
+      - name: Install Apex + pinned AIrsenal worker
+        run: bash scripts/install_pinned_airsenal.sh
 
       - name: Run deterministic repository tests
         env:
