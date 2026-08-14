@@ -1,3 +1,8 @@
+"""Report whether projection-policy challengers have enough history to be promoted.
+
+This CLI is deliberately fail-closed: it records missing replay/preseason evidence
+without changing fixture decay, preseason attacking rates, or the minutes model.
+"""
 from __future__ import annotations
 
 import argparse
