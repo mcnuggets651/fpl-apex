@@ -74,3 +74,44 @@ def test_reprice_projection_surface_changes_only_matched_attacking_signal():
     assert rows.loc[2, "xp"] == pytest.approx(4.0)
     assert diag["matched_players"] == 1
     assert diag["zero_base_unrepriced_players"] == 0
+
+
+def test_zero_base_gate_excludes_goalkeepers_but_reports_all_positions():
+    players = pd.DataFrame(
+        {
+            "player_id": [1, 2],
+            "position": ["GK", "MID"],
+            "expected_minutes": [90.0, 90.0],
+        }
+    )
+    projections = pd.DataFrame(
+        {
+            "player_id": [1, 2],
+            "gw": [1, 1],
+            "apex_xp": [4.0, 4.0],
+            "apex_sd": [1.0, 1.0],
+            "xp_attack": [0.0, 0.0],
+            "model_xg90": [0.0, 0.0],
+            "model_xa90": [0.0, 0.0],
+            "minutes_confidence": [0.9, 0.9],
+            "role_confidence": [0.9, 0.9],
+            "decay": [1.0, 1.0],
+        }
+    )
+    rates = pd.DataFrame(
+        {
+            "player_id": [1, 2],
+            "understat_xg90": [0.0, 0.2],
+            "understat_xa90": [0.01, 0.1],
+        }
+    )
+    _, diag = reprice_projection_surface(
+        players,
+        projections,
+        rates,
+        {"apex_model": 1.0},
+        0.15,
+    )
+    assert diag["zero_base_unrepriced_players_all_positions"] == 2
+    assert diag["zero_base_unrepriced_players"] == 1
+    assert diag["zero_base_gate_scope"].startswith("outfield_only")
