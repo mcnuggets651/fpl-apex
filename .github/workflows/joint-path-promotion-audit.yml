@@ -15,22 +15,26 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
+
       - name: Install Apex + pinned AIrsenal worker
         run: bash scripts/install_pinned_airsenal.sh
+
       - name: Promotion unit tests
         run: pytest -q tests/test_joint_path_promotion.py tests/test_joint_initial_path.py
+
       - name: Cache AIrsenal database
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/airsenal.db
           key: airsenal-2627-${{ runner.os }}-v3
+
       - name: Refresh genuine AIrsenal forecasts
         env:
           AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
@@ -38,15 +42,98 @@ jobs:
           if [ ! -s "$AIRSENAL_DB_FILE" ]; then airsenal_setup_initial_db --fpl_team_id 1; fi
           python scripts/update_airsenal_worker.py
           python scripts/run_airsenal_worker.py --db "$AIRSENAL_DB_FILE" --horizon 8 --output data/generated/airsenal.csv
+
       - name: Build sealed GW1-GW8 decision bundle
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
           AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         run: python scripts/build_decision_bundle.py --horizon 8 --force
+
+      - name: Generate Pinnacle surface for independent parity
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/run_pinnacle.py \
+            --horizon 8 \
+            --stochastic-scenarios 256 \
+            --cvar-alpha 0.10 \
+            --cvar-weight 0.20 \
+            --bundle-dir data/generated/decision_bundle
+          status=$?
+          set -e
+          test -s data/generated/pinnacle_latest.json
+          if [ "$status" -ne 0 ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("data/generated/pinnacle_latest.json").read_text())
+          blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
+          assert blockers == ["required independent solver parity snapshot is not embedded"], blockers
+          PY
+          fi
+          python scripts/export_open_solver.py \
+            reports/players.csv reports/projections.csv /tmp/apex.csv \
+            --projection-col xp
+
+      - name: Read pinned independent solver revision
+        id: parity-pin
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          source = json.load(open("upstreams.lock.json", encoding="utf-8"))["sources"]["open_fpl_solver"]
+          print(f"repository={source['repository']}")
+          print(f"sha={source['commit']}")
+          PY
+
+      - name: Run and embed same-surface independent parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install uv
+          git clone --filter=blob:none \
+            "https://github.com/${{ steps.parity-pin.outputs.repository }}.git" \
+            "$RUNNER_TEMP/open-fpl-solver"
+          git -C "$RUNNER_TEMP/open-fpl-solver" checkout --detach \
+            "${{ steps.parity-pin.outputs.sha }}"
+          cp /tmp/apex.csv "$RUNNER_TEMP/open-fpl-solver/data/apex.csv"
+          cd "$RUNNER_TEMP/open-fpl-solver"
+          uv sync
+          uv run python run/solve.py \
+            --config "$GITHUB_WORKSPACE/config/open_solver_parity.json" \
+            --datasource apex \
+            --horizon 8
+          cd "$GITHUB_WORKSPACE"
+          RESULT="$(ls -t "$RUNNER_TEMP"/open-fpl-solver/data/results/apex_*.csv | head -1)"
+          python scripts/compare_solver_parity.py \
+            data/generated/pinnacle_latest.json "$RESULT"
+          python scripts/embed_solver_parity.py \
+            data/generated/pinnacle_latest.json \
+            data/generated/solver_parity.json
+
       - name: Run canonical Apex with guarded joint-path promotion
-        run: python scripts/run_apex.py --horizon 8 --reuse-bundle --output-dir data/generated --bundle-dir data/generated/decision_bundle
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/run_apex.py \
+            --horizon 8 \
+            --reuse-pinnacle \
+            --output-dir data/generated \
+            --bundle-dir data/generated/decision_bundle
+
       - name: Verify promoted canonical contract
         run: |
           python - <<'PY'
@@ -66,6 +153,7 @@ jobs:
           assert diag['promotion_gate']['promotion_candidate'] is True
           assert diag['candidate_pool_stable'] is True
           PY
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -74,4 +162,5 @@ jobs:
             data/generated/apex_recommendation_latest.json
             data/generated/apex_answer_context.json
             data/generated/pinnacle_latest.json
+            data/generated/solver_parity.json
           retention-days: 90
