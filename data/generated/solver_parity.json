@@ -45,12 +45,12 @@
   "captain_agrees": true,
   "only_apex": [],
   "only_external": [],
-  "decision_bundle_id": "597d2dd5b39f40dab9c6e451436c25519b2cebf8b59e9ef49c7b7b86da408524",
+  "decision_bundle_id": "8216ca73cfdbfd8040373e76bbb2a73715e4251a84da8581258338d7b8f8ea59",
   "official_snapshot": {
-    "snapshot_id": "20260814T111524Z-009a243f",
-    "bootstrap_sha256": "0d0938df09a34489233ed818529a97445300450871132079b6e0a06461a95df0",
+    "snapshot_id": "20260814T121028Z-306ac8eb",
+    "bootstrap_sha256": "946a2a55ef5611e390eec001dd310bd1358c9b0ee382e729b26797b67fccaf70",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "projection_export_sha256": "63471a30e1da9557771a8727a2a08b18b4e40a3b3a841e44c2027aac2d36cd34",
-  "external_solver_result_sha256": "d99988e8774ecbff55d6eaa4f65e6bca5fe7db9f482ca6c0d0c0e19934f094d0"
+  "projection_export_sha256": "aa4835ea8d2c9ac140decedf72569322f26db1631801c448ec9e78942e571a3a",
+  "external_solver_result_sha256": "61e49b1b5b0578d0b3b7ed83b5a00117763a971f7f3499f17e80b6a5a905ca74"
 }
