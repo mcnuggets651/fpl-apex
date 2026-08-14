@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+
+from apex_fpl.data.understat import fetch_understat_season, season_start_year
+from apex_fpl.evaluation.understat_player_ab import map_understat_to_current_ids
+from apex_fpl.evaluation.understat_players import normalise_understat_players
 
 # Statistical context may safely come from FPL Core. Identity fields never do.
 CONTEXT_FIELDS = [
@@ -24,11 +31,78 @@ CONTEXT_FIELDS = [
 ]
 
 
+def _understat_player_mode() -> str:
+    mode = os.getenv("APEX_UNDERSTAT_PLAYER_MODEL_MODE", "production").strip().casefold()
+    if mode not in {"shadow", "production"}:
+        raise RuntimeError(
+            "APEX_UNDERSTAT_PLAYER_MODEL_MODE must be 'shadow' or 'production'"
+        )
+    return mode
+
+
+def _enrich_understat_player_rates(out: pd.DataFrame) -> pd.DataFrame:
+    """Attach the validated prior-season Understat player rates to real Core rows.
+
+    Acquisition and conservative identity mapping live here, not in the projection
+    model. The A/B baseline sets ``APEX_UNDERSTAT_PLAYER_MODEL_MODE=shadow`` and
+    therefore receives no player-rate enrichment. Production defaults to
+    ``production`` and fails closed once genuine Core attacking context is present
+    but the promoted Understat surface cannot be constructed.
+    """
+    if _understat_player_mode() != "production":
+        return out
+
+    # Synthetic/unit-test contexts intentionally do not carry genuine FPL Core
+    # attacking fields. Do not turn these pure/model tests into network tests.
+    genuine_core_context = {
+        "player_id",
+        "first_name",
+        "second_name",
+        "expected_goals_per_90_core",
+        "expected_assists_per_90_core",
+    }
+    if not genuine_core_context.issubset(out.columns):
+        return out
+
+    season = os.getenv("APEX_SEASON", "2026-2027")
+    previous_year = season_start_year(season) - 1
+    payload = fetch_understat_season(
+        previous_year,
+        cache_dir=Path("data/cache/understat"),
+        refresh=False,
+    )
+    understat = normalise_understat_players(payload, previous_year)
+    rates = map_understat_to_current_ids(
+        out[["player_id", "first_name", "second_name"]].drop_duplicates("player_id"),
+        understat,
+    )
+    if rates.empty:
+        raise RuntimeError(
+            "Understat player production enrichment produced no matched players"
+        )
+
+    enriched = out.merge(
+        rates,
+        on="player_id",
+        how="left",
+        validate="one_to_one",
+    )
+    matched = int(
+        enriched[["understat_xg90", "understat_xa90"]].notna().all(axis=1).sum()
+    )
+    if matched < 1:
+        raise RuntimeError(
+            "Understat player production enrichment has zero usable mapped rows"
+        )
+    return enriched
+
+
 def coalesce_context(df: pd.DataFrame) -> pd.DataFrame:
     """Use auxiliary context when official current-season context is blank/zero.
 
     This is deliberately restricted to performance context. Club, position, price and
-    player identity remain official-only.
+    player identity remain official-only. Production player-level Understat rates are
+    attached here so downstream projection remains data-source agnostic.
     """
     out = df.copy()
     for field in CONTEXT_FIELDS:
@@ -42,7 +116,7 @@ def coalesce_context(df: pd.DataFrame) -> pd.DataFrame:
         cur = pd.to_numeric(out[field], errors="coerce")
         use_ext = cur.isna() | ((cur == 0) & ext.notna() & (ext != 0))
         out.loc[use_ext, field] = ext[use_ext]
-    return out
+    return _enrich_understat_player_rates(out)
 
 
 def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> pd.DataFrame:
