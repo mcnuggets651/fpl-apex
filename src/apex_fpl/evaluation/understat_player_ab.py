@@ -103,8 +103,16 @@ def map_understat_to_current_ids(
         return matched
 
     exact = unique_matches(core, "full_name_key", us, method="full_name")
-    matched_core_ids = set(pd.to_numeric(exact.get("player_id"), errors="coerce").dropna().astype(int))
-    matched_us_rows = set(pd.to_numeric(exact.get("_understat_row"), errors="coerce").dropna().astype(int))
+    matched_core_ids = (
+        set(pd.to_numeric(exact["player_id"], errors="coerce").dropna().astype(int))
+        if "player_id" in exact.columns
+        else set()
+    )
+    matched_us_rows = (
+        set(pd.to_numeric(exact["_understat_row"], errors="coerce").dropna().astype(int))
+        if "_understat_row" in exact.columns
+        else set()
+    )
 
     fallback = pd.DataFrame()
     if "web_name" in core.columns:
