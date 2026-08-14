@@ -1,0 +1,103 @@
+name: Apex Understat Player Production A/B
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/apex_fpl/evaluation/understat_player_ab.py"
+      - "scripts/audit_understat_player_production_ab.py"
+      - "tests/test_understat_player_ab.py"
+      - ".github/workflows/understat-player-production-ab.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Apex + pinned AIrsenal worker + audit dependencies
+        run: |
+          bash scripts/install_pinned_airsenal.sh
+          pip install -e ".[dev]"
+      - name: Unit tests
+        run: |
+          pytest -q \
+            tests/test_understat.py \
+            tests/test_understat_players.py \
+            tests/test_understat_player_ab.py
+      - name: Lint bounded change
+        run: |
+          ruff check \
+            src/apex_fpl/evaluation/understat_player_ab.py \
+            scripts/audit_understat_player_production_ab.py \
+            tests/test_understat_player_ab.py
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/airsenal.db
+          key: airsenal-2627-${{ runner.os }}-v3
+      - name: Refresh genuine AIrsenal forecasts
+        env:
+          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
+        run: |
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            airsenal_setup_initial_db --fpl_team_id 1
+          fi
+          python scripts/update_airsenal_worker.py
+          python scripts/run_airsenal_worker.py \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output data/generated/airsenal.csv
+      - name: Reconfirm historical player predictive gate
+        env:
+          APEX_SEASON: "2026-2027"
+        run: |
+          python scripts/audit_understat_player_signal.py \
+            --source-season 2024 \
+            --target-season 2025 \
+            --minimum-minutes 450 \
+            --bootstrap-samples 5000 \
+            --output reports/understat_player_predictive_audit.json
+      - name: Build one sealed production decision bundle
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/build_decision_bundle.py \
+            --horizon 8 \
+            --force \
+            --bundle-dir data/generated/decision_bundle
+      - name: Run identical-snapshot Understat player A/B
+        env:
+          APEX_SEASON: "2026-2027"
+        run: |
+          python scripts/audit_understat_player_production_ab.py \
+            --bundle-dir data/generated/decision_bundle \
+            --historical-audit reports/understat_player_predictive_audit.json \
+            --stochastic-scenarios 256 \
+            --scenario-seed 20260807 \
+            --output reports/understat_player_production_ab.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: understat-player-production-ab-${{ github.run_id }}
+          path: |
+            reports/understat_player_predictive_audit.json
+            reports/understat_player_predictive_panel.csv
+            reports/understat_player_weight_grid.csv
+            reports/understat_player_production_ab.json
+            reports/understat_player_production_ab_rankings.csv
+            reports/understat_player_production_ab_baseline_regret.csv
+            reports/understat_player_production_ab_challenger_regret.csv
+            reports/understat_player_production_ab_challenger_surface.csv
+            data/generated/decision_bundle/
+          retention-days: 30
