@@ -267,23 +267,31 @@ def build_player_shadow_comparison(
         return pd.DataFrame()
     order = {int(gw): idx for idx, gw in enumerate(gameweeks)}
     d["discount"] = d["gw"].map(lambda gw: float(decay) ** order.get(int(gw), len(order)))
-    for col in cols:
-        pcol, scol = f"production_{col}", f"shadow_{col}"
-        if pcol in d.columns and scol in d.columns:
-            d[f"discounted_production_{col}"] = _numeric(d, pcol) * d["discount"]
-            d[f"discounted_shadow_{col}"] = _numeric(d, scol) * d["discount"]
-
     agg: dict[str, tuple[str, str]] = {}
     for col in cols:
-        pcol, scol = f"discounted_production_{col}", f"discounted_shadow_{col}"
+        pcol, scol = f"production_{col}", f"shadow_{col}"
         if pcol in d.columns and scol in d.columns:
-            agg[f"production_{col}"] = (pcol, "sum")
-            agg[f"shadow_{col}"] = (scol, "sum")
+            d[f"discounted_production_{col}_utility"] = _numeric(d, pcol) * d["discount"]
+            d[f"discounted_shadow_{col}_utility"] = _numeric(d, scol) * d["discount"]
+            agg[f"production_{col}_raw"] = (pcol, "sum")
+            agg[f"shadow_{col}_raw"] = (scol, "sum")
+            agg[f"production_{col}_discounted_utility"] = (
+                f"discounted_production_{col}_utility",
+                "sum",
+            )
+            agg[f"shadow_{col}_discounted_utility"] = (
+                f"discounted_shadow_{col}_utility",
+                "sum",
+            )
     out = d.groupby("player_id", as_index=False).agg(**agg)
     for col in cols:
-        pcol, scol = f"production_{col}", f"shadow_{col}"
-        if pcol in out.columns and scol in out.columns:
-            out[f"delta_{col}"] = out[scol] - out[pcol]
-    if "delta_apex_xp" in out.columns:
-        out = out.sort_values("delta_apex_xp", ascending=False)
+        raw_prod, raw_shadow = f"production_{col}_raw", f"shadow_{col}_raw"
+        util_prod = f"production_{col}_discounted_utility"
+        util_shadow = f"shadow_{col}_discounted_utility"
+        if raw_prod in out.columns and raw_shadow in out.columns:
+            out[f"delta_{col}_raw"] = out[raw_shadow] - out[raw_prod]
+        if util_prod in out.columns and util_shadow in out.columns:
+            out[f"delta_{col}_discounted_utility"] = out[util_shadow] - out[util_prod]
+    if "delta_apex_xp_raw" in out.columns:
+        out = out.sort_values("delta_apex_xp_raw", ascending=False)
     return out.reset_index(drop=True)

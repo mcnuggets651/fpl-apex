@@ -68,10 +68,10 @@ def test_decomposition_preserves_canonical_and_apex_totals() -> None:
     audit = build_projection_decomposition(out, [1])
     row = audit.iloc[0]
     expert_total = (
-        row["horizon_official_contribution"]
-        + row["horizon_apex_contribution"]
-        + row["horizon_airsenal_contribution"]
-        + row["horizon_market_contribution"]
+        row["raw_horizon_official_contribution"]
+        + row["raw_horizon_apex_contribution"]
+        + row["raw_horizon_airsenal_contribution"]
+        + row["raw_horizon_market_contribution"]
     )
     component_total = sum(
         row[f"horizon_apex_{name}"]
@@ -85,8 +85,16 @@ def test_decomposition_preserves_canonical_and_apex_totals() -> None:
             "set_piece",
         ]
     )
-    assert np.isclose(expert_total, row["horizon_canonical_xp"])
-    assert np.isclose(component_total, row["horizon_apex_contribution"])
+    discounted_expert_total = (
+        row["discounted_horizon_official_contribution"]
+        + row["discounted_horizon_apex_contribution"]
+        + row["discounted_horizon_airsenal_contribution"]
+        + row["discounted_horizon_market_contribution"]
+    )
+    assert np.isclose(expert_total, row["raw_horizon_canonical_xp"])
+    assert np.isclose(discounted_expert_total, row["discounted_horizon_utility"])
+    # GW1 has discount 1.0, so the transparent Apex components reconcile exactly.
+    assert np.isclose(component_total, row["raw_horizon_apex_contribution"])
 
 
 def test_fixture_shadow_comparison_reports_deltas() -> None:
@@ -152,7 +160,7 @@ def test_fixture_shadow_repricing_changes_only_fixture_sensitive_components() ->
     assert np.isclose(row["apex_xp"], 6.2)
 
 
-def test_player_shadow_comparison_is_discounted() -> None:
+def test_player_shadow_comparison_separates_raw_xp_and_discounted_utility() -> None:
     prod = pd.DataFrame(
         {
             "player_id": [1, 1],
@@ -166,6 +174,10 @@ def test_player_shadow_comparison_is_discounted() -> None:
     shadow["apex_xp"] = [5.0, 5.0]
     shadow["xp_attack"] = [1.5, 1.5]
     audit = build_player_shadow_comparison(prod, shadow, [1, 2], decay=0.9)
-    assert np.isclose(audit.iloc[0]["production_apex_xp"], 7.6)
-    assert np.isclose(audit.iloc[0]["shadow_apex_xp"], 9.5)
-    assert np.isclose(audit.iloc[0]["delta_apex_xp"], 1.9)
+    row = audit.iloc[0]
+    assert np.isclose(row["production_apex_xp_raw"], 8.0)
+    assert np.isclose(row["shadow_apex_xp_raw"], 10.0)
+    assert np.isclose(row["delta_apex_xp_raw"], 2.0)
+    assert np.isclose(row["production_apex_xp_discounted_utility"], 7.6)
+    assert np.isclose(row["shadow_apex_xp_discounted_utility"], 9.5)
+    assert np.isclose(row["delta_apex_xp_discounted_utility"], 1.9)
