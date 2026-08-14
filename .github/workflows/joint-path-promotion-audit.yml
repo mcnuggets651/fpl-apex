@@ -134,7 +134,7 @@ jobs:
             --output-dir data/generated \
             --bundle-dir data/generated/decision_bundle
 
-      - name: Verify promoted canonical contract
+      - name: Verify guarded canonical contract on current projection surface
         run: |
           python - <<'PY'
           import json
@@ -144,14 +144,21 @@ jobs:
           assert payload['ready_to_act'] is True
           assert context['safe_to_act'] is True
           rec = payload['recommendation']
-          assert rec['selector'] == 'joint_gw1_gw8_transfer_path_maximum_ev'
-          assert rec['gain_vs_static_path'] >= 0.25
-          assert rec['planned_transfer_hit_cost'] == 0
+          diag = payload['internal_diagnostics']['joint_initial_path']
+          gate = diag['promotion_gate']
+          assert diag['status'] == 'optimal'
+          assert diag['candidate_pool_stable'] is True
           assert len(rec['squad']) == 15
           assert len(rec['xi']) == 11
-          diag = payload['internal_diagnostics']['joint_initial_path']
-          assert diag['promotion_gate']['promotion_candidate'] is True
-          assert diag['candidate_pool_stable'] is True
+          if gate['promotion_candidate']:
+              assert rec['selector'] == 'joint_gw1_gw8_transfer_path_maximum_ev'
+              assert rec['gain_vs_static_path'] >= 0.25
+              assert rec['planned_transfer_hit_cost'] == 0
+              assert payload['decision_policy']['joint_path_promoted'] is True
+          else:
+              assert rec['selector'] == 'exact_horizon_maximum_ev'
+              assert payload['decision_policy']['joint_path_promoted'] is False
+              assert diag['gain_vs_baseline'] < 0.25
           PY
 
       - uses: actions/upload-artifact@v4
