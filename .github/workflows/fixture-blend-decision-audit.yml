@@ -22,8 +22,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install Apex + genuine AIrsenal worker
-        run: pip install -e '.[dev,airsenal]'
+      - name: Install Apex + pinned AIrsenal worker
+        run: bash scripts/install_pinned_airsenal.sh
       - name: Static check
         run: ruff check scripts/run_fixture_blend_decision_audit.py
       - name: Cache AIrsenal database
