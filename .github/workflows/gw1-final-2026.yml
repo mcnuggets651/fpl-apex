@@ -37,9 +37,9 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install Apex + genuine AIrsenal worker
+      - name: Install Apex + pinned AIrsenal worker
         if: steps.guard.outputs.run == 'true'
-        run: pip install -e '.[dev,airsenal]'
+        run: bash scripts/install_pinned_airsenal.sh
 
       - name: Restore Apex runtime cache
         if: steps.guard.outputs.run == 'true'
