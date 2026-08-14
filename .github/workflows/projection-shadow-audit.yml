@@ -32,24 +32,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install Apex + pinned AIrsenal worker
-        shell: bash
-        run: |
-          set -euo pipefail
-          pip install -e '.[dev]'
-          git clone --filter=blob:none https://github.com/alan-turing-institute/AIrsenal.git /tmp/airsenal
-          git -C /tmp/airsenal checkout --detach 8c7e18eba1488dd5a7d4bdb00d4da0a75e895717
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('/tmp/airsenal/pyproject.toml')
-          old = 'bpl @ git+https://github.com/anguswilliams91/bpl-next'
-          new = old + '@e238f742d1ea1f72a6ce8b8466f9989d6b53a819'
-          text = path.read_text(encoding='utf-8')
-          if old not in text:
-              raise SystemExit('Pinned AIrsenal bpl dependency declaration not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-          pip install /tmp/airsenal
+        run: bash scripts/install_pinned_airsenal.sh
       - name: Unit tests
         run: |
           pytest -q \
