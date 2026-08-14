@@ -77,31 +77,29 @@ def test_core_identity_bridge_rejects_ambiguous_names():
 def test_calibration_promotes_only_supported_understat_signal():
     rng = np.random.default_rng(42)
     rows = []
-    for season in [2021, 2022, 2023, 2024]:
-        for player in range(120):
-            truth_g = rng.uniform(0.08, 0.75)
-            truth_a = rng.uniform(0.04, 0.45)
-            core_g = max(0.01, truth_g + rng.normal(0, 0.18))
-            core_a = max(0.01, truth_a + rng.normal(0, 0.14))
-            under_g = max(0.01, truth_g + rng.normal(0, 0.07))
-            under_a = max(0.01, truth_a + rng.normal(0, 0.06))
-            minutes = 1800.0
-            rows.append(
-                {
-                    "source_season": season,
-                    "player_id": player,
-                    "core_xg90": core_g,
-                    "core_xa90": core_a,
-                    "understat_xg90": under_g,
-                    "understat_xa90": under_a,
-                    "target_minutes": minutes,
-                    "target_goals": rng.poisson(truth_g * minutes / 90.0),
-                    "target_assists": rng.poisson(truth_a * minutes / 90.0),
-                }
-            )
+    for player in range(240):
+        truth_g = rng.uniform(0.08, 0.75)
+        truth_a = rng.uniform(0.04, 0.45)
+        core_g = max(0.01, truth_g + rng.normal(0, 0.18))
+        core_a = max(0.01, truth_a + rng.normal(0, 0.14))
+        under_g = max(0.01, truth_g + rng.normal(0, 0.07))
+        under_a = max(0.01, truth_a + rng.normal(0, 0.06))
+        minutes = 1800.0
+        rows.append(
+            {
+                "player_id": player,
+                "audit_split": "holdout" if player % 2 == 0 else "calibration",
+                "core_xg90": core_g,
+                "core_xa90": core_a,
+                "understat_xg90": under_g,
+                "understat_xa90": under_a,
+                "target_minutes": minutes,
+                "target_goals": rng.poisson(truth_g * minutes / 90.0),
+                "target_assists": rng.poisson(truth_a * minutes / 90.0),
+            }
+        )
     audit = calibrate_understat_player_blend(
         pd.DataFrame(rows),
-        holdout_source_season=2024,
         bootstrap_samples=1000,
     )
     assert audit.selected_xg_weight > 0
