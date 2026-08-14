@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from apex_fpl.data.understat import fetch_understat_season
+from apex_fpl.evaluation.understat_player_ab import map_understat_to_current_ids
+from apex_fpl.evaluation.understat_players import normalise_understat_players
 from apex_fpl.models.bonus import expected_bonus_proxy
 from apex_fpl.models.defcon import expected_defensive_contribution_points
+
+
+# Production-promoted 2026-08-14 after the sealed predictive-validity and exact
+# decision A/B gates passed. These values are intentionally frozen to the audited
+# challenger; changing them requires a new predictive and decision-level audit.
+UNDERSTAT_PLAYER_SEASON = 2025
+UNDERSTAT_XG_WEIGHT = 0.50
+UNDERSTAT_XA_WEIGHT = 0.30
 
 
 def _num(df: pd.DataFrame, col: str, default: float = 0.0) -> pd.Series:
@@ -61,12 +73,49 @@ def _at(values, idx: int) -> float:
     return float(values[idx])
 
 
+def _production_understat_player_rates(players: pd.DataFrame) -> pd.DataFrame:
+    """Return the exact prior-season player signal promoted by the sealed A/B.
+
+    Identity matching follows the audited conservative rule: only unique normalized
+    full names in the current official/FPL-Core identity universe and Understat are
+    accepted. The fetch is fail-closed; production must not silently fall back to
+    the old player attacking surface if the promoted model cannot be constructed.
+    """
+    required = {"player_id", "first_name", "second_name"}
+    missing = sorted(required - set(players.columns))
+    if missing:
+        raise RuntimeError(
+            f"Understat player production blend missing identity columns: {missing}"
+        )
+    payload = fetch_understat_season(
+        UNDERSTAT_PLAYER_SEASON,
+        cache_dir=Path("data/cache/understat"),
+        refresh=False,
+    )
+    understat = normalise_understat_players(payload, UNDERSTAT_PLAYER_SEASON)
+    rates = map_understat_to_current_ids(
+        players[["player_id", "first_name", "second_name"]].drop_duplicates("player_id"),
+        understat,
+    )
+    if rates.empty:
+        raise RuntimeError("Understat player production blend produced no matched players")
+    return rates
+
+
 def project_players(
     players: pd.DataFrame,
     fixture_mult: pd.DataFrame,
     gameweeks: list[int],
 ) -> pd.DataFrame:
     """Generate one transparent projection row per player/fixture."""
+    understat_rates = _production_understat_player_rates(players)
+    projection_players = players.merge(
+        understat_rates,
+        on="player_id",
+        how="left",
+        validate="one_to_one",
+    )
+
     rows = []
     for gw in gameweeks:
         fx_cols = [
@@ -83,7 +132,7 @@ def project_players(
         ]
         fx = fixture_mult[fixture_mult["gw"] == gw][fx_cols].copy()
         fx["has_fixture"] = 1.0
-        d = players.merge(fx, on="team", how="left")
+        d = projection_players.merge(fx, on="team", how="left")
         d["has_fixture"] = d["has_fixture"].fillna(0.0)
         d["attack_multiplier"] = d["attack_multiplier"].fillna(1.0)
         d["defence_multiplier"] = d["defence_multiplier"].fillna(1.0)
@@ -123,12 +172,31 @@ def project_players(
         goal_pts = pos.map({"GK": 10, "DEF": 6, "MID": 5, "FWD": 4}).fillna(5)
         clean_pts = pos.map({"GK": 4, "DEF": 4, "MID": 1, "FWD": 0}).fillna(0)
 
+        # Apply the exact validated 50% xG / 30% xA player blend to the direct
+        # attacking signal only. The separate bonus prior deliberately retains the
+        # baseline model rates, exactly matching the sealed A/B contract.
+        us_xg90 = _optional_num(d, "understat_xg90")
+        us_xa90 = _optional_num(d, "understat_xa90")
+        matched = xg90.notna() & xa90.notna() & us_xg90.notna() & us_xa90.notna()
+        base_signal = xg90.fillna(0.0) * goal_pts + xa90.fillna(0.0) * 3.0
+        repricable = matched & base_signal.gt(1e-9)
+        attack_xg90 = xg90.copy()
+        attack_xa90 = xa90.copy()
+        attack_xg90.loc[repricable] = (
+            (1.0 - UNDERSTAT_XG_WEIGHT) * xg90.loc[repricable]
+            + UNDERSTAT_XG_WEIGHT * us_xg90.loc[repricable]
+        )
+        attack_xa90.loc[repricable] = (
+            (1.0 - UNDERSTAT_XA_WEIGHT) * xa90.loc[repricable]
+            + UNDERSTAT_XA_WEIGHT * us_xa90.loc[repricable]
+        )
+
         appearance = p_app + p60
         attack = (
             min_share
             * d["attack_multiplier"]
             * role_multiplier
-            * (xg90 * goal_pts + xa90 * 3.0)
+            * (attack_xg90 * goal_pts + attack_xa90 * 3.0)
         )
         if "clean_sheet_prob" in d.columns:
             cs_prob = pd.to_numeric(
@@ -225,6 +293,10 @@ def project_players(
                     "xp_set_piece_prior": max(_at(set_piece, idx), 0.0),
                     "model_xg90": max(_at(xg90, idx), 0.0),
                     "model_xa90": max(_at(xa90, idx), 0.0),
+                    "attack_model_xg90": max(_at(attack_xg90, idx), 0.0),
+                    "attack_model_xa90": max(_at(attack_xa90, idx), 0.0),
+                    "understat_player_matched": bool(_at(matched.astype(float), idx)),
+                    "understat_player_repricable": bool(_at(repricable.astype(float), idx)),
                     "penalty_share": _at(penalty_share, idx),
                     "corners_share": _at(corners_share, idx),
                     "direct_freekick_share": _at(direct_share, idx),
