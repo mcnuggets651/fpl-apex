@@ -129,7 +129,20 @@ def main() -> None:
             str(bundle_dir),
         ]
     )
-    raise SystemExit(canonical_status)
+    if canonical_status != 0:
+        raise SystemExit(canonical_status)
+
+    promotion_status = _run(
+        [
+            sys.executable,
+            "scripts/apply_joint_path_promotion.py",
+            "--output-dir",
+            str(output_dir),
+            "--bundle-dir",
+            str(bundle_dir),
+        ]
+    )
+    raise SystemExit(promotion_status)
 
 
 if __name__ == "__main__":
