@@ -1,0 +1,41 @@
+{
+  "contract": "apex-shrinkage-retirement-v1",
+  "decision": "retired_from_production_candidate_path",
+  "decision_date": "2026-08-14",
+  "production_activation_authorized": false,
+  "canonical_projection_changed": false,
+  "reason": [
+    "The corrected chronological xG90/xA90 validation passed, but the evaluation seasons were adaptively inspected during model development and are not an independent final holdout.",
+    "The live shadow gate reported eligible_for_live_use=false.",
+    "The shadow surface materially changed the optimized squad (13/15 overlap), so activation without independent evidence would alter decisions without satisfying the Apex evidence contract.",
+    "Posterior scenario coefficients and captain-frequency thresholds remain uncalibrated; DEFCON did not pass its separate evidence gate."
+  ],
+  "last_validated_pr": 49,
+  "last_validated_head": "dbd3238f626786b851e6f70128854ff3677f5540",
+  "merged_baseline": "75773e92502eced32c38bc8af2cbdfec219404bf",
+  "last_validation": {
+    "history_gate_pass": true,
+    "prior_safety_gate_pass": true,
+    "holdout_independent": false,
+    "eligible_for_live_use": false,
+    "prior_only_injected_count": 0,
+    "raw_objective": 342.5323770978454,
+    "shrunk_objective": 339.7140416728496,
+    "squad_overlap": 13
+  },
+  "retained_research_assets": [
+    "src/apex_fpl/models/shrinkage.py",
+    "scripts/validate_shrinkage_continuous.py",
+    "tests/test_shrinkage.py",
+    "docs/SHRINKAGE_VALIDATION_V2.md",
+    "docs/evidence/shrinkage_validation_v2_summary.json"
+  ],
+  "removed_active_candidate_assets": [
+    ".github/workflows/shrinkage-validation.yml",
+    "scripts/audit_shrinkage_promotion.py",
+    "scripts/shrinkage_shadow_parity.py",
+    "scripts/shrinkage_shadow_surface.py",
+    "tests/test_shrinkage_promotion_audit.py"
+  ],
+  "reactivation_policy": "A new implementation may enter the production candidate path only through a new PR with an independent prospective holdout, calibrated uncertainty/captain thresholds where applicable, exact canonical parity checks, and explicit production authorization."
+}
