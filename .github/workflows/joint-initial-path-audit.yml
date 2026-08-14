@@ -46,7 +46,7 @@ jobs:
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         run: python scripts/build_decision_bundle.py --horizon 8 --force
       - name: Run joint starting-squad transfer-path audit
-        run: python scripts/audit_joint_initial_path.py --bundle-dir data/generated/decision_bundle --output reports/joint_initial_path.json
+        run: python scripts/audit_joint_initial_path.py --bundle-dir data/generated/decision_bundle --per-view-candidates 3 --output reports/joint_initial_path.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
