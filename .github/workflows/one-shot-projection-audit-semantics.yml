@@ -1,0 +1,34 @@
+name: One-shot projection audit semantics
+
+on:
+  push:
+    branches:
+      - agent/projection-contract-corrections
+    paths:
+      - scripts/_one_shot_projection_audit_semantics.py
+      - .github/workflows/one-shot-projection-audit-semantics.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/projection-contract-corrections
+          fetch-depth: 0
+      - name: Apply asserted source patch
+        run: python scripts/_one_shot_projection_audit_semantics.py
+      - name: Remove one-shot machinery
+        run: |
+          rm scripts/_one_shot_projection_audit_semantics.py
+          rm .github/workflows/one-shot-projection-audit-semantics.yml
+      - name: Commit patched sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: separate raw projection audit xP from utility"
+          git push origin HEAD:agent/projection-contract-corrections
