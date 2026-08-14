@@ -8,6 +8,12 @@
       "role": "projection_worker",
       "required_for_full_apex": true
     },
+    "bpl": {
+      "repository": "anguswilliams91/bpl-next",
+      "commit": "e238f742d1ea1f72a6ce8b8466f9989d6b53a819",
+      "role": "airsenal_transitive_runtime_dependency",
+      "required_for_full_apex": true
+    },
     "fpl_core_insights": {
       "repository": "olbauday/FPL-Core-Insights",
       "commit": "d2edcbf001492f35c9a9eac54f84332043e2ca98",
