@@ -143,6 +143,11 @@ def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> p
     even when advanced xG/xA is unavailable for a fixture. Those observations are
     retained as separate evidence for a validated fallback challenger; they do not
     silently become xG/xA in production.
+
+    FPL Core also emits roster rows for unused players. A row is role/return evidence
+    only when ``minutes_played > 0``; a start additionally requires ``start_min <= 1``.
+    This prevents unused zero-minute rows with a start_min sentinel of zero from being
+    counted as appearances or starts.
     """
     rate_sources = {
         "xg": "xg",
@@ -170,18 +175,27 @@ def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> p
     for col in numeric_cols:
         if col in f.columns:
             f[col] = pd.to_numeric(f[col], errors="coerce")
-    f["is_start"] = (
-        f.get("start_min", pd.Series(0, index=f.index)).fillna(0) <= 1
-    ).astype(int)
+    if "minutes_played" not in f.columns:
+        f["minutes_played"] = 0.0
+    minutes = pd.to_numeric(f["minutes_played"], errors="coerce").fillna(0.0)
+    f["is_appearance"] = minutes.gt(0).astype(int)
+    start_min = pd.to_numeric(
+        f.get("start_min", pd.Series(0, index=f.index)), errors="coerce"
+    ).fillna(0)
+    f["is_start"] = (minutes.gt(0) & start_min.le(1)).astype(int)
     for source in rate_sources.values():
         if source not in f.columns:
             f[source] = np.nan
+        # Unused roster rows are not attacking/defensive evidence either. Preserve
+        # measured zeroes for genuine appearances, but turn unused-row values into
+        # missing observations before aggregation.
+        f.loc[~minutes.gt(0), source] = np.nan
 
     grouped = f.groupby("player_id", as_index=False)
     agg = grouped.agg(
         preseason_minutes=("minutes_played", "sum"),
         preseason_starts=("is_start", "sum"),
-        preseason_appearances=("match_id", "nunique"),
+        preseason_appearances=("is_appearance", "sum"),
     )
     source_columns = list(dict.fromkeys(rate_sources.values()))
     sums = grouped[source_columns].sum(min_count=1)
