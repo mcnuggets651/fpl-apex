@@ -5,7 +5,6 @@ import math
 import pandas as pd
 
 from apex_fpl.constants import SQUAD_COUNTS
-from apex_fpl.optimisation.initial_transfer_path import optimise_initial_transfer_path
 from apex_fpl.optimisation.transfers import TransferPlan, optimise_transfer_plan
 
 
@@ -74,22 +73,6 @@ def _pinnacle_candidate_ids(
     return keep
 
 
-def _projection_view(
-    projections: pd.DataFrame,
-    projection_col: str,
-) -> tuple[pd.DataFrame, str]:
-    if projection_col not in projections.columns:
-        if projection_col == "xp" and "risk_adjusted_xp" in projections.columns:
-            projection_col = "risk_adjusted_xp"
-        else:
-            raise ValueError(f"projection column not found: {projection_col}")
-    view = projections.copy()
-    view["risk_adjusted_xp"] = pd.to_numeric(
-        view[projection_col], errors="coerce"
-    ).fillna(0.0)
-    return view, projection_col
-
-
 def optimise_transfer_plan_view(
     players: pd.DataFrame,
     projections: pd.DataFrame,
@@ -107,7 +90,16 @@ def optimise_transfer_plan_view(
     candidate universe. The legacy risk-adjusted surface remains available
     explicitly. The underlying transfer constraints are unchanged.
     """
-    view, projection_col = _projection_view(projections, projection_col)
+    if projection_col not in projections.columns:
+        if projection_col == "xp" and "risk_adjusted_xp" in projections.columns:
+            projection_col = "risk_adjusted_xp"
+        else:
+            raise ValueError(f"projection column not found: {projection_col}")
+
+    view = projections.copy()
+    view["risk_adjusted_xp"] = pd.to_numeric(
+        view[projection_col], errors="coerce"
+    ).fillna(0.0)
     player_view = players
     effective_limit = int(candidate_limit)
     if pinnacle_pool:
@@ -131,44 +123,5 @@ def optimise_transfer_plan_view(
         gameweeks,
         current_squad,
         candidate_limit=effective_limit,
-        **kwargs,
-    )
-
-
-def optimise_initial_transfer_plan_view(
-    players: pd.DataFrame,
-    projections: pd.DataFrame,
-    gameweeks: list[int],
-    *,
-    projection_col: str = "xp",
-    candidate_limit: int = 180,
-    budget: float = 100.0,
-    excluded_initial_squads: list[set[int]] | None = None,
-    **kwargs,
-) -> TransferPlan:
-    """Optimise a free GW1 squad and legal future transfer path on one xP surface.
-
-    The candidate universe is position/price aware and does not inherit any static
-    starting squad. This is the correct pre-GW1 state transition: select the first
-    15 freely under budget, then begin GW2 with one free transfer.
-    """
-    view, projection_col = _projection_view(projections, projection_col)
-    ids = _pinnacle_candidate_ids(
-        players,
-        view,
-        gameweeks,
-        set(),
-        projection_col="risk_adjusted_xp",
-        target_size=candidate_limit,
-    )
-    player_view = players[players["player_id"].astype(int).isin(ids)].copy()
-    view = view[view["player_id"].astype(int).isin(ids)].copy()
-    return optimise_initial_transfer_path(
-        player_view,
-        view,
-        gameweeks,
-        budget=budget,
-        projection_col="risk_adjusted_xp",
-        excluded_initial_squads=excluded_initial_squads,
         **kwargs,
     )
