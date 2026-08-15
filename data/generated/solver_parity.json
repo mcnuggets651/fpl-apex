@@ -45,12 +45,12 @@
   "captain_agrees": true,
   "only_apex": [],
   "only_external": [],
-  "decision_bundle_id": "3101aad6f75ce0eb389325f42767837067c35eb8d4ba17da984fac59e56ada19",
+  "decision_bundle_id": "69c964402cea6c23e5e1fd4adfe21d48f17a9591a8395b49387acb4fd849fc77",
   "official_snapshot": {
-    "snapshot_id": "20260815T135441Z-4a1ba945",
-    "bootstrap_sha256": "071737008d90b1b109cb0aec6602b4d917f580154f44f12ecf5b0daf70107cec",
+    "snapshot_id": "20260815T191216Z-2ec0c075",
+    "bootstrap_sha256": "f6f127fe08f0b864af7ba3e3fac672e62e544e3a8cd650203b9e71cf582f7a07",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
   },
-  "projection_export_sha256": "2ed64477b2e221f1ff67bac41a5cf88ee73311e251e564b9928841f22838d882",
-  "external_solver_result_sha256": "b434889c5ce7a7f88fdc751c288dec8f706433f0a96721a5fce6a631b1c09a71"
+  "projection_export_sha256": "c1248f5e47d3a780c75e54957fe0025b52300407485426df91f3a44d064c4144",
+  "external_solver_result_sha256": "be962ca5e5030504100b9b8cc08e012c8d50b5156f2c4c908a72b07118a9b140"
 }

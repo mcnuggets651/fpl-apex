@@ -1,7 +1,7 @@
 # Apex Unified Recommendation
 
-Generated: 2026-08-15T13:54:53.328979+00:00
-Official surface: `071737008d90` / `a478e20d030d`
+Generated: 2026-08-15T19:12:27.722021+00:00
+Official surface: `f6f127fe08f0` / `a478e20d030d`
 Canonical selector: **exact_horizon_maximum_ev**
 Reason: The sealed near-optimal squad frontier is rescored across every Gameweek with exact XI, captain, vice-captain and autosub mechanics; that single Decision object is the production authority.
 
@@ -9,7 +9,7 @@ Reason: The sealed near-optimal squad frontier is rescored across every Gameweek
 
 Captain: **Haaland**
 Vice-captain: **Thiago**
-Expected total with exact mechanics: **55.74**
+Expected total with exact mechanics: **55.71**
 
 ### Starting XI
 
@@ -23,7 +23,7 @@ Expected total with exact mechanics: **55.74**
 | Kelleher | Brentford | GK | 5.0 | 3.63 |
 | Mbeumo | Man Utd | MID | 8.0 | 4.66 |
 | Semenyo | Man City | MID | 8.5 | 4.72 |
-| Enzo | Chelsea | MID | 7.0 | 4.27 |
+| Enzo | Chelsea | MID | 7.0 | 4.25 |
 | Gakpo | Liverpool | MID | 7.0 | 4.08 |
 | Schade | Brentford | MID | 6.0 | 3.91 |
 
@@ -34,7 +34,7 @@ Expected total with exact mechanics: **55.74**
 | Guéhi | Man City | DEF | 6.0 | 4.18 |
 | Virgil | Liverpool | DEF | 6.5 | 3.79 |
 | Thiaw | Newcastle | DEF | 5.0 | 3.42 |
-| F.Kadıoğlu | Brighton | DEF | 4.5 | 3.11 |
+| F.Kadıoğlu | Brighton | DEF | 4.5 | 3.09 |
 | Davies | Spurs | DEF | 4.0 | 2.08 |
 | Haaland | Man City | FWD | 15.5 | 6.39 |
 | Thiago | Brentford | FWD | 8.0 | 4.82 |
@@ -43,7 +43,7 @@ Expected total with exact mechanics: **55.74**
 | Petrović | Bournemouth | GK | 4.5 | 2.84 |
 | Mbeumo | Man Utd | MID | 8.0 | 4.66 |
 | Semenyo | Man City | MID | 8.5 | 4.72 |
-| Enzo | Chelsea | MID | 7.0 | 4.27 |
+| Enzo | Chelsea | MID | 7.0 | 4.25 |
 | Gakpo | Liverpool | MID | 7.0 | 4.08 |
 | Schade | Brentford | MID | 6.0 | 3.91 |
 
