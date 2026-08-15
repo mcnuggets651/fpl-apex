@@ -10,40 +10,40 @@ MODULE = module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
-def _result(*, status="optimal", stable=True, gain=0.30):
+def _result(*, status="optimal", stable=True, within=True):
     return SimpleNamespace(
         status=status,
         candidate_pool_stable=stable,
-        gain_vs_baseline=gain,
+        selected=SimpleNamespace(within_gw1_band=within),
     )
 
 
-def test_promotion_requires_predeclared_material_gain():
-    gate = MODULE._promotion_gate(_result(gain=0.249))
-    assert gate["joint_path_optimal"] is True
+def test_launch_gate_requires_gw1_floor() -> None:
+    gate = MODULE._launch_gate(_result(within=False))
+    assert gate["gw1_first_optimal"] is True
     assert gate["candidate_pool_stable"] is True
-    assert gate["material_gain_vs_static"] is False
+    assert gate["gw1_floor_respected"] is False
     assert gate["promotion_candidate"] is False
 
 
-def test_promotion_requires_candidate_pool_stability():
-    gate = MODULE._promotion_gate(_result(stable=False, gain=1.0))
-    assert gate["material_gain_vs_static"] is True
+def test_launch_gate_requires_candidate_stability() -> None:
+    gate = MODULE._launch_gate(_result(stable=False))
+    assert gate["gw1_floor_respected"] is True
     assert gate["candidate_pool_stable"] is False
     assert gate["promotion_candidate"] is False
 
 
-def test_promotion_passes_at_declared_boundary():
-    gate = MODULE._promotion_gate(_result(gain=0.25))
+def test_launch_gate_has_no_material_eight_week_gain_requirement() -> None:
+    gate = MODULE._launch_gate(_result())
     assert gate == {
-        "joint_path_optimal": True,
+        "gw1_first_optimal": True,
         "candidate_pool_stable": True,
-        "material_gain_vs_static": True,
+        "gw1_floor_respected": True,
         "promotion_candidate": True,
     }
 
 
-def test_promotion_requires_optimal_joint_solve():
-    gate = MODULE._promotion_gate(_result(status="infeasible", gain=2.0))
-    assert gate["joint_path_optimal"] is False
+def test_launch_gate_requires_optimal_gw1_solve() -> None:
+    gate = MODULE._launch_gate(_result(status="infeasible"))
+    assert gate["gw1_first_optimal"] is False
     assert gate["promotion_candidate"] is False

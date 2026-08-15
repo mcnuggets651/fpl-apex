@@ -1,12 +1,16 @@
-name: Apex Joint Path Promotion Audit
+name: Apex Adaptive Strategy Audit
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "src/apex_fpl/services/joint_initial_path.py"
+      - "src/apex_fpl/services/strategy.py"
       - "scripts/apply_joint_path_promotion.py"
       - "scripts/run_apex.py"
       - "tests/test_joint_path_promotion.py"
+      - "tests/test_joint_initial_path.py"
+      - "tests/test_strategy.py"
       - ".github/workflows/joint-path-promotion-audit.yml"
 
 permissions:
@@ -26,8 +30,8 @@ jobs:
       - name: Install Apex + pinned AIrsenal worker
         run: bash scripts/install_pinned_airsenal.sh
 
-      - name: Promotion unit tests
-        run: pytest -q tests/test_joint_path_promotion.py tests/test_joint_initial_path.py
+      - name: Strategy unit tests
+        run: pytest -q tests/test_joint_path_promotion.py tests/test_joint_initial_path.py tests/test_strategy.py
 
       - name: Cache AIrsenal database
         uses: actions/cache@v4
@@ -120,7 +124,7 @@ jobs:
             data/generated/pinnacle_latest.json \
             data/generated/solver_parity.json
 
-      - name: Run canonical Apex with guarded joint-path promotion
+      - name: Run canonical Apex with adaptive strategy policy
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
@@ -134,7 +138,7 @@ jobs:
             --output-dir data/generated \
             --bundle-dir data/generated/decision_bundle
 
-      - name: Verify guarded canonical contract on current projection surface
+      - name: Verify adaptive canonical contract
         run: |
           python - <<'PY'
           import json
@@ -148,25 +152,25 @@ jobs:
           gate = diag['promotion_gate']
           assert diag['status'] == 'optimal'
           assert diag['candidate_pool_stable'] is True
+          assert gate['gw1_first_optimal'] is True
+          assert gate['gw1_floor_respected'] is True
+          assert gate['promotion_candidate'] is True
+          assert rec['selector'] == 'adaptive_gw1_launch_with_transfer_option_value'
+          assert rec['gw1_regret_vs_max'] <= rec['gw1_regret_tolerance'] + 1e-9
           assert len(rec['squad']) == 15
           assert len(rec['xi']) == 11
-          if gate['promotion_candidate']:
-              assert rec['selector'] == 'joint_gw1_gw8_transfer_path_maximum_ev'
-              assert rec['gain_vs_static_path'] >= 0.25
-              assert rec['planned_transfer_hit_cost'] == 0
-              assert payload['decision_policy']['joint_path_promoted'] is True
-          else:
-              assert rec['selector'] == 'exact_horizon_maximum_ev'
-              assert payload['decision_policy']['joint_path_promoted'] is False
-              assert diag['gain_vs_baseline'] < 0.25
+          assert rec['future_moves_are_contingent'] is True
+          assert payload['decision_policy']['adaptive_launch_active'] is True
+          assert payload['decision_policy']['weekly_receding_horizon_is_canonical'] is True
           PY
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: joint-path-promotion-${{ github.run_id }}
+          name: adaptive-strategy-${{ github.run_id }}
           path: |
             data/generated/apex_recommendation_latest.json
+            data/generated/apex_recommendation_latest.md
             data/generated/apex_answer_context.json
             data/generated/pinnacle_latest.json
             data/generated/solver_parity.json
