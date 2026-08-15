@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from apex_fpl.models.projection import project_players
-from scripts.audit_player_truth import audit
+from apex_fpl.services.player_truth import audit_player_truth
 
 
 def _fixture() -> pd.DataFrame:
@@ -85,7 +85,7 @@ def test_explicit_share_override_still_remains_available_for_sourced_inputs():
 def test_all_player_truth_requires_100_percent_hard_fact_coverage():
     players = pd.DataFrame([_player()])
     projections = project_players(players, _fixture(), [1])
-    payload = audit(players, projections, expected_players=1)
+    payload = audit_player_truth(players, projections, expected_players=1)
 
     assert payload["ready"] is True
     assert payload["hard_fact_coverage"] == pytest.approx(1.0)
@@ -98,7 +98,7 @@ def test_unsourced_set_piece_share_is_a_truth_blocker():
     projections = pd.DataFrame(
         [{"player_id": 1, "gw": 1, "xp_set_piece_prior": 0.13}]
     )
-    payload = audit(players, projections, expected_players=1)
+    payload = audit_player_truth(players, projections, expected_players=1)
 
     assert payload["ready"] is False
     assert any("without trusted current provenance" in row for row in payload["blockers"])
