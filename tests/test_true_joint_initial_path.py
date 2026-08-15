@@ -52,9 +52,9 @@ def _projections() -> pd.DataFrame:
             elif 8 <= pid <= 11:
                 xp = 20.0
             elif pid == 12:
-                xp = 9.0 if gw == 1 else 0.0
+                xp = 7.0 if gw == 1 else 0.0
             elif pid == 13:
-                xp = 5.0
+                xp = 6.0
             else:
                 xp = 4.0
             rows.append({"player_id": pid, "gw": gw, "xp": xp})
@@ -85,11 +85,14 @@ def test_true_joint_path_selects_gw1_punt_then_uses_free_transfer() -> None:
     assert result.baseline is not None
     assert result.selected is not None
 
-    # A static two-week hold prefers P13 (5 + 5) over P12 (9 + 0).
+    # Exact fixed-squad mechanics can rotate a zero-point P12 to a four-point bench
+    # alternative in GW2. The static hold therefore prefers P13: 6 + 6 = 12 beats
+    # P12's 7 + 4 = 11. The transfer-aware policy can do better than either hold.
     assert 13 in result.baseline.squad_ids
     assert 12 not in result.baseline.squad_ids
 
-    # The joint policy correctly starts P12 for GW1 and swaps to P13 in GW2.
+    # The joint policy correctly starts P12 for GW1 and swaps to P13 in GW2:
+    # 7 + 6 = 13, with the GW2 move covered by the one free transfer.
     assert 12 in result.selected.squad_ids
     assert 13 not in result.selected.squad_ids
     assert result.selected.total_objective > result.baseline.total_objective
