@@ -20,9 +20,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--apex-store", type=Path, required=True)
     parser.add_argument("--core-root", type=Path, required=True)
+    parser.add_argument("--historical-audit", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    payload = build_projection_policy_readiness(args.apex_store, args.core_root)
+    payload = build_projection_policy_readiness(
+        args.apex_store,
+        args.core_root,
+        historical_audit_path=args.historical_audit,
+    )
     rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
