@@ -1,0 +1,58 @@
+name: Apex Projection Policy Audit
+
+on:
+  pull_request:
+    paths:
+      - "src/apex_fpl/models/**"
+      - "src/apex_fpl/services/**"
+      - "src/apex_fpl/evaluation/**"
+      - "src/apex_fpl/replay/**"
+      - "scripts/audit_projection_policy_readiness.py"
+      - "upstreams.lock.json"
+      - ".github/workflows/projection-policy-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Apex
+        run: pip install -e . pytest
+      - name: Resolve pinned Core revision
+        id: core
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          data = json.load(open("upstreams.lock.json"))
+          print("sha=" + data["sources"]["fpl_core_insights"]["commit"])
+          PY
+      - name: Checkout pinned FPL Core
+        run: |
+          git clone --filter=blob:none https://github.com/olbauday/FPL-Core-Insights.git /tmp/fpl-core
+          git -C /tmp/fpl-core checkout "${{ steps.core.outputs.sha }}"
+      - name: Run policy readiness audit
+        run: |
+          python scripts/audit_projection_policy_readiness.py \
+            --apex-store data/replay \
+            --core-root /tmp/fpl-core \
+            --output reports/projection_policy_readiness.json
+          cat reports/projection_policy_readiness.json
+      - name: Run focused contract tests
+        run: |
+          pytest -q \
+            tests/test_horizon_semantics.py \
+            tests/test_projection_audit_horizon_semantics.py \
+            tests/test_projection_policy_readiness.py \
+            tests/test_preseason_missingness.py \
+            tests/test_understat_player_ab.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: projection-policy-readiness-${{ github.run_id }}
+          path: reports/projection_policy_readiness.json

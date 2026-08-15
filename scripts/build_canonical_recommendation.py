@@ -176,7 +176,7 @@ def main() -> None:
         "gameweeks": pinnacle.get("gameweeks") or elite.get("gameweeks") or [],
         "decision_policy": {
             "primary_forecast": "canonical ensemble xp",
-            "primary_selection": "maximum exact-mechanics expected points among the sealed near-optimal legal squad frontier",
+            "primary_selection": "maximum discounted exact-mechanics horizon utility among the sealed near-optimal legal squad frontier; raw cumulative xP is reported separately",
             "secondary_selection": "none; Elite is diagnostic-only",
             "elite_convergence_rule": ">=13/15 overlap with max-EV and same captain at 0.25%, 0.50%, 1.00%",
             "elite_failure_fallback": "not applicable; Elite has no publication authority",

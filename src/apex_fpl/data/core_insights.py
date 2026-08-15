@@ -158,6 +158,12 @@ class FPLCoreClient:
                     "xg",
                     "xa",
                     "defensive_contributions",
+                    "goals",
+                    "assists",
+                    "total_shots",
+                    "shots_on_target",
+                    "chances_created",
+                    "touches_opposition_box",
                     "start_min",
                 ]
             )

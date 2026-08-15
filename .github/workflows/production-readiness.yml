@@ -21,8 +21,8 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install Apex and pinned AIrsenal worker
-        run: pip install -e '.[dev,airsenal]'
+      - name: Install Apex + pinned AIrsenal worker
+        run: bash scripts/install_pinned_airsenal.sh
 
       - name: Run deterministic repository tests
         env:
@@ -61,6 +61,93 @@ jobs:
             --horizon 8 \
             --output data/generated/airsenal.csv
 
+      - name: Generate Pinnacle surface for same-surface parity
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/build_decision_bundle.py \
+            --horizon 8 \
+            --bundle-dir data/generated/decision_bundle \
+            --force
+
+          set +e
+          python scripts/run_pinnacle.py \
+            --horizon 8 \
+            --stochastic-scenarios 256 \
+            --cvar-alpha 0.10 \
+            --cvar-weight 0.20 \
+            --bundle-dir data/generated/decision_bundle
+          status=$?
+          set -e
+
+          test -s data/generated/pinnacle_latest.json
+          if [ "$status" -ne 0 ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("data/generated/pinnacle_latest.json").read_text())
+          blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
+          parity_bootstrap = [
+              "required independent solver parity snapshot is not embedded"
+          ]
+          if payload.get("pinnacle_ready") is not False or blockers != parity_bootstrap:
+              raise SystemExit(
+                  "Pinnacle readiness failed before same-surface parity bootstrap: "
+                  + "; ".join(blockers)
+              )
+          print("Pinnacle surface complete; advancing to same-surface parity.")
+          PY
+          fi
+
+          python scripts/export_open_solver.py \
+            reports/players.csv reports/projections.csv /tmp/apex.csv \
+            --projection-col xp
+
+      - name: Read pinned independent solver revision
+        id: parity-pin
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          source = json.load(open("upstreams.lock.json", encoding="utf-8"))["sources"]["open_fpl_solver"]
+          print(f"repository={source['repository']}")
+          print(f"sha={source['commit']}")
+          PY
+
+      - name: Run and embed same-surface independent parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install uv
+          git clone --filter=blob:none \
+            "https://github.com/${{ steps.parity-pin.outputs.repository }}.git" \
+            "$RUNNER_TEMP/open-fpl-solver"
+          git -C "$RUNNER_TEMP/open-fpl-solver" checkout --detach \
+            "${{ steps.parity-pin.outputs.sha }}"
+          cp /tmp/apex.csv "$RUNNER_TEMP/open-fpl-solver/data/apex.csv"
+          cd "$RUNNER_TEMP/open-fpl-solver"
+          uv sync
+          uv run python run/solve.py \
+            --config "$GITHUB_WORKSPACE/config/open_solver_parity.json" \
+            --datasource apex \
+            --horizon 8
+          cd "$GITHUB_WORKSPACE"
+          RESULT="$(ls -t "$RUNNER_TEMP"/open-fpl-solver/data/results/apex_*.csv | head -1)"
+          python scripts/compare_solver_parity.py \
+            data/generated/pinnacle_latest.json "$RESULT"
+          python scripts/embed_solver_parity.py \
+            data/generated/pinnacle_latest.json \
+            data/generated/solver_parity.json
+
       - name: Run canonical Apex readiness audit
         env:
           APEX_SEASON: "2026-2027"
@@ -76,6 +163,7 @@ jobs:
             --stochastic-scenarios 256 \
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
+            --reuse-pinnacle \
             --force
 
       - name: Upload unified readiness artefacts
@@ -87,6 +175,7 @@ jobs:
             data/generated/apex_recommendation_latest.json
             data/generated/apex_recommendation_latest.md
             data/generated/pinnacle_latest.json
+            data/generated/solver_parity.json
             data/generated/elite_latest.json
             data/generated/decision_bundle/
             reports/

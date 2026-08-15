@@ -92,29 +92,57 @@ def _preseason_check(friendlies: pd.DataFrame) -> QualityCheck:
             False,
             f"preseason rows missing identity/minutes columns: {missing}",
         )
-    stat_cols = [
+    advanced_cols = [
         col
         for col in ("xg", "xa", "defensive_contributions")
         if col in friendlies.columns
     ]
-    if not stat_cols:
-        return QualityCheck(
-            "preseason_evidence",
-            "warning",
-            False,
-            f"{len(friendlies)} player-match rows contain minutes but no return statistics",
-            0.0,
-            None,
+    event_cols = [
+        col
+        for col in (
+            "goals",
+            "assists",
+            "total_shots",
+            "shots_on_target",
+            "chances_created",
+            "touches_opposition_box",
         )
-    observed = friendlies[stat_cols].apply(pd.to_numeric, errors="coerce").notna()
-    coverage = float(observed.any(axis=1).mean())
-    status = "pass" if coverage >= 0.80 else "warning"
+        if col in friendlies.columns
+    ]
+    advanced_coverage = (
+        float(
+            friendlies[advanced_cols]
+            .apply(pd.to_numeric, errors="coerce")
+            .notna()
+            .any(axis=1)
+            .mean()
+        )
+        if advanced_cols
+        else 0.0
+    )
+    event_coverage = (
+        float(
+            friendlies[event_cols]
+            .apply(pd.to_numeric, errors="coerce")
+            .notna()
+            .any(axis=1)
+            .mean()
+        )
+        if event_cols
+        else 0.0
+    )
+    status = "pass" if advanced_coverage >= 0.80 else "warning"
     return QualityCheck(
         "preseason_evidence",
         status,
         False,
-        f"{len(friendlies)} player-match rows; return-stat observation coverage={coverage:.1%}",
-        coverage,
+        (
+            f"{len(friendlies)} player-match rows; advanced xG/xA/defcon observation "
+            f"coverage={advanced_coverage:.1%}; reliable goals/assists/shots/chances "
+            f"evidence coverage={event_coverage:.1%}; event evidence is preserved but "
+            "does not affect attacking xP until its fallback challenger is historically validated"
+        ),
+        advanced_coverage,
         0.80,
     )
 

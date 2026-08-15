@@ -13,9 +13,13 @@ def map_understat_to_current_ids(
 ) -> pd.DataFrame:
     """Map prior-season Understat rates to current official IDs conservatively.
 
-    Current IDs come from the immutable FPL Core identity table already pinned by
-    the sealed decision bundle. Only unique normalised full names in both sources
-    are accepted; ambiguous identities are excluded rather than guessed.
+    Identity reconciliation is hierarchical rather than player-specific:
+    1. unique exact normalised official full name;
+    2. for still-unmatched players, unique official ``web_name`` matched to a
+       unique Understat display name, with same-team corroboration when both
+       sources expose a team label.
+
+    Ambiguous identities are always excluded. No manual player alias table is used.
     """
     required_core = {"player_id", "first_name", "second_name"}
     missing_core = sorted(required_core - set(core_players.columns))
@@ -26,7 +30,11 @@ def map_understat_to_current_ids(
     if missing_us:
         raise ValueError(f"Understat players missing columns: {missing_us}")
 
-    core = core_players[["player_id", "first_name", "second_name"]].copy()
+    core_cols = ["player_id", "first_name", "second_name"]
+    for optional in ("web_name", "team_name"):
+        if optional in core_players.columns:
+            core_cols.append(optional)
+    core = core_players[core_cols].copy()
     core["player_id"] = pd.to_numeric(core["player_id"], errors="coerce")
     core = core.dropna(subset=["player_id"]).copy()
     core["player_id"] = core["player_id"].astype(int)
@@ -35,27 +43,110 @@ def map_understat_to_current_ids(
         + " "
         + core["second_name"].fillna("").astype(str).str.strip()
     ).str.strip()
-    core["name_key"] = core["player_name"].map(normalise_player_name)
+    core["full_name_key"] = core["player_name"].map(normalise_player_name)
+    core["web_name_key"] = (
+        core["web_name"].map(normalise_player_name)
+        if "web_name" in core.columns
+        else ""
+    )
+    core["team_key"] = (
+        core["team_name"].map(normalise_player_name)
+        if "team_name" in core.columns
+        else ""
+    )
 
-    us = understat_players[
-        ["player_name", "understat_xg90", "understat_xa90"]
-    ].copy()
+    us_cols = ["player_name", "understat_xg90", "understat_xa90"]
+    if "team_name" in understat_players.columns:
+        us_cols.append("team_name")
+    us = understat_players[us_cols].copy().reset_index(drop=True)
+    us["_understat_row"] = us.index.astype(int)
     us["name_key"] = us["player_name"].map(normalise_player_name)
+    us["team_key"] = (
+        us["team_name"].map(normalise_player_name)
+        if "team_name" in us.columns
+        else ""
+    )
     for col in ["understat_xg90", "understat_xa90"]:
         us[col] = pd.to_numeric(us[col], errors="coerce")
 
-    core_counts = core.groupby("name_key").size()
-    us_counts = us.groupby("name_key").size()
-    valid = set(core_counts[core_counts == 1].index) & set(us_counts[us_counts == 1].index)
-    out = core[core["name_key"].isin(valid)].merge(
-        us[us["name_key"].isin(valid)][
-            ["name_key", "understat_xg90", "understat_xa90"]
-        ],
-        on="name_key",
-        how="inner",
-        validate="one_to_one",
+    def unique_matches(
+        left: pd.DataFrame,
+        left_key: str,
+        right: pd.DataFrame,
+        *,
+        method: str,
+        require_team_if_present: bool = False,
+    ) -> pd.DataFrame:
+        left = left[left[left_key].astype(str).ne("")].copy()
+        right = right[right["name_key"].astype(str).ne("")].copy()
+        left_counts = left.groupby(left_key).size()
+        right_counts = right.groupby("name_key").size()
+        valid = set(left_counts[left_counts == 1].index) & set(
+            right_counts[right_counts == 1].index
+        )
+        if not valid:
+            return pd.DataFrame()
+        matched = left[left[left_key].isin(valid)].merge(
+            right[right["name_key"].isin(valid)],
+            left_on=left_key,
+            right_on="name_key",
+            how="inner",
+            validate="one_to_one",
+            suffixes=("_core", "_understat"),
+        )
+        if require_team_if_present:
+            core_team = matched.get("team_key_core", pd.Series("", index=matched.index)).fillna("")
+            us_team = matched.get("team_key_understat", pd.Series("", index=matched.index)).fillna("")
+            both_present = core_team.astype(str).ne("") & us_team.astype(str).ne("")
+            matched = matched[~both_present | core_team.eq(us_team)].copy()
+        matched["understat_match_method"] = method
+        return matched
+
+    exact = unique_matches(core, "full_name_key", us, method="full_name")
+    matched_core_ids = (
+        set(pd.to_numeric(exact["player_id"], errors="coerce").dropna().astype(int))
+        if "player_id" in exact.columns
+        else set()
     )
-    return out[["player_id", "understat_xg90", "understat_xa90"]].reset_index(drop=True)
+    matched_us_rows = (
+        set(pd.to_numeric(exact["_understat_row"], errors="coerce").dropna().astype(int))
+        if "_understat_row" in exact.columns
+        else set()
+    )
+
+    fallback = pd.DataFrame()
+    if "web_name" in core.columns:
+        remaining_core = core[~core["player_id"].isin(matched_core_ids)].copy()
+        remaining_us = us[~us["_understat_row"].isin(matched_us_rows)].copy()
+        fallback = unique_matches(
+            remaining_core,
+            "web_name_key",
+            remaining_us,
+            method="web_name_team",
+            require_team_if_present=True,
+        )
+
+    pieces = [frame for frame in (exact, fallback) if not frame.empty]
+    if not pieces:
+        return pd.DataFrame(
+            columns=[
+                "player_id",
+                "understat_xg90",
+                "understat_xa90",
+                "understat_match_method",
+            ]
+        )
+    out = pd.concat(pieces, ignore_index=True)
+    if out["player_id"].duplicated().any():
+        raise ValueError("Understat reconciliation mapped a current player more than once")
+    return out[
+        [
+            "player_id",
+            "understat_xg90",
+            "understat_xa90",
+            "understat_match_method",
+        ]
+    ].reset_index(drop=True)
 
 
 def reprice_projection_surface(

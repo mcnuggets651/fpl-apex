@@ -179,16 +179,29 @@ def build_disagreement_report(
     frame = projections[projections["gw"].isin(gameweeks)].copy()
     weights = {int(gw): float(decay) ** idx for idx, gw in enumerate(gameweeks)}
     frame["_discount"] = frame["gw"].map(weights).fillna(0.0)
-    frame["_apex"] = _numeric(frame, "apex_xp").fillna(0.0) * frame["_discount"]
-    frame["_airsenal"] = _numeric(frame, "airsenal_xp").fillna(0.0) * frame["_discount"]
+    frame["_apex_raw"] = _numeric(frame, "apex_xp").fillna(0.0)
+    frame["_airsenal_raw"] = _numeric(frame, "airsenal_xp").fillna(0.0)
+    frame["_apex_discounted_utility"] = frame["_apex_raw"] * frame["_discount"]
+    frame["_airsenal_discounted_utility"] = frame["_airsenal_raw"] * frame["_discount"]
     summary = frame.groupby("player_id", as_index=False).agg(
-        apex_horizon_xp=("_apex", "sum"),
-        airsenal_horizon_xp=("_airsenal", "sum"),
+        apex_raw_horizon_xp=("_apex_raw", "sum"),
+        airsenal_raw_horizon_xp=("_airsenal_raw", "sum"),
+        apex_discounted_horizon_utility=("_apex_discounted_utility", "sum"),
+        airsenal_discounted_horizon_utility=("_airsenal_discounted_utility", "sum"),
         model_xg90=("model_xg90", "first"),
         model_xa90=("model_xa90", "first"),
     )
-    summary["apex_minus_airsenal"] = summary["apex_horizon_xp"] - summary["airsenal_horizon_xp"]
-    summary["absolute_disagreement"] = summary["apex_minus_airsenal"].abs()
+    summary["raw_apex_minus_airsenal_xp"] = (
+        summary["apex_raw_horizon_xp"] - summary["airsenal_raw_horizon_xp"]
+    )
+    summary["raw_absolute_disagreement_xp"] = summary["raw_apex_minus_airsenal_xp"].abs()
+    summary["discounted_apex_minus_airsenal_utility"] = (
+        summary["apex_discounted_horizon_utility"]
+        - summary["airsenal_discounted_horizon_utility"]
+    )
+    summary["discounted_absolute_disagreement_utility"] = (
+        summary["discounted_apex_minus_airsenal_utility"].abs()
+    )
     keep = [
         col for col in [
             "player_id", "web_name", "position", "price", "minutes", "previous_minutes",
@@ -205,16 +218,21 @@ def build_disagreement_report(
     else:
         summary["xg90_position_percentile"] = np.nan
         summary["xa90_position_percentile"] = np.nan
-    summary["high_disagreement"] = summary["absolute_disagreement"].ge(3.0)
+    # Source-model disagreement is a forecast diagnostic, so thresholds are
+    # evaluated on undiscounted expected points. Discounted utility remains visible
+    # for decision-policy analysis but cannot be labelled or ranked as xP.
+    summary["high_disagreement"] = summary["raw_absolute_disagreement_xp"].ge(3.0)
     summary["low_sample_extreme_rate"] = (
         summary["competitive_evidence_minutes"].lt(270.0)
         & (
             summary["xg90_position_percentile"].ge(0.90)
             | summary["xa90_position_percentile"].ge(0.90)
         )
-        & summary["absolute_disagreement"].ge(2.0)
+        & summary["raw_absolute_disagreement_xp"].ge(2.0)
     )
-    return summary.sort_values("absolute_disagreement", ascending=False).reset_index(drop=True)
+    return summary.sort_values(
+        "raw_absolute_disagreement_xp", ascending=False
+    ).reset_index(drop=True)
 
 
 def main() -> None:

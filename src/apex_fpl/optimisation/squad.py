@@ -52,7 +52,12 @@ def optimise_squad(
     def c(i: int) -> int:
         return 2 * n + i
 
-    horizon = pd.to_numeric(d["horizon_xp"], errors="coerce").fillna(0).to_numpy(float)
+    utility_col = (
+        "discounted_horizon_utility"
+        if "discounted_horizon_utility" in d.columns
+        else "horizon_xp"
+    )
+    horizon = pd.to_numeric(d[utility_col], errors="coerce").fillna(0).to_numpy(float)
     gw1 = pd.to_numeric(d.get("gw1_xp", d["horizon_xp"]), errors="coerce").fillna(0).to_numpy(float)
     objective = np.zeros(3 * n)
     # Maximise horizon squad value + decisive weight on starting XI and captain.
@@ -136,7 +141,10 @@ def optimise_squad(
         "xpts_3",
         "xpts_5",
         "xpts_8",
+        "raw_horizon_xp",
+        "discounted_horizon_utility",
         "horizon_xp",
+        "fixture_decay",
         "projection_confidence",
     ]
     cols = [col for col in detail_columns if col in d.columns]

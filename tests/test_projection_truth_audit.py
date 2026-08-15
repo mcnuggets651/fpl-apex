@@ -97,3 +97,36 @@ def test_component_contributions_can_reconcile_to_xp():
     )
     contribution_cols = [column for column in projections.columns if column.startswith("xp_expert_")]
     assert projections[contribution_cols].sum(axis=1).iloc[0] == pytest.approx(projections["xp"].iloc[0])
+
+
+def test_disagreement_report_separates_raw_xp_from_discounted_utility():
+    projections = pd.DataFrame(
+        {
+            "player_id": [1, 1],
+            "gw": [1, 2],
+            "apex_xp": [4.0, 4.0],
+            "airsenal_xp": [5.0, 5.0],
+            "model_xg90": [0.4, 0.4],
+            "model_xa90": [0.2, 0.2],
+        }
+    )
+    players = pd.DataFrame(
+        {
+            "player_id": [1],
+            "web_name": ["Example"],
+            "position": ["FWD"],
+            "price": [7.5],
+            "minutes": [900],
+            "previous_minutes": [1800],
+        }
+    )
+    report = MODULE.build_disagreement_report(
+        projections, players, [1, 2], decay=0.90
+    ).iloc[0]
+    assert report["apex_raw_horizon_xp"] == pytest.approx(8.0)
+    assert report["airsenal_raw_horizon_xp"] == pytest.approx(10.0)
+    assert report["raw_apex_minus_airsenal_xp"] == pytest.approx(-2.0)
+    assert report["raw_absolute_disagreement_xp"] == pytest.approx(2.0)
+    assert report["apex_discounted_horizon_utility"] == pytest.approx(7.6)
+    assert report["airsenal_discounted_horizon_utility"] == pytest.approx(9.5)
+    assert report["discounted_apex_minus_airsenal_utility"] == pytest.approx(-1.9)

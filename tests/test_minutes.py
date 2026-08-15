@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from apex_fpl.models.minutes import expected_minutes, minutes_profile
 
@@ -11,6 +12,35 @@ def test_injury_reduces_expected_minutes():
     m = expected_minutes(df)
     assert m.iloc[0] > 80
     assert m.iloc[1] < 10
+
+
+def test_minutes_diagnostics_reconcile_incumbent_expected_minutes_and_start_probability():
+    row = pd.DataFrame(
+        [
+            {
+                "minutes": 0,
+                "starts": 0,
+                "starts_per_90": 0,
+                "previous_start_probability": 0.80,
+                "previous_minutes_per_match": 68.0,
+                "preseason_minutes": 210,
+                "preseason_starts": 3,
+                "preseason_appearances": 3,
+                "status": "a",
+            }
+        ]
+    )
+    out = minutes_profile(row).iloc[0]
+    assert out["expected_minutes"] == pytest.approx(
+        out["role_expected_minutes_pre_availability"]
+        * out["availability_probability"]
+    )
+    assert out["start_probability"] == pytest.approx(
+        out["role_start_probability_pre_availability"]
+        * out["availability_probability"]
+    )
+    assert out["historical_start_probability"] == pytest.approx(0.80)
+    assert out["preseason_start_probability"] == pytest.approx(1.0)
 
 
 def test_prior_season_playing_time_produces_player_specific_preseason_prior():

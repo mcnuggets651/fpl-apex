@@ -126,19 +126,46 @@ def _decision_gameweeks(events: pd.DataFrame, horizon: int) -> list[int]:
     return []
 
 
+def _raw_projection_column(proj: pd.DataFrame) -> str:
+    for column in ("canonical_ev_xp", "xp", "risk_adjusted_xp"):
+        if column in proj.columns:
+            return column
+    raise ValueError("projection surface has no canonical expected-points column")
+
+
 def _summarise_horizons(proj: pd.DataFrame, gws: list[int]) -> pd.DataFrame:
+    """Expose xpts_N as undiscounted cumulative expected FPL points.
+
+    Fixture decay is a decision-policy utility transform, not a points forecast.
+    It must never be published under an xP label.
+    """
     pids = proj[["player_id"]].drop_duplicates().copy()
+    raw_col = _raw_projection_column(proj)
     for horizon in (1, 3, 5, 8):
         chosen = gws[: min(horizon, len(gws))]
         vals = (
             proj[proj["gw"].isin(chosen)]
-            .groupby("player_id")["weighted_xp"]
+            .groupby("player_id")[raw_col]
             .sum()
         )
         pids[f"xpts_{horizon}"] = pids["player_id"].map(vals).fillna(0)
     conf = proj.groupby("player_id")["projection_confidence"].mean()
     pids["projection_confidence"] = pids["player_id"].map(conf).fillna(0)
     return pids
+
+
+def _horizon_totals(proj: pd.DataFrame) -> pd.DataFrame:
+    raw_col = _raw_projection_column(proj)
+    if "weighted_xp" not in proj.columns:
+        raise ValueError("projection surface has no discounted utility component")
+    out = proj.groupby("player_id", as_index=False).agg(
+        raw_horizon_xp=(raw_col, "sum"),
+        discounted_horizon_utility=("weighted_xp", "sum"),
+    )
+    # Compatibility alias: horizon_xp now has literal xP semantics. Any optimiser
+    # that wants discounted utility must use discounted_horizon_utility explicitly.
+    out["horizon_xp"] = out["raw_horizon_xp"]
+    return out
 
 
 def run_pipeline(
@@ -661,10 +688,9 @@ def run_pipeline(
     decay = {gw: settings.fixture_decay**i for i, gw in enumerate(gws)}
     proj["decay"] = proj["gw"].map(decay)
     proj["weighted_xp"] = proj["risk_adjusted_xp"] * proj["decay"]
+    proj["discounted_horizon_utility_component"] = proj["weighted_xp"]
     summaries = _summarise_horizons(proj, gws)
-    horizon_vals = proj.groupby("player_id", as_index=False).agg(
-        horizon_xp=("weighted_xp", "sum")
-    )
+    horizon_vals = _horizon_totals(proj)
     first = proj[proj["gw"] == gws[0]][
         ["player_id", "risk_adjusted_xp"]
     ].rename(columns={"risk_adjusted_xp": "gw1_xp"})
@@ -673,7 +699,10 @@ def run_pipeline(
         .merge(first, on="player_id", how="left")
         .merge(summaries, on="player_id", how="left")
     )
+    ranked["fixture_decay"] = float(settings.fixture_decay)
     for col in [
+        "raw_horizon_xp",
+        "discounted_horizon_utility",
         "horizon_xp",
         "gw1_xp",
         "xpts_1",
@@ -768,6 +797,17 @@ def run_pipeline(
         "appearance_probability",
         "minutes_60_plus_probability",
         "minutes_confidence",
+        "historical_start_probability",
+        "historical_expected_minutes",
+        "preseason_start_probability",
+        "preseason_average_minutes",
+        "preseason_signal_minutes",
+        "historical_signal_minutes",
+        "role_expected_minutes_pre_availability",
+        "role_start_probability_pre_availability",
+        "availability_probability",
+        "preseason_role_weight",
+        "preseason_effective_games",
         "tactical_role",
         "tactical_role_source",
         "role_multiplier",
@@ -806,17 +846,33 @@ def run_pipeline(
         "preseason_starts",
         "preseason_xg90",
         "preseason_xa90",
+        "preseason_goals90",
+        "preseason_assists90",
+        "preseason_shots90",
+        "preseason_shots_on_target90",
+        "preseason_chances_created90",
+        "preseason_box_touches90",
+        "preseason_xg_observed",
+        "preseason_xa_observed",
+        "preseason_goals_observed",
+        "preseason_assists_observed",
+        "preseason_shots_observed",
+        "understat_player_matched",
+        "understat_match_method",
         "gw1_xp",
         "xpts_1",
         "xpts_3",
         "xpts_5",
         "xpts_8",
+        "raw_horizon_xp",
+        "discounted_horizon_utility",
         "horizon_xp",
+        "fixture_decay",
         "projection_confidence",
     ]
     ranked_out = ranked[
         [col for col in ranked_cols if col in ranked]
-    ].sort_values("horizon_xp", ascending=False)
+    ].sort_values("raw_horizon_xp", ascending=False)
     if not understat_ratings.empty:
         understat_ratings.to_csv(
             settings.report_dir / "team_goal_ratings.csv", index=False
