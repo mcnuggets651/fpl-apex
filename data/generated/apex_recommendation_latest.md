@@ -1,55 +1,51 @@
 # Apex Unified Recommendation
 
-Generated: 2026-08-15T19:42:07.265513+00:00
-Official surface: `910682cb405f` / `a478e20d030d`
-Canonical selector: **exact_horizon_maximum_ev**
-Reason: The sealed near-optimal squad frontier is rescored across every Gameweek with exact XI, captain, vice-captain and autosub mechanics; that single Decision object is the production authority.
+Canonical selector: **adaptive_gw1_launch_with_transfer_option_value**
+Reason: Exact GW1 expected points are the primary launch objective. Apex permits only the existing near-equivalent GW1 point tolerance, then uses the legal future transfer path to choose the most useful bank/FT structure.
 
 ## GW1
 
 Captain: **Haaland**
 Vice-captain: **Thiago**
-Expected total with exact mechanics: **55.71**
+Expected total with exact mechanics: **55.86**
 
 ### Starting XI
 
-| Player | Club | Pos | Price | GW1 xP |
+| Player | Club | Pos | Price | GW xP |
 |:--|:--|:--:|--:|--:|
+| Thiaw | Newcastle | DEF | 5.0 | 3.42 |
 | Guéhi | Man City | DEF | 6.0 | 4.18 |
 | Virgil | Liverpool | DEF | 6.5 | 3.79 |
-| Thiaw | Newcastle | DEF | 5.0 | 3.42 |
-| Haaland | Man City | FWD | 15.5 | 6.39 |
 | Thiago | Brentford | FWD | 8.0 | 4.82 |
-| Kelleher | Brentford | GK | 5.0 | 3.63 |
-| Mbeumo | Man Utd | MID | 8.0 | 4.66 |
-| Semenyo | Man City | MID | 8.5 | 4.72 |
+| Haaland | Man City | FWD | 15.5 | 6.39 |
+| Raya | Arsenal | GK | 6.0 | 4.07 |
+| Schade | Brentford | MID | 6.0 | 3.91 |
 | Enzo | Chelsea | MID | 7.0 | 4.25 |
 | Gakpo | Liverpool | MID | 7.0 | 4.08 |
-| Schade | Brentford | MID | 6.0 | 3.91 |
+| Mbeumo | Man Utd | MID | 8.0 | 4.66 |
+| Semenyo | Man City | MID | 8.5 | 4.72 |
 
 ### Full 15
 
-| Player | Club | Pos | Price | GW1 xP |
+| Player | Club | Pos | Price | GW xP |
 |:--|:--|:--:|--:|--:|
+| O'Shea | Ipswich Town | DEF | 4.0 | 1.41 |
+| Davies | Spurs | DEF | 4.0 | 2.08 |
+| Thiaw | Newcastle | DEF | 5.0 | 3.42 |
 | Guéhi | Man City | DEF | 6.0 | 4.18 |
 | Virgil | Liverpool | DEF | 6.5 | 3.79 |
-| Thiaw | Newcastle | DEF | 5.0 | 3.42 |
-| F.Kadıoğlu | Brighton | DEF | 4.5 | 3.09 |
-| Davies | Spurs | DEF | 4.0 | 2.08 |
-| Haaland | Man City | FWD | 15.5 | 6.39 |
+| Scarlett | Spurs | FWD | 4.5 | 0.91 |
 | Thiago | Brentford | FWD | 8.0 | 4.82 |
-| Neave | Newcastle | FWD | 4.5 | 1.16 |
-| Kelleher | Brentford | GK | 5.0 | 3.63 |
-| Petrović | Bournemouth | GK | 4.5 | 2.84 |
-| Mbeumo | Man Utd | MID | 8.0 | 4.66 |
-| Semenyo | Man City | MID | 8.5 | 4.72 |
+| Haaland | Man City | FWD | 15.5 | 6.39 |
+| Dubravka | Spurs | GK | 4.0 | 1.96 |
+| Raya | Arsenal | GK | 6.0 | 4.07 |
+| Schade | Brentford | MID | 6.0 | 3.91 |
 | Enzo | Chelsea | MID | 7.0 | 4.25 |
 | Gakpo | Liverpool | MID | 7.0 | 4.08 |
-| Schade | Brentford | MID | 6.0 | 3.91 |
+| Mbeumo | Man Utd | MID | 8.0 | 4.66 |
+| Semenyo | Man City | MID | 8.5 | 4.72 |
 
-Bench GK: **Petrović**
-Outfield bench: **F.Kadıoğlu → Davies → Neave**
+Bench GK: **Dubravka**
+Outfield bench: **Davies → O'Shea → Scarlett**
 
-## Canonical rule
-
-This is the only user-facing Apex team. Pinnacle max-EV, Elite, CVaR and other solver outputs are internal diagnostics/challengers and must not be presented as separate competing recommendations.
+Future moves are contingencies only. Refresh projections and re-solve before the next deadline.
