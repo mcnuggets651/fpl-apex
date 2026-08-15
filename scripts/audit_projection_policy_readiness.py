@@ -1,4 +1,4 @@
-"""Report whether projection-policy challengers have enough history to be promoted.
+"""Report whether projection-policy challengers have enough evidence to advance.
 
 This CLI is deliberately fail-closed: it records missing replay/preseason evidence
 without changing fixture decay, preseason attacking rates, or the minutes model.
@@ -21,12 +21,14 @@ def main() -> None:
     parser.add_argument("--apex-store", type=Path, required=True)
     parser.add_argument("--core-root", type=Path, required=True)
     parser.add_argument("--historical-audit", type=Path)
+    parser.add_argument("--bench-audit", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     payload = build_projection_policy_readiness(
         args.apex_store,
         args.core_root,
         historical_audit_path=args.historical_audit,
+        bench_audit_path=args.bench_audit,
     )
     rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.output:
