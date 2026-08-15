@@ -1,7 +1,19 @@
 {
-  "contract": "apex-historical-preseason-validation-sources-v1",
+  "contract": "apex-historical-preseason-validation-sources-v2",
   "repository": "olbauday/FPL-Core-Insights",
   "minimum_independent_seasons_for_promotion": 2,
+  "minimum_independent_seasons_scope": "broad minutes-model or preseason-attacking rewrites",
+  "narrow_recent_season_policy": {
+    "allowed": true,
+    "scope": "isolated bench-appearance propensity with incumbent start probability and expected minutes frozen",
+    "minimum_recent_rows": 4000,
+    "minimum_recent_players": 500,
+    "requires_player_clustered_bootstrap": true,
+    "requires_team_clustered_bootstrap": true,
+    "requires_leave_one_team_out_stability": true,
+    "requires_key_cohort_stability": true,
+    "requires_production_ab_before_promotion": true
+  },
   "seasons": [
     {
       "season": "2025-2026",
