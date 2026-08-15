@@ -1,15 +1,15 @@
 # Apex Unified Recommendation
 
-Generated: 2026-08-15T07:56:20.404174+00:00
-Official surface: `6eb8887f0b61` / `a478e20d030d`
+Generated: 2026-08-15T08:54:11.752564+00:00
+Official surface: `b33f2f399bc3` / `a478e20d030d`
 Canonical selector: **exact_horizon_maximum_ev**
 Reason: The sealed near-optimal squad frontier is rescored across every Gameweek with exact XI, captain, vice-captain and autosub mechanics; that single Decision object is the production authority.
 
 ## GW1
 
 Captain: **Haaland**
-Vice-captain: **Semenyo**
-Expected total with exact mechanics: **55.58**
+Vice-captain: **Thiago**
+Expected total with exact mechanics: **55.75**
 
 ### Starting XI
 
@@ -19,7 +19,7 @@ Expected total with exact mechanics: **55.58**
 | Virgil | Liverpool | DEF | 6.5 | 3.79 |
 | Thiaw | Newcastle | DEF | 5.0 | 3.42 |
 | Haaland | Man City | FWD | 15.5 | 6.39 |
-| Thiago | Brentford | FWD | 8.0 | 4.66 |
+| Thiago | Brentford | FWD | 8.0 | 4.82 |
 | Kelleher | Brentford | GK | 5.0 | 3.63 |
 | Mbeumo | Man Utd | MID | 8.0 | 4.66 |
 | Semenyo | Man City | MID | 8.5 | 4.72 |
@@ -37,7 +37,7 @@ Expected total with exact mechanics: **55.58**
 | F.Kadıoğlu | Brighton | DEF | 4.5 | 3.11 |
 | Davies | Spurs | DEF | 4.0 | 2.10 |
 | Haaland | Man City | FWD | 15.5 | 6.39 |
-| Thiago | Brentford | FWD | 8.0 | 4.66 |
+| Thiago | Brentford | FWD | 8.0 | 4.82 |
 | Neave | Newcastle | FWD | 4.5 | 1.55 |
 | Kelleher | Brentford | GK | 5.0 | 3.63 |
 | Petrović | Bournemouth | GK | 4.5 | 2.84 |
