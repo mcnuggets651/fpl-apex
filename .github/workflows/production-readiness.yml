@@ -2,6 +2,9 @@ name: Apex Unified Readiness Audit
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - agent/gw1-role-evidence
 
 permissions:
   contents: read
