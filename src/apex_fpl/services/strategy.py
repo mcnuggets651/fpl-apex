@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from apex_fpl.optimisation.exact_decision import optimise_fixed_squad_gameweek
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.transfer_views import optimise_transfer_plan_view
 from apex_fpl.optimisation.transfers import TransferPlan
@@ -25,6 +26,14 @@ class RecedingHorizonStrategy:
     contingent_future: list[dict]
     projection_col: str
     note: str
+    canonical_squad: list[dict] | None = None
+    canonical_xi: list[dict] | None = None
+    canonical_captain: str | None = None
+    canonical_vice_captain: str | None = None
+    canonical_bench_gk: str | None = None
+    canonical_outfield_bench_order: list[str] | None = None
+    canonical_expected_points: float | None = None
+    state_transition_reconciled: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -41,11 +50,56 @@ class RecedingHorizonStrategy:
             "future_moves_are_contingent": True,
             "projection_col": self.projection_col,
             "note": self.note,
+            "canonical_squad": self.canonical_squad,
+            "canonical_xi": self.canonical_xi,
+            "canonical_captain": self.canonical_captain,
+            "canonical_vice_captain": self.canonical_vice_captain,
+            "canonical_bench_gk": self.canonical_bench_gk,
+            "canonical_outfield_bench_order": self.canonical_outfield_bench_order,
+            "canonical_expected_points": self.canonical_expected_points,
+            "state_transition_reconciled": self.state_transition_reconciled,
         }
 
 
 def _next_ft_after_roll(free_transfers: int) -> int:
     return min(MAX_ROLLED_FREE_TRANSFERS, max(1, int(free_transfers) + 1))
+
+
+def _projection_map(
+    projections: pd.DataFrame,
+    gw: int,
+    projection_col: str,
+) -> dict[int, float]:
+    rows = projections[projections["gw"].astype(int).eq(int(gw))]
+    if projection_col not in rows.columns:
+        if projection_col == "xp" and "risk_adjusted_xp" in rows.columns:
+            projection_col = "risk_adjusted_xp"
+        else:
+            raise ValueError(f"projection table requires {projection_col!r}")
+    values = rows.groupby("player_id")[projection_col].sum()
+    return {int(pid): float(value) for pid, value in values.items()}
+
+
+def _appearance_map(players: pd.DataFrame) -> dict[int, float]:
+    values = pd.to_numeric(
+        players.get("appearance_probability", pd.Series(1.0, index=players.index)),
+        errors="coerce",
+    ).fillna(1.0)
+    return {
+        int(pid): min(max(float(prob), 0.0), 1.0)
+        for pid, prob in zip(players["player_id"].astype(int), values)
+    }
+
+
+def _named_records(frame: pd.DataFrame, xp: dict[int, float]) -> list[dict]:
+    cols = [
+        col
+        for col in ["player_id", "web_name", "team_name", "position", "price"]
+        if col in frame.columns
+    ]
+    out = frame[cols].copy()
+    out["gw1_xp"] = out["player_id"].astype(int).map(xp).fillna(0.0)
+    return out.to_dict("records")
 
 
 def analyse_receding_horizon(
@@ -63,11 +117,10 @@ def analyse_receding_horizon(
 ) -> RecedingHorizonStrategy:
     """Return the one action Pinnacle should execute at the next deadline.
 
-    The function re-solves the full transfer path on the explicit maximum-EV
-    projection surface rather than inheriting the legacy risk-adjusted plan. That
-    keeps uncertainty as a separate robustness question and prevents risk from
-    being double-counted. Only the first action is actionable; all later moves are
-    contingent and must be recalculated after new information arrives.
+    The full legal transfer path is re-solved on the current maximum-EV projection
+    surface, but only its first action is executable. The resulting current squad is
+    then rescored with exact XI, captain/vice and autosub mechanics. Every later move
+    is a contingency and must be rebuilt after new football and price information.
     """
     gws = [int(gw) for gw in gameweeks]
     if not gws:
@@ -148,10 +201,76 @@ def analyse_receding_horizon(
     else:
         action = "multiple_free_transfers"
 
+    action_ids = {
+        int(row["player_id"])
+        for row in (first.get("squad") or [])
+        if row.get("player_id") is not None
+    }
+    in_ids = {
+        int(row["player_id"])
+        for row in (first.get("transfers_in") or [])
+        if row.get("player_id") is not None
+    }
+    out_ids = {
+        int(row["player_id"])
+        for row in (first.get("transfers_out") or [])
+        if row.get("player_id") is not None
+    }
+    expected_ids = (set(map(int, team_state.squad)) - out_ids) | in_ids
+    transition_ok = bool(
+        len(action_ids) == 15
+        and action_ids == expected_ids
+        and len(in_ids) == len(out_ids) == transfers
+        and int(first.get("free_transfers_before", -1)) == int(team_state.free_transfers)
+        and float(first.get("bank_after", -1.0)) >= 0.0
+    )
+
+    canonical_squad = None
+    canonical_xi = None
+    captain_name = None
+    vice_name = None
+    bench_gk_name = None
+    bench_order_names = None
+    exact_points = None
+    if transition_ok:
+        squad = players[players["player_id"].astype(int).isin(action_ids)].copy()
+        xp = _projection_map(projections, first_gw, projection_col)
+        xi_eligible = (
+            set(
+                players.loc[
+                    players["xi_evidence_eligible"].fillna(False), "player_id"
+                ].astype(int)
+            )
+            if "xi_evidence_eligible" in players.columns
+            else None
+        )
+        xi, mechanics = optimise_fixed_squad_gameweek(
+            squad,
+            xp,
+            _appearance_map(players),
+            captain_eligible=captain_eligible,
+            xi_eligible=xi_eligible,
+        )
+        names = {
+            int(row.player_id): str(row.web_name)
+            for row in players[["player_id", "web_name"]]
+            .drop_duplicates("player_id")
+            .itertuples(index=False)
+        }
+        canonical_squad = _named_records(squad, xp)
+        canonical_xi = _named_records(xi, xp)
+        captain_name = names.get(int(mechanics.captain_id), str(mechanics.captain_id))
+        vice_name = names.get(int(mechanics.vice_captain_id), str(mechanics.vice_captain_id))
+        bench_gk_name = names.get(int(mechanics.bench_gk_id), str(mechanics.bench_gk_id))
+        bench_order_names = [
+            names.get(int(pid), str(pid)) for pid in mechanics.outfield_bench_order
+        ]
+        exact_points = float(mechanics.expected_total_points)
+
     optimal_objective = float(plan.objective)
     regret = max(optimal_objective - roll_objective, 0.0)
     return RecedingHorizonStrategy(
-        status="optimal",
+        status="optimal" if transition_ok else "error",
         next_gw=first_gw,
         recommended_action=action,
         recommended_transfers=transfers,
@@ -164,7 +283,15 @@ def analyse_receding_horizon(
         projection_col=projection_col,
         note=(
             "Execute only action_now. The later path is a mathematical contingency, "
-            "not a promise: refresh prices, minutes, injuries, transfers and news "
-            "before every subsequent deadline and solve again."
+            "not a promise: refresh prices, minutes, injuries, transfers, roles and "
+            "news before every subsequent deadline and solve again."
         ),
+        canonical_squad=canonical_squad,
+        canonical_xi=canonical_xi,
+        canonical_captain=captain_name,
+        canonical_vice_captain=vice_name,
+        canonical_bench_gk=bench_gk_name,
+        canonical_outfield_bench_order=bench_order_names,
+        canonical_expected_points=exact_points,
+        state_transition_reconciled=transition_ok,
     )
