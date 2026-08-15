@@ -92,6 +92,7 @@ def test_pipeline_end_to_end_without_network(monkeypatch, tmp_path):
         report_dir=tmp_path / "reports",
         current_squad_path=tmp_path / "missing.csv",
         team_state_path=tmp_path / "missing.yaml",
+        tactical_roles_path=tmp_path / "missing_tactical_roles.csv",
         airsenal_csv=None,
         understat_enabled=False,
         required_sources=[],
