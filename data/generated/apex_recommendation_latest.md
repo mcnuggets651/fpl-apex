@@ -1,7 +1,7 @@
 # Apex Unified Recommendation
 
-Generated: 2026-08-15T08:54:11.752564+00:00
-Official surface: `b33f2f399bc3` / `a478e20d030d`
+Generated: 2026-08-15T10:44:14.484793+00:00
+Official surface: `ba626c028dde` / `a478e20d030d`
 Canonical selector: **exact_horizon_maximum_ev**
 Reason: The sealed near-optimal squad frontier is rescored across every Gameweek with exact XI, captain, vice-captain and autosub mechanics; that single Decision object is the production authority.
 
@@ -9,7 +9,7 @@ Reason: The sealed near-optimal squad frontier is rescored across every Gameweek
 
 Captain: **Haaland**
 Vice-captain: **Thiago**
-Expected total with exact mechanics: **55.75**
+Expected total with exact mechanics: **55.74**
 
 ### Starting XI
 
@@ -35,10 +35,10 @@ Expected total with exact mechanics: **55.75**
 | Virgil | Liverpool | DEF | 6.5 | 3.79 |
 | Thiaw | Newcastle | DEF | 5.0 | 3.42 |
 | F.Kadıoğlu | Brighton | DEF | 4.5 | 3.11 |
-| Davies | Spurs | DEF | 4.0 | 2.10 |
+| Davies | Spurs | DEF | 4.0 | 2.08 |
 | Haaland | Man City | FWD | 15.5 | 6.39 |
 | Thiago | Brentford | FWD | 8.0 | 4.82 |
-| Neave | Newcastle | FWD | 4.5 | 1.55 |
+| Neave | Newcastle | FWD | 4.5 | 1.16 |
 | Kelleher | Brentford | GK | 5.0 | 3.63 |
 | Petrović | Bournemouth | GK | 4.5 | 2.84 |
 | Mbeumo | Man Utd | MID | 8.0 | 4.66 |
