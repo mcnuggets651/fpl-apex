@@ -31,7 +31,7 @@ def _run(command: list[str]) -> int:
 
 
 def _fail_close_strategy_output(output_dir: Path, reason: str) -> None:
-    """Never leave the scratch horizon team actionable after strategy failure."""
+    """Never leave an invalid decision actionable after a production gate fails."""
     recommendation_path = output_dir / "apex_recommendation_latest.json"
     context_path = output_dir / "apex_answer_context.json"
     markdown_path = output_dir / "apex_recommendation_latest.md"
@@ -190,7 +190,26 @@ def main() -> None:
     )
     if promotion_status != 0:
         _fail_close_strategy_output(output_dir, f"exit status {promotion_status}")
-    raise SystemExit(promotion_status)
+        raise SystemExit(promotion_status)
+
+    # The canonical strategy may be mathematically valid while still depending on
+    # malformed factual semantics. Audit every Official FPL player after the final
+    # selector is built and fail closed before publication if factual/provenance
+    # invariants are not satisfied.
+    truth_status = _run(
+        [
+            sys.executable,
+            "scripts/audit_player_truth.py",
+            "--recommendation",
+            str(output_dir / "apex_recommendation_latest.json"),
+        ]
+    )
+    if truth_status != 0:
+        _fail_close_strategy_output(
+            output_dir,
+            f"player truth audit failed with exit status {truth_status}",
+        )
+    raise SystemExit(truth_status)
 
 
 if __name__ == "__main__":
