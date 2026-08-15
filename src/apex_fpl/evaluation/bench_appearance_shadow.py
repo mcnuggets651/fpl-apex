@@ -11,6 +11,21 @@ from apex_fpl.evaluation.historical_minutes_preseason import (
     load_source_manifest,
 )
 
+BENCH_METRICS = (
+    "appearance_brier",
+    "appearance_calibration_ece",
+    "bench_appearance_brier",
+    "bench_appearance_calibration_ece",
+)
+ROBUSTNESS_BOOTSTRAP_ITERATIONS = 400
+ROBUSTNESS_SEED = 20260815
+MIN_RECENT_ROWS = 4000
+MIN_RECENT_PLAYERS = 500
+KEY_COHORTS = (
+    "established_returning_starter",
+    "repeated_preseason_starter",
+)
+
 
 def _brier(probability: pd.Series, outcome: pd.Series) -> float:
     p = pd.to_numeric(probability, errors="coerce")
@@ -111,13 +126,159 @@ def score_bench_appearance_shadow(scored: pd.DataFrame) -> dict:
     }
 
 
+def _all_metrics_improve(metrics: dict) -> bool:
+    deltas = metrics.get("delta_shadow_minus_incumbent", {})
+    return bool(deltas) and all(float(deltas.get(key, np.inf)) < 0 for key in BENCH_METRICS)
+
+
+def _cluster_bootstrap(
+    scored: pd.DataFrame,
+    cluster_col: str,
+    *,
+    iterations: int = ROBUSTNESS_BOOTSTRAP_ITERATIONS,
+    seed: int = ROBUSTNESS_SEED,
+) -> dict:
+    clusters = pd.Series(scored[cluster_col].dropna().unique())
+    if clusters.empty:
+        return {"clusters": 0, "iterations": 0, "metric_delta_ci95": {}}
+
+    groups = {value: scored[scored[cluster_col].eq(value)] for value in clusters.tolist()}
+    values = clusters.to_numpy()
+    rng = np.random.default_rng(seed)
+    draws = {metric: [] for metric in BENCH_METRICS}
+    for _ in range(iterations):
+        sampled = rng.choice(values, size=len(values), replace=True)
+        frame = pd.concat([groups[value] for value in sampled], ignore_index=True)
+        deltas = score_bench_appearance_shadow(frame)["delta_shadow_minus_incumbent"]
+        for metric in BENCH_METRICS:
+            draws[metric].append(float(deltas[metric]))
+
+    return {
+        "clusters": int(len(values)),
+        "iterations": int(iterations),
+        "metric_delta_ci95": {
+            metric: {
+                "lower": float(np.quantile(samples, 0.025)),
+                "median": float(np.quantile(samples, 0.5)),
+                "upper": float(np.quantile(samples, 0.975)),
+            }
+            for metric, samples in draws.items()
+        },
+    }
+
+
+def _leave_one_team_out(scored: pd.DataFrame) -> dict:
+    teams = sorted(pd.to_numeric(scored["team_code"], errors="coerce").dropna().unique())
+    rows = []
+    for team in teams:
+        subset = scored[~pd.to_numeric(scored["team_code"], errors="coerce").eq(team)]
+        metrics = score_bench_appearance_shadow(subset)
+        rows.append(
+            {
+                "omitted_team_code": int(team),
+                "rows": int(len(subset)),
+                "all_metrics_improve": _all_metrics_improve(metrics),
+                "delta_shadow_minus_incumbent": metrics["delta_shadow_minus_incumbent"],
+            }
+        )
+    return {
+        "teams": int(len(teams)),
+        "all_omissions_improve_all_metrics": bool(rows)
+        and all(row["all_metrics_improve"] for row in rows),
+        "results": rows,
+    }
+
+
+def _key_cohort_gate(scored: pd.DataFrame) -> dict:
+    rows = {}
+    for cohort in KEY_COHORTS:
+        if cohort not in scored.columns:
+            rows[cohort] = {"available": False, "all_metrics_improve": False}
+            continue
+        subset = scored[scored[cohort].fillna(False)]
+        if subset.empty:
+            rows[cohort] = {"available": False, "all_metrics_improve": False}
+            continue
+        metrics = score_bench_appearance_shadow(subset)
+        rows[cohort] = {
+            "available": True,
+            "rows": int(len(subset)),
+            "players": int(subset["player_id"].nunique()),
+            "all_metrics_improve": _all_metrics_improve(metrics),
+            "delta_shadow_minus_incumbent": metrics["delta_shadow_minus_incumbent"],
+        }
+    return {
+        "required_cohorts": list(KEY_COHORTS),
+        "all_required_cohorts_improve": all(
+            row.get("available") and row.get("all_metrics_improve") for row in rows.values()
+        ),
+        "cohorts": rows,
+    }
+
+
+def recent_season_robustness_gate(scored: pd.DataFrame) -> dict:
+    """Qualify a narrow recent-season challenger for production A/B, never promotion."""
+
+    overall = score_bench_appearance_shadow(scored)
+    player_bootstrap = _cluster_bootstrap(scored, "player_id", seed=ROBUSTNESS_SEED)
+    team_bootstrap = _cluster_bootstrap(scored, "team_code", seed=ROBUSTNESS_SEED + 1)
+    leave_team_out = _leave_one_team_out(scored)
+    cohorts = _key_cohort_gate(scored)
+
+    def ci_all_negative(payload: dict) -> bool:
+        cis = payload.get("metric_delta_ci95", {})
+        return bool(cis) and all(float(cis[key]["upper"]) < 0 for key in BENCH_METRICS)
+
+    checks = {
+        "minimum_rows": int(len(scored)) >= MIN_RECENT_ROWS,
+        "minimum_players": int(scored["player_id"].nunique()) >= MIN_RECENT_PLAYERS,
+        "overall_all_metrics_improve": _all_metrics_improve(overall),
+        "player_clustered_ci_all_negative": ci_all_negative(player_bootstrap),
+        "team_clustered_ci_all_negative": ci_all_negative(team_bootstrap),
+        "leave_one_team_out_all_negative": leave_team_out[
+            "all_omissions_improve_all_metrics"
+        ],
+        "key_cohorts_all_improve": cohorts["all_required_cohorts_improve"],
+    }
+    eligible = all(checks.values())
+    return {
+        "contract": "apex-bench-appearance-recent-season-robustness-v1",
+        "recent_season_is_sufficient_if_robust": True,
+        "minimum_rows": MIN_RECENT_ROWS,
+        "minimum_players": MIN_RECENT_PLAYERS,
+        "checks": checks,
+        "eligible_for_production_ab": eligible,
+        "production_ab_required_before_promotion": True,
+        "promotion_allowed": False,
+        "overall": overall,
+        "player_clustered_bootstrap": player_bootstrap,
+        "team_clustered_bootstrap": team_bootstrap,
+        "leave_one_team_out": leave_team_out,
+        "key_cohort_gate": cohorts,
+        "blockers": (
+            ["production projection/decision A/B has not been run"]
+            if eligible
+            else [
+                "recent-season robustness gate did not pass every required check; "
+                "do not promote or run a production challenger"
+            ]
+        ),
+    }
+
+
 def run_bench_appearance_shadow(core_root: Path, manifest_path: Path) -> dict:
-    sources, minimum = load_source_manifest(manifest_path)
+    sources, _minimum_broad_model_seasons = load_source_manifest(manifest_path)
     reader = GitCoreReader(core_root)
     frames = []
     seasons = []
     for source in sources:
         _, scored = audit_historical_season(reader, source)
+        current_players = reader.csv(source.feature_ref, source.current_players_path)
+        team_map = current_players[["player_id", "team_code"]].drop_duplicates("player_id")
+        team_map["player_id"] = pd.to_numeric(team_map["player_id"], errors="coerce")
+        team_map = team_map.dropna(subset=["player_id"]).copy()
+        team_map["player_id"] = team_map["player_id"].astype(int)
+        scored = scored.merge(team_map, on="player_id", how="left", validate="many_to_one")
         scored["season"] = source.season
         frames.append(scored)
         season_result = {
@@ -137,28 +298,23 @@ def run_bench_appearance_shadow(core_root: Path, manifest_path: Path) -> dict:
                 season_result["cohorts"][cohort] = score_bench_appearance_shadow(subset)
         seasons.append(season_result)
 
-    combined = (
-        score_bench_appearance_shadow(pd.concat(frames, ignore_index=True))
-        if frames
-        else {}
-    )
-    deltas = combined.get("delta_shadow_minus_incumbent", {})
-    improves_all = bool(deltas) and all(value < 0 for value in deltas.values())
-    blockers = []
-    if len(seasons) < minimum:
-        blockers.append(
-            f"only {len(seasons)} independent preseason season(s) available; "
-            f"{minimum} required for production promotion"
-        )
+    combined_frame = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    combined = score_bench_appearance_shadow(combined_frame) if frames else {}
+    improves_all = _all_metrics_improve(combined)
+    robustness = recent_season_robustness_gate(combined_frame) if frames else {}
     return {
-        "contract": "apex-bench-appearance-shadow-v1",
+        "contract": "apex-bench-appearance-shadow-v2",
         "shadow_result": (
             "bench_only_improves_all_appearance_metrics"
             if improves_all
             else "bench_only_mixed_or_worse"
         ),
+        "recent_season_robustness": robustness,
+        "eligible_for_production_ab": bool(
+            robustness.get("eligible_for_production_ab", False)
+        ),
         "promotion_allowed": False,
-        "blockers": blockers
+        "blockers": robustness.get("blockers", [])
         + [
             "shadow audit only; production start probability and expected minutes are unchanged"
         ],
