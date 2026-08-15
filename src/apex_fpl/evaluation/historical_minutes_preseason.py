@@ -99,8 +99,16 @@ def _numeric(frame: pd.DataFrame, column: str, default: float = np.nan) -> pd.Se
     return pd.to_numeric(frame[column], errors="coerce")
 
 
+def _is_appearance(frame: pd.DataFrame) -> pd.Series:
+    """Core roster rows count as appearances only when positive minutes were played."""
+
+    return _numeric(frame, "minutes_played", 0).fillna(0).gt(0)
+
+
 def _is_start(frame: pd.DataFrame) -> pd.Series:
-    return _numeric(frame, "start_min", np.nan).fillna(np.inf).le(1.0)
+    return _is_appearance(frame) & _numeric(
+        frame, "start_min", np.nan
+    ).fillna(np.inf).le(1.0)
 
 
 def _safe_div(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
@@ -145,11 +153,14 @@ def aggregate_prior_role(
     rows["minutes_played"] = _numeric(rows, "minutes_played", 0).fillna(0)
     rows = rows.dropna(subset=["player_id"])
     rows["player_id"] = rows["player_id"].astype(int)
+    rows["is_appearance"] = _is_appearance(rows).astype(int)
     rows["is_start"] = _is_start(rows).astype(int)
-    rows["is_sub"] = (1 - rows["is_start"]).astype(int)
+    rows["is_sub"] = (
+        rows["is_appearance"].eq(1) & rows["is_start"].eq(0)
+    ).astype(int)
 
     agg = rows.groupby("player_id", as_index=False).agg(
-        prior_appearances=("match_id", "nunique"),
+        prior_appearances=("is_appearance", "sum"),
         prior_starts=("is_start", "sum"),
         prior_minutes=("minutes_played", "sum"),
     )
@@ -227,11 +238,14 @@ def aggregate_preseason_role(
     stats["minutes_played"] = _numeric(stats, "minutes_played", 0).fillna(0)
     stats = stats.dropna(subset=["player_id"])
     stats["player_id"] = stats["player_id"].astype(int)
+    stats["is_appearance"] = _is_appearance(stats).astype(int)
     stats["is_start"] = _is_start(stats).astype(int)
-    stats["is_sub"] = (1 - stats["is_start"]).astype(int)
+    stats["is_sub"] = (
+        stats["is_appearance"].eq(1) & stats["is_start"].eq(0)
+    ).astype(int)
 
     agg = stats.groupby("player_id", as_index=False).agg(
-        preseason_appearances=("match_id", "nunique"),
+        preseason_appearances=("is_appearance", "sum"),
         preseason_starts=("is_start", "sum"),
         preseason_minutes=("minutes_played", "sum"),
     )
@@ -457,7 +471,7 @@ def aggregate_outcomes(
     rows["player_id"] = rows["player_id"].astype(int)
     rows["gw"] = rows["gw"].astype(int)
     rows["actual_start"] = _is_start(rows).astype(int)
-    rows["actual_appearance"] = 1
+    rows["actual_appearance"] = _is_appearance(rows).astype(int)
     rows = rows.groupby(["player_id", "gw"], as_index=False).agg(
         actual_minutes=("minutes_played", "sum"),
         actual_start=("actual_start", "max"),
@@ -619,16 +633,19 @@ def _preseason_return_coverage(preseason_stats: pd.DataFrame) -> dict:
     if preseason_stats.empty:
         return {"rows": 0, "minutes": 0.0}
     mins = _numeric(preseason_stats, "minutes_played", 0).fillna(0)
+    appeared = mins.gt(0)
     result = {
-        "rows": int(len(preseason_stats)),
+        "rows": int(appeared.sum()),
         "players": int(
-            pd.to_numeric(preseason_stats["player_id"], errors="coerce").nunique()
+            pd.to_numeric(
+                preseason_stats.loc[appeared, "player_id"], errors="coerce"
+            ).nunique()
         ),
         "minutes": float(mins.sum()),
     }
     for source in ["goals", "assists", "total_shots", "shots_on_target", "xg", "xa"]:
         values = _numeric(preseason_stats, source, np.nan)
-        observed = values.notna()
+        observed = values.notna() & appeared
         result[f"{source}_rows_observed"] = int(observed.sum())
         result[f"{source}_minutes_covered"] = float(mins[observed].sum())
         result[f"{source}_minutes_coverage"] = (
@@ -757,6 +774,10 @@ def audit_historical_season(
             "feature_timestamp": source.feature_timestamp,
             "outcome_ref": source.outcome_ref,
             "outcome_gameweeks": list(source.outcome_gameweeks),
+            "row_semantics": {
+                "appearance": "minutes_played > 0",
+                "start": "minutes_played > 0 and start_min <= 1",
+            },
             "metrics": metrics,
             "conditional_minutes_baseline": (
                 "incumbent conditional-minute columns use the historical prior component "
@@ -819,6 +840,10 @@ def run_historical_minutes_audit(
             "source_manifest": str(manifest_path),
             "independent_seasons": valid_seasons,
             "minimum_independent_seasons_for_promotion": minimum_seasons,
+            "row_semantics": {
+                "appearance": "minutes_played > 0",
+                "start": "minutes_played > 0 and start_min <= 1",
+            },
             "shadow_result": shadow_result,
             "promotion_allowed": False,
             "blockers": blockers
