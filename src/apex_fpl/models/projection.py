@@ -53,8 +53,14 @@ def _appearance_probabilities(expected_mins: pd.Series) -> tuple[np.ndarray, np.
 
 
 def _order_share(order: pd.Series) -> pd.Series:
-    value = pd.to_numeric(order, errors="coerce")
-    return value.map({1.0: 1.0, 2.0: 0.45, 3.0: 0.15}).fillna(0.0)
+    """Do not turn an ordinal set-piece rank into fabricated probability.
+
+    Official FPL's order fields say who is first/second/third in a hierarchy. They
+    do not say that rank 1 takes 100%, rank 2 takes 45% or rank 3 takes 15% of future
+    events. Production therefore gives ordinal rank zero additive share. A literal
+    share may enter only through the separately sourced override columns.
+    """
+    return pd.Series(0.0, index=order.index, dtype=float)
 
 
 def _with_override(official_share: pd.Series, override: pd.Series) -> pd.Series:
@@ -180,6 +186,10 @@ def project_players(
         # of the tackled penalty, reduced CBI reward and stronger goalkeeper-save BPS.
         bonus_proxy = expected_bonus_proxy(d, min_share, xg90, xa90, dc90)
 
+        # Official set-piece order is ordinal context only. `_order_share` therefore
+        # contributes zero. Only current sourced override columns may create an
+        # additive set-piece share. This avoids fabricated rank probabilities and
+        # keeps the separate current-role adjustment distinct from historical xG/xA.
         official_pen = _order_share(_num(d, "penalties_order", 99))
         official_corner_indirect = _order_share(
             _num(d, "corners_and_indirect_freekicks_order", 99)
