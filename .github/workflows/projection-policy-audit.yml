@@ -66,6 +66,7 @@ jobs:
           python scripts/audit_projection_policy_readiness.py \
             --apex-store data/replay \
             --core-root /tmp/fpl-core \
+            --historical-audit reports/historical_minutes_preseason.json \
             --output reports/projection_policy_readiness.json
           cat reports/projection_policy_readiness.json
       - name: Run focused contract tests
