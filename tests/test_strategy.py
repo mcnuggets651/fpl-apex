@@ -19,8 +19,7 @@ def _pool():
                         "team": team,
                         "position": pos,
                         "price": 4.5,
-                        "horizon_xp": 20 + pid / 10,
-                        "gw1_xp": 3 + pid / 100,
+                        "appearance_probability": 1.0,
                     }
                 )
                 pid += 1
@@ -34,7 +33,7 @@ def _current(players):
     return ids
 
 
-def test_receding_horizon_recomputes_first_action_on_explicit_surface():
+def test_receding_horizon_recomputes_and_exact_rescores_first_action():
     players = _pool()
     current = _current(players)
     projections = pd.DataFrame(
@@ -62,6 +61,13 @@ def test_receding_horizon_recomputes_first_action_on_explicit_surface():
     assert out.roll_objective is not None
     assert out.roll_regret is not None
     assert out.contingent_future == []
+    assert out.state_transition_reconciled is True
+    assert len(out.canonical_squad or []) == 15
+    assert len(out.canonical_xi or []) == 11
+    assert out.canonical_captain
+    assert out.canonical_vice_captain
+    assert out.canonical_captain != out.canonical_vice_captain
+    assert out.canonical_expected_points is not None
 
 
 def test_receding_horizon_handles_empty_gameweek_list_without_projection_table():
