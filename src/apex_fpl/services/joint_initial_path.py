@@ -238,6 +238,8 @@ def _evaluate_exact_candidates(
     best_gw1 = float(exact.objective)
     evaluated: list[JointPathCandidate] = []
     for row in exact.candidates:
+        if best_gw1 - float(row.exact_objective) > float(gw1_regret_tolerance) + 1e-9:
+            continue
         ids = {int(pid) for pid in row.squad_ids}
         squad = players[players["player_id"].astype(int).isin(ids)].copy()
         candidate = _evaluate_starting_squad(
