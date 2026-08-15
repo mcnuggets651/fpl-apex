@@ -30,6 +30,52 @@ def _run(command: list[str]) -> int:
     return subprocess.run(command, check=False).returncode
 
 
+def _fail_close_strategy_output(output_dir: Path, reason: str) -> None:
+    """Never leave the scratch horizon team actionable after strategy failure."""
+    recommendation_path = output_dir / "apex_recommendation_latest.json"
+    context_path = output_dir / "apex_answer_context.json"
+    markdown_path = output_dir / "apex_recommendation_latest.md"
+    blocker = f"adaptive strategy policy failed: {reason}"
+
+    if recommendation_path.exists():
+        try:
+            payload = json.loads(recommendation_path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+    else:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    payload["ready_to_act"] = False
+    payload["recommendation"] = None
+    payload["blockers"] = list(
+        dict.fromkeys([*(payload.get("blockers") or []), blocker])
+    )
+    recommendation_path.parent.mkdir(parents=True, exist_ok=True)
+    recommendation_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    if context_path.exists():
+        try:
+            context = json.loads(context_path.read_text(encoding="utf-8"))
+        except Exception:
+            context = {}
+    else:
+        context = {}
+    if not isinstance(context, dict):
+        context = {}
+    context["safe_to_act"] = False
+    context["recommendation"] = None
+    context["blockers"] = list(
+        dict.fromkeys([*(context.get("blockers") or []), blocker])
+    )
+    context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+    markdown_path.write_text(
+        "# Apex Unified Recommendation — NOT READY\n\n"
+        f"- {blocker}\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--horizon", type=int, default=8)
@@ -142,6 +188,8 @@ def main() -> None:
             str(bundle_dir),
         ]
     )
+    if promotion_status != 0:
+        _fail_close_strategy_output(output_dir, f"exit status {promotion_status}")
     raise SystemExit(promotion_status)
 
 
