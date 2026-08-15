@@ -1,6 +1,6 @@
 {
   "contract": "apex-answer-context-v1",
-  "generated_at": "2026-08-14T20:33:01.905048+00:00",
+  "generated_at": "2026-08-15T03:29:24.332658+00:00",
   "only_input_for_apex_answers": true,
   "safe_to_act": true,
   "blockers": [],
@@ -12,143 +12,143 @@
     "data quality warning: preseason_evidence: 1098 player-match rows; return-stat observation coverage=7.7%",
     "selected-player roles still rely on statistical inference rather than verified authoritative overrides: Gu\u00e9hi, Virgil, Thiaw, F.Kad\u0131o\u011flu, Davies, Haaland, Thiago, Neave, Kelleher, Petrovi\u0107, Mbeumo, Semenyo, Enzo, Gakpo, Schade"
   ],
-  "run_age_hours": 0.2357292488888889,
-  "decision_bundle_id": "21889f7e3d99deeb727bedd28fb4e40f1ac513a29103b72a2faeab07f9161183",
+  "run_age_hours": 0.22781811694444445,
+  "decision_bundle_id": "9f8df17a322c0720df21090b91525a65b9333d62d8a8ac8f2d5209291bf67003",
   "versions": {
     "canonical_contract": "apex-strategy-recommendation-v2",
     "pinnacle_contract": "apex-pinnacle-v3-final",
-    "official_snapshot_id": "20260814T201853Z-da8743c2",
-    "bootstrap_sha256": "16fe47d567c427eb407f2abfc872c9d3e42611bd98b7f7973526ea23c6c8cbd4",
+    "official_snapshot_id": "20260815T031544Z-1320ac1b",
+    "bootstrap_sha256": "c8f50d439b08a30626eaeb676597969da517f20747ee7266bec328e8dcaaabd1",
     "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554",
-    "decision_bundle_id": "21889f7e3d99deeb727bedd28fb4e40f1ac513a29103b72a2faeab07f9161183"
+    "decision_bundle_id": "9f8df17a322c0720df21090b91525a65b9333d62d8a8ac8f2d5209291bf67003"
   },
   "source_health": [
     {
       "name": "official_fpl",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:53.317107+00:00",
-      "age_hours": 0.2357188725,
-      "version": "16fe47d567c4"
+      "checked_at": "2026-08-15T03:15:44.224973+00:00",
+      "age_hours": 0.22780769027777775,
+      "version": "c8f50d439b08"
     },
     {
       "name": "team_state",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:53.408951+00:00",
-      "age_hours": 0.23569336027777776,
+      "checked_at": "2026-08-15T03:15:44.345959+00:00",
+      "age_hours": 0.22777408305555558,
       "version": ""
     },
     {
       "name": "fpl_core_playerstats",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:53.546134+00:00",
-      "age_hours": 0.2356552538888889,
-      "version": "81162c154df1689b683381c67304f0d0b0ffa55e"
+      "checked_at": "2026-08-15T03:15:44.454419+00:00",
+      "age_hours": 0.22774395527777777,
+      "version": "2819f58ff84d2fdc4830ce763f94912024af2f78"
     },
     {
       "name": "fpl_core_previous_season",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:54.969072+00:00",
-      "age_hours": 0.23525999333333333,
-      "version": "81162c154df1689b683381c67304f0d0b0ffa55e"
+      "checked_at": "2026-08-15T03:15:46.001417+00:00",
+      "age_hours": 0.2273142336111111,
+      "version": "2819f58ff84d2fdc4830ce763f94912024af2f78"
     },
     {
       "name": "fpl_core_preseason",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:55.068930+00:00",
-      "age_hours": 0.23523225500000003,
-      "version": "81162c154df1689b683381c67304f0d0b0ffa55e"
+      "checked_at": "2026-08-15T03:15:46.094859+00:00",
+      "age_hours": 0.2272882775,
+      "version": "2819f58ff84d2fdc4830ce763f94912024af2f78"
     },
     {
       "name": "tactical_inference",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:55.209023+00:00",
-      "age_hours": 0.23519334027777777,
+      "checked_at": "2026-08-15T03:15:46.227625+00:00",
+      "age_hours": 0.22725139805555558,
       "version": ""
     },
     {
       "name": "manual_availability",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-14T20:18:55.209904+00:00",
-      "age_hours": 0.23519309555555556,
+      "checked_at": "2026-08-15T03:15:46.228348+00:00",
+      "age_hours": 0.22725119722222223,
       "version": ""
     },
     {
       "name": "tactical_roles",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-14T20:18:55.210779+00:00",
-      "age_hours": 0.2351928525,
+      "checked_at": "2026-08-15T03:15:46.229165+00:00",
+      "age_hours": 0.22725097027777777,
       "version": ""
     },
     {
       "name": "news_source_health",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:56.051452+00:00",
-      "age_hours": 0.23495933222222223,
+      "checked_at": "2026-08-15T03:15:47.276248+00:00",
+      "age_hours": 0.2269601138888889,
       "version": "{\"configured_sources\":3,\"failed_sources\":[],\"fresh_timestamped_items\":55,\"healthy_sources\":3}"
     },
     {
       "name": "news_feeds",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:57.048263+00:00",
-      "age_hours": 0.23468244027777777,
+      "checked_at": "2026-08-15T03:15:48.234125+00:00",
+      "age_hours": 0.22669403694444443,
       "version": ""
     },
     {
       "name": "fpl_core_elo",
-      "ok": false,
+      "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:58.035680+00:00",
-      "age_hours": 0.2344081577777778,
-      "version": "81162c154df1689b683381c67304f0d0b0ffa55e"
+      "checked_at": "2026-08-15T03:15:49.154677+00:00",
+      "age_hours": 0.22643832805555555,
+      "version": "2819f58ff84d2fdc4830ce763f94912024af2f78"
     },
     {
       "name": "official_team_strength",
       "ok": false,
       "configured": true,
-      "checked_at": "2026-08-14T20:18:58.037623+00:00",
-      "age_hours": 0.23440761805555557,
-      "version": "16fe47d567c4"
+      "checked_at": "2026-08-15T03:15:49.156516+00:00",
+      "age_hours": 0.22643781722222223,
+      "version": "c8f50d439b08"
     },
     {
       "name": "understat_team_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:19:01.410193+00:00",
-      "age_hours": 0.23347079305555557,
+      "checked_at": "2026-08-15T03:15:52.386711+00:00",
+      "age_hours": 0.22554054083333336,
       "version": ""
     },
     {
       "name": "fixture_model",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:19:01.410210+00:00",
-      "age_hours": 0.23347078833333332,
+      "checked_at": "2026-08-15T03:15:52.386728+00:00",
+      "age_hours": 0.2255405361111111,
       "version": ""
     },
     {
       "name": "airsenal",
       "ok": true,
       "configured": true,
-      "checked_at": "2026-08-14T20:19:02.853727+00:00",
-      "age_hours": 0.2330698113888889,
+      "checked_at": "2026-08-15T03:15:53.848914+00:00",
+      "age_hours": 0.22513437333333333,
       "version": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717"
     },
     {
       "name": "market_odds",
       "ok": true,
       "configured": false,
-      "checked_at": "2026-08-14T20:19:02.854250+00:00",
-      "age_hours": 0.2330696661111111,
+      "checked_at": "2026-08-15T03:15:53.849442+00:00",
+      "age_hours": 0.22513422666666666,
       "version": ""
     }
   ],
@@ -156,14 +156,14 @@
     "cvar": {
       "unrestricted": {
         "status": "Optimal",
-        "objective": 339.1858251882158,
-        "mean_points": 343.0628629864283,
-        "lower_tail_cvar": 323.67767399536575,
+        "objective": 339.18255862311844,
+        "mean_points": 343.05946099701976,
+        "lower_tail_cvar": 323.67494912751323,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
-        "scenario_p10": 328.54918823702974,
-        "scenario_p50": 342.1501576648509,
-        "scenario_p90": 358.78547181681563,
+        "scenario_p10": 328.54636272752043,
+        "scenario_p50": 342.1466961396044,
+        "scenario_p90": 358.78151579776863,
         "squad": [
           {
             "player_id": 388,
@@ -177,12 +177,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7594,
-            "gw1_xp": 4.1801592318,
-            "xpts_3": 12.2329736147,
-            "xpts_5": 18.5775765806,
-            "xpts_8": 25.6836067488,
-            "horizon_xp": 25.6836067488,
-            "projection_confidence": 0.5451196558
+            "gw1_xp": 4.180117836,
+            "xpts_3": 12.2328090894,
+            "xpts_5": 18.5773022735,
+            "xpts_8": 25.6832656285,
+            "horizon_xp": 25.6832656285,
+            "projection_confidence": 0.545122874
           },
           {
             "player_id": 356,
@@ -196,12 +196,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7726,
-            "gw1_xp": 3.7855601407,
-            "xpts_3": 11.7428150816,
-            "xpts_5": 17.8680173371,
-            "xpts_8": 24.5027254384,
-            "horizon_xp": 24.5027254384,
-            "projection_confidence": 0.5355961766
+            "gw1_xp": 3.7855393149,
+            "xpts_3": 11.7426834851,
+            "xpts_5": 17.8678253797,
+            "xpts_8": 24.5025151251,
+            "horizon_xp": 24.5025151251,
+            "projection_confidence": 0.5355990094
           },
           {
             "player_id": 445,
@@ -215,12 +215,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7687,
-            "gw1_xp": 3.4156955623,
-            "xpts_3": 10.6043989296,
-            "xpts_5": 16.4507431721,
-            "xpts_8": 23.0558125742,
-            "horizon_xp": 23.0558125742,
-            "projection_confidence": 0.5385024078
+            "gw1_xp": 3.4157104007,
+            "xpts_3": 10.6043653622,
+            "xpts_5": 16.4506994683,
+            "xpts_8": 23.0557502912,
+            "horizon_xp": 23.0557502912,
+            "projection_confidence": 0.5385035821
           },
           {
             "player_id": 113,
@@ -234,12 +234,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7289,
-            "gw1_xp": 3.1117574945,
-            "xpts_3": 9.1183058902,
-            "xpts_5": 13.7655737013,
-            "xpts_8": 19.3614214411,
-            "horizon_xp": 19.3614214411,
-            "projection_confidence": 0.5456417926
+            "gw1_xp": 3.1117496366,
+            "xpts_3": 9.1182934197,
+            "xpts_5": 13.7655858602,
+            "xpts_8": 19.3614031543,
+            "horizon_xp": 19.3614031543,
+            "projection_confidence": 0.5456422187
           },
           {
             "player_id": 508,
@@ -253,12 +253,12 @@
             "tactical_role": "progressive / balanced defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5617355556,
-            "gw1_xp": 2.1049031217,
-            "xpts_3": 6.3590566536,
-            "xpts_5": 9.8559069342,
-            "xpts_8": 13.8573430149,
-            "horizon_xp": 13.8573430149,
-            "projection_confidence": 0.4296403731
+            "gw1_xp": 2.104915165,
+            "xpts_3": 6.3591088857,
+            "xpts_5": 9.8559882521,
+            "xpts_8": 13.857457179,
+            "horizon_xp": 13.857457179,
+            "projection_confidence": 0.4296384241
           },
           {
             "player_id": 411,
@@ -272,12 +272,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 6.3896006997,
-            "xpts_3": 18.4985908925,
-            "xpts_5": 27.9823438972,
-            "xpts_8": 38.6835806658,
-            "horizon_xp": 38.6835806658,
-            "projection_confidence": 0.4830869475
+            "gw1_xp": 6.3894476598,
+            "xpts_3": 18.498164273,
+            "xpts_5": 27.9817254863,
+            "xpts_8": 38.6828499986,
+            "horizon_xp": 38.6828499986,
+            "projection_confidence": 0.4830963189
           },
           {
             "player_id": 106,
@@ -291,12 +291,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 4.658937648,
-            "xpts_3": 13.8652063501,
-            "xpts_5": 20.9381611769,
-            "xpts_8": 29.2895919862,
-            "horizon_xp": 29.2895919862,
-            "projection_confidence": 0.5218350676
+            "gw1_xp": 4.6589272788,
+            "xpts_3": 13.865148054,
+            "xpts_5": 20.9381373545,
+            "xpts_8": 29.289571065,
+            "horizon_xp": 29.289571065,
+            "projection_confidence": 0.5218353352
           },
           {
             "player_id": 466,
@@ -310,12 +310,12 @@
             "tactical_role": "forward",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5101111111,
-            "gw1_xp": 1.5489728936,
-            "xpts_3": 4.5849237071,
-            "xpts_5": 6.9360731806,
-            "xpts_8": 9.6573089143,
-            "horizon_xp": 9.6573089143,
-            "projection_confidence": 0.5101318586
+            "gw1_xp": 1.5489624044,
+            "xpts_3": 4.5848776378,
+            "xpts_5": 6.936022507,
+            "xpts_8": 9.6572508383,
+            "horizon_xp": 9.6572508383,
+            "projection_confidence": 0.5101330067
           },
           {
             "player_id": 109,
@@ -329,12 +329,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 3.3541792695,
-            "xpts_3": 9.7283945771,
-            "xpts_5": 14.789854211,
-            "xpts_8": 20.8107627734,
-            "horizon_xp": 20.8107627734,
-            "projection_confidence": 0.5490943874
+            "gw1_xp": 3.3541693742,
+            "xpts_3": 9.7283884989,
+            "xpts_5": 14.7898594807,
+            "xpts_8": 20.8107300629,
+            "horizon_xp": 20.8107300629,
+            "projection_confidence": 0.549095249
           },
           {
             "player_id": 57,
@@ -348,12 +348,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 2.8425111391,
-            "xpts_3": 9.4119404954,
-            "xpts_5": 14.7977816935,
-            "xpts_8": 20.7145140203,
-            "horizon_xp": 20.7145140203,
-            "projection_confidence": 0.5539939134
+            "gw1_xp": 2.8425360348,
+            "xpts_3": 9.4119312455,
+            "xpts_5": 14.7977376026,
+            "xpts_8": 20.7144521644,
+            "horizon_xp": 20.7144521644,
+            "projection_confidence": 0.5539950036
           },
           {
             "player_id": 427,
@@ -367,12 +367,12 @@
             "tactical_role": "advanced midfielder / winger",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7748,
-            "gw1_xp": 4.6622903651,
-            "xpts_3": 14.1233005161,
-            "xpts_5": 21.0748292795,
-            "xpts_8": 29.740456555,
-            "horizon_xp": 29.740456555,
-            "projection_confidence": 0.5093738093
+            "gw1_xp": 4.662278612,
+            "xpts_3": 14.1232216116,
+            "xpts_5": 21.0747754255,
+            "xpts_8": 29.7403450221,
+            "horizon_xp": 29.7403450221,
+            "projection_confidence": 0.5093762262
           },
           {
             "player_id": 397,
@@ -386,12 +386,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.7183725796,
-            "xpts_3": 13.7829773108,
-            "xpts_5": 20.8796564913,
-            "xpts_8": 28.9478275324,
-            "horizon_xp": 28.9478275324,
-            "projection_confidence": 0.5439229347
+            "gw1_xp": 4.7182886613,
+            "xpts_3": 13.7827307748,
+            "xpts_5": 20.8792899344,
+            "xpts_8": 28.9473900707,
+            "horizon_xp": 28.9473900707,
+            "projection_confidence": 0.5439273657
           },
           {
             "player_id": 155,
@@ -405,12 +405,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.2747639457,
-            "xpts_3": 12.1316709667,
-            "xpts_5": 19.1812054554,
-            "xpts_8": 27.2698236139,
-            "horizon_xp": 27.2698236139,
-            "projection_confidence": 0.4689706655
+            "gw1_xp": 4.2747388795,
+            "xpts_3": 12.1316940919,
+            "xpts_5": 19.1811628592,
+            "xpts_8": 27.269698711,
+            "horizon_xp": 27.269698711,
+            "projection_confidence": 0.468973418
           },
           {
             "player_id": 367,
@@ -424,12 +424,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.0774042605,
-            "xpts_3": 12.2449577301,
-            "xpts_5": 18.4560865044,
-            "xpts_8": 25.4259513552,
-            "horizon_xp": 25.4259513552,
-            "projection_confidence": 0.5736807268
+            "gw1_xp": 4.0773331577,
+            "xpts_3": 12.2447562555,
+            "xpts_5": 18.455836938,
+            "xpts_8": 25.4256634611,
+            "horizon_xp": 25.4256634611,
+            "projection_confidence": 0.5736815769
           },
           {
             "player_id": 68,
@@ -443,12 +443,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 3.5840801136,
-            "xpts_3": 11.3293383228,
-            "xpts_5": 17.3570424891,
-            "xpts_8": 24.5391780128,
-            "horizon_xp": 24.5391780128,
-            "projection_confidence": 0.5031307998
+            "gw1_xp": 3.5840858904,
+            "xpts_3": 11.3292624344,
+            "xpts_5": 17.3569571019,
+            "xpts_8": 24.5390191597,
+            "horizon_xp": 24.5390191597,
+            "projection_confidence": 0.5031339252
           }
         ],
         "xi": [
@@ -464,12 +464,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 6.3896006997,
-            "xpts_3": 18.4985908925,
-            "xpts_5": 27.9823438972,
-            "xpts_8": 38.6835806658,
-            "horizon_xp": 38.6835806658,
-            "projection_confidence": 0.4830869475
+            "gw1_xp": 6.3894476598,
+            "xpts_3": 18.498164273,
+            "xpts_5": 27.9817254863,
+            "xpts_8": 38.6828499986,
+            "horizon_xp": 38.6828499986,
+            "projection_confidence": 0.4830963189
           },
           {
             "player_id": 397,
@@ -483,12 +483,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.7183725796,
-            "xpts_3": 13.7829773108,
-            "xpts_5": 20.8796564913,
-            "xpts_8": 28.9478275324,
-            "horizon_xp": 28.9478275324,
-            "projection_confidence": 0.5439229347
+            "gw1_xp": 4.7182886613,
+            "xpts_3": 13.7827307748,
+            "xpts_5": 20.8792899344,
+            "xpts_8": 28.9473900707,
+            "horizon_xp": 28.9473900707,
+            "projection_confidence": 0.5439273657
           },
           {
             "player_id": 427,
@@ -502,12 +502,12 @@
             "tactical_role": "advanced midfielder / winger",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7748,
-            "gw1_xp": 4.6622903651,
-            "xpts_3": 14.1233005161,
-            "xpts_5": 21.0748292795,
-            "xpts_8": 29.740456555,
-            "horizon_xp": 29.740456555,
-            "projection_confidence": 0.5093738093
+            "gw1_xp": 4.662278612,
+            "xpts_3": 14.1232216116,
+            "xpts_5": 21.0747754255,
+            "xpts_8": 29.7403450221,
+            "horizon_xp": 29.7403450221,
+            "projection_confidence": 0.5093762262
           },
           {
             "player_id": 106,
@@ -521,12 +521,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 4.658937648,
-            "xpts_3": 13.8652063501,
-            "xpts_5": 20.9381611769,
-            "xpts_8": 29.2895919862,
-            "horizon_xp": 29.2895919862,
-            "projection_confidence": 0.5218350676
+            "gw1_xp": 4.6589272788,
+            "xpts_3": 13.865148054,
+            "xpts_5": 20.9381373545,
+            "xpts_8": 29.289571065,
+            "horizon_xp": 29.289571065,
+            "projection_confidence": 0.5218353352
           },
           {
             "player_id": 155,
@@ -540,12 +540,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.2747639457,
-            "xpts_3": 12.1316709667,
-            "xpts_5": 19.1812054554,
-            "xpts_8": 27.2698236139,
-            "horizon_xp": 27.2698236139,
-            "projection_confidence": 0.4689706655
+            "gw1_xp": 4.2747388795,
+            "xpts_3": 12.1316940919,
+            "xpts_5": 19.1811628592,
+            "xpts_8": 27.269698711,
+            "horizon_xp": 27.269698711,
+            "projection_confidence": 0.468973418
           },
           {
             "player_id": 388,
@@ -559,12 +559,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7594,
-            "gw1_xp": 4.1801592318,
-            "xpts_3": 12.2329736147,
-            "xpts_5": 18.5775765806,
-            "xpts_8": 25.6836067488,
-            "horizon_xp": 25.6836067488,
-            "projection_confidence": 0.5451196558
+            "gw1_xp": 4.180117836,
+            "xpts_3": 12.2328090894,
+            "xpts_5": 18.5773022735,
+            "xpts_8": 25.6832656285,
+            "horizon_xp": 25.6832656285,
+            "projection_confidence": 0.545122874
           },
           {
             "player_id": 367,
@@ -578,12 +578,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.0774042605,
-            "xpts_3": 12.2449577301,
-            "xpts_5": 18.4560865044,
-            "xpts_8": 25.4259513552,
-            "horizon_xp": 25.4259513552,
-            "projection_confidence": 0.5736807268
+            "gw1_xp": 4.0773331577,
+            "xpts_3": 12.2447562555,
+            "xpts_5": 18.455836938,
+            "xpts_8": 25.4256634611,
+            "horizon_xp": 25.4256634611,
+            "projection_confidence": 0.5736815769
           },
           {
             "player_id": 356,
@@ -597,12 +597,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7726,
-            "gw1_xp": 3.7855601407,
-            "xpts_3": 11.7428150816,
-            "xpts_5": 17.8680173371,
-            "xpts_8": 24.5027254384,
-            "horizon_xp": 24.5027254384,
-            "projection_confidence": 0.5355961766
+            "gw1_xp": 3.7855393149,
+            "xpts_3": 11.7426834851,
+            "xpts_5": 17.8678253797,
+            "xpts_8": 24.5025151251,
+            "horizon_xp": 24.5025151251,
+            "projection_confidence": 0.5355990094
           },
           {
             "player_id": 68,
@@ -616,12 +616,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 3.5840801136,
-            "xpts_3": 11.3293383228,
-            "xpts_5": 17.3570424891,
-            "xpts_8": 24.5391780128,
-            "horizon_xp": 24.5391780128,
-            "projection_confidence": 0.5031307998
+            "gw1_xp": 3.5840858904,
+            "xpts_3": 11.3292624344,
+            "xpts_5": 17.3569571019,
+            "xpts_8": 24.5390191597,
+            "horizon_xp": 24.5390191597,
+            "projection_confidence": 0.5031339252
           },
           {
             "player_id": 445,
@@ -635,12 +635,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7687,
-            "gw1_xp": 3.4156955623,
-            "xpts_3": 10.6043989296,
-            "xpts_5": 16.4507431721,
-            "xpts_8": 23.0558125742,
-            "horizon_xp": 23.0558125742,
-            "projection_confidence": 0.5385024078
+            "gw1_xp": 3.4157104007,
+            "xpts_3": 10.6043653622,
+            "xpts_5": 16.4506994683,
+            "xpts_8": 23.0557502912,
+            "horizon_xp": 23.0557502912,
+            "projection_confidence": 0.5385035821
           },
           {
             "player_id": 109,
@@ -654,12 +654,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 3.3541792695,
-            "xpts_3": 9.7283945771,
-            "xpts_5": 14.789854211,
-            "xpts_8": 20.8107627734,
-            "horizon_xp": 20.8107627734,
-            "projection_confidence": 0.5490943874
+            "gw1_xp": 3.3541693742,
+            "xpts_3": 9.7283884989,
+            "xpts_5": 14.7898594807,
+            "xpts_8": 20.8107300629,
+            "horizon_xp": 20.8107300629,
+            "projection_confidence": 0.549095249
           }
         ],
         "captain": [
@@ -675,12 +675,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 6.3896006997,
-            "xpts_3": 18.4985908925,
-            "xpts_5": 27.9823438972,
-            "xpts_8": 38.6835806658,
-            "horizon_xp": 38.6835806658,
-            "projection_confidence": 0.4830869475
+            "gw1_xp": 6.3894476598,
+            "xpts_3": 18.498164273,
+            "xpts_5": 27.9817254863,
+            "xpts_8": 38.6828499986,
+            "horizon_xp": 38.6828499986,
+            "projection_confidence": 0.4830963189
           }
         ],
         "vice_captain": [
@@ -696,12 +696,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 4.658937648,
-            "xpts_3": 13.8652063501,
-            "xpts_5": 20.9381611769,
-            "xpts_8": 29.2895919862,
-            "horizon_xp": 29.2895919862,
-            "projection_confidence": 0.5218350676
+            "gw1_xp": 4.6589272788,
+            "xpts_3": 13.865148054,
+            "xpts_5": 20.9381373545,
+            "xpts_8": 29.289571065,
+            "horizon_xp": 29.289571065,
+            "projection_confidence": 0.5218353352
           }
         ],
         "bench": [
@@ -717,12 +717,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7289,
-            "gw1_xp": 3.1117574945,
-            "xpts_3": 9.1183058902,
-            "xpts_5": 13.7655737013,
-            "xpts_8": 19.3614214411,
-            "horizon_xp": 19.3614214411,
-            "projection_confidence": 0.5456417926
+            "gw1_xp": 3.1117496366,
+            "xpts_3": 9.1182934197,
+            "xpts_5": 13.7655858602,
+            "xpts_8": 19.3614031543,
+            "horizon_xp": 19.3614031543,
+            "projection_confidence": 0.5456422187
           },
           {
             "player_id": 57,
@@ -736,12 +736,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 2.8425111391,
-            "xpts_3": 9.4119404954,
-            "xpts_5": 14.7977816935,
-            "xpts_8": 20.7145140203,
-            "horizon_xp": 20.7145140203,
-            "projection_confidence": 0.5539939134
+            "gw1_xp": 2.8425360348,
+            "xpts_3": 9.4119312455,
+            "xpts_5": 14.7977376026,
+            "xpts_8": 20.7144521644,
+            "horizon_xp": 20.7144521644,
+            "projection_confidence": 0.5539950036
           },
           {
             "player_id": 508,
@@ -755,12 +755,12 @@
             "tactical_role": "progressive / balanced defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5617355556,
-            "gw1_xp": 2.1049031217,
-            "xpts_3": 6.3590566536,
-            "xpts_5": 9.8559069342,
-            "xpts_8": 13.8573430149,
-            "horizon_xp": 13.8573430149,
-            "projection_confidence": 0.4296403731
+            "gw1_xp": 2.104915165,
+            "xpts_3": 6.3591088857,
+            "xpts_5": 9.8559882521,
+            "xpts_8": 13.857457179,
+            "horizon_xp": 13.857457179,
+            "projection_confidence": 0.4296384241
           },
           {
             "player_id": 466,
@@ -774,21 +774,21 @@
             "tactical_role": "forward",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5101111111,
-            "gw1_xp": 1.5489728936,
-            "xpts_3": 4.5849237071,
-            "xpts_5": 6.9360731806,
-            "xpts_8": 9.6573089143,
-            "horizon_xp": 9.6573089143,
-            "projection_confidence": 0.5101318586
+            "gw1_xp": 1.5489624044,
+            "xpts_3": 4.5848776378,
+            "xpts_5": 6.936022507,
+            "xpts_8": 9.6572508383,
+            "horizon_xp": 9.6572508383,
+            "projection_confidence": 0.5101330067
           }
         ],
         "solver": {
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 339.1706536806488,
-          "bound": 339.5898788106492,
-          "relative_gap": 0.0012360300794040835,
+          "incumbent": 339.16738827842556,
+          "bound": 339.69603453073614,
+          "relative_gap": 0.0015586588527687873,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -796,14 +796,14 @@
       },
       "haaland": {
         "status": "Optimal",
-        "objective": 339.1858251882158,
-        "mean_points": 343.0628629864283,
-        "lower_tail_cvar": 323.67767399536575,
+        "objective": 339.18255862311844,
+        "mean_points": 343.05946099701976,
+        "lower_tail_cvar": 323.67494912751323,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
-        "scenario_p10": 328.54918823702974,
-        "scenario_p50": 342.1501576648509,
-        "scenario_p90": 358.78547181681563,
+        "scenario_p10": 328.54636272752043,
+        "scenario_p50": 342.1466961396044,
+        "scenario_p90": 358.78151579776863,
         "squad": [
           {
             "player_id": 388,
@@ -817,12 +817,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7594,
-            "gw1_xp": 4.1801592318,
-            "xpts_3": 12.2329736147,
-            "xpts_5": 18.5775765806,
-            "xpts_8": 25.6836067488,
-            "horizon_xp": 25.6836067488,
-            "projection_confidence": 0.5451196558
+            "gw1_xp": 4.180117836,
+            "xpts_3": 12.2328090894,
+            "xpts_5": 18.5773022735,
+            "xpts_8": 25.6832656285,
+            "horizon_xp": 25.6832656285,
+            "projection_confidence": 0.545122874
           },
           {
             "player_id": 356,
@@ -836,12 +836,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7726,
-            "gw1_xp": 3.7855601407,
-            "xpts_3": 11.7428150816,
-            "xpts_5": 17.8680173371,
-            "xpts_8": 24.5027254384,
-            "horizon_xp": 24.5027254384,
-            "projection_confidence": 0.5355961766
+            "gw1_xp": 3.7855393149,
+            "xpts_3": 11.7426834851,
+            "xpts_5": 17.8678253797,
+            "xpts_8": 24.5025151251,
+            "horizon_xp": 24.5025151251,
+            "projection_confidence": 0.5355990094
           },
           {
             "player_id": 445,
@@ -855,12 +855,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7687,
-            "gw1_xp": 3.4156955623,
-            "xpts_3": 10.6043989296,
-            "xpts_5": 16.4507431721,
-            "xpts_8": 23.0558125742,
-            "horizon_xp": 23.0558125742,
-            "projection_confidence": 0.5385024078
+            "gw1_xp": 3.4157104007,
+            "xpts_3": 10.6043653622,
+            "xpts_5": 16.4506994683,
+            "xpts_8": 23.0557502912,
+            "horizon_xp": 23.0557502912,
+            "projection_confidence": 0.5385035821
           },
           {
             "player_id": 113,
@@ -874,12 +874,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7289,
-            "gw1_xp": 3.1117574945,
-            "xpts_3": 9.1183058902,
-            "xpts_5": 13.7655737013,
-            "xpts_8": 19.3614214411,
-            "horizon_xp": 19.3614214411,
-            "projection_confidence": 0.5456417926
+            "gw1_xp": 3.1117496366,
+            "xpts_3": 9.1182934197,
+            "xpts_5": 13.7655858602,
+            "xpts_8": 19.3614031543,
+            "horizon_xp": 19.3614031543,
+            "projection_confidence": 0.5456422187
           },
           {
             "player_id": 508,
@@ -893,12 +893,12 @@
             "tactical_role": "progressive / balanced defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5617355556,
-            "gw1_xp": 2.1049031217,
-            "xpts_3": 6.3590566536,
-            "xpts_5": 9.8559069342,
-            "xpts_8": 13.8573430149,
-            "horizon_xp": 13.8573430149,
-            "projection_confidence": 0.4296403731
+            "gw1_xp": 2.104915165,
+            "xpts_3": 6.3591088857,
+            "xpts_5": 9.8559882521,
+            "xpts_8": 13.857457179,
+            "horizon_xp": 13.857457179,
+            "projection_confidence": 0.4296384241
           },
           {
             "player_id": 411,
@@ -912,12 +912,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 6.3896006997,
-            "xpts_3": 18.4985908925,
-            "xpts_5": 27.9823438972,
-            "xpts_8": 38.6835806658,
-            "horizon_xp": 38.6835806658,
-            "projection_confidence": 0.4830869475
+            "gw1_xp": 6.3894476598,
+            "xpts_3": 18.498164273,
+            "xpts_5": 27.9817254863,
+            "xpts_8": 38.6828499986,
+            "horizon_xp": 38.6828499986,
+            "projection_confidence": 0.4830963189
           },
           {
             "player_id": 106,
@@ -931,12 +931,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 4.658937648,
-            "xpts_3": 13.8652063501,
-            "xpts_5": 20.9381611769,
-            "xpts_8": 29.2895919862,
-            "horizon_xp": 29.2895919862,
-            "projection_confidence": 0.5218350676
+            "gw1_xp": 4.6589272788,
+            "xpts_3": 13.865148054,
+            "xpts_5": 20.9381373545,
+            "xpts_8": 29.289571065,
+            "horizon_xp": 29.289571065,
+            "projection_confidence": 0.5218353352
           },
           {
             "player_id": 466,
@@ -950,12 +950,12 @@
             "tactical_role": "forward",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5101111111,
-            "gw1_xp": 1.5489728936,
-            "xpts_3": 4.5849237071,
-            "xpts_5": 6.9360731806,
-            "xpts_8": 9.6573089143,
-            "horizon_xp": 9.6573089143,
-            "projection_confidence": 0.5101318586
+            "gw1_xp": 1.5489624044,
+            "xpts_3": 4.5848776378,
+            "xpts_5": 6.936022507,
+            "xpts_8": 9.6572508383,
+            "horizon_xp": 9.6572508383,
+            "projection_confidence": 0.5101330067
           },
           {
             "player_id": 109,
@@ -969,12 +969,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 3.3541792695,
-            "xpts_3": 9.7283945771,
-            "xpts_5": 14.789854211,
-            "xpts_8": 20.8107627734,
-            "horizon_xp": 20.8107627734,
-            "projection_confidence": 0.5490943874
+            "gw1_xp": 3.3541693742,
+            "xpts_3": 9.7283884989,
+            "xpts_5": 14.7898594807,
+            "xpts_8": 20.8107300629,
+            "horizon_xp": 20.8107300629,
+            "projection_confidence": 0.549095249
           },
           {
             "player_id": 57,
@@ -988,12 +988,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 2.8425111391,
-            "xpts_3": 9.4119404954,
-            "xpts_5": 14.7977816935,
-            "xpts_8": 20.7145140203,
-            "horizon_xp": 20.7145140203,
-            "projection_confidence": 0.5539939134
+            "gw1_xp": 2.8425360348,
+            "xpts_3": 9.4119312455,
+            "xpts_5": 14.7977376026,
+            "xpts_8": 20.7144521644,
+            "horizon_xp": 20.7144521644,
+            "projection_confidence": 0.5539950036
           },
           {
             "player_id": 427,
@@ -1007,12 +1007,12 @@
             "tactical_role": "advanced midfielder / winger",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7748,
-            "gw1_xp": 4.6622903651,
-            "xpts_3": 14.1233005161,
-            "xpts_5": 21.0748292795,
-            "xpts_8": 29.740456555,
-            "horizon_xp": 29.740456555,
-            "projection_confidence": 0.5093738093
+            "gw1_xp": 4.662278612,
+            "xpts_3": 14.1232216116,
+            "xpts_5": 21.0747754255,
+            "xpts_8": 29.7403450221,
+            "horizon_xp": 29.7403450221,
+            "projection_confidence": 0.5093762262
           },
           {
             "player_id": 397,
@@ -1026,12 +1026,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.7183725796,
-            "xpts_3": 13.7829773108,
-            "xpts_5": 20.8796564913,
-            "xpts_8": 28.9478275324,
-            "horizon_xp": 28.9478275324,
-            "projection_confidence": 0.5439229347
+            "gw1_xp": 4.7182886613,
+            "xpts_3": 13.7827307748,
+            "xpts_5": 20.8792899344,
+            "xpts_8": 28.9473900707,
+            "horizon_xp": 28.9473900707,
+            "projection_confidence": 0.5439273657
           },
           {
             "player_id": 155,
@@ -1045,12 +1045,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.2747639457,
-            "xpts_3": 12.1316709667,
-            "xpts_5": 19.1812054554,
-            "xpts_8": 27.2698236139,
-            "horizon_xp": 27.2698236139,
-            "projection_confidence": 0.4689706655
+            "gw1_xp": 4.2747388795,
+            "xpts_3": 12.1316940919,
+            "xpts_5": 19.1811628592,
+            "xpts_8": 27.269698711,
+            "horizon_xp": 27.269698711,
+            "projection_confidence": 0.468973418
           },
           {
             "player_id": 367,
@@ -1064,12 +1064,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.0774042605,
-            "xpts_3": 12.2449577301,
-            "xpts_5": 18.4560865044,
-            "xpts_8": 25.4259513552,
-            "horizon_xp": 25.4259513552,
-            "projection_confidence": 0.5736807268
+            "gw1_xp": 4.0773331577,
+            "xpts_3": 12.2447562555,
+            "xpts_5": 18.455836938,
+            "xpts_8": 25.4256634611,
+            "horizon_xp": 25.4256634611,
+            "projection_confidence": 0.5736815769
           },
           {
             "player_id": 68,
@@ -1083,12 +1083,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 3.5840801136,
-            "xpts_3": 11.3293383228,
-            "xpts_5": 17.3570424891,
-            "xpts_8": 24.5391780128,
-            "horizon_xp": 24.5391780128,
-            "projection_confidence": 0.5031307998
+            "gw1_xp": 3.5840858904,
+            "xpts_3": 11.3292624344,
+            "xpts_5": 17.3569571019,
+            "xpts_8": 24.5390191597,
+            "horizon_xp": 24.5390191597,
+            "projection_confidence": 0.5031339252
           }
         ],
         "xi": [
@@ -1104,12 +1104,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 6.3896006997,
-            "xpts_3": 18.4985908925,
-            "xpts_5": 27.9823438972,
-            "xpts_8": 38.6835806658,
-            "horizon_xp": 38.6835806658,
-            "projection_confidence": 0.4830869475
+            "gw1_xp": 6.3894476598,
+            "xpts_3": 18.498164273,
+            "xpts_5": 27.9817254863,
+            "xpts_8": 38.6828499986,
+            "horizon_xp": 38.6828499986,
+            "projection_confidence": 0.4830963189
           },
           {
             "player_id": 397,
@@ -1123,12 +1123,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.7183725796,
-            "xpts_3": 13.7829773108,
-            "xpts_5": 20.8796564913,
-            "xpts_8": 28.9478275324,
-            "horizon_xp": 28.9478275324,
-            "projection_confidence": 0.5439229347
+            "gw1_xp": 4.7182886613,
+            "xpts_3": 13.7827307748,
+            "xpts_5": 20.8792899344,
+            "xpts_8": 28.9473900707,
+            "horizon_xp": 28.9473900707,
+            "projection_confidence": 0.5439273657
           },
           {
             "player_id": 427,
@@ -1142,12 +1142,12 @@
             "tactical_role": "advanced midfielder / winger",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7748,
-            "gw1_xp": 4.6622903651,
-            "xpts_3": 14.1233005161,
-            "xpts_5": 21.0748292795,
-            "xpts_8": 29.740456555,
-            "horizon_xp": 29.740456555,
-            "projection_confidence": 0.5093738093
+            "gw1_xp": 4.662278612,
+            "xpts_3": 14.1232216116,
+            "xpts_5": 21.0747754255,
+            "xpts_8": 29.7403450221,
+            "horizon_xp": 29.7403450221,
+            "projection_confidence": 0.5093762262
           },
           {
             "player_id": 106,
@@ -1161,12 +1161,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 4.658937648,
-            "xpts_3": 13.8652063501,
-            "xpts_5": 20.9381611769,
-            "xpts_8": 29.2895919862,
-            "horizon_xp": 29.2895919862,
-            "projection_confidence": 0.5218350676
+            "gw1_xp": 4.6589272788,
+            "xpts_3": 13.865148054,
+            "xpts_5": 20.9381373545,
+            "xpts_8": 29.289571065,
+            "horizon_xp": 29.289571065,
+            "projection_confidence": 0.5218353352
           },
           {
             "player_id": 155,
@@ -1180,12 +1180,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.2747639457,
-            "xpts_3": 12.1316709667,
-            "xpts_5": 19.1812054554,
-            "xpts_8": 27.2698236139,
-            "horizon_xp": 27.2698236139,
-            "projection_confidence": 0.4689706655
+            "gw1_xp": 4.2747388795,
+            "xpts_3": 12.1316940919,
+            "xpts_5": 19.1811628592,
+            "xpts_8": 27.269698711,
+            "horizon_xp": 27.269698711,
+            "projection_confidence": 0.468973418
           },
           {
             "player_id": 388,
@@ -1199,12 +1199,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7594,
-            "gw1_xp": 4.1801592318,
-            "xpts_3": 12.2329736147,
-            "xpts_5": 18.5775765806,
-            "xpts_8": 25.6836067488,
-            "horizon_xp": 25.6836067488,
-            "projection_confidence": 0.5451196558
+            "gw1_xp": 4.180117836,
+            "xpts_3": 12.2328090894,
+            "xpts_5": 18.5773022735,
+            "xpts_8": 25.6832656285,
+            "horizon_xp": 25.6832656285,
+            "projection_confidence": 0.545122874
           },
           {
             "player_id": 367,
@@ -1218,12 +1218,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.0774042605,
-            "xpts_3": 12.2449577301,
-            "xpts_5": 18.4560865044,
-            "xpts_8": 25.4259513552,
-            "horizon_xp": 25.4259513552,
-            "projection_confidence": 0.5736807268
+            "gw1_xp": 4.0773331577,
+            "xpts_3": 12.2447562555,
+            "xpts_5": 18.455836938,
+            "xpts_8": 25.4256634611,
+            "horizon_xp": 25.4256634611,
+            "projection_confidence": 0.5736815769
           },
           {
             "player_id": 356,
@@ -1237,12 +1237,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7726,
-            "gw1_xp": 3.7855601407,
-            "xpts_3": 11.7428150816,
-            "xpts_5": 17.8680173371,
-            "xpts_8": 24.5027254384,
-            "horizon_xp": 24.5027254384,
-            "projection_confidence": 0.5355961766
+            "gw1_xp": 3.7855393149,
+            "xpts_3": 11.7426834851,
+            "xpts_5": 17.8678253797,
+            "xpts_8": 24.5025151251,
+            "horizon_xp": 24.5025151251,
+            "projection_confidence": 0.5355990094
           },
           {
             "player_id": 68,
@@ -1256,12 +1256,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 3.5840801136,
-            "xpts_3": 11.3293383228,
-            "xpts_5": 17.3570424891,
-            "xpts_8": 24.5391780128,
-            "horizon_xp": 24.5391780128,
-            "projection_confidence": 0.5031307998
+            "gw1_xp": 3.5840858904,
+            "xpts_3": 11.3292624344,
+            "xpts_5": 17.3569571019,
+            "xpts_8": 24.5390191597,
+            "horizon_xp": 24.5390191597,
+            "projection_confidence": 0.5031339252
           },
           {
             "player_id": 445,
@@ -1275,12 +1275,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7687,
-            "gw1_xp": 3.4156955623,
-            "xpts_3": 10.6043989296,
-            "xpts_5": 16.4507431721,
-            "xpts_8": 23.0558125742,
-            "horizon_xp": 23.0558125742,
-            "projection_confidence": 0.5385024078
+            "gw1_xp": 3.4157104007,
+            "xpts_3": 10.6043653622,
+            "xpts_5": 16.4506994683,
+            "xpts_8": 23.0557502912,
+            "horizon_xp": 23.0557502912,
+            "projection_confidence": 0.5385035821
           },
           {
             "player_id": 109,
@@ -1294,12 +1294,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 3.3541792695,
-            "xpts_3": 9.7283945771,
-            "xpts_5": 14.789854211,
-            "xpts_8": 20.8107627734,
-            "horizon_xp": 20.8107627734,
-            "projection_confidence": 0.5490943874
+            "gw1_xp": 3.3541693742,
+            "xpts_3": 9.7283884989,
+            "xpts_5": 14.7898594807,
+            "xpts_8": 20.8107300629,
+            "horizon_xp": 20.8107300629,
+            "projection_confidence": 0.549095249
           }
         ],
         "captain": [
@@ -1315,12 +1315,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 6.3896006997,
-            "xpts_3": 18.4985908925,
-            "xpts_5": 27.9823438972,
-            "xpts_8": 38.6835806658,
-            "horizon_xp": 38.6835806658,
-            "projection_confidence": 0.4830869475
+            "gw1_xp": 6.3894476598,
+            "xpts_3": 18.498164273,
+            "xpts_5": 27.9817254863,
+            "xpts_8": 38.6828499986,
+            "horizon_xp": 38.6828499986,
+            "projection_confidence": 0.4830963189
           }
         ],
         "vice_captain": [
@@ -1336,12 +1336,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 4.658937648,
-            "xpts_3": 13.8652063501,
-            "xpts_5": 20.9381611769,
-            "xpts_8": 29.2895919862,
-            "horizon_xp": 29.2895919862,
-            "projection_confidence": 0.5218350676
+            "gw1_xp": 4.6589272788,
+            "xpts_3": 13.865148054,
+            "xpts_5": 20.9381373545,
+            "xpts_8": 29.289571065,
+            "horizon_xp": 29.289571065,
+            "projection_confidence": 0.5218353352
           }
         ],
         "bench": [
@@ -1357,12 +1357,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7289,
-            "gw1_xp": 3.1117574945,
-            "xpts_3": 9.1183058902,
-            "xpts_5": 13.7655737013,
-            "xpts_8": 19.3614214411,
-            "horizon_xp": 19.3614214411,
-            "projection_confidence": 0.5456417926
+            "gw1_xp": 3.1117496366,
+            "xpts_3": 9.1182934197,
+            "xpts_5": 13.7655858602,
+            "xpts_8": 19.3614031543,
+            "horizon_xp": 19.3614031543,
+            "projection_confidence": 0.5456422187
           },
           {
             "player_id": 57,
@@ -1376,12 +1376,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 2.8425111391,
-            "xpts_3": 9.4119404954,
-            "xpts_5": 14.7977816935,
-            "xpts_8": 20.7145140203,
-            "horizon_xp": 20.7145140203,
-            "projection_confidence": 0.5539939134
+            "gw1_xp": 2.8425360348,
+            "xpts_3": 9.4119312455,
+            "xpts_5": 14.7977376026,
+            "xpts_8": 20.7144521644,
+            "horizon_xp": 20.7144521644,
+            "projection_confidence": 0.5539950036
           },
           {
             "player_id": 508,
@@ -1395,12 +1395,12 @@
             "tactical_role": "progressive / balanced defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5617355556,
-            "gw1_xp": 2.1049031217,
-            "xpts_3": 6.3590566536,
-            "xpts_5": 9.8559069342,
-            "xpts_8": 13.8573430149,
-            "horizon_xp": 13.8573430149,
-            "projection_confidence": 0.4296403731
+            "gw1_xp": 2.104915165,
+            "xpts_3": 6.3591088857,
+            "xpts_5": 9.8559882521,
+            "xpts_8": 13.857457179,
+            "horizon_xp": 13.857457179,
+            "projection_confidence": 0.4296384241
           },
           {
             "player_id": 466,
@@ -1414,21 +1414,21 @@
             "tactical_role": "forward",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5101111111,
-            "gw1_xp": 1.5489728936,
-            "xpts_3": 4.5849237071,
-            "xpts_5": 6.9360731806,
-            "xpts_8": 9.6573089143,
-            "horizon_xp": 9.6573089143,
-            "projection_confidence": 0.5101318586
+            "gw1_xp": 1.5489624044,
+            "xpts_3": 4.5848776378,
+            "xpts_5": 6.936022507,
+            "xpts_8": 9.6572508383,
+            "horizon_xp": 9.6572508383,
+            "projection_confidence": 0.5101330067
           }
         ],
         "solver": {
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 339.1706536806488,
-          "bound": 339.58987881064917,
-          "relative_gap": 0.0012360300794040837,
+          "incumbent": 339.16738827842556,
+          "bound": 339.586629336448,
+          "relative_gap": 0.001236088941659408,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -1436,14 +1436,14 @@
       },
       "no-haaland": {
         "status": "Optimal",
-        "objective": 328.02965606484594,
-        "mean_points": 331.1000452433012,
-        "lower_tail_cvar": 315.7480993510248,
+        "objective": 327.5251347520915,
+        "mean_points": 330.59225025693945,
+        "lower_tail_cvar": 315.25667273269966,
         "cvar_alpha": 0.1,
         "cvar_weight": 0.2,
-        "scenario_p10": 319.3168963704161,
-        "scenario_p50": 329.78418267807956,
-        "scenario_p90": 345.31060922015564,
+        "scenario_p10": 318.944587965854,
+        "scenario_p50": 329.43780500864966,
+        "scenario_p90": 344.67651214534334,
         "squad": [
           {
             "player_id": 388,
@@ -1457,12 +1457,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7594,
-            "gw1_xp": 4.1801592318,
-            "xpts_3": 12.2329736147,
-            "xpts_5": 18.5775765806,
-            "xpts_8": 25.6836067488,
-            "horizon_xp": 25.6836067488,
-            "projection_confidence": 0.5451196558
+            "gw1_xp": 4.180117836,
+            "xpts_3": 12.2328090894,
+            "xpts_5": 18.5773022735,
+            "xpts_8": 25.6832656285,
+            "horizon_xp": 25.6832656285,
+            "projection_confidence": 0.545122874
           },
           {
             "player_id": 356,
@@ -1476,12 +1476,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7726,
-            "gw1_xp": 3.7855601407,
-            "xpts_3": 11.7428150816,
-            "xpts_5": 17.8680173371,
-            "xpts_8": 24.5027254384,
-            "horizon_xp": 24.5027254384,
-            "projection_confidence": 0.5355961766
+            "gw1_xp": 3.7855393149,
+            "xpts_3": 11.7426834851,
+            "xpts_5": 17.8678253797,
+            "xpts_8": 24.5025151251,
+            "horizon_xp": 24.5025151251,
+            "projection_confidence": 0.5355990094
           },
           {
             "player_id": 387,
@@ -1495,12 +1495,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7386,
-            "gw1_xp": 4.0779987444,
-            "xpts_3": 11.6526035614,
-            "xpts_5": 17.5895468071,
-            "xpts_8": 24.2316265006,
-            "horizon_xp": 24.2316265006,
-            "projection_confidence": 0.5659809819
+            "gw1_xp": 4.0779448165,
+            "xpts_3": 11.6524172872,
+            "xpts_5": 17.5892505871,
+            "xpts_8": 24.2312640576,
+            "horizon_xp": 24.2312640576,
+            "projection_confidence": 0.5659781152
           },
           {
             "player_id": 445,
@@ -1514,12 +1514,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7687,
-            "gw1_xp": 3.4156955623,
-            "xpts_3": 10.6043989296,
-            "xpts_5": 16.4507431721,
-            "xpts_8": 23.0558125742,
-            "horizon_xp": 23.0558125742,
-            "projection_confidence": 0.5385024078
+            "gw1_xp": 3.4157104007,
+            "xpts_3": 10.6043653622,
+            "xpts_5": 16.4506994683,
+            "xpts_8": 23.0557502912,
+            "horizon_xp": 23.0557502912,
+            "projection_confidence": 0.5385035821
           },
           {
             "player_id": 508,
@@ -1533,12 +1533,12 @@
             "tactical_role": "progressive / balanced defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5617355556,
-            "gw1_xp": 2.1049031217,
-            "xpts_3": 6.3590566536,
-            "xpts_5": 9.8559069342,
-            "xpts_8": 13.8573430149,
-            "horizon_xp": 13.8573430149,
-            "projection_confidence": 0.4296403731
+            "gw1_xp": 2.104915165,
+            "xpts_3": 6.3591088857,
+            "xpts_5": 9.8559882521,
+            "xpts_8": 13.857457179,
+            "horizon_xp": 13.857457179,
+            "projection_confidence": 0.4296384241
           },
           {
             "player_id": 106,
@@ -1552,12 +1552,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 4.658937648,
-            "xpts_3": 13.8652063501,
-            "xpts_5": 20.9381611769,
-            "xpts_8": 29.2895919862,
-            "horizon_xp": 29.2895919862,
-            "projection_confidence": 0.5218350676
+            "gw1_xp": 4.6589272788,
+            "xpts_3": 13.865148054,
+            "xpts_5": 20.9381373545,
+            "xpts_8": 29.289571065,
+            "horizon_xp": 29.289571065,
+            "projection_confidence": 0.5218353352
           },
           {
             "player_id": 55,
@@ -1571,12 +1571,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7988,
-            "gw1_xp": 3.9969817349,
-            "xpts_3": 11.5557901641,
-            "xpts_5": 18.3404058521,
-            "xpts_8": 25.8371082637,
-            "horizon_xp": 25.8371082637,
-            "projection_confidence": 0.5711870456
+            "gw1_xp": 3.9969976274,
+            "xpts_3": 11.5558912917,
+            "xpts_5": 18.3404584494,
+            "xpts_8": 25.8371618182,
+            "horizon_xp": 25.8371618182,
+            "projection_confidence": 0.5711880921
           },
           {
             "player_id": 466,
@@ -1590,12 +1590,12 @@
             "tactical_role": "forward",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5101111111,
-            "gw1_xp": 1.5489728936,
-            "xpts_3": 4.5849237071,
-            "xpts_5": 6.9360731806,
-            "xpts_8": 9.6573089143,
-            "horizon_xp": 9.6573089143,
-            "projection_confidence": 0.5101318586
+            "gw1_xp": 1.5489624044,
+            "xpts_3": 4.5848776378,
+            "xpts_5": 6.936022507,
+            "xpts_8": 9.6572508383,
+            "horizon_xp": 9.6572508383,
+            "projection_confidence": 0.5101330067
           },
           {
             "player_id": 109,
@@ -1609,12 +1609,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 3.3541792695,
-            "xpts_3": 9.7283945771,
-            "xpts_5": 14.789854211,
-            "xpts_8": 20.8107627734,
-            "horizon_xp": 20.8107627734,
-            "projection_confidence": 0.5490943874
+            "gw1_xp": 3.3541693742,
+            "xpts_3": 9.7283884989,
+            "xpts_5": 14.7898594807,
+            "xpts_8": 20.8107300629,
+            "horizon_xp": 20.8107300629,
+            "projection_confidence": 0.549095249
           },
           {
             "player_id": 57,
@@ -1628,12 +1628,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 2.8425111391,
-            "xpts_3": 9.4119404954,
-            "xpts_5": 14.7977816935,
-            "xpts_8": 20.7145140203,
-            "horizon_xp": 20.7145140203,
-            "projection_confidence": 0.5539939134
+            "gw1_xp": 2.8425360348,
+            "xpts_3": 9.4119312455,
+            "xpts_5": 14.7977376026,
+            "xpts_8": 20.7144521644,
+            "horizon_xp": 20.7144521644,
+            "projection_confidence": 0.5539950036
           },
           {
             "player_id": 426,
@@ -1647,12 +1647,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 5.0502417362,
-            "xpts_3": 14.6809672232,
-            "xpts_5": 21.6744066524,
-            "xpts_8": 30.4275070736,
-            "horizon_xp": 30.4275070736,
-            "projection_confidence": 0.5694780695
+            "gw1_xp": 5.0502318224,
+            "xpts_3": 14.6809002572,
+            "xpts_5": 21.674361408,
+            "xpts_8": 30.4274122513,
+            "horizon_xp": 30.4274122513,
+            "projection_confidence": 0.5694786971
           },
           {
             "player_id": 427,
@@ -1666,12 +1666,12 @@
             "tactical_role": "advanced midfielder / winger",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7748,
-            "gw1_xp": 4.6622903651,
-            "xpts_3": 14.1233005161,
-            "xpts_5": 21.0748292795,
-            "xpts_8": 29.740456555,
-            "horizon_xp": 29.740456555,
-            "projection_confidence": 0.5093738093
+            "gw1_xp": 4.662278612,
+            "xpts_3": 14.1232216116,
+            "xpts_5": 21.0747754255,
+            "xpts_8": 29.7403450221,
+            "horizon_xp": 29.7403450221,
+            "projection_confidence": 0.5093762262
           },
           {
             "player_id": 397,
@@ -1685,12 +1685,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.7183725796,
-            "xpts_3": 13.7829773108,
-            "xpts_5": 20.8796564913,
-            "xpts_8": 28.9478275324,
-            "horizon_xp": 28.9478275324,
-            "projection_confidence": 0.5439229347
+            "gw1_xp": 4.7182886613,
+            "xpts_3": 13.7827307748,
+            "xpts_5": 20.8792899344,
+            "xpts_8": 28.9473900707,
+            "horizon_xp": 28.9473900707,
+            "projection_confidence": 0.5439273657
           },
           {
             "player_id": 155,
@@ -1704,12 +1704,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.2747639457,
-            "xpts_3": 12.1316709667,
-            "xpts_5": 19.1812054554,
-            "xpts_8": 27.2698236139,
-            "horizon_xp": 27.2698236139,
-            "projection_confidence": 0.4689706655
+            "gw1_xp": 4.2747388795,
+            "xpts_3": 12.1316940919,
+            "xpts_5": 19.1811628592,
+            "xpts_8": 27.269698711,
+            "horizon_xp": 27.269698711,
+            "projection_confidence": 0.468973418
           },
           {
             "player_id": 367,
@@ -1723,12 +1723,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.0774042605,
-            "xpts_3": 12.2449577301,
-            "xpts_5": 18.4560865044,
-            "xpts_8": 25.4259513552,
-            "horizon_xp": 25.4259513552,
-            "projection_confidence": 0.5736807268
+            "gw1_xp": 4.0773331577,
+            "xpts_3": 12.2447562555,
+            "xpts_5": 18.455836938,
+            "xpts_8": 25.4256634611,
+            "horizon_xp": 25.4256634611,
+            "projection_confidence": 0.5736815769
           }
         ],
         "xi": [
@@ -1744,12 +1744,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 5.0502417362,
-            "xpts_3": 14.6809672232,
-            "xpts_5": 21.6744066524,
-            "xpts_8": 30.4275070736,
-            "horizon_xp": 30.4275070736,
-            "projection_confidence": 0.5694780695
+            "gw1_xp": 5.0502318224,
+            "xpts_3": 14.6809002572,
+            "xpts_5": 21.674361408,
+            "xpts_8": 30.4274122513,
+            "horizon_xp": 30.4274122513,
+            "projection_confidence": 0.5694786971
           },
           {
             "player_id": 397,
@@ -1763,12 +1763,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.7183725796,
-            "xpts_3": 13.7829773108,
-            "xpts_5": 20.8796564913,
-            "xpts_8": 28.9478275324,
-            "horizon_xp": 28.9478275324,
-            "projection_confidence": 0.5439229347
+            "gw1_xp": 4.7182886613,
+            "xpts_3": 13.7827307748,
+            "xpts_5": 20.8792899344,
+            "xpts_8": 28.9473900707,
+            "horizon_xp": 28.9473900707,
+            "projection_confidence": 0.5439273657
           },
           {
             "player_id": 427,
@@ -1782,12 +1782,12 @@
             "tactical_role": "advanced midfielder / winger",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7748,
-            "gw1_xp": 4.6622903651,
-            "xpts_3": 14.1233005161,
-            "xpts_5": 21.0748292795,
-            "xpts_8": 29.740456555,
-            "horizon_xp": 29.740456555,
-            "projection_confidence": 0.5093738093
+            "gw1_xp": 4.662278612,
+            "xpts_3": 14.1232216116,
+            "xpts_5": 21.0747754255,
+            "xpts_8": 29.7403450221,
+            "horizon_xp": 29.7403450221,
+            "projection_confidence": 0.5093762262
           },
           {
             "player_id": 106,
@@ -1801,12 +1801,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 4.658937648,
-            "xpts_3": 13.8652063501,
-            "xpts_5": 20.9381611769,
-            "xpts_8": 29.2895919862,
-            "horizon_xp": 29.2895919862,
-            "projection_confidence": 0.5218350676
+            "gw1_xp": 4.6589272788,
+            "xpts_3": 13.865148054,
+            "xpts_5": 20.9381373545,
+            "xpts_8": 29.289571065,
+            "horizon_xp": 29.289571065,
+            "projection_confidence": 0.5218353352
           },
           {
             "player_id": 155,
@@ -1820,12 +1820,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.2747639457,
-            "xpts_3": 12.1316709667,
-            "xpts_5": 19.1812054554,
-            "xpts_8": 27.2698236139,
-            "horizon_xp": 27.2698236139,
-            "projection_confidence": 0.4689706655
+            "gw1_xp": 4.2747388795,
+            "xpts_3": 12.1316940919,
+            "xpts_5": 19.1811628592,
+            "xpts_8": 27.269698711,
+            "horizon_xp": 27.269698711,
+            "projection_confidence": 0.468973418
           },
           {
             "player_id": 388,
@@ -1839,12 +1839,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7594,
-            "gw1_xp": 4.1801592318,
-            "xpts_3": 12.2329736147,
-            "xpts_5": 18.5775765806,
-            "xpts_8": 25.6836067488,
-            "horizon_xp": 25.6836067488,
-            "projection_confidence": 0.5451196558
+            "gw1_xp": 4.180117836,
+            "xpts_3": 12.2328090894,
+            "xpts_5": 18.5773022735,
+            "xpts_8": 25.6832656285,
+            "horizon_xp": 25.6832656285,
+            "projection_confidence": 0.545122874
           },
           {
             "player_id": 387,
@@ -1858,12 +1858,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7386,
-            "gw1_xp": 4.0779987444,
-            "xpts_3": 11.6526035614,
-            "xpts_5": 17.5895468071,
-            "xpts_8": 24.2316265006,
-            "horizon_xp": 24.2316265006,
-            "projection_confidence": 0.5659809819
+            "gw1_xp": 4.0779448165,
+            "xpts_3": 11.6524172872,
+            "xpts_5": 17.5892505871,
+            "xpts_8": 24.2312640576,
+            "horizon_xp": 24.2312640576,
+            "projection_confidence": 0.5659781152
           },
           {
             "player_id": 367,
@@ -1877,12 +1877,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 4.0774042605,
-            "xpts_3": 12.2449577301,
-            "xpts_5": 18.4560865044,
-            "xpts_8": 25.4259513552,
-            "horizon_xp": 25.4259513552,
-            "projection_confidence": 0.5736807268
+            "gw1_xp": 4.0773331577,
+            "xpts_3": 12.2447562555,
+            "xpts_5": 18.455836938,
+            "xpts_8": 25.4256634611,
+            "horizon_xp": 25.4256634611,
+            "projection_confidence": 0.5736815769
           },
           {
             "player_id": 55,
@@ -1896,12 +1896,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7988,
-            "gw1_xp": 3.9969817349,
-            "xpts_3": 11.5557901641,
-            "xpts_5": 18.3404058521,
-            "xpts_8": 25.8371082637,
-            "horizon_xp": 25.8371082637,
-            "projection_confidence": 0.5711870456
+            "gw1_xp": 3.9969976274,
+            "xpts_3": 11.5558912917,
+            "xpts_5": 18.3404584494,
+            "xpts_8": 25.8371618182,
+            "horizon_xp": 25.8371618182,
+            "projection_confidence": 0.5711880921
           },
           {
             "player_id": 356,
@@ -1915,12 +1915,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7726,
-            "gw1_xp": 3.7855601407,
-            "xpts_3": 11.7428150816,
-            "xpts_5": 17.8680173371,
-            "xpts_8": 24.5027254384,
-            "horizon_xp": 24.5027254384,
-            "projection_confidence": 0.5355961766
+            "gw1_xp": 3.7855393149,
+            "xpts_3": 11.7426834851,
+            "xpts_5": 17.8678253797,
+            "xpts_8": 24.5025151251,
+            "horizon_xp": 24.5025151251,
+            "projection_confidence": 0.5355990094
           },
           {
             "player_id": 109,
@@ -1934,12 +1934,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 3.3541792695,
-            "xpts_3": 9.7283945771,
-            "xpts_5": 14.789854211,
-            "xpts_8": 20.8107627734,
-            "horizon_xp": 20.8107627734,
-            "projection_confidence": 0.5490943874
+            "gw1_xp": 3.3541693742,
+            "xpts_3": 9.7283884989,
+            "xpts_5": 14.7898594807,
+            "xpts_8": 20.8107300629,
+            "horizon_xp": 20.8107300629,
+            "projection_confidence": 0.549095249
           }
         ],
         "captain": [
@@ -1955,12 +1955,12 @@
             "tactical_role": "central / balanced midfielder",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.74,
-            "gw1_xp": 5.0502417362,
-            "xpts_3": 14.6809672232,
-            "xpts_5": 21.6744066524,
-            "xpts_8": 30.4275070736,
-            "horizon_xp": 30.4275070736,
-            "projection_confidence": 0.5694780695
+            "gw1_xp": 5.0502318224,
+            "xpts_3": 14.6809002572,
+            "xpts_5": 21.674361408,
+            "xpts_8": 30.4274122513,
+            "horizon_xp": 30.4274122513,
+            "projection_confidence": 0.5694786971
           }
         ],
         "vice_captain": [
@@ -1976,12 +1976,12 @@
             "tactical_role": "central striker",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 4.658937648,
-            "xpts_3": 13.8652063501,
-            "xpts_5": 20.9381611769,
-            "xpts_8": 29.2895919862,
-            "horizon_xp": 29.2895919862,
-            "projection_confidence": 0.5218350676
+            "gw1_xp": 4.6589272788,
+            "xpts_3": 13.865148054,
+            "xpts_5": 20.9381373545,
+            "xpts_8": 29.289571065,
+            "horizon_xp": 29.289571065,
+            "projection_confidence": 0.5218353352
           }
         ],
         "bench": [
@@ -1997,12 +1997,12 @@
             "tactical_role": "central / defensive defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.7687,
-            "gw1_xp": 3.4156955623,
-            "xpts_3": 10.6043989296,
-            "xpts_5": 16.4507431721,
-            "xpts_8": 23.0558125742,
-            "horizon_xp": 23.0558125742,
-            "projection_confidence": 0.5385024078
+            "gw1_xp": 3.4157104007,
+            "xpts_3": 10.6043653622,
+            "xpts_5": 16.4506994683,
+            "xpts_8": 23.0557502912,
+            "horizon_xp": 23.0557502912,
+            "projection_confidence": 0.5385035821
           },
           {
             "player_id": 57,
@@ -2016,12 +2016,12 @@
             "tactical_role": "goalkeeper",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.8,
-            "gw1_xp": 2.8425111391,
-            "xpts_3": 9.4119404954,
-            "xpts_5": 14.7977816935,
-            "xpts_8": 20.7145140203,
-            "horizon_xp": 20.7145140203,
-            "projection_confidence": 0.5539939134
+            "gw1_xp": 2.8425360348,
+            "xpts_3": 9.4119312455,
+            "xpts_5": 14.7977376026,
+            "xpts_8": 20.7144521644,
+            "horizon_xp": 20.7144521644,
+            "projection_confidence": 0.5539950036
           },
           {
             "player_id": 508,
@@ -2035,12 +2035,12 @@
             "tactical_role": "progressive / balanced defender",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5617355556,
-            "gw1_xp": 2.1049031217,
-            "xpts_3": 6.3590566536,
-            "xpts_5": 9.8559069342,
-            "xpts_8": 13.8573430149,
-            "horizon_xp": 13.8573430149,
-            "projection_confidence": 0.4296403731
+            "gw1_xp": 2.104915165,
+            "xpts_3": 6.3591088857,
+            "xpts_5": 9.8559882521,
+            "xpts_8": 13.857457179,
+            "horizon_xp": 13.857457179,
+            "projection_confidence": 0.4296384241
           },
           {
             "player_id": 466,
@@ -2054,21 +2054,21 @@
             "tactical_role": "forward",
             "tactical_role_source": "statistical_inference",
             "role_confidence": 0.5101111111,
-            "gw1_xp": 1.5489728936,
-            "xpts_3": 4.5849237071,
-            "xpts_5": 6.9360731806,
-            "xpts_8": 9.6573089143,
-            "horizon_xp": 9.6573089143,
-            "projection_confidence": 0.5101318586
+            "gw1_xp": 1.5489624044,
+            "xpts_3": 4.5848776378,
+            "xpts_5": 6.936022507,
+            "xpts_8": 9.6572508383,
+            "horizon_xp": 9.6572508383,
+            "projection_confidence": 0.5101330067
           }
         ],
         "solver": {
           "success": true,
           "status_code": 0,
           "termination_reason": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
-          "incumbent": 328.01855762002253,
-          "bound": 328.0205232270165,
-          "relative_gap": 5.992365213189642e-06,
+          "incumbent": 327.51394825459516,
+          "bound": 328.01808635095824,
+          "relative_gap": 0.0015392874076043427,
           "node_count": 1,
           "configured_relative_gap": 0.002,
           "time_limit_seconds": 180
@@ -2081,9 +2081,9 @@
         "web_name": "Haaland",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 330.7687750543,
-        "objective_regret": 12.5564069653,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 330.766245807,
+        "objective_regret": 12.5555636869,
         "constrained_status": "Optimal",
         "added_player_ids": [
           55,
@@ -2115,9 +2115,9 @@
         "web_name": "Mbeumo",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 339.6504419149,
-        "objective_regret": 3.6747401047,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 339.6471905375,
+        "objective_regret": 3.6746189563,
         "constrained_status": "Optimal",
         "added_player_ids": [
           55,
@@ -2145,9 +2145,9 @@
         "web_name": "Thiago",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 339.8726982971,
-        "objective_regret": 3.4524837224,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 339.869400247,
+        "objective_regret": 3.4524092468,
         "constrained_status": "Optimal",
         "added_player_ids": [
           55
@@ -2167,9 +2167,9 @@
         "web_name": "Virgil",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 341.0545280676,
-        "objective_regret": 2.2706539519,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 341.0514787694,
+        "objective_regret": 2.2703307245,
         "constrained_status": "Optimal",
         "added_player_ids": [
           55,
@@ -2201,9 +2201,9 @@
         "web_name": "Enzo",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 341.1240588026,
-        "objective_regret": 2.2011232169,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 341.1210914997,
+        "objective_regret": 2.2007179942,
         "constrained_status": "Optimal",
         "added_player_ids": [
           55,
@@ -2235,9 +2235,9 @@
         "web_name": "Semenyo",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 341.3134029418,
-        "objective_regret": 2.0117790777,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 341.3101059065,
+        "objective_regret": 2.0117035874,
         "constrained_status": "Optimal",
         "added_player_ids": [
           94,
@@ -2261,9 +2261,9 @@
         "web_name": "Thiaw",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 341.4277700412,
-        "objective_regret": 1.8974119784,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 341.4242577337,
+        "objective_regret": 1.8975517602,
         "constrained_status": "Optimal",
         "added_player_ids": [
           61,
@@ -2287,9 +2287,9 @@
         "web_name": "Gu\u00e9hi",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 341.4392959759,
-        "objective_regret": 1.8858860437,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 341.435884658,
+        "objective_regret": 1.8859248358,
         "constrained_status": "Optimal",
         "added_player_ids": [
           109,
@@ -2313,9 +2313,9 @@
         "web_name": "Petrovi\u0107",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 342.6740936531,
-        "objective_regret": 0.6510883664,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 342.6708045928,
+        "objective_regret": 0.6510049011,
         "constrained_status": "Optimal",
         "added_player_ids": [
           109
@@ -2335,9 +2335,9 @@
         "web_name": "Gakpo",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 342.9499113603,
-        "objective_regret": 0.3752706592,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 342.9465817924,
+        "objective_regret": 0.3752277015,
         "constrained_status": "Optimal",
         "added_player_ids": [
           1,
@@ -2361,9 +2361,9 @@
         "web_name": "Neave",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 342.9542543135,
-        "objective_regret": 0.3709277061,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 342.9508866945,
+        "objective_regret": 0.3709227994,
         "constrained_status": "Optimal",
         "added_player_ids": [
           528
@@ -2383,9 +2383,9 @@
         "web_name": "Tavernier",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 343.2149393086,
-        "objective_regret": 0.110242711,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 343.2117084463,
+        "objective_regret": 0.1101010475,
         "constrained_status": "Optimal",
         "added_player_ids": [
           94
@@ -2405,9 +2405,9 @@
         "web_name": "F.Kad\u0131o\u011flu",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 343.2847967855,
-        "objective_regret": 0.0403852341,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 343.2814253274,
+        "objective_regret": 0.0403841665,
         "constrained_status": "Optimal",
         "added_player_ids": [
           88
@@ -2423,13 +2423,13 @@
         ]
       },
       {
-        "player_id": 82,
-        "web_name": "Kelleher",
+        "player_id": 508,
+        "web_name": "Davies",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 343.2912172641,
-        "objective_regret": 0.0339647555,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 343.2878177404,
+        "objective_regret": 0.0339917535,
         "constrained_status": "Optimal",
         "added_player_ids": [
           88,
@@ -2449,13 +2449,13 @@
         ]
       },
       {
-        "player_id": 508,
-        "web_name": "Davies",
+        "player_id": 82,
+        "web_name": "Kelleher",
         "selected": true,
         "stress_type": "ban_selected",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 343.2912172641,
-        "objective_regret": 0.0339647555,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 343.2878177404,
+        "objective_regret": 0.0339917535,
         "constrained_status": "Optimal",
         "added_player_ids": [
           88,
@@ -2479,9 +2479,9 @@
         "web_name": "B.Fernandes",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 338.700875135,
-        "objective_regret": 4.6243068845,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 338.6983007017,
+        "objective_regret": 4.6235087922,
         "constrained_status": "Optimal",
         "added_player_ids": [
           94,
@@ -2513,9 +2513,9 @@
         "web_name": "Palmer",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 338.711123212,
-        "objective_regret": 4.6140588076,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 338.7082286811,
+        "objective_regret": 4.6135808128,
         "constrained_status": "Optimal",
         "added_player_ids": [
           88,
@@ -2547,9 +2547,9 @@
         "web_name": "Saka",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 338.7423147906,
-        "objective_regret": 4.582867229,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 338.739328996,
+        "objective_regret": 4.5824804979,
         "constrained_status": "Optimal",
         "added_player_ids": [
           12,
@@ -2573,9 +2573,9 @@
         "web_name": "Szoboszlai",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 340.454195199,
-        "objective_regret": 2.8709868206,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 340.450934117,
+        "objective_regret": 2.8708753769,
         "constrained_status": "Optimal",
         "added_player_ids": [
           368
@@ -2595,9 +2595,9 @@
         "web_name": "Sarr",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 340.4741229225,
-        "objective_regret": 2.851059097,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 340.4708687414,
+        "objective_regret": 2.8509407525,
         "constrained_status": "Optimal",
         "added_player_ids": [
           61,
@@ -2625,9 +2625,9 @@
         "web_name": "Gibbs-White",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 341.0169253665,
-        "objective_regret": 2.3082566531,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 341.0140853538,
+        "objective_regret": 2.30772414,
         "constrained_status": "Optimal",
         "added_player_ids": [
           109,
@@ -2655,9 +2655,9 @@
         "web_name": "Jo\u00e3o Pedro",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 341.0887595782,
-        "objective_regret": 2.2364224413,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 341.0854675236,
+        "objective_regret": 2.2363419703,
         "constrained_status": "Optimal",
         "added_player_ids": [
           88,
@@ -2689,9 +2689,9 @@
         "web_name": "O'Reilly",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 341.4392959759,
-        "objective_regret": 1.8858860437,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 341.435884658,
+        "objective_regret": 1.8859248358,
         "constrained_status": "Optimal",
         "added_player_ids": [
           109,
@@ -2715,9 +2715,9 @@
         "web_name": "Rice",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 342.0844887726,
-        "objective_regret": 1.2406932469,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 342.0811158585,
+        "objective_regret": 1.2406936354,
         "constrained_status": "Optimal",
         "added_player_ids": [
           13,
@@ -2741,9 +2741,9 @@
         "web_name": "Watkins",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 342.5152500572,
-        "objective_regret": 0.8099319623,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 342.5122076887,
+        "objective_regret": 0.8096018052,
         "constrained_status": "Optimal",
         "added_player_ids": [
           55,
@@ -2775,9 +2775,9 @@
         "web_name": "Raya",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 342.9499113603,
-        "objective_regret": 0.3752706592,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 342.9465817924,
+        "objective_regret": 0.3752277015,
         "constrained_status": "Optimal",
         "added_player_ids": [
           1,
@@ -2801,9 +2801,9 @@
         "web_name": "Schade",
         "selected": false,
         "stress_type": "force_alternative",
-        "baseline_objective": 343.3251820195,
-        "constrained_objective": 343.2149393086,
-        "objective_regret": 0.110242711,
+        "baseline_objective": 343.3218094939,
+        "constrained_objective": 343.2117084463,
+        "objective_regret": 0.1101010475,
         "constrained_status": "Optimal",
         "added_player_ids": [
           94
@@ -2866,14 +2866,14 @@
       "captain_agrees": true,
       "only_apex": [],
       "only_external": [],
-      "decision_bundle_id": "21889f7e3d99deeb727bedd28fb4e40f1ac513a29103b72a2faeab07f9161183",
+      "decision_bundle_id": "9f8df17a322c0720df21090b91525a65b9333d62d8a8ac8f2d5209291bf67003",
       "official_snapshot": {
-        "snapshot_id": "20260814T201853Z-da8743c2",
-        "bootstrap_sha256": "16fe47d567c427eb407f2abfc872c9d3e42611bd98b7f7973526ea23c6c8cbd4",
+        "snapshot_id": "20260815T031544Z-1320ac1b",
+        "bootstrap_sha256": "c8f50d439b08a30626eaeb676597969da517f20747ee7266bec328e8dcaaabd1",
         "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
       },
-      "projection_export_sha256": "80dcabd49c25e94eb7b123dfd40829c930a44072654b3d1ca0608099db26f8d1",
-      "external_solver_result_sha256": "8b7e8bbfd792a2d0f32f9d2574374c699fd9602da9f93ca6af62cbae0c684b93"
+      "projection_export_sha256": "d1cce6fce9d83c9b8f618eff8180e4d9f7226dc5956c3df366458a40c47eaf60",
+      "external_solver_result_sha256": "7ebc17ed30b34cdc34b032182633f7b66cb6648d33e8cd72e026eb07cd6612e8"
     },
     "pinnacle_gate": {
       "ready": true,
@@ -2960,16 +2960,16 @@
         "name": "tactical_roles",
         "ok": true,
         "configured": false,
-        "checked_at": "2026-08-14T20:18:55.210779+00:00",
-        "age_hours": 0.2351928525,
+        "checked_at": "2026-08-15T03:15:46.229165+00:00",
+        "age_hours": 0.22725097027777777,
         "version": ""
       },
       {
         "name": "news_feeds",
         "ok": true,
         "configured": true,
-        "checked_at": "2026-08-14T20:18:57.048263+00:00",
-        "age_hours": 0.23468244027777777,
+        "checked_at": "2026-08-15T03:15:48.234125+00:00",
+        "age_hours": 0.22669403694444443,
         "version": ""
       }
     ],
@@ -2977,202 +2977,221 @@
       {
         "player_id": 388,
         "web_name": "Gu\u00e9hi",
-        "horizon_xp": 25.6836067488,
+        "horizon_xp": 25.6832656285,
         "expected_minutes": 82.8947368421,
         "start_probability": 0.9210526316,
-        "projection_confidence": 0.5451196558,
+        "projection_confidence": 0.545122874,
         "tactical_role": "central / defensive defender",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 1.8858860437,
+        "selection_regret": 1.8859248358,
         "alternative": "Verbruggen",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 356,
         "web_name": "Virgil",
-        "horizon_xp": 24.5027254384,
+        "horizon_xp": 24.5025151251,
         "expected_minutes": 85.0,
         "start_probability": 0.95,
-        "projection_confidence": 0.5355961766,
+        "projection_confidence": 0.5355990094,
         "tactical_role": "central / defensive defender",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 2.2706539519,
+        "selection_regret": 2.2703307245,
         "alternative": "Watkins",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 445,
         "web_name": "Thiaw",
-        "horizon_xp": 23.0558125742,
+        "horizon_xp": 23.0557502912,
         "expected_minutes": 77.802849828,
         "start_probability": 0.9285740042,
-        "projection_confidence": 0.5385024078,
+        "projection_confidence": 0.5385035821,
         "tactical_role": "central / defensive defender",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 1.8974119784,
+        "selection_regret": 1.8975517602,
         "alternative": "Truffert",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 113,
         "web_name": "F.Kad\u0131o\u011flu",
-        "horizon_xp": 19.3614214411,
+        "horizon_xp": 19.3614031543,
         "expected_minutes": 80.7258596635,
         "start_probability": 0.9229438964,
-        "projection_confidence": 0.5456417926,
+        "projection_confidence": 0.5456422187,
         "tactical_role": "central / defensive defender",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 0.6198024158584303,
+        "selection_regret": 0.6199406276431887,
         "alternative": "Tavernier",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 508,
         "web_name": "Davies",
-        "horizon_xp": 13.8573430149,
+        "horizon_xp": 13.857457179,
         "expected_minutes": 49.283111459,
         "start_probability": 0.6076732542,
-        "projection_confidence": 0.4296403731,
+        "projection_confidence": 0.4296384241,
         "tactical_role": "progressive / balanced defender",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
-        "evidence": [],
-        "selection_regret": 0.11457823357773123,
+        "evidence": [
+          {
+            "evidence_type": "general",
+            "source_name": "Sky Sports Football",
+            "source_tier": "trusted_media",
+            "source_url": "https://www.skysports.com/watch/video/13573176/wolves-vs-blackburn-was-the-referee-right-to-award-wolves-controversial-late-penalty",
+            "published_at": "2026-08-14T22:15:00",
+            "retrieved_at": "2026-08-15T03:15:47.207456+00:00",
+            "expires_at": null,
+            "eligible_for_decision": false,
+            "effect": {
+              "minutes_multiplier": 1.0,
+              "minutes_delta": 0.0,
+              "start_probability_delta": 0.0
+            },
+            "headline": "'It's such a BIG call!' | Controversial late Wolves penalty decision ANALYSED",
+            "summary": "Curtis Davies and Jobi McAnuff debate whether Wolves' late penalty was correctly award during their opening day 2-2 draw against Blackburn.",
+            "ineligibility_reason": "ambiguous_player_identity"
+          }
+        ],
+        "selection_regret": 0.11462318951953421,
         "alternative": "Kayode",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 411,
         "web_name": "Haaland",
-        "horizon_xp": 38.6835806658,
+        "horizon_xp": 38.6828499986,
         "expected_minutes": 77.7105263158,
         "start_probability": 0.8947368421,
-        "projection_confidence": 0.4830869475,
+        "projection_confidence": 0.4830963189,
         "tactical_role": "central striker",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 12.5564069653,
+        "selection_regret": 12.5555636869,
         "alternative": "Watkins",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 106,
         "web_name": "Thiago",
-        "horizon_xp": 29.2895919862,
+        "horizon_xp": 29.289571065,
         "expected_minutes": 85.0,
         "start_probability": 0.95,
-        "projection_confidence": 0.5218350676,
+        "projection_confidence": 0.5218353352,
         "tactical_role": "central striker",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 3.4524837224,
+        "selection_regret": 3.4524092468,
         "alternative": "Watkins",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 466,
         "web_name": "Neave",
-        "horizon_xp": 9.6573089143,
+        "horizon_xp": 9.6572508383,
         "expected_minutes": 40.8733381762,
         "start_probability": 0.6133437298,
-        "projection_confidence": 0.5101318586,
+        "projection_confidence": 0.5101330067,
         "tactical_role": "forward",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 0.3709277061,
+        "selection_regret": 0.3709227994,
         "alternative": "Scarlett",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 82,
         "web_name": "Kelleher",
-        "horizon_xp": 21.2781311384,
+        "horizon_xp": 21.278129781,
         "expected_minutes": 85.0,
         "start_probability": 0.95,
-        "projection_confidence": 0.5592273503,
+        "projection_confidence": 0.5592271736,
         "tactical_role": "goalkeeper",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 0.11457823357773123,
+        "selection_regret": 0.11462318951953421,
         "alternative": "Kayode",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 57,
         "web_name": "Petrovi\u0107",
-        "horizon_xp": 20.7145140203,
+        "horizon_xp": 20.7144521644,
         "expected_minutes": 85.0,
         "start_probability": 0.95,
-        "projection_confidence": 0.5539939134,
+        "projection_confidence": 0.5539950036,
         "tactical_role": "goalkeeper",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 0.6510883664,
+        "selection_regret": 0.6510049011,
         "alternative": "Verbruggen",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 427,
         "web_name": "Mbeumo",
-        "horizon_xp": 29.740456555,
+        "horizon_xp": 29.7403450221,
         "expected_minutes": 76.5925278865,
         "start_probability": 0.95,
-        "projection_confidence": 0.5093738093,
+        "projection_confidence": 0.5093762262,
         "tactical_role": "advanced midfielder / winger",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 3.6747401047,
+        "selection_regret": 3.6746189563,
         "alternative": "Watkins",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 397,
         "web_name": "Semenyo",
-        "horizon_xp": 28.9478275324,
+        "horizon_xp": 28.9473900707,
         "expected_minutes": 82.3451993701,
         "start_probability": 0.95,
-        "projection_confidence": 0.5439229347,
+        "projection_confidence": 0.5439273657,
         "tactical_role": "central / balanced midfielder",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 2.0117790777,
+        "selection_regret": 2.0117035874,
         "alternative": "Schade",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 155,
         "web_name": "Enzo",
-        "horizon_xp": 27.2698236139,
+        "horizon_xp": 27.269698711,
         "expected_minutes": 81.9473684211,
         "start_probability": 0.9210526316,
-        "projection_confidence": 0.4689706655,
+        "projection_confidence": 0.468973418,
         "tactical_role": "central / balanced midfielder",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
@@ -3184,7 +3203,7 @@
             "source_tier": "trusted_media",
             "source_url": "https://www.bbc.co.uk/sport/football/articles/c7vgyrl2573o?at_medium=RSS&at_campaign=rss",
             "published_at": "2026-08-14T16:04:54+00:00",
-            "retrieved_at": "2026-08-14T20:18:55.659104+00:00",
+            "retrieved_at": "2026-08-15T03:15:46.887172+00:00",
             "expires_at": null,
             "eligible_for_decision": false,
             "effect": {
@@ -3202,7 +3221,7 @@
             "source_tier": "trusted_media",
             "source_url": "https://www.bbc.co.uk/sport/football/articles/c70g7dx63geo?at_medium=RSS&at_campaign=rss",
             "published_at": "2026-08-14T05:16:06+00:00",
-            "retrieved_at": "2026-08-14T20:18:55.659104+00:00",
+            "retrieved_at": "2026-08-15T03:15:46.887172+00:00",
             "expires_at": null,
             "eligible_for_decision": false,
             "effect": {
@@ -3213,95 +3232,41 @@
             "headline": "How Maresca's Man City are shaping up compared with Guardiola",
             "summary": "Enzo Maresca has the difficult task of following Pep Guardiola at Manchester City. BBC Sport analyses the new manager's style and tactics from the pre-season games so far.",
             "ineligibility_reason": "no_decision_relevant_evidence"
-          },
-          {
-            "evidence_type": "general",
-            "source_name": "Sky Sports Football",
-            "source_tier": "trusted_media",
-            "source_url": "https://www.skysports.com/football/news/12040/13572838/enzo-fernandez-transfer-news-man-city-miss-chelseas-deadline-to-bid-for-midfielder",
-            "published_at": "2026-08-14T17:27:00",
-            "retrieved_at": "2026-08-14T20:18:55.793956+00:00",
-            "expires_at": null,
-            "eligible_for_decision": false,
-            "effect": {
-              "minutes_multiplier": 1.0,
-              "minutes_delta": 0.0,
-              "start_probability_delta": 0.0
-            },
-            "headline": "Man City miss Chelsea's deadline to bid for Fernandez",
-            "summary": "The&#160;5pm Friday deadline set by&#160;Chelsea&#160;for&#160;Man City&#160;to make their bid for&#160;Enzo Fernandez&#160;has passed with no offer made for the midfielder.",
-            "ineligibility_reason": "no_decision_relevant_evidence"
-          },
-          {
-            "evidence_type": "general",
-            "source_name": "Sky Sports Football",
-            "source_tier": "trusted_media",
-            "source_url": "https://www.skysports.com/football/news/12040/13572888/arsenal-vs-man-city-in-community-shield-enzo-maresca-vows-to-close-the-gap-on-champions-as-mikel-arteta-says-man-city-boss-is-as-good-as-pep-guardiola",
-            "published_at": "2026-08-14T14:30:00",
-            "retrieved_at": "2026-08-14T20:18:55.793956+00:00",
-            "expires_at": null,
-            "eligible_for_decision": false,
-            "effect": {
-              "minutes_multiplier": 1.0,
-              "minutes_delta": 0.0,
-              "start_probability_delta": 0.0
-            },
-            "headline": "Maresca in no mood to be 'friendly' as Arteta makes bold claim",
-            "summary": "Enzo Maresca has revealed part of his intention in his first season as Manchester City boss is to \"close the gap to Arsenal\", after finishing seven points shy of the Premier League champions last term.",
-            "ineligibility_reason": "no_decision_relevant_evidence"
-          },
-          {
-            "evidence_type": "general",
-            "source_name": "Sky Sports Football",
-            "source_tier": "trusted_media",
-            "source_url": "https://www.skysports.com/football/news/12040/13572855/is-enzo-fernandez-worth-two-rodris-transfer-valuations-explained-as-chelsea-and-man-city-midfielders-linked-with-moves-between-the-lines",
-            "published_at": "2026-08-14T13:50:00",
-            "retrieved_at": "2026-08-14T20:18:55.793956+00:00",
-            "expires_at": null,
-            "eligible_for_decision": false,
-            "effect": {
-              "minutes_multiplier": 1.0,
-              "minutes_delta": 0.0,
-              "start_probability_delta": 0.0
-            },
-            "headline": "Is Fernandez worth two Rodris? Transfer valuations explained",
-            "summary": "Speculation is swirling around two of the Premier League's leading midfielders. As Barcelona push to sign  Rodri , Manchester City are being linked with a move for  Enzo Fernandez . But why does the Chelsea player have a much higher transfer value?",
-            "ineligibility_reason": "no_decision_relevant_evidence"
           }
         ],
-        "selection_regret": 2.2011232169,
+        "selection_regret": 2.2007179942,
         "alternative": "Watkins",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 367,
         "web_name": "Gakpo",
-        "horizon_xp": 25.4259513552,
+        "horizon_xp": 25.4256634611,
         "expected_minutes": 73.4984404857,
         "start_probability": 0.884354525,
-        "projection_confidence": 0.5736807268,
+        "projection_confidence": 0.5736815769,
         "tactical_role": "central / balanced midfielder",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 0.3752706592,
+        "selection_regret": 0.3752277015,
         "alternative": "Raya",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       },
       {
         "player_id": 94,
         "web_name": "Schade",
-        "horizon_xp": 24.4289353018,
+        "horizon_xp": 24.4289181122,
         "expected_minutes": 72.2105263158,
         "start_probability": 0.8421052632,
-        "projection_confidence": 0.5534524719,
+        "projection_confidence": 0.5534526389,
         "tactical_role": "advanced midfielder / winger",
         "role_source": "statistical_inference",
         "has_current_decision_evidence": false,
         "current_evidence_count": 0,
         "evidence": [],
-        "selection_regret": 0.3740618513476761,
+        "selection_regret": 0.3741702050569984,
         "alternative": "Tavernier",
         "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
       }
@@ -3325,8 +3290,8 @@
   "production_result": {
     "selector": "exact_horizon_maximum_ev",
     "selector_reason": "The sealed near-optimal squad frontier is rescored across every Gameweek with exact XI, captain, vice-captain and autosub mechanics; that single Decision object is the production authority.",
-    "objective": 347.6510273103959,
-    "objective_reconciliation": 347.6510273103959,
+    "objective": 347.64776929317503,
+    "objective_reconciliation": 347.64776929317503,
     "squad": [
       {
         "player_id": 388,
@@ -3340,12 +3305,12 @@
         "tactical_role": "central / defensive defender",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.7594,
-        "gw1_xp": 4.1801592318,
-        "xpts_3": 12.2329736147,
-        "xpts_5": 18.5775765806,
-        "xpts_8": 25.6836067488,
-        "horizon_xp": 25.6836067488,
-        "projection_confidence": 0.5451196558,
+        "gw1_xp": 4.180117836,
+        "xpts_3": 12.2328090894,
+        "xpts_5": 18.5773022735,
+        "xpts_8": 25.6832656285,
+        "horizon_xp": 25.6832656285,
+        "projection_confidence": 0.545122874,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3361,12 +3326,12 @@
         "tactical_role": "central / defensive defender",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.7726,
-        "gw1_xp": 3.7855601407,
-        "xpts_3": 11.7428150816,
-        "xpts_5": 17.8680173371,
-        "xpts_8": 24.5027254384,
-        "horizon_xp": 24.5027254384,
-        "projection_confidence": 0.5355961766,
+        "gw1_xp": 3.7855393149,
+        "xpts_3": 11.7426834851,
+        "xpts_5": 17.8678253797,
+        "xpts_8": 24.5025151251,
+        "horizon_xp": 24.5025151251,
+        "projection_confidence": 0.5355990094,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3382,12 +3347,12 @@
         "tactical_role": "central / defensive defender",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.7687,
-        "gw1_xp": 3.4156955623,
-        "xpts_3": 10.6043989296,
-        "xpts_5": 16.4507431721,
-        "xpts_8": 23.0558125742,
-        "horizon_xp": 23.0558125742,
-        "projection_confidence": 0.5385024078,
+        "gw1_xp": 3.4157104007,
+        "xpts_3": 10.6043653622,
+        "xpts_5": 16.4506994683,
+        "xpts_8": 23.0557502912,
+        "horizon_xp": 23.0557502912,
+        "projection_confidence": 0.5385035821,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3403,12 +3368,12 @@
         "tactical_role": "central / defensive defender",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.7289,
-        "gw1_xp": 3.1117574945,
-        "xpts_3": 9.1183058902,
-        "xpts_5": 13.7655737013,
-        "xpts_8": 19.3614214411,
-        "horizon_xp": 19.3614214411,
-        "projection_confidence": 0.5456417926,
+        "gw1_xp": 3.1117496366,
+        "xpts_3": 9.1182934197,
+        "xpts_5": 13.7655858602,
+        "xpts_8": 19.3614031543,
+        "horizon_xp": 19.3614031543,
+        "projection_confidence": 0.5456422187,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3424,12 +3389,12 @@
         "tactical_role": "progressive / balanced defender",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.5617355556,
-        "gw1_xp": 2.1049031217,
-        "xpts_3": 6.3590566536,
-        "xpts_5": 9.8559069342,
-        "xpts_8": 13.8573430149,
-        "horizon_xp": 13.8573430149,
-        "projection_confidence": 0.4296403731,
+        "gw1_xp": 2.104915165,
+        "xpts_3": 6.3591088857,
+        "xpts_5": 9.8559882521,
+        "xpts_8": 13.857457179,
+        "horizon_xp": 13.857457179,
+        "projection_confidence": 0.4296384241,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3445,12 +3410,12 @@
         "tactical_role": "central striker",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.8,
-        "gw1_xp": 6.3896006997,
-        "xpts_3": 18.4985908925,
-        "xpts_5": 27.9823438972,
-        "xpts_8": 38.6835806658,
-        "horizon_xp": 38.6835806658,
-        "projection_confidence": 0.4830869475,
+        "gw1_xp": 6.3894476598,
+        "xpts_3": 18.498164273,
+        "xpts_5": 27.9817254863,
+        "xpts_8": 38.6828499986,
+        "horizon_xp": 38.6828499986,
+        "projection_confidence": 0.4830963189,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3466,12 +3431,12 @@
         "tactical_role": "central striker",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.8,
-        "gw1_xp": 4.658937648,
-        "xpts_3": 13.8652063501,
-        "xpts_5": 20.9381611769,
-        "xpts_8": 29.2895919862,
-        "horizon_xp": 29.2895919862,
-        "projection_confidence": 0.5218350676,
+        "gw1_xp": 4.6589272788,
+        "xpts_3": 13.865148054,
+        "xpts_5": 20.9381373545,
+        "xpts_8": 29.289571065,
+        "horizon_xp": 29.289571065,
+        "projection_confidence": 0.5218353352,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3487,12 +3452,12 @@
         "tactical_role": "forward",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.5101111111,
-        "gw1_xp": 1.5489728936,
-        "xpts_3": 4.5849237071,
-        "xpts_5": 6.9360731806,
-        "xpts_8": 9.6573089143,
-        "horizon_xp": 9.6573089143,
-        "projection_confidence": 0.5101318586,
+        "gw1_xp": 1.5489624044,
+        "xpts_3": 4.5848776378,
+        "xpts_5": 6.936022507,
+        "xpts_8": 9.6572508383,
+        "horizon_xp": 9.6572508383,
+        "projection_confidence": 0.5101330067,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3508,12 +3473,12 @@
         "tactical_role": "goalkeeper",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.8,
-        "gw1_xp": 3.6328170484,
-        "xpts_3": 10.3741556984,
-        "xpts_5": 15.4863762388,
-        "xpts_8": 21.2781311384,
-        "horizon_xp": 21.2781311384,
-        "projection_confidence": 0.5592273503,
+        "gw1_xp": 3.6328079006,
+        "xpts_3": 10.3741115537,
+        "xpts_5": 15.4863518489,
+        "xpts_8": 21.278129781,
+        "horizon_xp": 21.278129781,
+        "projection_confidence": 0.5592271736,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3529,12 +3494,12 @@
         "tactical_role": "goalkeeper",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.8,
-        "gw1_xp": 2.8425111391,
-        "xpts_3": 9.4119404954,
-        "xpts_5": 14.7977816935,
-        "xpts_8": 20.7145140203,
-        "horizon_xp": 20.7145140203,
-        "projection_confidence": 0.5539939134,
+        "gw1_xp": 2.8425360348,
+        "xpts_3": 9.4119312455,
+        "xpts_5": 14.7977376026,
+        "xpts_8": 20.7144521644,
+        "horizon_xp": 20.7144521644,
+        "projection_confidence": 0.5539950036,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3550,12 +3515,12 @@
         "tactical_role": "advanced midfielder / winger",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.7748,
-        "gw1_xp": 4.6622903651,
-        "xpts_3": 14.1233005161,
-        "xpts_5": 21.0748292795,
-        "xpts_8": 29.740456555,
-        "horizon_xp": 29.740456555,
-        "projection_confidence": 0.5093738093,
+        "gw1_xp": 4.662278612,
+        "xpts_3": 14.1232216116,
+        "xpts_5": 21.0747754255,
+        "xpts_8": 29.7403450221,
+        "horizon_xp": 29.7403450221,
+        "projection_confidence": 0.5093762262,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3571,12 +3536,12 @@
         "tactical_role": "central / balanced midfielder",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.74,
-        "gw1_xp": 4.7183725796,
-        "xpts_3": 13.7829773108,
-        "xpts_5": 20.8796564913,
-        "xpts_8": 28.9478275324,
-        "horizon_xp": 28.9478275324,
-        "projection_confidence": 0.5439229347,
+        "gw1_xp": 4.7182886613,
+        "xpts_3": 13.7827307748,
+        "xpts_5": 20.8792899344,
+        "xpts_8": 28.9473900707,
+        "horizon_xp": 28.9473900707,
+        "projection_confidence": 0.5439273657,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3592,12 +3557,12 @@
         "tactical_role": "central / balanced midfielder",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.74,
-        "gw1_xp": 4.2747639457,
-        "xpts_3": 12.1316709667,
-        "xpts_5": 19.1812054554,
-        "xpts_8": 27.2698236139,
-        "horizon_xp": 27.2698236139,
-        "projection_confidence": 0.4689706655,
+        "gw1_xp": 4.2747388795,
+        "xpts_3": 12.1316940919,
+        "xpts_5": 19.1811628592,
+        "xpts_8": 27.269698711,
+        "horizon_xp": 27.269698711,
+        "projection_confidence": 0.468973418,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3613,12 +3578,12 @@
         "tactical_role": "central / balanced midfielder",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.74,
-        "gw1_xp": 4.0774042605,
-        "xpts_3": 12.2449577301,
-        "xpts_5": 18.4560865044,
-        "xpts_8": 25.4259513552,
-        "horizon_xp": 25.4259513552,
-        "projection_confidence": 0.5736807268,
+        "gw1_xp": 4.0773331577,
+        "xpts_3": 12.2447562555,
+        "xpts_5": 18.455836938,
+        "xpts_8": 25.4256634611,
+        "horizon_xp": 25.4256634611,
+        "projection_confidence": 0.5736815769,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3634,12 +3599,12 @@
         "tactical_role": "advanced midfielder / winger",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.75926,
-        "gw1_xp": 3.9087834952,
-        "xpts_3": 11.6282569314,
-        "xpts_5": 17.5086137835,
-        "xpts_8": 24.4289353018,
-        "horizon_xp": 24.4289353018,
-        "projection_confidence": 0.5534524719,
+        "gw1_xp": 3.9087732597,
+        "xpts_3": 11.628200862,
+        "xpts_5": 17.5085895854,
+        "xpts_8": 24.4289181122,
+        "horizon_xp": 24.4289181122,
+        "projection_confidence": 0.5534526389,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       }
@@ -3657,12 +3622,12 @@
         "tactical_role": "central / defensive defender",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.7594,
-        "gw1_xp": 4.1801592318,
-        "xpts_3": 12.2329736147,
-        "xpts_5": 18.5775765806,
-        "xpts_8": 25.6836067488,
-        "horizon_xp": 25.6836067488,
-        "projection_confidence": 0.5451196558,
+        "gw1_xp": 4.180117836,
+        "xpts_3": 12.2328090894,
+        "xpts_5": 18.5773022735,
+        "xpts_8": 25.6832656285,
+        "horizon_xp": 25.6832656285,
+        "projection_confidence": 0.545122874,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3678,12 +3643,12 @@
         "tactical_role": "central / defensive defender",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.7726,
-        "gw1_xp": 3.7855601407,
-        "xpts_3": 11.7428150816,
-        "xpts_5": 17.8680173371,
-        "xpts_8": 24.5027254384,
-        "horizon_xp": 24.5027254384,
-        "projection_confidence": 0.5355961766,
+        "gw1_xp": 3.7855393149,
+        "xpts_3": 11.7426834851,
+        "xpts_5": 17.8678253797,
+        "xpts_8": 24.5025151251,
+        "horizon_xp": 24.5025151251,
+        "projection_confidence": 0.5355990094,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3699,12 +3664,12 @@
         "tactical_role": "central / defensive defender",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.7687,
-        "gw1_xp": 3.4156955623,
-        "xpts_3": 10.6043989296,
-        "xpts_5": 16.4507431721,
-        "xpts_8": 23.0558125742,
-        "horizon_xp": 23.0558125742,
-        "projection_confidence": 0.5385024078,
+        "gw1_xp": 3.4157104007,
+        "xpts_3": 10.6043653622,
+        "xpts_5": 16.4506994683,
+        "xpts_8": 23.0557502912,
+        "horizon_xp": 23.0557502912,
+        "projection_confidence": 0.5385035821,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3720,12 +3685,12 @@
         "tactical_role": "central striker",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.8,
-        "gw1_xp": 6.3896006997,
-        "xpts_3": 18.4985908925,
-        "xpts_5": 27.9823438972,
-        "xpts_8": 38.6835806658,
-        "horizon_xp": 38.6835806658,
-        "projection_confidence": 0.4830869475,
+        "gw1_xp": 6.3894476598,
+        "xpts_3": 18.498164273,
+        "xpts_5": 27.9817254863,
+        "xpts_8": 38.6828499986,
+        "horizon_xp": 38.6828499986,
+        "projection_confidence": 0.4830963189,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3741,12 +3706,12 @@
         "tactical_role": "central striker",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.8,
-        "gw1_xp": 4.658937648,
-        "xpts_3": 13.8652063501,
-        "xpts_5": 20.9381611769,
-        "xpts_8": 29.2895919862,
-        "horizon_xp": 29.2895919862,
-        "projection_confidence": 0.5218350676,
+        "gw1_xp": 4.6589272788,
+        "xpts_3": 13.865148054,
+        "xpts_5": 20.9381373545,
+        "xpts_8": 29.289571065,
+        "horizon_xp": 29.289571065,
+        "projection_confidence": 0.5218353352,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3762,12 +3727,12 @@
         "tactical_role": "goalkeeper",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.8,
-        "gw1_xp": 3.6328170484,
-        "xpts_3": 10.3741556984,
-        "xpts_5": 15.4863762388,
-        "xpts_8": 21.2781311384,
-        "horizon_xp": 21.2781311384,
-        "projection_confidence": 0.5592273503,
+        "gw1_xp": 3.6328079006,
+        "xpts_3": 10.3741115537,
+        "xpts_5": 15.4863518489,
+        "xpts_8": 21.278129781,
+        "horizon_xp": 21.278129781,
+        "projection_confidence": 0.5592271736,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3783,12 +3748,12 @@
         "tactical_role": "advanced midfielder / winger",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.7748,
-        "gw1_xp": 4.6622903651,
-        "xpts_3": 14.1233005161,
-        "xpts_5": 21.0748292795,
-        "xpts_8": 29.740456555,
-        "horizon_xp": 29.740456555,
-        "projection_confidence": 0.5093738093,
+        "gw1_xp": 4.662278612,
+        "xpts_3": 14.1232216116,
+        "xpts_5": 21.0747754255,
+        "xpts_8": 29.7403450221,
+        "horizon_xp": 29.7403450221,
+        "projection_confidence": 0.5093762262,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3804,12 +3769,12 @@
         "tactical_role": "central / balanced midfielder",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.74,
-        "gw1_xp": 4.7183725796,
-        "xpts_3": 13.7829773108,
-        "xpts_5": 20.8796564913,
-        "xpts_8": 28.9478275324,
-        "horizon_xp": 28.9478275324,
-        "projection_confidence": 0.5439229347,
+        "gw1_xp": 4.7182886613,
+        "xpts_3": 13.7827307748,
+        "xpts_5": 20.8792899344,
+        "xpts_8": 28.9473900707,
+        "horizon_xp": 28.9473900707,
+        "projection_confidence": 0.5439273657,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3825,12 +3790,12 @@
         "tactical_role": "central / balanced midfielder",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.74,
-        "gw1_xp": 4.2747639457,
-        "xpts_3": 12.1316709667,
-        "xpts_5": 19.1812054554,
-        "xpts_8": 27.2698236139,
-        "horizon_xp": 27.2698236139,
-        "projection_confidence": 0.4689706655,
+        "gw1_xp": 4.2747388795,
+        "xpts_3": 12.1316940919,
+        "xpts_5": 19.1811628592,
+        "xpts_8": 27.269698711,
+        "horizon_xp": 27.269698711,
+        "projection_confidence": 0.468973418,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3846,12 +3811,12 @@
         "tactical_role": "central / balanced midfielder",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.74,
-        "gw1_xp": 4.0774042605,
-        "xpts_3": 12.2449577301,
-        "xpts_5": 18.4560865044,
-        "xpts_8": 25.4259513552,
-        "horizon_xp": 25.4259513552,
-        "projection_confidence": 0.5736807268,
+        "gw1_xp": 4.0773331577,
+        "xpts_3": 12.2447562555,
+        "xpts_5": 18.455836938,
+        "xpts_8": 25.4256634611,
+        "horizon_xp": 25.4256634611,
+        "projection_confidence": 0.5736815769,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       },
@@ -3867,12 +3832,12 @@
         "tactical_role": "advanced midfielder / winger",
         "tactical_role_source": "statistical_inference",
         "role_confidence": 0.75926,
-        "gw1_xp": 3.9087834952,
-        "xpts_3": 11.6282569314,
-        "xpts_5": 17.5086137835,
-        "xpts_8": 24.4289353018,
-        "horizon_xp": 24.4289353018,
-        "projection_confidence": 0.5534524719,
+        "gw1_xp": 3.9087732597,
+        "xpts_3": 11.628200862,
+        "xpts_5": 17.5085895854,
+        "xpts_8": 24.4289181122,
+        "horizon_xp": 24.4289181122,
+        "projection_confidence": 0.5534526389,
         "decision_projection_col": "xp",
         "display_projection_col": "xp"
       }
@@ -3885,7 +3850,7 @@
       "Davies",
       "Neave"
     ],
-    "gw1_expected_total_with_mechanics": 55.58183549030217
+    "gw1_expected_total_with_mechanics": 55.581254796584325
   },
   "canonical_strategy": {
     "status": "Optimal",
@@ -3911,7 +3876,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 7.031071792588984
+            "xp": 7.030882823739
           }
         ],
         "vice_captain": [
@@ -3921,7 +3886,7 @@
             "team_name": "Man Utd",
             "position": "MID",
             "price": 8.0,
-            "xp": 5.847050264347856
+            "xp": 5.846988402558809
           }
         ],
         "xi": [
@@ -3931,7 +3896,7 @@
             "team_name": "Bournemouth",
             "position": "GK",
             "price": 4.5,
-            "xp": 4.297387213405926
+            "xp": 4.297320255297183
           },
           {
             "player_id": 94,
@@ -3939,7 +3904,7 @@
             "team_name": "Brentford",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.263506655994823
+            "xp": 4.263529105032494
           },
           {
             "player_id": 106,
@@ -3947,7 +3912,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 5.121946073754335
+            "xp": 5.12197302748849
           },
           {
             "player_id": 155,
@@ -3955,7 +3920,7 @@
             "team_name": "Chelsea",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.910105020571901
+            "xp": 4.910086812430634
           },
           {
             "player_id": 356,
@@ -3963,7 +3928,7 @@
             "team_name": "Liverpool",
             "position": "DEF",
             "price": 6.5,
-            "xp": 4.718969867792461
+            "xp": 4.718882695126815
           },
           {
             "player_id": 367,
@@ -3971,7 +3936,7 @@
             "team_name": "Liverpool",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.695772698351254
+            "xp": 4.695690491872389
           },
           {
             "player_id": 388,
@@ -3979,7 +3944,7 @@
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
-            "xp": 4.535959787497305
+            "xp": 4.535881651467044
           },
           {
             "player_id": 397,
@@ -3987,7 +3952,7 @@
             "team_name": "Man City",
             "position": "MID",
             "price": 8.5,
-            "xp": 5.176959203103481
+            "xp": 5.176848651864463
           },
           {
             "player_id": 411,
@@ -3995,7 +3960,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 7.031071792588984
+            "xp": 7.030882823739
           },
           {
             "player_id": 427,
@@ -4003,7 +3968,7 @@
             "team_name": "Man Utd",
             "position": "MID",
             "price": 8.0,
-            "xp": 5.847050264347856
+            "xp": 5.846988402558809
           },
           {
             "player_id": 445,
@@ -4011,7 +3976,7 @@
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 4.13327176132848
+            "xp": 4.13323388292547
           }
         ],
         "squad": [
@@ -4021,7 +3986,7 @@
             "team_name": "Bournemouth",
             "position": "GK",
             "price": 4.5,
-            "xp": 4.297387213405926
+            "xp": 4.297320255297183
           },
           {
             "player_id": 82,
@@ -4029,7 +3994,7 @@
             "team_name": "Brentford",
             "position": "GK",
             "price": 5.0,
-            "xp": 3.72293106838979
+            "xp": 3.722934312837265
           },
           {
             "player_id": 94,
@@ -4037,7 +4002,7 @@
             "team_name": "Brentford",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.263506655994823
+            "xp": 4.263529105032494
           },
           {
             "player_id": 106,
@@ -4045,7 +4010,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 5.121946073754335
+            "xp": 5.12197302748849
           },
           {
             "player_id": 113,
@@ -4053,7 +4018,7 @@
             "team_name": "Brighton",
             "position": "DEF",
             "price": 4.5,
-            "xp": 3.279380508993825
+            "xp": 3.279379504116797
           },
           {
             "player_id": 155,
@@ -4061,7 +4026,7 @@
             "team_name": "Chelsea",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.910105020571901
+            "xp": 4.910086812430634
           },
           {
             "player_id": 356,
@@ -4069,7 +4034,7 @@
             "team_name": "Liverpool",
             "position": "DEF",
             "price": 6.5,
-            "xp": 4.718969867792461
+            "xp": 4.718882695126815
           },
           {
             "player_id": 367,
@@ -4077,7 +4042,7 @@
             "team_name": "Liverpool",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.695772698351254
+            "xp": 4.695690491872389
           },
           {
             "player_id": 388,
@@ -4085,7 +4050,7 @@
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
-            "xp": 4.535959787497305
+            "xp": 4.535881651467044
           },
           {
             "player_id": 397,
@@ -4093,7 +4058,7 @@
             "team_name": "Man City",
             "position": "MID",
             "price": 8.5,
-            "xp": 5.176959203103481
+            "xp": 5.176848651864463
           },
           {
             "player_id": 411,
@@ -4101,7 +4066,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 7.031071792588984
+            "xp": 7.030882823739
           },
           {
             "player_id": 427,
@@ -4109,7 +4074,7 @@
             "team_name": "Man Utd",
             "position": "MID",
             "price": 8.0,
-            "xp": 5.847050264347856
+            "xp": 5.846988402558809
           },
           {
             "player_id": 445,
@@ -4117,7 +4082,7 @@
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 4.13327176132848
+            "xp": 4.13323388292547
           },
           {
             "player_id": 466,
@@ -4125,7 +4090,7 @@
             "team_name": "Newcastle",
             "position": "FWD",
             "price": 4.5,
-            "xp": 1.701512096001318
+            "xp": 1.70150834075023
           },
           {
             "player_id": 508,
@@ -4133,7 +4098,7 @@
             "team_name": "Spurs",
             "position": "DEF",
             "price": 4.0,
-            "xp": 2.422728289027572
+            "xp": 2.422767698664394
           }
         ]
       },
@@ -4151,7 +4116,7 @@
             "team_name": "Bournemouth",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.599086123655753
+            "xp": 4.5990083487624
           }
         ],
         "transfers_out": [
@@ -4161,7 +4126,7 @@
             "team_name": "Chelsea",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.24421296594018,
+            "xp": 4.244292692833893,
             "selling_price": 7.0
           }
         ],
@@ -4172,7 +4137,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 7.137068616573042
+            "xp": 7.136940829379316
           }
         ],
         "vice_captain": [
@@ -4182,7 +4147,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 5.674712636738826
+            "xp": 5.674623519123336
           }
         ],
         "xi": [
@@ -4192,7 +4157,7 @@
             "team_name": "Bournemouth",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.599086123655753
+            "xp": 4.5990083487624
           },
           {
             "player_id": 82,
@@ -4200,7 +4165,7 @@
             "team_name": "Brentford",
             "position": "GK",
             "price": 5.0,
-            "xp": 4.186050232671666
+            "xp": 4.186003421738117
           },
           {
             "player_id": 94,
@@ -4208,7 +4173,7 @@
             "team_name": "Brentford",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.792984501022203
+            "xp": 4.792902972486205
           },
           {
             "player_id": 106,
@@ -4216,7 +4181,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 5.674712636738826
+            "xp": 5.674623519123336
           },
           {
             "player_id": 356,
@@ -4224,7 +4189,7 @@
             "team_name": "Liverpool",
             "position": "DEF",
             "price": 6.5,
-            "xp": 4.58047167883421
+            "xp": 4.580431783559803
           },
           {
             "player_id": 367,
@@ -4232,7 +4197,7 @@
             "team_name": "Liverpool",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.865874124815154
+            "xp": 4.865804512434838
           },
           {
             "player_id": 388,
@@ -4240,7 +4205,7 @@
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
-            "xp": 4.901790832208365
+            "xp": 4.901725638295046
           },
           {
             "player_id": 397,
@@ -4248,7 +4213,7 @@
             "team_name": "Man City",
             "position": "MID",
             "price": 8.5,
-            "xp": 5.43869314625273
+            "xp": 5.438615218275917
           },
           {
             "player_id": 411,
@@ -4256,7 +4221,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 7.137068616573042
+            "xp": 7.136940829379316
           },
           {
             "player_id": 427,
@@ -4264,7 +4229,7 @@
             "team_name": "Man Utd",
             "position": "MID",
             "price": 8.0,
-            "xp": 5.183536929745949
+            "xp": 5.18352276215586
           },
           {
             "player_id": 445,
@@ -4272,7 +4237,7 @@
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 4.282418249479837
+            "xp": 4.2824005764207
           }
         ],
         "squad": [
@@ -4282,7 +4247,7 @@
             "team_name": "Bournemouth",
             "position": "GK",
             "price": 4.5,
-            "xp": 3.335531931145036
+            "xp": 3.335564174026439
           },
           {
             "player_id": 68,
@@ -4290,7 +4255,7 @@
             "team_name": "Bournemouth",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.599086123655753
+            "xp": 4.5990083487624
           },
           {
             "player_id": 82,
@@ -4298,7 +4263,7 @@
             "team_name": "Brentford",
             "position": "GK",
             "price": 5.0,
-            "xp": 4.186050232671666
+            "xp": 4.186003421738117
           },
           {
             "player_id": 94,
@@ -4306,7 +4271,7 @@
             "team_name": "Brentford",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.792984501022203
+            "xp": 4.792902972486205
           },
           {
             "player_id": 106,
@@ -4314,7 +4279,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 5.674712636738826
+            "xp": 5.674623519123336
           },
           {
             "player_id": 113,
@@ -4322,7 +4287,7 @@
             "team_name": "Brighton",
             "position": "DEF",
             "price": 4.5,
-            "xp": 3.771735725363984
+            "xp": 3.77173114743008
           },
           {
             "player_id": 356,
@@ -4330,7 +4295,7 @@
             "team_name": "Liverpool",
             "position": "DEF",
             "price": 6.5,
-            "xp": 4.58047167883421
+            "xp": 4.580431783559803
           },
           {
             "player_id": 367,
@@ -4338,7 +4303,7 @@
             "team_name": "Liverpool",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.865874124815154
+            "xp": 4.865804512434838
           },
           {
             "player_id": 388,
@@ -4346,7 +4311,7 @@
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
-            "xp": 4.901790832208365
+            "xp": 4.901725638295046
           },
           {
             "player_id": 397,
@@ -4354,7 +4319,7 @@
             "team_name": "Man City",
             "position": "MID",
             "price": 8.5,
-            "xp": 5.43869314625273
+            "xp": 5.438615218275917
           },
           {
             "player_id": 411,
@@ -4362,7 +4327,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 7.137068616573042
+            "xp": 7.136940829379316
           },
           {
             "player_id": 427,
@@ -4370,7 +4335,7 @@
             "team_name": "Man Utd",
             "position": "MID",
             "price": 8.0,
-            "xp": 5.183536929745949
+            "xp": 5.18352276215586
           },
           {
             "player_id": 445,
@@ -4378,7 +4343,7 @@
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 4.282418249479837
+            "xp": 4.2824005764207
           },
           {
             "player_id": 466,
@@ -4386,7 +4351,7 @@
             "team_name": "Newcastle",
             "position": "FWD",
             "price": 4.5,
-            "xp": 1.857518428581831
+            "xp": 1.857478674882412
           },
           {
             "player_id": 508,
@@ -4394,7 +4359,7 @@
             "team_name": "Spurs",
             "position": "DEF",
             "price": 4.0,
-            "xp": 2.560121076243294
+            "xp": 2.560126903507594
           }
         ]
       },
@@ -4412,7 +4377,7 @@
             "team_name": "Chelsea",
             "position": "MID",
             "price": 7.0,
-            "xp": 5.183021092796141
+            "xp": 5.182976881716316
           }
         ],
         "transfers_out": [
@@ -4422,7 +4387,7 @@
             "team_name": "Brentford",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.023128024855125,
+            "xp": 4.023186618408236,
             "selling_price": 6.0
           }
         ],
@@ -4433,7 +4398,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 6.638021696204782
+            "xp": 6.637921536013884
           }
         ],
         "vice_captain": [
@@ -4443,7 +4408,7 @@
             "team_name": "Chelsea",
             "position": "MID",
             "price": 7.0,
-            "xp": 5.183021092796141
+            "xp": 5.182976881716316
           }
         ],
         "xi": [
@@ -4453,7 +4418,7 @@
             "team_name": "Bournemouth",
             "position": "GK",
             "price": 4.5,
-            "xp": 4.075775174681479
+            "xp": 4.07573108753545
           },
           {
             "player_id": 68,
@@ -4461,7 +4426,7 @@
             "team_name": "Bournemouth",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.46671784254312
+            "xp": 4.466697110648182
           },
           {
             "player_id": 106,
@@ -4469,7 +4434,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 4.833356936885725
+            "xp": 4.833427685677061
           },
           {
             "player_id": 155,
@@ -4477,7 +4442,7 @@
             "team_name": "Chelsea",
             "position": "MID",
             "price": 7.0,
-            "xp": 5.183021092796141
+            "xp": 5.182976881716316
           },
           {
             "player_id": 356,
@@ -4485,7 +4450,7 @@
             "team_name": "Liverpool",
             "position": "DEF",
             "price": 6.5,
-            "xp": 4.722557410427829
+            "xp": 4.722477725885803
           },
           {
             "player_id": 367,
@@ -4493,7 +4458,7 @@
             "team_name": "Liverpool",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.676808634682001
+            "xp": 4.676738359319911
           },
           {
             "player_id": 388,
@@ -4501,7 +4466,7 @@
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
-            "xp": 4.201357426650372
+            "xp": 4.201319465014226
           },
           {
             "player_id": 397,
@@ -4509,7 +4474,7 @@
             "team_name": "Man City",
             "position": "MID",
             "price": 8.5,
-            "xp": 4.903889190046296
+            "xp": 4.903831479786092
           },
           {
             "player_id": 411,
@@ -4517,7 +4482,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 6.638021696204782
+            "xp": 6.637921536013884
           },
           {
             "player_id": 427,
@@ -4525,7 +4490,7 @@
             "team_name": "Man Utd",
             "position": "MID",
             "price": 8.0,
-            "xp": 4.946092441846591
+            "xp": 4.946123557202648
           },
           {
             "player_id": 445,
@@ -4533,7 +4498,7 @@
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 3.989020136927057
+            "xp": 3.989022667887519
           }
         ],
         "squad": [
@@ -4543,7 +4508,7 @@
             "team_name": "Bournemouth",
             "position": "GK",
             "price": 4.5,
-            "xp": 4.075775174681479
+            "xp": 4.07573108753545
           },
           {
             "player_id": 68,
@@ -4551,7 +4516,7 @@
             "team_name": "Bournemouth",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.46671784254312
+            "xp": 4.466697110648182
           },
           {
             "player_id": 82,
@@ -4559,7 +4524,7 @@
             "team_name": "Brentford",
             "position": "GK",
             "price": 5.0,
-            "xp": 3.661983420318833
+            "xp": 3.661990300371003
           },
           {
             "player_id": 106,
@@ -4567,7 +4532,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 4.833356936885725
+            "xp": 4.833427685677061
           },
           {
             "player_id": 113,
@@ -4575,7 +4540,7 @@
             "team_name": "Brighton",
             "position": "DEF",
             "price": 4.5,
-            "xp": 3.59343922330874
+            "xp": 3.593423254199866
           },
           {
             "player_id": 155,
@@ -4583,7 +4548,7 @@
             "team_name": "Chelsea",
             "position": "MID",
             "price": 7.0,
-            "xp": 5.183021092796141
+            "xp": 5.182976881716316
           },
           {
             "player_id": 356,
@@ -4591,7 +4556,7 @@
             "team_name": "Liverpool",
             "position": "DEF",
             "price": 6.5,
-            "xp": 4.722557410427829
+            "xp": 4.722477725885803
           },
           {
             "player_id": 367,
@@ -4599,7 +4564,7 @@
             "team_name": "Liverpool",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.676808634682001
+            "xp": 4.676738359319911
           },
           {
             "player_id": 388,
@@ -4607,7 +4572,7 @@
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
-            "xp": 4.201357426650372
+            "xp": 4.201319465014226
           },
           {
             "player_id": 397,
@@ -4615,7 +4580,7 @@
             "team_name": "Man City",
             "position": "MID",
             "price": 8.5,
-            "xp": 4.903889190046296
+            "xp": 4.903831479786092
           },
           {
             "player_id": 411,
@@ -4623,7 +4588,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 6.638021696204782
+            "xp": 6.637921536013884
           },
           {
             "player_id": 427,
@@ -4631,7 +4596,7 @@
             "team_name": "Man Utd",
             "position": "MID",
             "price": 8.0,
-            "xp": 4.946092441846591
+            "xp": 4.946123557202648
           },
           {
             "player_id": 445,
@@ -4639,7 +4604,7 @@
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 3.989020136927057
+            "xp": 3.989022667887519
           },
           {
             "player_id": 466,
@@ -4647,7 +4612,7 @@
             "team_name": "Newcastle",
             "position": "FWD",
             "price": 4.5,
-            "xp": 1.613365108834034
+            "xp": 1.613379628975618
           },
           {
             "player_id": 508,
@@ -4655,7 +4620,7 @@
             "team_name": "Spurs",
             "position": "DEF",
             "price": 4.0,
-            "xp": 2.539981743246218
+            "xp": 2.540000330996474
           }
         ]
       },
@@ -4673,7 +4638,7 @@
             "team_name": "Brentford",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.492450117245256
+            "xp": 4.492433590339745
           },
           {
             "player_id": 226,
@@ -4681,7 +4646,7 @@
             "team_name": "Everton",
             "position": "GK",
             "price": 5.5,
-            "xp": 4.153026240966713
+            "xp": 4.153022928909928
           }
         ],
         "transfers_out": [
@@ -4691,7 +4656,7 @@
             "team_name": "Bournemouth",
             "position": "GK",
             "price": 4.5,
-            "xp": 3.680233342120642,
+            "xp": 3.680229224655446,
             "selling_price": 4.5
           },
           {
@@ -4700,7 +4665,7 @@
             "team_name": "Liverpool",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.270286967804896,
+            "xp": 4.270291752093265,
             "selling_price": 7.0
           }
         ],
@@ -4711,7 +4676,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 7.079157427456481
+            "xp": 7.078976396212175
           }
         ],
         "vice_captain": [
@@ -4721,7 +4686,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 5.40990339855354
+            "xp": 5.409877332213806
           }
         ],
         "xi": [
@@ -4731,7 +4696,7 @@
             "team_name": "Bournemouth",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.224153115523194
+            "xp": 4.224161673336085
           },
           {
             "player_id": 94,
@@ -4739,7 +4704,7 @@
             "team_name": "Brentford",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.492450117245256
+            "xp": 4.492433590339745
           },
           {
             "player_id": 106,
@@ -4747,7 +4712,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 5.40990339855354
+            "xp": 5.409877332213806
           },
           {
             "player_id": 155,
@@ -4755,7 +4720,7 @@
             "team_name": "Chelsea",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.985691376409004
+            "xp": 4.985640330090178
           },
           {
             "player_id": 226,
@@ -4763,7 +4728,7 @@
             "team_name": "Everton",
             "position": "GK",
             "price": 5.5,
-            "xp": 4.153026240966713
+            "xp": 4.153022928909928
           },
           {
             "player_id": 356,
@@ -4771,7 +4736,7 @@
             "team_name": "Liverpool",
             "position": "DEF",
             "price": 6.5,
-            "xp": 4.088489412149986
+            "xp": 4.088485950903575
           },
           {
             "player_id": 388,
@@ -4779,7 +4744,7 @@
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
-            "xp": 5.00200183187628
+            "xp": 5.001876686750799
           },
           {
             "player_id": 397,
@@ -4787,7 +4752,7 @@
             "team_name": "Man City",
             "position": "MID",
             "price": 8.5,
-            "xp": 5.367693889448618
+            "xp": 5.367575081292907
           },
           {
             "player_id": 411,
@@ -4795,7 +4760,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 7.079157427456481
+            "xp": 7.078976396212175
           },
           {
             "player_id": 427,
@@ -4803,7 +4768,7 @@
             "team_name": "Man Utd",
             "position": "MID",
             "price": 8.0,
-            "xp": 5.099569232323604
+            "xp": 5.099572840646069
           },
           {
             "player_id": 445,
@@ -4811,7 +4776,7 @@
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 4.478507182821483
+            "xp": 4.478488921158489
           }
         ],
         "squad": [
@@ -4821,7 +4786,7 @@
             "team_name": "Bournemouth",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.224153115523194
+            "xp": 4.224161673336085
           },
           {
             "player_id": 82,
@@ -4829,7 +4794,7 @@
             "team_name": "Brentford",
             "position": "GK",
             "price": 5.0,
-            "xp": 3.722960870261216
+            "xp": 3.722983335209645
           },
           {
             "player_id": 94,
@@ -4837,7 +4802,7 @@
             "team_name": "Brentford",
             "position": "MID",
             "price": 6.0,
-            "xp": 4.492450117245256
+            "xp": 4.492433590339745
           },
           {
             "player_id": 106,
@@ -4845,7 +4810,7 @@
             "team_name": "Brentford",
             "position": "FWD",
             "price": 8.0,
-            "xp": 5.40990339855354
+            "xp": 5.409877332213806
           },
           {
             "player_id": 113,
@@ -4853,7 +4818,7 @@
             "team_name": "Brighton",
             "position": "DEF",
             "price": 4.5,
-            "xp": 3.090459712398241
+            "xp": 3.090514994940262
           },
           {
             "player_id": 155,
@@ -4861,7 +4826,7 @@
             "team_name": "Chelsea",
             "position": "MID",
             "price": 7.0,
-            "xp": 4.985691376409004
+            "xp": 4.985640330090178
           },
           {
             "player_id": 226,
@@ -4869,7 +4834,7 @@
             "team_name": "Everton",
             "position": "GK",
             "price": 5.5,
-            "xp": 4.153026240966713
+            "xp": 4.153022928909928
           },
           {
             "player_id": 356,
@@ -4877,7 +4842,7 @@
             "team_name": "Liverpool",
             "position": "DEF",
             "price": 6.5,
-            "xp": 4.088489412149986
+            "xp": 4.088485950903575
           },
           {
             "player_id": 388,
@@ -4885,7 +4850,7 @@
             "team_name": "Man City",
             "position": "DEF",
             "price": 6.0,
-            "xp": 5.00200183187628
+            "xp": 5.001876686750799
           },
           {
             "player_id": 397,
@@ -4893,7 +4858,7 @@
             "team_name": "Man City",
             "position": "MID",
             "price": 8.5,
-            "xp": 5.367693889448618
+            "xp": 5.367575081292907
           },
           {
             "player_id": 411,
@@ -4901,7 +4866,7 @@
             "team_name": "Man City",
             "position": "FWD",
             "price": 15.5,
-            "xp": 7.079157427456481
+            "xp": 7.078976396212175
           },
           {
             "player_id": 427,
@@ -4909,7 +4874,7 @@
             "team_name": "Man Utd",
             "position": "MID",
             "price": 8.0,
-            "xp": 5.099569232323604
+            "xp": 5.099572840646069
           },
           {
             "player_id": 445,
@@ -4917,7 +4882,7 @@
             "team_name": "Newcastle",
             "position": "DEF",
             "price": 5.0,
-            "xp": 4.478507182821483
+            "xp": 4.478488921158489
           },
           {
             "player_id": 466,
@@ -4925,7 +4890,7 @@
             "team_name": "Newcastle",
             "position": "FWD",
             "price": 4.5,
-            "xp": 1.790895151907777
+            "xp": 1.790872000741106
           },
           {
             "player_id": 508,
@@ -4933,7 +4898,7 @@
             "team_name": "Spurs",
             "position": "DEF",
             "price": 4.0,
-            "xp": 2.507550052999754
+            "xp": 2.507573731268784
           }
         ]
       }
@@ -4943,202 +4908,221 @@
     {
       "player_id": 388,
       "web_name": "Gu\u00e9hi",
-      "horizon_xp": 25.6836067488,
+      "horizon_xp": 25.6832656285,
       "expected_minutes": 82.8947368421,
       "start_probability": 0.9210526316,
-      "projection_confidence": 0.5451196558,
+      "projection_confidence": 0.545122874,
       "tactical_role": "central / defensive defender",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 1.8858860437,
+      "selection_regret": 1.8859248358,
       "alternative": "Verbruggen",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 356,
       "web_name": "Virgil",
-      "horizon_xp": 24.5027254384,
+      "horizon_xp": 24.5025151251,
       "expected_minutes": 85.0,
       "start_probability": 0.95,
-      "projection_confidence": 0.5355961766,
+      "projection_confidence": 0.5355990094,
       "tactical_role": "central / defensive defender",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 2.2706539519,
+      "selection_regret": 2.2703307245,
       "alternative": "Watkins",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 445,
       "web_name": "Thiaw",
-      "horizon_xp": 23.0558125742,
+      "horizon_xp": 23.0557502912,
       "expected_minutes": 77.802849828,
       "start_probability": 0.9285740042,
-      "projection_confidence": 0.5385024078,
+      "projection_confidence": 0.5385035821,
       "tactical_role": "central / defensive defender",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 1.8974119784,
+      "selection_regret": 1.8975517602,
       "alternative": "Truffert",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 113,
       "web_name": "F.Kad\u0131o\u011flu",
-      "horizon_xp": 19.3614214411,
+      "horizon_xp": 19.3614031543,
       "expected_minutes": 80.7258596635,
       "start_probability": 0.9229438964,
-      "projection_confidence": 0.5456417926,
+      "projection_confidence": 0.5456422187,
       "tactical_role": "central / defensive defender",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 0.6198024158584303,
+      "selection_regret": 0.6199406276431887,
       "alternative": "Tavernier",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 508,
       "web_name": "Davies",
-      "horizon_xp": 13.8573430149,
+      "horizon_xp": 13.857457179,
       "expected_minutes": 49.283111459,
       "start_probability": 0.6076732542,
-      "projection_confidence": 0.4296403731,
+      "projection_confidence": 0.4296384241,
       "tactical_role": "progressive / balanced defender",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
-      "evidence": [],
-      "selection_regret": 0.11457823357773123,
+      "evidence": [
+        {
+          "evidence_type": "general",
+          "source_name": "Sky Sports Football",
+          "source_tier": "trusted_media",
+          "source_url": "https://www.skysports.com/watch/video/13573176/wolves-vs-blackburn-was-the-referee-right-to-award-wolves-controversial-late-penalty",
+          "published_at": "2026-08-14T22:15:00",
+          "retrieved_at": "2026-08-15T03:15:47.207456+00:00",
+          "expires_at": null,
+          "eligible_for_decision": false,
+          "effect": {
+            "minutes_multiplier": 1.0,
+            "minutes_delta": 0.0,
+            "start_probability_delta": 0.0
+          },
+          "headline": "'It's such a BIG call!' | Controversial late Wolves penalty decision ANALYSED",
+          "summary": "Curtis Davies and Jobi McAnuff debate whether Wolves' late penalty was correctly award during their opening day 2-2 draw against Blackburn.",
+          "ineligibility_reason": "ambiguous_player_identity"
+        }
+      ],
+      "selection_regret": 0.11462318951953421,
       "alternative": "Kayode",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 411,
       "web_name": "Haaland",
-      "horizon_xp": 38.6835806658,
+      "horizon_xp": 38.6828499986,
       "expected_minutes": 77.7105263158,
       "start_probability": 0.8947368421,
-      "projection_confidence": 0.4830869475,
+      "projection_confidence": 0.4830963189,
       "tactical_role": "central striker",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 12.5564069653,
+      "selection_regret": 12.5555636869,
       "alternative": "Watkins",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 106,
       "web_name": "Thiago",
-      "horizon_xp": 29.2895919862,
+      "horizon_xp": 29.289571065,
       "expected_minutes": 85.0,
       "start_probability": 0.95,
-      "projection_confidence": 0.5218350676,
+      "projection_confidence": 0.5218353352,
       "tactical_role": "central striker",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 3.4524837224,
+      "selection_regret": 3.4524092468,
       "alternative": "Watkins",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 466,
       "web_name": "Neave",
-      "horizon_xp": 9.6573089143,
+      "horizon_xp": 9.6572508383,
       "expected_minutes": 40.8733381762,
       "start_probability": 0.6133437298,
-      "projection_confidence": 0.5101318586,
+      "projection_confidence": 0.5101330067,
       "tactical_role": "forward",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 0.3709277061,
+      "selection_regret": 0.3709227994,
       "alternative": "Scarlett",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 82,
       "web_name": "Kelleher",
-      "horizon_xp": 21.2781311384,
+      "horizon_xp": 21.278129781,
       "expected_minutes": 85.0,
       "start_probability": 0.95,
-      "projection_confidence": 0.5592273503,
+      "projection_confidence": 0.5592271736,
       "tactical_role": "goalkeeper",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 0.11457823357773123,
+      "selection_regret": 0.11462318951953421,
       "alternative": "Kayode",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 57,
       "web_name": "Petrovi\u0107",
-      "horizon_xp": 20.7145140203,
+      "horizon_xp": 20.7144521644,
       "expected_minutes": 85.0,
       "start_probability": 0.95,
-      "projection_confidence": 0.5539939134,
+      "projection_confidence": 0.5539950036,
       "tactical_role": "goalkeeper",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 0.6510883664,
+      "selection_regret": 0.6510049011,
       "alternative": "Verbruggen",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 427,
       "web_name": "Mbeumo",
-      "horizon_xp": 29.740456555,
+      "horizon_xp": 29.7403450221,
       "expected_minutes": 76.5925278865,
       "start_probability": 0.95,
-      "projection_confidence": 0.5093738093,
+      "projection_confidence": 0.5093762262,
       "tactical_role": "advanced midfielder / winger",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 3.6747401047,
+      "selection_regret": 3.6746189563,
       "alternative": "Watkins",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 397,
       "web_name": "Semenyo",
-      "horizon_xp": 28.9478275324,
+      "horizon_xp": 28.9473900707,
       "expected_minutes": 82.3451993701,
       "start_probability": 0.95,
-      "projection_confidence": 0.5439229347,
+      "projection_confidence": 0.5439273657,
       "tactical_role": "central / balanced midfielder",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 2.0117790777,
+      "selection_regret": 2.0117035874,
       "alternative": "Schade",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 155,
       "web_name": "Enzo",
-      "horizon_xp": 27.2698236139,
+      "horizon_xp": 27.269698711,
       "expected_minutes": 81.9473684211,
       "start_probability": 0.9210526316,
-      "projection_confidence": 0.4689706655,
+      "projection_confidence": 0.468973418,
       "tactical_role": "central / balanced midfielder",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
@@ -5150,7 +5134,7 @@
           "source_tier": "trusted_media",
           "source_url": "https://www.bbc.co.uk/sport/football/articles/c7vgyrl2573o?at_medium=RSS&at_campaign=rss",
           "published_at": "2026-08-14T16:04:54+00:00",
-          "retrieved_at": "2026-08-14T20:18:55.659104+00:00",
+          "retrieved_at": "2026-08-15T03:15:46.887172+00:00",
           "expires_at": null,
           "eligible_for_decision": false,
           "effect": {
@@ -5168,7 +5152,7 @@
           "source_tier": "trusted_media",
           "source_url": "https://www.bbc.co.uk/sport/football/articles/c70g7dx63geo?at_medium=RSS&at_campaign=rss",
           "published_at": "2026-08-14T05:16:06+00:00",
-          "retrieved_at": "2026-08-14T20:18:55.659104+00:00",
+          "retrieved_at": "2026-08-15T03:15:46.887172+00:00",
           "expires_at": null,
           "eligible_for_decision": false,
           "effect": {
@@ -5179,95 +5163,41 @@
           "headline": "How Maresca's Man City are shaping up compared with Guardiola",
           "summary": "Enzo Maresca has the difficult task of following Pep Guardiola at Manchester City. BBC Sport analyses the new manager's style and tactics from the pre-season games so far.",
           "ineligibility_reason": "no_decision_relevant_evidence"
-        },
-        {
-          "evidence_type": "general",
-          "source_name": "Sky Sports Football",
-          "source_tier": "trusted_media",
-          "source_url": "https://www.skysports.com/football/news/12040/13572838/enzo-fernandez-transfer-news-man-city-miss-chelseas-deadline-to-bid-for-midfielder",
-          "published_at": "2026-08-14T17:27:00",
-          "retrieved_at": "2026-08-14T20:18:55.793956+00:00",
-          "expires_at": null,
-          "eligible_for_decision": false,
-          "effect": {
-            "minutes_multiplier": 1.0,
-            "minutes_delta": 0.0,
-            "start_probability_delta": 0.0
-          },
-          "headline": "Man City miss Chelsea's deadline to bid for Fernandez",
-          "summary": "The&#160;5pm Friday deadline set by&#160;Chelsea&#160;for&#160;Man City&#160;to make their bid for&#160;Enzo Fernandez&#160;has passed with no offer made for the midfielder.",
-          "ineligibility_reason": "no_decision_relevant_evidence"
-        },
-        {
-          "evidence_type": "general",
-          "source_name": "Sky Sports Football",
-          "source_tier": "trusted_media",
-          "source_url": "https://www.skysports.com/football/news/12040/13572888/arsenal-vs-man-city-in-community-shield-enzo-maresca-vows-to-close-the-gap-on-champions-as-mikel-arteta-says-man-city-boss-is-as-good-as-pep-guardiola",
-          "published_at": "2026-08-14T14:30:00",
-          "retrieved_at": "2026-08-14T20:18:55.793956+00:00",
-          "expires_at": null,
-          "eligible_for_decision": false,
-          "effect": {
-            "minutes_multiplier": 1.0,
-            "minutes_delta": 0.0,
-            "start_probability_delta": 0.0
-          },
-          "headline": "Maresca in no mood to be 'friendly' as Arteta makes bold claim",
-          "summary": "Enzo Maresca has revealed part of his intention in his first season as Manchester City boss is to \"close the gap to Arsenal\", after finishing seven points shy of the Premier League champions last term.",
-          "ineligibility_reason": "no_decision_relevant_evidence"
-        },
-        {
-          "evidence_type": "general",
-          "source_name": "Sky Sports Football",
-          "source_tier": "trusted_media",
-          "source_url": "https://www.skysports.com/football/news/12040/13572855/is-enzo-fernandez-worth-two-rodris-transfer-valuations-explained-as-chelsea-and-man-city-midfielders-linked-with-moves-between-the-lines",
-          "published_at": "2026-08-14T13:50:00",
-          "retrieved_at": "2026-08-14T20:18:55.793956+00:00",
-          "expires_at": null,
-          "eligible_for_decision": false,
-          "effect": {
-            "minutes_multiplier": 1.0,
-            "minutes_delta": 0.0,
-            "start_probability_delta": 0.0
-          },
-          "headline": "Is Fernandez worth two Rodris? Transfer valuations explained",
-          "summary": "Speculation is swirling around two of the Premier League's leading midfielders. As Barcelona push to sign  Rodri , Manchester City are being linked with a move for  Enzo Fernandez . But why does the Chelsea player have a much higher transfer value?",
-          "ineligibility_reason": "no_decision_relevant_evidence"
         }
       ],
-      "selection_regret": 2.2011232169,
+      "selection_regret": 2.2007179942,
       "alternative": "Watkins",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 367,
       "web_name": "Gakpo",
-      "horizon_xp": 25.4259513552,
+      "horizon_xp": 25.4256634611,
       "expected_minutes": 73.4984404857,
       "start_probability": 0.884354525,
-      "projection_confidence": 0.5736807268,
+      "projection_confidence": 0.5736815769,
       "tactical_role": "central / balanced midfielder",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 0.3752706592,
+      "selection_regret": 0.3752277015,
       "alternative": "Raya",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     },
     {
       "player_id": 94,
       "web_name": "Schade",
-      "horizon_xp": 24.4289353018,
+      "horizon_xp": 24.4289181122,
       "expected_minutes": 72.2105263158,
       "start_probability": 0.8421052632,
-      "projection_confidence": 0.5534524719,
+      "projection_confidence": 0.5534526389,
       "tactical_role": "advanced midfielder / winger",
       "role_source": "statistical_inference",
       "has_current_decision_evidence": false,
       "current_evidence_count": 0,
       "evidence": [],
-      "selection_regret": 0.3740618513476761,
+      "selection_regret": 0.3741702050569984,
       "alternative": "Tavernier",
       "reason": "Selected by the authoritative exact-horizon Decision on the matched projection surface; the fields above are reproducible evidence, not a conversational override."
     }
