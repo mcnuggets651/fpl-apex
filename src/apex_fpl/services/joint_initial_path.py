@@ -9,8 +9,10 @@ from apex_fpl.optimisation.exact_decision import (
     optimise_exact_horizon_decision,
     optimise_fixed_squad_gameweek,
 )
-from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
-from apex_fpl.optimisation.transfer_views import optimise_transfer_plan_view
+from apex_fpl.optimisation.transfer_views import (
+    optimise_initial_transfer_plan_view,
+    optimise_transfer_plan_view,
+)
 
 
 @dataclass(frozen=True)
@@ -77,7 +79,11 @@ class JointInitialPathResult:
         }
 
 
-def _projection_map(projections: pd.DataFrame, gw: int, projection_col: str) -> dict[int, float]:
+def _projection_map(
+    projections: pd.DataFrame,
+    gw: int,
+    projection_col: str,
+) -> dict[int, float]:
     rows = projections[projections["gw"].astype(int).eq(int(gw))]
     if projection_col not in rows.columns:
         raise ValueError(f"projection table requires {projection_col!r}")
@@ -100,7 +106,9 @@ def _candidate_key(candidate: JointPathCandidate) -> tuple[float, tuple[int, ...
     return (-float(candidate.total_objective), tuple(candidate.squad_ids))
 
 
-def select_best_joint_candidate(candidates: list[JointPathCandidate]) -> JointPathCandidate | None:
+def select_best_joint_candidate(
+    candidates: list[JointPathCandidate],
+) -> JointPathCandidate | None:
     if not candidates:
         return None
     return min(candidates, key=_candidate_key)
@@ -200,6 +208,76 @@ def _evaluate_starting_squad(
     )
 
 
+def _squad_from_plan_week(players: pd.DataFrame, week: dict) -> pd.DataFrame:
+    ids = {
+        int(row["player_id"])
+        for row in (week.get("squad") or [])
+        if row.get("player_id") is not None
+    }
+    return players[players["player_id"].astype(int).isin(ids)].copy()
+
+
+def _enumerate_free_initial_candidates(
+    players: pd.DataFrame,
+    projections: pd.DataFrame,
+    gameweeks: list[int],
+    *,
+    budget: float,
+    max_per_team: int,
+    decay: float,
+    projection_col: str,
+    captain_eligible: set[int] | None,
+    xi_eligible: set[int] | None,
+    candidate_pool_limit: int,
+    candidate_count: int,
+    evaluation_transfer_limit: int,
+) -> list[JointPathCandidate]:
+    """Generate distinct free-GW1 paths and exact-rescore their starting squads."""
+    excluded: list[set[int]] = []
+    evaluated: list[JointPathCandidate] = []
+    for rank in range(1, max(int(candidate_count), 1) + 1):
+        plan = optimise_initial_transfer_plan_view(
+            players,
+            projections,
+            gameweeks,
+            projection_col=projection_col,
+            candidate_limit=candidate_pool_limit,
+            budget=budget,
+            max_per_team=max_per_team,
+            decay=decay,
+            captain_eligible=captain_eligible,
+            xi_eligible=xi_eligible,
+            excluded_initial_squads=excluded,
+            solver_relative_gap=0.0005,
+            solver_time_limit=120,
+        )
+        if plan.status != "Optimal" or not plan.weeks:
+            break
+        squad = _squad_from_plan_week(players, plan.weeks[0])
+        ids = set(squad["player_id"].astype(int))
+        if len(ids) != 15:
+            break
+        excluded.append(ids)
+        candidate = _evaluate_starting_squad(
+            squad,
+            players,
+            projections,
+            gameweeks,
+            budget=budget,
+            max_per_team=max_per_team,
+            decay=decay,
+            projection_col=projection_col,
+            captain_eligible=captain_eligible,
+            xi_eligible=xi_eligible,
+            source_horizon=len(gameweeks),
+            source_rank=rank,
+            transfer_candidate_limit=evaluation_transfer_limit,
+        )
+        if candidate is not None:
+            evaluated.append(candidate)
+    return evaluated
+
+
 def optimise_joint_initial_path(
     players: pd.DataFrame,
     projections: pd.DataFrame,
@@ -211,24 +289,36 @@ def optimise_joint_initial_path(
     projection_col: str = "xp",
     captain_eligible: set[int] | None = None,
     xi_eligible: set[int] | None = None,
-    per_view_candidates: int = 2,
+    per_view_candidates: int = 3,
     transfer_candidate_limit: int = 180,
     exact_candidate_limit: int = 16,
 ) -> JointInitialPathResult:
-    """Challenge the static GW1 squad with legal GW2-GW8 transfer pathways.
+    """Choose the GW1 state by valuing its legal transfer policy, not a static hold.
 
-    Candidate starting squads are generated from several horizon views. Every
-    distinct starting squad is then evaluated on the same objective: exact GW1
-    mechanics plus the existing multi-period transfer MILP for all remaining
-    Gameweeks. The transfer MILP already models rolled free transfers, bank,
-    selling prices and -4 hit costs. This function is diagnostic until a separate
-    production-promotion decision is made.
+    The production static exact-horizon squad remains the comparison baseline. The
+    challenger now solves the correct pre-GW1 state directly: the first 15 are free
+    decision variables under budget, GW2 starts with one free transfer, and every
+    later squad follows legal transfer/bank/hit transitions. Distinct near-optimal
+    starting squads from that joint MILP are exact-rescored for GW1 and then run
+    through the existing future transfer planner.
+
+    A smaller and an expanded position/price-aware candidate universe must select
+    the same exact-rescored starting 15 before the existing promotion gate may act.
     """
     gws = [int(gw) for gw in gameweeks]
     if not gws:
         return JointInitialPathResult(
-            "unavailable", None, None, tuple(), None, None, False, None, None,
-            projection_col, "No future Gameweeks are available."
+            "unavailable",
+            None,
+            None,
+            tuple(),
+            None,
+            None,
+            False,
+            None,
+            None,
+            projection_col,
+            "No future Gameweeks are available.",
         )
 
     exact: ExactHorizonDecision = optimise_exact_horizon_decision(
@@ -245,8 +335,17 @@ def optimise_joint_initial_path(
     )
     if exact.status != "Optimal":
         return JointInitialPathResult(
-            "infeasible", None, None, tuple(), None, None, False, None, None,
-            projection_col, "The static exact-horizon baseline is not optimal."
+            "infeasible",
+            None,
+            None,
+            tuple(),
+            None,
+            None,
+            False,
+            None,
+            None,
+            projection_col,
+            "The static exact-horizon baseline is not optimal.",
         )
 
     baseline = _evaluate_starting_squad(
@@ -266,80 +365,79 @@ def optimise_joint_initial_path(
     )
     if baseline is None:
         return JointInitialPathResult(
-            "infeasible", None, None, tuple(), None, None, False, None, None,
-            projection_col, "The canonical starting squad has no optimal future transfer path."
+            "infeasible",
+            None,
+            None,
+            tuple(),
+            None,
+            None,
+            False,
+            None,
+            None,
+            projection_col,
+            "The canonical starting squad has no optimal future transfer path.",
         )
 
-    views = sorted({1, min(2, len(gws)), min(4, len(gws)), len(gws)})
-    generated: dict[tuple[int, ...], tuple[pd.DataFrame, int, int]] = {
-        baseline.squad_ids: (exact.solution.squad.copy(), len(gws), 0)
-    }
-    first_per_view: set[tuple[int, ...]] = {baseline.squad_ids}
-    for width in views:
-        excluded: list[set[int]] = []
-        for rank in range(1, int(per_view_candidates) + 1):
-            solution = optimise_initial_horizon(
-                players,
-                projections,
-                gws[:width],
-                budget=budget,
-                max_per_team=max_per_team,
-                decay=decay,
-                bench_weight=0.08,
-                captain_eligible=captain_eligible,
-                xi_eligible=xi_eligible,
-                projection_col=projection_col,
-                excluded_squads=excluded,
-                solver_relative_gap=0.00001,
-                solver_time_limit=120,
-            )
-            if solution.status != "Optimal":
-                break
-            ids = tuple(sorted(solution.squad["player_id"].astype(int).tolist()))
-            excluded.append(set(ids))
-            generated.setdefault(ids, (solution.squad.copy(), width, rank))
-            if rank == 1:
-                first_per_view.add(ids)
+    small_limit = max(110, min(int(transfer_candidate_limit), 150))
+    full_limit = max(int(transfer_candidate_limit), 220)
+    candidate_count = max(int(per_view_candidates), 3)
 
-    evaluated: list[JointPathCandidate] = []
-    for squad, width, rank in generated.values():
-        candidate = _evaluate_starting_squad(
-            squad,
-            players,
-            projections,
-            gws,
-            budget=budget,
-            max_per_team=max_per_team,
-            decay=decay,
-            projection_col=projection_col,
-            captain_eligible=captain_eligible,
-            xi_eligible=xi_eligible,
-            source_horizon=width,
-            source_rank=rank,
-            transfer_candidate_limit=transfer_candidate_limit,
-        )
-        if candidate is not None:
-            evaluated.append(candidate)
-
-    selected = select_best_joint_candidate(evaluated)
-    small = select_best_joint_candidate(
-        [candidate for candidate in evaluated if candidate.squad_ids in first_per_view]
+    small_candidates = _enumerate_free_initial_candidates(
+        players,
+        projections,
+        gws,
+        budget=budget,
+        max_per_team=max_per_team,
+        decay=decay,
+        projection_col=projection_col,
+        captain_eligible=captain_eligible,
+        xi_eligible=xi_eligible,
+        candidate_pool_limit=small_limit,
+        candidate_count=candidate_count,
+        evaluation_transfer_limit=full_limit,
     )
+    full_candidates = _enumerate_free_initial_candidates(
+        players,
+        projections,
+        gws,
+        budget=budget,
+        max_per_team=max_per_team,
+        decay=decay,
+        projection_col=projection_col,
+        captain_eligible=captain_eligible,
+        xi_eligible=xi_eligible,
+        candidate_pool_limit=full_limit,
+        candidate_count=candidate_count,
+        evaluation_transfer_limit=full_limit,
+    )
+
+    small = select_best_joint_candidate(small_candidates)
+    selected = select_best_joint_candidate(full_candidates)
     if selected is None:
         return JointInitialPathResult(
-            "infeasible", baseline, None, tuple(evaluated), None, None, False,
-            None, None, projection_col, "No candidate produced an optimal joint path."
+            "infeasible",
+            baseline,
+            None,
+            tuple(full_candidates),
+            small.squad_ids if small else None,
+            None,
+            False,
+            None,
+            None,
+            projection_col,
+            "The free-GW1 multi-period solver produced no exact-rescorable path.",
         )
 
-    gain = float(selected.total_objective - baseline.total_objective)
-    overlap = len(set(selected.squad_ids) & set(baseline.squad_ids))
     small_ids = small.squad_ids if small else None
     stable = bool(small_ids is not None and small_ids == selected.squad_ids)
+    gain = float(selected.total_objective - baseline.total_objective)
+    overlap = len(set(selected.squad_ids) & set(baseline.squad_ids))
+
     return JointInitialPathResult(
         "optimal",
         baseline,
         selected,
-        tuple(sorted(evaluated, key=_candidate_key)),
+        tuple(sorted(full_candidates, key=_candidate_key)),
         small_ids,
         selected.squad_ids,
         stable,
@@ -347,8 +445,10 @@ def optimise_joint_initial_path(
         overlap,
         projection_col,
         (
-            "Joint-path scoring uses exact GW1 mechanics and the existing legal transfer "
-            "MILP from GW2 onward. Future moves are planning contingencies and must be "
-            "re-solved before each deadline."
+            "GW1 is optimised as a free initial squad inside the multi-period path. "
+            "GW2 starts with one free transfer; later moves respect rolled FTs, bank, "
+            "fixed current prices and explicit hit costs. Candidate paths are exact-"
+            "rescored for GW1 and future moves remain contingencies to re-solve before "
+            "each deadline."
         ),
     )
