@@ -8,6 +8,9 @@ on:
       - "src/apex_fpl/evaluation/**"
       - "src/apex_fpl/replay/**"
       - "scripts/audit_projection_policy_readiness.py"
+      - "scripts/audit_historical_minutes_preseason.py"
+      - "scripts/audit_bench_appearance_shadow.py"
+      - "data/historical/preseason_validation_sources.json"
       - "upstreams.lock.json"
       - ".github/workflows/projection-policy-audit.yml"
   workflow_dispatch:
@@ -37,11 +40,42 @@ jobs:
         run: |
           git clone --filter=blob:none https://github.com/olbauday/FPL-Core-Insights.git /tmp/fpl-core
           git -C /tmp/fpl-core checkout "${{ steps.core.outputs.sha }}"
+      - name: Fetch immutable historical validation refs
+        run: |
+          python - <<'PY' >/tmp/historical-refs.txt
+          import json
+          payload = json.load(open("data/historical/preseason_validation_sources.json"))
+          refs = set()
+          for season in payload.get("seasons", []):
+              refs.add(season["feature_ref"])
+              refs.add(season["outcome_ref"])
+          print("\n".join(sorted(refs)))
+          PY
+          while read -r ref; do
+            git -C /tmp/fpl-core cat-file -e "${ref}^{commit}" || \
+              git -C /tmp/fpl-core fetch --depth=1 origin "$ref"
+          done </tmp/historical-refs.txt
+      - name: Run historical minutes and preseason shadow audit
+        run: |
+          python scripts/audit_historical_minutes_preseason.py \
+            --core-root /tmp/fpl-core \
+            --manifest data/historical/preseason_validation_sources.json \
+            --output reports/historical_minutes_preseason.json
+          cat reports/historical_minutes_preseason.json
+      - name: Run isolated bench appearance shadow audit
+        run: |
+          python scripts/audit_bench_appearance_shadow.py \
+            --core-root /tmp/fpl-core \
+            --manifest data/historical/preseason_validation_sources.json \
+            --output reports/bench_appearance_shadow.json
+          cat reports/bench_appearance_shadow.json
       - name: Run policy readiness audit
         run: |
           python scripts/audit_projection_policy_readiness.py \
             --apex-store data/replay \
             --core-root /tmp/fpl-core \
+            --historical-audit reports/historical_minutes_preseason.json \
+            --bench-audit reports/bench_appearance_shadow.json \
             --output reports/projection_policy_readiness.json
           cat reports/projection_policy_readiness.json
       - name: Run focused contract tests
@@ -51,8 +85,13 @@ jobs:
             tests/test_projection_audit_horizon_semantics.py \
             tests/test_projection_policy_readiness.py \
             tests/test_preseason_missingness.py \
-            tests/test_understat_player_ab.py
+            tests/test_understat_player_ab.py \
+            tests/test_historical_minutes_preseason.py \
+            tests/test_bench_appearance_shadow.py
       - uses: actions/upload-artifact@v4
         with:
           name: projection-policy-readiness-${{ github.run_id }}
-          path: reports/projection_policy_readiness.json
+          path: |
+            reports/projection_policy_readiness.json
+            reports/historical_minutes_preseason.json
+            reports/bench_appearance_shadow.json

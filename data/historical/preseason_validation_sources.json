@@ -1,0 +1,33 @@
+{
+  "contract": "apex-historical-preseason-validation-sources-v2",
+  "repository": "olbauday/FPL-Core-Insights",
+  "minimum_independent_seasons_for_promotion": 2,
+  "minimum_independent_seasons_scope": "broad minutes-model or preseason-attacking rewrites",
+  "narrow_recent_season_policy": {
+    "allowed": true,
+    "scope": "isolated bench-appearance propensity with incumbent start probability and expected minutes frozen",
+    "minimum_recent_rows": 4000,
+    "minimum_recent_players": 500,
+    "requires_player_clustered_bootstrap": true,
+    "requires_team_clustered_bootstrap": true,
+    "requires_leave_one_team_out_stability": true,
+    "requires_key_cohort_stability": true,
+    "requires_production_ab_before_promotion": true
+  },
+  "seasons": [
+    {
+      "season": "2025-2026",
+      "feature_ref": "2482fbd3a6365610802004b1186d57931c33b900",
+      "feature_timestamp": "2025-08-15T17:01:14Z",
+      "outcome_ref": "2819f58ff84d2fdc4830ce763f94912024af2f78",
+      "current_players_path": "data/2025-2026/By Tournament/Friendlies/GW0/players.csv",
+      "preseason_matches_path": "data/2025-2026/By Tournament/Friendlies/GW0/matches.csv",
+      "preseason_stats_path": "data/2025-2026/By Tournament/Friendlies/GW0/playermatchstats.csv",
+      "prior_players_path": "data/2024-2025/players/players.csv",
+      "prior_stats_template": "data/2024-2025/playermatchstats/GW{gw}/playermatchstats.csv",
+      "outcome_stats_template": "data/2025-2026/By Tournament/Premier League/GW{gw}/playermatchstats.csv",
+      "prior_gameweeks": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38],
+      "outcome_gameweeks": [1, 2, 3, 4, 5, 6, 7, 8]
+    }
+  ]
+}
