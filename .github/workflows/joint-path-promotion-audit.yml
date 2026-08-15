@@ -4,9 +4,14 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "src/apex_fpl/optimisation/initial_transfer_path.py"
+      - "src/apex_fpl/optimisation/transfer_views.py"
+      - "src/apex_fpl/services/joint_initial_path.py"
       - "scripts/apply_joint_path_promotion.py"
       - "scripts/run_apex.py"
       - "tests/test_joint_path_promotion.py"
+      - "tests/test_joint_initial_path.py"
+      - "tests/test_true_joint_initial_path.py"
       - ".github/workflows/joint-path-promotion-audit.yml"
 
 permissions:
@@ -27,7 +32,7 @@ jobs:
         run: bash scripts/install_pinned_airsenal.sh
 
       - name: Promotion unit tests
-        run: pytest -q tests/test_joint_path_promotion.py tests/test_joint_initial_path.py
+        run: pytest -q tests/test_joint_path_promotion.py tests/test_joint_initial_path.py tests/test_true_joint_initial_path.py
 
       - name: Cache AIrsenal database
         uses: actions/cache@v4
