@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,12 +14,33 @@ def _friendlies_dir(core_root: Path, season: str) -> Path:
     return core_root / "data" / season / "By Tournament" / "Friendlies"
 
 
-def build_projection_policy_readiness(apex_store: Path, core_root: Path) -> dict:
-    replay = audit_replay_store(apex_store, season="2025-2026")
-    preseason = {
-        season: _friendlies_dir(core_root, season).is_dir()
-        for season in HISTORICAL_PRESEASON_SEASONS
+def _archived_preseason_seasons(historical_audit_path: Path | None) -> set[str]:
+    if historical_audit_path is None or not historical_audit_path.exists():
+        return set()
+    payload = json.loads(historical_audit_path.read_text(encoding="utf-8"))
+    return {
+        str(row["season"])
+        for row in payload.get("seasons", [])
+        if row.get("season") and row.get("feature_ref")
     }
+
+
+def build_projection_policy_readiness(
+    apex_store: Path,
+    core_root: Path,
+    historical_audit_path: Path | None = None,
+) -> dict:
+    replay = audit_replay_store(apex_store, season="2025-2026")
+    archived = _archived_preseason_seasons(historical_audit_path)
+    preseason_sources = {}
+    for season in HISTORICAL_PRESEASON_SEASONS:
+        if _friendlies_dir(core_root, season).is_dir():
+            preseason_sources[season] = "current_tree"
+        elif season in archived:
+            preseason_sources[season] = "git_history"
+        else:
+            preseason_sources[season] = None
+    preseason = {season: source is not None for season, source in preseason_sources.items()}
     preseason_history_ready = all(preseason.values())
 
     decay_blockers = list(replay.blockers)
@@ -51,6 +73,7 @@ def build_projection_policy_readiness(apex_store: Path, core_root: Path) -> dict
         },
         "preseason_return_fallback": {
             "historical_friendlies_available": preseason,
+            "historical_friendlies_sources": preseason_sources,
             "historical_validation_ready": preseason_history_ready,
             "promotion_allowed": False,
             "blockers": historical_blockers,
@@ -61,6 +84,7 @@ def build_projection_policy_readiness(apex_store: Path, core_root: Path) -> dict
         },
         "minutes_decomposition": {
             "historical_friendlies_available": preseason,
+            "historical_friendlies_sources": preseason_sources,
             "historical_validation_ready": preseason_history_ready,
             "promotion_allowed": False,
             "blockers": historical_blockers,
