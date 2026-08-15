@@ -1,213 +1,14 @@
 #!/usr/bin/env python3
-"""Audit the all-player factual/provenance contract used by Apex production.
-
-Observed/canonical facts are held to 100% completeness. Predictive quantities are
-allowed to be uncertain, but must be labelled as forecasts/inference rather than
-silently promoted to facts. Set-piece order is ordinal evidence only; a literal
-share may affect xP only when a current trusted-source override supplied it.
-"""
+"""CLI for the all-player factual/provenance production audit."""
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
-
-HARD_FACT_FIELDS = (
-    "player_id",
-    "web_name",
-    "team",
-    "team_name",
-    "position",
-    "price",
-    "status",
-)
-ORDER_FIELDS = (
-    "penalties_order",
-    "corners_and_indirect_freekicks_order",
-    "direct_freekicks_order",
-)
-SHARE_FIELDS = (
-    "penalty_share",
-    "corners_share",
-    "direct_freekick_share",
-    "indirect_freekick_share",
-)
-TRUSTED_SOURCE_TIERS = {"official_club", "official_league", "trusted_media"}
-
-
-def _num(frame: pd.DataFrame, column: str) -> pd.Series:
-    if column not in frame.columns:
-        return pd.Series(np.nan, index=frame.index, dtype=float)
-    return pd.to_numeric(frame[column], errors="coerce")
-
-
-def _text(row: pd.Series, column: str) -> str:
-    value = row.get(column)
-    return "" if pd.isna(value) else str(value).strip()
-
-
-def _minutes_class(row: pd.Series) -> str:
-    if pd.notna(row.get("expected_minutes_override")):
-        return "sourced_current_override"
-    if float(pd.to_numeric(pd.Series([row.get("current_team_matches")]), errors="coerce").fillna(0).iloc[0]) > 0:
-        return "forecast_current_season"
-    if float(pd.to_numeric(pd.Series([row.get("preseason_appearances")]), errors="coerce").fillna(0).iloc[0]) > 0:
-        return "forecast_historical_plus_preseason"
-    return "forecast_historical_prior"
-
-
-def audit(players: pd.DataFrame, projections: pd.DataFrame, expected_players: int | None) -> dict:
-    blockers: list[str] = []
-    warnings: list[str] = []
-
-    missing_columns = [field for field in HARD_FACT_FIELDS if field not in players.columns]
-    if missing_columns:
-        blockers.append(f"missing canonical hard-fact columns: {missing_columns}")
-
-    duplicate_ids = int(players["player_id"].duplicated().sum()) if "player_id" in players.columns else len(players)
-    if duplicate_ids:
-        blockers.append(f"official player_id is not unique: {duplicate_ids} duplicate rows")
-
-    if expected_players is not None and len(players) != expected_players:
-        blockers.append(
-            f"player truth universe mismatch: reports={len(players)} official_snapshot={expected_players}"
-        )
-
-    hard_complete = pd.Series(True, index=players.index)
-    for field in HARD_FACT_FIELDS:
-        if field not in players.columns:
-            hard_complete &= False
-            continue
-        if field in {"web_name", "team_name", "position", "status"}:
-            hard_complete &= players[field].notna() & players[field].astype(str).str.strip().ne("")
-        else:
-            hard_complete &= pd.to_numeric(players[field], errors="coerce").notna()
-    hard_coverage = float(hard_complete.mean()) if len(players) else 0.0
-    if hard_coverage < 1.0:
-        blockers.append(f"canonical hard-fact coverage is {hard_coverage:.2%}, required 100%")
-
-    projection_set_piece = pd.DataFrame()
-    if not projections.empty and {"player_id", "xp_set_piece_prior"}.issubset(projections.columns):
-        projection_set_piece = (
-            projections.assign(
-                xp_set_piece_prior=pd.to_numeric(
-                    projections["xp_set_piece_prior"], errors="coerce"
-                ).fillna(0.0)
-            )
-            .groupby("player_id", as_index=False)["xp_set_piece_prior"]
-            .sum()
-            .rename(columns={"xp_set_piece_prior": "set_piece_xp_horizon"})
-        )
-
-    rows: list[dict] = []
-    unverified_share_ids: list[int] = []
-    unexplained_set_piece_xp_ids: list[int] = []
-    inferred_roles = 0
-
-    for idx, row in players.iterrows():
-        player_id = int(row["player_id"]) if pd.notna(row.get("player_id")) else -1
-        explicit = {
-            field: (None if pd.isna(row.get(field)) else float(row.get(field)))
-            for field in SHARE_FIELDS
-        }
-        has_explicit_share = any(value is not None and value > 0 for value in explicit.values())
-        source_tier = _text(row, "source_tier")
-        source_url = _text(row, "source_url")
-        evidence_type = _text(row, "lineup_evidence_type")
-        verified_share = bool(
-            has_explicit_share
-            and source_tier in TRUSTED_SOURCE_TIERS
-            and source_url.startswith(("https://", "http://"))
-            and evidence_type
-        )
-        if has_explicit_share and not verified_share:
-            unverified_share_ids.append(player_id)
-
-        role_source = _text(row, "tactical_role_source") or "statistical_inference"
-        role_class = (
-            "sourced_current_override"
-            if role_source == "verified_override"
-            else "statistical_inference"
-        )
-        inferred_roles += int(role_class == "statistical_inference")
-
-        set_piece_xp = 0.0
-        if not projection_set_piece.empty and player_id >= 0:
-            match = projection_set_piece[
-                pd.to_numeric(projection_set_piece["player_id"], errors="coerce").eq(player_id)
-            ]
-            if not match.empty:
-                set_piece_xp = float(match.iloc[0]["set_piece_xp_horizon"])
-        if set_piece_xp > 1e-9 and not verified_share:
-            unexplained_set_piece_xp_ids.append(player_id)
-
-        rows.append(
-            {
-                "player_id": player_id,
-                "web_name": row.get("web_name"),
-                "hard_fact_complete": bool(hard_complete.loc[idx]),
-                "identity_price_position_source": "official_fpl",
-                "penalties_order": row.get("penalties_order"),
-                "corners_and_indirect_freekicks_order": row.get(
-                    "corners_and_indirect_freekicks_order"
-                ),
-                "direct_freekicks_order": row.get("direct_freekicks_order"),
-                "set_piece_order_source": "official_fpl",
-                **explicit,
-                "set_piece_share_source": (
-                    "verified_current_override"
-                    if verified_share
-                    else "unverified"
-                    if has_explicit_share
-                    else "none"
-                ),
-                "set_piece_xp_horizon": set_piece_xp,
-                "tactical_role": row.get("tactical_role"),
-                "role_class": role_class,
-                "role_confidence": row.get("role_confidence"),
-                "expected_minutes": row.get("expected_minutes"),
-                "minutes_confidence": row.get("minutes_confidence"),
-                "minutes_class": _minutes_class(row),
-                "observed_performance_source": "fpl_core",
-                "forecast_fields_are_not_facts": True,
-            }
-        )
-
-    if unverified_share_ids:
-        blockers.append(
-            "explicit set-piece shares without trusted current provenance: "
-            + ",".join(map(str, sorted(set(unverified_share_ids))[:30]))
-        )
-    if unexplained_set_piece_xp_ids:
-        blockers.append(
-            "set-piece xP exists without verified explicit share evidence: "
-            + ",".join(map(str, sorted(set(unexplained_set_piece_xp_ids))[:30]))
-        )
-
-    if inferred_roles:
-        warnings.append(
-            f"{inferred_roles}/{len(players)} tactical roles are statistical inference; "
-            "this is forecast uncertainty, not a factual-data failure"
-        )
-
-    return {
-        "contract": "apex-player-truth-v1",
-        "ready": not blockers,
-        "player_count": len(players),
-        "expected_official_player_count": expected_players,
-        "hard_fact_coverage": hard_coverage,
-        "hard_fact_fields": list(HARD_FACT_FIELDS),
-        "ordinal_set_piece_fields": list(ORDER_FIELDS),
-        "explicit_share_fields": list(SHARE_FIELDS),
-        "inferred_role_count": inferred_roles,
-        "blockers": blockers,
-        "warnings": warnings,
-        "players": rows,
-    }
+from apex_fpl.services.player_truth import audit_player_truth
 
 
 def main() -> None:
@@ -231,14 +32,16 @@ def main() -> None:
     recommendation_path = Path(args.recommendation)
     if recommendation_path.exists():
         try:
-            recommendation = json.loads(recommendation_path.read_text(encoding="utf-8"))
+            recommendation = json.loads(
+                recommendation_path.read_text(encoding="utf-8")
+            )
             value = (recommendation.get("official_snapshot") or {}).get("players")
             if value is not None:
                 expected_players = int(value)
         except Exception:
             expected_players = None
 
-    payload = audit(
+    payload = audit_player_truth(
         pd.read_csv(players_path),
         pd.read_csv(projections_path),
         expected_players,
