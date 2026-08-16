@@ -17,14 +17,7 @@ FULL_GAMEWEEK_EXPERTS = {"official_xp", "airsenal_xp", "market_xp"}
 
 
 def _allocate_gameweek_experts(out: pd.DataFrame) -> pd.DataFrame:
-    """Allocate full-GW expert values across fixture rows exactly once.
-
-    ``project_players`` intentionally keeps one row per player/fixture so DGW
-    decomposition remains auditable. Official ``ep_next`` and the AIrsenal export,
-    however, are already player/Gameweek totals. Merging them naively onto both DGW
-    fixture rows doubles those experts. Equal allocation is neutral with respect to
-    the eventual player/GW sum and prevents that silent inflation.
-    """
+    """Allocate full-GW expert values across fixture rows exactly once."""
     if not {"player_id", "gw"}.issubset(out.columns):
         return out
     counts = out.groupby(["player_id", "gw"])["player_id"].transform("size")
@@ -44,15 +37,12 @@ def blend_projection(
 ) -> pd.DataFrame:
     """Blend expert forecasts while keeping expected value separate from risk.
 
-    ``xp`` and ``canonical_ev_xp`` are the best estimate of expected FPL points.
-    Forecast confidence and downside diagnostics describe uncertainty around that
-    mean; they do not automatically lower the mean a second time after uncertain
-    minutes/availability have already been incorporated into the expert forecasts.
-
-    ``risk_adjusted_xp`` remains as a backward-compatible alias of canonical EV so
-    legacy planning/readiness callers cannot silently optimise a safety-discounted
-    objective. ``downside_adjusted_xp`` preserves the old risk-discounted diagnostic
-    for reporting and robustness analysis only.
+    AIrsenal can legitimately omit a newly registered player even after the player
+    exists in its refreshed database. Missing AIrsenal rows must not be fabricated,
+    but they also must not silently increase every other expert's effective weight.
+    For that one required expert, Apex explicitly assigns the missing configured
+    weight to the transparent Apex model for the affected player/Gameweek. The raw
+    AIrsenal source remains absent and is exposed as such in provenance columns.
     """
     out = _allocate_gameweek_experts(base.copy())
     n = len(out)
@@ -65,6 +55,12 @@ def blend_projection(
     expert_count = np.zeros(n, dtype=int)
     expert_values: dict[str, np.ndarray] = {}
     expert_weights: dict[str, float] = {}
+
+    fallback = (
+        pd.to_numeric(out.get("apex_xp", 0), errors="coerce")
+        .fillna(0)
+        .to_numpy(float)
+    )
 
     for key, col in EXPERT_COLUMNS.items():
         if col not in out.columns:
@@ -79,11 +75,22 @@ def blend_projection(
         denominator[mask] += w
         expert_count[mask] += 1
 
-    fallback = (
-        pd.to_numeric(out.get("apex_xp", 0), errors="coerce")
-        .fillna(0)
-        .to_numpy(float)
-    )
+    # Required-source absence policy: preserve AIrsenal provenance as absent, but
+    # keep the configured ensemble weights fixed by assigning its missing weight
+    # explicitly to the transparent Apex estimate. This is not an AIrsenal value.
+    air_w = max(float(weights.get("airsenal", 0)), 0.0)
+    if air_w > 0:
+        if "airsenal" in expert_values:
+            air_present = np.isfinite(expert_values["airsenal"])
+        else:
+            air_present = np.zeros(n, dtype=bool)
+        air_missing = ~air_present
+        numerator[air_missing] += fallback[air_missing] * air_w
+        sumsq[air_missing] += (fallback[air_missing] ** 2) * air_w
+        denominator[air_missing] += air_w
+    else:
+        air_missing = np.zeros(n, dtype=bool)
+
     mean = np.where(
         denominator > 0,
         numerator / np.maximum(denominator, 1e-12),
@@ -130,9 +137,6 @@ def blend_projection(
     out["expert_coverage"] = coverage
     out["expert_disagreement_sd"] = disagreement_sd
 
-    # Exact additive contribution of every configured expert to canonical xp.
-    # Missing experts contribute zero. If no expert is available, the existing
-    # fallback remains the transparent Apex model and is attributed accordingly.
     for key, column in EXPERT_COLUMNS.items():
         contrib = np.zeros(n, dtype=float)
         effective_weight = np.zeros(n, dtype=float)
@@ -149,14 +153,26 @@ def blend_projection(
         out[f"effective_weight_{key}"] = effective_weight
         out[f"configured_weight_{key}"] = max(float(weights.get(key, 0.0)), 0.0)
         out[f"source_present_{key}"] = source_present
+
+    air_fallback_weight = np.zeros(n, dtype=float)
+    air_fallback_contrib = np.zeros(n, dtype=float)
+    if air_w > 0:
+        valid_fallback = air_missing & (denominator > 0)
+        air_fallback_weight[valid_fallback] = air_w / np.maximum(
+            denominator[valid_fallback], 1e-12
+        )
+        air_fallback_contrib[valid_fallback] = (
+            fallback[valid_fallback] * air_fallback_weight[valid_fallback]
+        )
+    out["airsenal_source_absent"] = air_missing
+    out["effective_weight_airsenal_fallback_apex"] = air_fallback_weight
+    out["xp_expert_airsenal_fallback_apex"] = air_fallback_contrib
+
     no_expert = denominator <= 0
     if np.any(no_expert):
         out.loc[no_expert, "xp_expert_apex_model"] = fallback[no_expert]
         out.loc[no_expert, "effective_weight_apex_model"] = 1.0
 
-    # ``projection_sd`` includes the transparent model's match-outcome variance.
-    # That is useful for distribution reporting, but it is not uncertainty about
-    # the latent expected-points mean and must not silently reduce canonical EV.
     evidence_gap_sd = np.maximum(mean, 0.0) * (0.05 + 0.25 * (1.0 - confidence))
     out["forecast_uncertainty_sd"] = np.sqrt(
         disagreement_sd**2 + evidence_gap_sd**2
@@ -164,13 +180,10 @@ def blend_projection(
     out["projection_sd"] = total_sd
     out["projection_confidence"] = confidence
 
-    # Preserve the previous downside-discounted surface for diagnostics only.
     penalty_scale = 1.15 - 0.30 * confidence
     out["downside_adjusted_xp"] = np.maximum(
         mean - risk_penalty * total_sd * penalty_scale, 0
     )
-    # Backward-compatible legacy name deliberately resolves to EV so any older
-    # optimiser still maximises expected points rather than a hidden safety score.
     out["risk_adjusted_xp"] = mean
     out["projection_floor_80"] = np.maximum(mean - 1.2816 * total_sd, 0)
     out["projection_ceiling_80"] = mean + 1.2816 * total_sd
