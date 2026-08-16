@@ -28,10 +28,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install upstream verification dependency
-        run: python -m pip install requests
+      - name: Install upstream verification dependencies
+        run: python -m pip install pandas requests
 
-      - name: Resolve current FPL Core commit
+      - name: Resolve current FPL Core candidate
         id: core
         shell: bash
         run: |
@@ -75,7 +75,19 @@ jobs:
           print(f"age_hours={max(age_hours, 0):.2f}")
           PY
 
-      - name: Update immutable data pin
+      - name: Validate candidate FPL Core semantics before publication
+        shell: bash
+        env:
+          CORE_SHA: ${{ steps.core.outputs.sha }}
+          APEX_SEASON: "2026-2027"
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/validate_core_candidate.py \
+            --ref "$CORE_SHA" \
+            --season "$APEX_SEASON" \
+            --cache-dir data/cache/core-candidate
+
+      - name: Update immutable data pin after validation
         shell: bash
         env:
           CORE_SHA: ${{ steps.core.outputs.sha }}
@@ -97,9 +109,11 @@ jobs:
           source["resolved_at"] = os.environ["CORE_RESOLVED_AT"]
           source["resolved_age_hours"] = float(os.environ["CORE_AGE_HOURS"])
           source["newer_revision_available"] = False
-          source["resolution_policy"] = "moving main resolved to immutable latest verified commit"
+          source["resolution_policy"] = (
+              "moving main candidate validated semantically before immutable publication"
+          )
           path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
-          print(f"FPL Core pin: {old} -> {source['commit']}")
+          print(f"Validated FPL Core pin: {old} -> {source['commit']}")
           PY
 
       - name: Verify pinned source contract
@@ -107,7 +121,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Commit current FPL Core data revision and invalidate older decision
+      - name: Commit validated FPL Core revision and invalidate older decision
         shell: bash
         run: |
           set -euo pipefail
@@ -120,15 +134,15 @@ jobs:
           fi
           python scripts/invalidate_published_decision.py \
             --source fpl_core_insights \
-            --reason "pinned FPL Core snapshot changed"
+            --reason "validated pinned FPL Core snapshot changed"
           git add \
             data/generated/apex_recommendation_latest.json \
             data/generated/apex_recommendation_latest.md \
             data/generated/apex_answer_context.json
-          git commit -m "data: refresh pinned FPL Core snapshot"
+          git commit -m "data: refresh validated pinned FPL Core snapshot"
           git fetch origin main
           if [ "$(git rev-parse origin/main)" != "${{ github.sha }}" ]; then
-            echo "Main changed during pin resolution; aborting publication for a clean rerun."
+            echo "Main changed during candidate validation; aborting publication for a clean rerun."
             exit 1
           fi
           git push origin HEAD:main
