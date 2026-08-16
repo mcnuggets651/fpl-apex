@@ -242,7 +242,7 @@ def assess_data_quality(
     gameweeks: list[int],
     *,
     fixture_fallback_ok: bool,
-    minimum_core_coverage: float = 0.95,
+    minimum_core_coverage: float = 1.0,
 ) -> DataQualityAssessment:
     checks: list[QualityCheck] = []
     valid_ids = set(official.players["player_id"].astype(int))
