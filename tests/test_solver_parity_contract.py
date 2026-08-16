@@ -7,12 +7,16 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_refresh_core_installs_upstream_checker_dependency():
+def test_refresh_core_installs_candidate_validation_dependencies_before_checks():
     workflow = (ROOT / ".github/workflows/refresh-core-pin.yml").read_text(
         encoding="utf-8"
     )
-    assert "python -m pip install requests" in workflow
-    assert workflow.index("python -m pip install requests") < workflow.index(
+    install = "python -m pip install pandas requests"
+    assert install in workflow
+    assert workflow.index(install) < workflow.index(
+        "python scripts/validate_core_candidate.py"
+    )
+    assert workflow.index(install) < workflow.index(
         "python scripts/check_upstreams.py"
     )
 
