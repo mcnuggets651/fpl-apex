@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 
@@ -48,6 +47,36 @@ def _minutes_class(row: pd.Series) -> str:
     return "forecast_historical_prior"
 
 
+def _pair_coverage(
+    projections: pd.DataFrame,
+    player_ids: set[int],
+    gameweeks: list[int],
+    *,
+    presence_column: str | None = None,
+) -> tuple[float, dict[int, int], list[tuple[int, int]]]:
+    expected = len(player_ids) * len(gameweeks)
+    if expected == 0 or not {"player_id", "gw"}.issubset(projections.columns):
+        return 0.0, {}, []
+    rows = projections[projections["gw"].astype(int).isin(gameweeks)].copy()
+    rows["player_id"] = pd.to_numeric(rows["player_id"], errors="coerce")
+    rows["gw"] = pd.to_numeric(rows["gw"], errors="coerce")
+    rows = rows.dropna(subset=["player_id", "gw"])
+    rows["player_id"] = rows["player_id"].astype(int)
+    rows["gw"] = rows["gw"].astype(int)
+    rows = rows[rows["player_id"].isin(player_ids)]
+    if presence_column is not None:
+        if presence_column not in rows.columns:
+            return 0.0, {}, sorted((pid, gw) for pid in player_ids for gw in gameweeks)
+        present = rows[presence_column].fillna(False).astype(bool)
+        rows = rows.loc[present]
+    pairs = rows[["player_id", "gw"]].drop_duplicates()
+    pair_set = set(map(tuple, pairs.itertuples(index=False, name=None)))
+    expected_set = {(pid, gw) for pid in player_ids for gw in gameweeks}
+    missing = sorted(expected_set - pair_set)
+    counts = pairs.groupby("player_id")["gw"].nunique().astype(int).to_dict()
+    return len(pair_set) / expected, counts, missing
+
+
 def audit_player_truth(
     players: pd.DataFrame,
     projections: pd.DataFrame,
@@ -55,7 +84,9 @@ def audit_player_truth(
 ) -> dict:
     """Audit factual completeness and provenance for the entire FPL player pool.
 
-    Hard current facts are required to be complete. Future minutes/roles remain
+    Hard current facts are required to be complete. Required forecast experts must
+    cover every official player/Gameweek pair; missing experts are not allowed to
+    silently change ensemble weights player by player. Future minutes/roles remain
     forecasts and are explicitly labelled as such. Ordinal set-piece rank is never
     accepted as a literal share; additive set-piece xP requires a sourced explicit
     share override.
@@ -95,6 +126,32 @@ def audit_player_truth(
     hard_coverage = float(hard_complete.mean()) if len(players) else 0.0
     if hard_coverage < 1.0:
         blockers.append(f"canonical hard-fact coverage is {hard_coverage:.2%}, required 100%")
+
+    valid_ids = set(
+        pd.to_numeric(players.get("player_id"), errors="coerce").dropna().astype(int)
+    )
+    gameweeks = sorted(
+        pd.to_numeric(projections.get("gw"), errors="coerce").dropna().astype(int).unique().tolist()
+    )
+    projection_coverage, projection_counts, missing_projection_pairs = _pair_coverage(
+        projections, valid_ids, gameweeks
+    )
+    if projection_coverage < 1.0:
+        blockers.append(
+            f"canonical projection pair coverage is {projection_coverage:.2%}, required 100%; "
+            f"missing={missing_projection_pairs[:20]}"
+        )
+    airsenal_coverage, airsenal_counts, missing_airsenal_pairs = _pair_coverage(
+        projections,
+        valid_ids,
+        gameweeks,
+        presence_column="source_present_airsenal",
+    )
+    if airsenal_coverage < 1.0:
+        blockers.append(
+            f"AIrsenal player/Gameweek coverage is {airsenal_coverage:.2%}, required 100%; "
+            f"missing={missing_airsenal_pairs[:20]}"
+        )
 
     projection_set_piece = pd.DataFrame()
     if not projections.empty and {"player_id", "xp_set_piece_prior"}.issubset(
@@ -163,6 +220,9 @@ def audit_player_truth(
                 "web_name": row.get("web_name"),
                 "hard_fact_complete": bool(hard_complete.loc[idx]),
                 "identity_price_position_source": "official_fpl",
+                "canonical_projection_gameweeks": int(projection_counts.get(player_id, 0)),
+                "airsenal_projection_gameweeks": int(airsenal_counts.get(player_id, 0)),
+                "expected_projection_gameweeks": len(gameweeks),
                 "penalties_order": row.get("penalties_order"),
                 "corners_and_indirect_freekicks_order": row.get(
                     "corners_and_indirect_freekicks_order"
@@ -210,7 +270,10 @@ def audit_player_truth(
         "ready": not blockers,
         "player_count": len(players),
         "expected_official_player_count": expected_players,
+        "gameweeks": gameweeks,
         "hard_fact_coverage": hard_coverage,
+        "canonical_projection_pair_coverage": projection_coverage,
+        "airsenal_projection_pair_coverage": airsenal_coverage,
         "hard_fact_fields": list(HARD_FACT_FIELDS),
         "ordinal_set_piece_fields": list(ORDER_FIELDS),
         "explicit_share_fields": list(SHARE_FIELDS),
