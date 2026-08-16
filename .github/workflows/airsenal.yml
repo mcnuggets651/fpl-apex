@@ -111,7 +111,7 @@ jobs:
               raise SystemExit("Apex rejected the generated AIrsenal forecast")
           PY
 
-      - name: Commit validated forecast
+      - name: Commit validated forecast and invalidate older decision
         shell: bash
         run: |
           set -euo pipefail
@@ -122,6 +122,13 @@ jobs:
             echo "Forecast unchanged"
             exit 0
           fi
+          python scripts/invalidate_published_decision.py \
+            --source airsenal \
+            --reason "validated AIrsenal forecast changed"
+          git add \
+            data/generated/apex_recommendation_latest.json \
+            data/generated/apex_recommendation_latest.md \
+            data/generated/apex_answer_context.json
           git commit -m "data: refresh validated AIrsenal GW forecast"
           git fetch origin main
           if [ "$(git rev-parse origin/main)" != "${{ github.sha }}" ]; then
