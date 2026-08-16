@@ -46,6 +46,7 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
 
     previous_start = _optional_series(df, "previous_start_probability")
     previous_minutes = _optional_series(df, "previous_minutes_per_match")
+    previous_starts = _series(df, "previous_starts", 0)
     team_matches = _series(df, "current_team_matches", 0)
 
     avg_if_started = np.where(starts > 0, np.clip(mins / np.maximum(starts, 1), 45, 90), 65)
@@ -97,21 +98,51 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         avg_if_started * hist_start_prob
     )
     has_preseason = pre_apps > 0
-    # Preseason is evidence, not a new season-sized prior.  The old formula assigned
+    # Preseason is evidence, not a new season-sized prior. The old formula assigned
     # 58% to *any* appearance, so one 45-minute cameo could overwhelm 30 competitive
-    # starts.  Weight now grows from effective team-sheet evidence: starts are much
+    # starts. Weight now grows from effective team-sheet evidence: starts are much
     # stronger than cameos, minutes add support, and repeated starts can still
-    # supersede a stale historical role.  A single non-start is capped at 12%.
+    # supersede a stale historical role. A single non-start is capped at 12%.
     effective_preseason_games = pre_starts + 0.25 * np.maximum(pre_apps - pre_starts, 0)
     sample_reliability = 1.0 - np.exp(-effective_preseason_games / 1.8)
     minutes_reliability = np.clip(pre_mins / 270.0, 0, 1)
-    preseason_weight = np.clip(
+    preseason_weight_raw = np.clip(
         0.82 * sample_reliability * (0.70 + 0.30 * minutes_reliability),
         0,
         0.82,
     )
     cameo_only = (pre_apps == 1) & (pre_starts == 0)
-    preseason_weight = np.where(cameo_only, np.minimum(preseason_weight, 0.12), preseason_weight)
+    preseason_weight_raw = np.where(
+        cameo_only,
+        np.minimum(preseason_weight_raw, 0.12),
+        preseason_weight_raw,
+    )
+
+    # A managed or tournament-delayed preseason often produces fewer starts without
+    # implying that an established first-team player has lost his role. When the
+    # preseason signal is negative, require it to compete with the actual volume of
+    # prior starting evidence. This is an evidence-ratio adjustment, not a player
+    # override: weak/stale incumbents remain easy to displace, while a long-standing
+    # starter needs either much stronger preseason evidence or explicit current news.
+    role_downside = pre_start_prob < hist_start_prob
+    prior_role_games = np.maximum(previous_starts.to_numpy(float), 0.0)
+    effective_games_array = np.asarray(effective_preseason_games, dtype=float)
+    evidence_denominator = effective_games_array + prior_role_games
+    downside_reliability = np.where(
+        role_downside & (prior_role_games > 0),
+        np.divide(
+            effective_games_array,
+            evidence_denominator,
+            out=np.ones_like(effective_games_array, dtype=float),
+            where=evidence_denominator > 0,
+        ),
+        1.0,
+    )
+    preseason_weight = np.where(
+        role_downside,
+        preseason_weight_raw * downside_reliability,
+        preseason_weight_raw,
+    )
     base_minutes = np.where(
         has_preseason,
         preseason_weight * preseason_signal + (1 - preseason_weight) * historic_signal,
@@ -172,7 +203,7 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     states = minute_state_probabilities(start, appearance, p60, p80)
     states.index = df.index
 
-    prior_evidence = np.clip(_optional_series(df, "previous_starts").fillna(0) / 20.0, 0, 1)
+    prior_evidence = np.clip(previous_starts / 20.0, 0, 1)
     historic_evidence = np.clip(
         (mins / 900.0) + (starts / 10.0) + 0.70 * prior_evidence,
         0,
@@ -221,6 +252,8 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         "role_expected_minutes_pre_availability": base_minutes,
         "role_start_probability_pre_availability": base_start,
         "availability_probability": availability,
+        "preseason_role_weight_raw": preseason_weight_raw,
+        "preseason_downside_reliability": downside_reliability,
         "preseason_role_weight": preseason_weight,
         "preseason_effective_games": effective_preseason_games,
     }, index=df.index)

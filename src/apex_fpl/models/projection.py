@@ -28,19 +28,51 @@ def _optional_num(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_numeric(df[col], errors="coerce")
 
 
+def _preseason_rate_weight(
+    preseason_minutes: pd.Series,
+    preseason_starts: pd.Series | None = None,
+    preseason_appearances: pd.Series | None = None,
+) -> pd.Series:
+    """Return reliability-weighted influence for preseason per-90 rates.
+
+    Minutes alone are not enough to make one exceptional friendly a season-sized
+    attacking prior. When team-sheet evidence is available, weight grows with
+    effective starts/appearances and then with minutes. The 35% ceiling is the
+    incumbent production ceiling; this change only makes the path to that ceiling
+    sample-reliability aware.
+    """
+    mins = pd.to_numeric(preseason_minutes, errors="coerce").fillna(0.0)
+    if preseason_starts is None or preseason_appearances is None:
+        return pd.Series(np.clip(mins / 270.0, 0.0, 0.35), index=mins.index)
+
+    starts = pd.to_numeric(preseason_starts, errors="coerce").fillna(0.0)
+    apps = pd.to_numeric(preseason_appearances, errors="coerce").fillna(0.0)
+    effective_games = starts + 0.25 * np.maximum(apps - starts, 0.0)
+    sample_reliability = 1.0 - np.exp(-effective_games / 1.8)
+    minutes_reliability = np.clip(mins / 270.0, 0.0, 1.0)
+    weight = 0.35 * sample_reliability * (0.70 + 0.30 * minutes_reliability)
+    return pd.Series(np.clip(weight, 0.0, 0.35), index=mins.index)
+
+
 def _blend_rate(
     primary: pd.Series,
     preseason: pd.Series,
     preseason_minutes: pd.Series,
+    preseason_starts: pd.Series | None = None,
+    preseason_appearances: pd.Series | None = None,
 ) -> pd.Series:
     p = pd.to_numeric(primary, errors="coerce").fillna(0)
     pre_raw = pd.to_numeric(preseason, errors="coerce")
     pre = pre_raw.fillna(0)
-    mins = pd.to_numeric(preseason_minutes, errors="coerce").fillna(0)
     # Missing preseason return data is not a measured zero. Minutes may still be
     # useful for role/start evidence, but cannot pull an attacking rate down unless
-    # that return statistic was actually observed by the source.
-    pre_weight = np.clip(mins / 270.0, 0, 0.35) * pre_raw.notna().astype(float)
+    # that return statistic was actually observed by the source. Observed rates are
+    # reliability-weighted by effective team-sheet sample, not minutes alone.
+    pre_weight = _preseason_rate_weight(
+        preseason_minutes,
+        preseason_starts,
+        preseason_appearances,
+    ) * pre_raw.notna().astype(float)
     return p * (1 - pre_weight) + pre * pre_weight
 
 
@@ -122,20 +154,29 @@ def project_players(
             )
         role_multiplier = np.clip(_num(d, "role_multiplier", 1.0), 0.80, 1.20)
         premins = _num(d, "preseason_minutes", 0)
+        prestarts = _num(d, "preseason_starts", 0)
+        preapps = _num(d, "preseason_appearances", 0)
+        preseason_rate_weight = _preseason_rate_weight(premins, prestarts, preapps)
         xg90 = _blend_rate(
             _num(d, "expected_goals_per_90", 0),
             _optional_num(d, "preseason_xg90"),
             premins,
+            prestarts,
+            preapps,
         )
         xa90 = _blend_rate(
             _num(d, "expected_assists_per_90", 0),
             _optional_num(d, "preseason_xa90"),
             premins,
+            prestarts,
+            preapps,
         )
         dc90 = _blend_rate(
             _num(d, "defensive_contribution_per_90", 0),
             _optional_num(d, "preseason_defcon90"),
             premins,
+            prestarts,
+            preapps,
         )
         pos = d["position"].fillna("MID")
         goal_pts = pos.map({"GK": 10, "DEF": 6, "MID": 5, "FWD": 4}).fillna(5)
@@ -269,6 +310,7 @@ def project_players(
                     "model_xa90": max(_at(xa90, idx), 0.0),
                     "attack_model_xg90": max(_at(attack_xg90, idx), 0.0),
                     "attack_model_xa90": max(_at(attack_xa90, idx), 0.0),
+                    "preseason_rate_weight": max(_at(preseason_rate_weight, idx), 0.0),
                     "understat_player_matched": bool(_at(matched.astype(float), idx)),
                     "understat_player_repricable": bool(_at(repricable.astype(float), idx)),
                     "penalty_share": _at(penalty_share, idx),
