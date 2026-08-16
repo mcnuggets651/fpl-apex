@@ -45,6 +45,12 @@ def _player(**extra) -> dict:
     return row
 
 
+def _auditable_projection(players: pd.DataFrame) -> pd.DataFrame:
+    projections = project_players(players, _fixture(), [1])
+    projections["source_present_airsenal"] = True
+    return projections
+
+
 def test_ordinal_set_piece_order_never_becomes_literal_share():
     players = pd.DataFrame(
         [
@@ -82,21 +88,41 @@ def test_explicit_share_override_still_remains_available_for_sourced_inputs():
     assert row["xp_set_piece_prior"] > 0
 
 
-def test_all_player_truth_requires_100_percent_hard_fact_coverage():
+def test_all_player_truth_requires_complete_facts_and_required_expert_pairs():
     players = pd.DataFrame([_player()])
-    projections = project_players(players, _fixture(), [1])
+    projections = _auditable_projection(players)
     payload = audit_player_truth(players, projections, expected_players=1)
 
     assert payload["ready"] is True
     assert payload["hard_fact_coverage"] == pytest.approx(1.0)
+    assert payload["canonical_projection_pair_coverage"] == pytest.approx(1.0)
+    assert payload["airsenal_projection_pair_coverage"] == pytest.approx(1.0)
     assert payload["players"][0]["minutes_class"].startswith("forecast_")
     assert payload["players"][0]["role_class"] == "statistical_inference"
+
+
+def test_missing_required_airsenal_pair_is_a_truth_blocker():
+    players = pd.DataFrame([_player()])
+    projections = _auditable_projection(players)
+    projections["source_present_airsenal"] = False
+    payload = audit_player_truth(players, projections, expected_players=1)
+
+    assert payload["ready"] is False
+    assert payload["airsenal_projection_pair_coverage"] == pytest.approx(0.0)
+    assert any("AIrsenal player/Gameweek coverage" in row for row in payload["blockers"])
 
 
 def test_unsourced_set_piece_share_is_a_truth_blocker():
     players = pd.DataFrame([_player(penalty_share=0.45, penalties_order=2)])
     projections = pd.DataFrame(
-        [{"player_id": 1, "gw": 1, "xp_set_piece_prior": 0.13}]
+        [
+            {
+                "player_id": 1,
+                "gw": 1,
+                "xp_set_piece_prior": 0.13,
+                "source_present_airsenal": True,
+            }
+        ]
     )
     payload = audit_player_truth(players, projections, expected_players=1)
 
