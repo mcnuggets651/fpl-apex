@@ -176,7 +176,18 @@ jobs:
           assert truth['ready'] is True
           assert truth['hard_fact_coverage'] == 1.0
           assert truth['canonical_projection_pair_coverage'] == 1.0
-          assert truth['airsenal_projection_pair_coverage'] == 1.0
+
+          # Required-source completeness is resolved, not fabricated: every
+          # official player/Gameweek pair must either have a genuine AIrsenal
+          # prediction or be explicitly classified source-absent with the fixed-
+          # weight Apex fallback already verified by the player-truth gate.
+          expected_pairs = int(truth['player_count']) * len(truth['gameweeks'])
+          present_pairs = round(
+              float(truth['airsenal_projection_pair_coverage']) * expected_pairs
+          )
+          absent_pairs = int(truth['airsenal_source_absent_pair_count'])
+          assert present_pairs + absent_pairs == expected_pairs
+          assert not truth['blockers']
           assert truth['player_count'] == payload['official_snapshot']['players']
 
           rec = payload['recommendation']
