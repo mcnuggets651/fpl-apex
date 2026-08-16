@@ -8,13 +8,16 @@ from typing import Any
 ANSWER_CONTRACT = "apex-answer-context-v1"
 MAX_OFFICIAL_AGE_HOURS = 12.0
 MAX_SOURCE_AGE_HOURS = 12.0
-REQUIRED_DIAGNOSTICS = ("cvar", "selection_regret", "solver_parity")
 REQUIRED_SOURCES = {
     "official_fpl",
     "fpl_core_playerstats",
     "fixture_model",
     "airsenal",
     "news_feeds",
+}
+FINAL_SELECTORS = {
+    "adaptive_gw1_launch_with_transfer_option_value",
+    "receding_horizon_current_team_maximum_ev",
 }
 
 
@@ -33,66 +36,30 @@ def _age_hours(value: Any, now: datetime) -> float | None:
     return None if parsed is None else max((now - parsed).total_seconds() / 3600.0, 0.0)
 
 
-def _regret_by_player(rows: Any) -> dict[int, dict[str, Any]]:
-    result: dict[int, dict[str, Any]] = {}
-    for row in rows if isinstance(rows, list) else []:
-        if not isinstance(row, dict):
-            continue
-        try:
-            result[int(row["player_id"])] = row
-        except (KeyError, TypeError, ValueError):
-            continue
-    return result
-
-
-def _exact_candidate_regret(pinnacle: dict[str, Any]) -> dict[int, dict[str, Any]]:
-    authority = pinnacle.get("authoritative_decision") or {}
-    solution = authority.get("solution") or {}
-    selected = {
-        int(row["player_id"])
-        for row in solution.get("squad") or []
-        if isinstance(row, dict) and row.get("player_id") is not None
-    }
-    try:
-        objective = float(authority["objective"])
-    except (KeyError, TypeError, ValueError):
-        return {}
-    candidates = (authority.get("shortlist") or {}).get("candidates") or []
-    result: dict[int, dict[str, Any]] = {}
-    for player_id in selected:
-        alternatives = [
-            row
-            for row in candidates
-            if isinstance(row, dict)
-            and player_id not in {int(pid) for pid in row.get("squad_player_ids") or []}
-        ]
-        if not alternatives:
-            continue
-        best = max(alternatives, key=lambda row: float(row.get("exact_objective") or 0.0))
-        alternative_ids = {int(pid) for pid in best.get("squad_player_ids") or []}
-        added_names = [
-            str(name)
-            for pid, name in zip(
-                best.get("squad_player_ids") or [],
-                best.get("squad_player_names") or [],
-            )
-            if int(pid) in alternative_ids - selected
-        ]
-        result[player_id] = {
-            "objective_regret": objective - float(best.get("exact_objective") or 0.0),
-            "added_player_names": added_names,
-            "surface": "exact_horizon_candidate_frontier",
-        }
-    return result
+def _selector_reason(selector: str) -> str:
+    if selector == "adaptive_gw1_launch_with_transfer_option_value":
+        return (
+            "Selected by the canonical GW1-first launch policy: exact GW1 expected points "
+            "are primary, and future legal transfer option value may only choose among squads "
+            "inside the disclosed near-equivalent GW1 point band."
+        )
+    if selector == "receding_horizon_current_team_maximum_ev":
+        return (
+            "Selected by the canonical current-team receding-horizon policy using the actual "
+            "squad, bank, selling prices and free-transfer state; only the freshly solved next "
+            "action is executable."
+        )
+    return "No canonical final-selector explanation is available."
 
 
 def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> list[dict]:
+    """Explain the actual final selector, never a superseded diagnostic squad."""
     recommendation = canonical.get("recommendation") or {}
-    approximate_regret = _regret_by_player(pinnacle.get("selection_regret"))
-    exact_regret = _exact_candidate_regret(pinnacle)
+    selector = str(recommendation.get("selector") or "")
+    final_evidence = canonical.get("final_selected_player_evidence") or {}
     dossier_by_player = {
         int(row["player_id"]): row
-        for row in ((pinnacle.get("selected_player_evidence") or {}).get("dossiers") or [])
+        for row in final_evidence.get("dossiers") or []
         if isinstance(row, dict) and row.get("player_id") is not None
     }
     reasons: list[dict] = []
@@ -100,7 +67,6 @@ def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any])
         if not isinstance(player, dict):
             continue
         player_id = int(player.get("player_id") or 0)
-        regret_row = exact_regret.get(player_id) or approximate_regret.get(player_id, {})
         dossier = dossier_by_player.get(player_id, {})
         reasons.append(
             {
@@ -115,18 +81,17 @@ def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any])
                 "has_current_decision_evidence": dossier.get(
                     "has_current_decision_evidence"
                 ),
+                "has_decision_grade_evidence": dossier.get(
+                    "has_decision_grade_evidence"
+                ),
                 "current_evidence_count": dossier.get("current_evidence_count", 0),
                 "evidence": dossier.get("evidence") or [],
-                "selection_regret": regret_row.get("regret")
-                or regret_row.get("objective_regret"),
-                "alternative": (regret_row.get("added_player_names") or [None])[0]
-                or regret_row.get("best_replacement_name")
-                or regret_row.get("alternative_name"),
-                "reason": (
-                    "Selected by the authoritative exact-horizon Decision on the matched "
-                    "projection surface; the fields above are reproducible evidence, not "
-                    "a conversational override."
-                ),
+                # Exact-horizon force/ban regret belongs to the internal static
+                # diagnostic and is not causal evidence for adaptive/receding picks.
+                "selection_regret": None,
+                "alternative": None,
+                "selector": selector,
+                "reason": _selector_reason(selector),
             }
         )
     return reasons
@@ -147,13 +112,15 @@ def _captain_surfaces(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> di
     cvar_captain = captain_record(cvar)
     return {
         "production": {
-            "label": "maximum_ev_production",
+            "label": "canonical_final_strategy",
+            "selector": recommendation.get("selector"),
             "captain": recommendation.get("captain"),
+            "captain_id": recommendation.get("captain_id"),
             "authority": True,
-            "objective": "maximum expected FPL points with exact GW1 mechanics",
+            "objective": "final strategy selector with exact current-Gameweek mechanics",
         },
         "deterministic_diagnostic": {
-            "label": "shortlist_generator_gw1_mechanics",
+            "label": "static_shortlist_gw1_mechanics",
             "captain_id": deterministic.get("captain_id"),
             "captain": deterministic.get("captain_name"),
             "authority": False,
@@ -171,7 +138,7 @@ def _captain_surfaces(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> di
             "authority": False,
         },
         "interpretation": (
-            "Only maximum_ev_production is user-facing. Other captain choices test "
+            "Only canonical_final_strategy is user-facing. Other captain choices test "
             "robustness or solver agreement and cannot silently replace it."
         ),
     }
@@ -192,6 +159,13 @@ def build_answer_context(
             *((pinnacle.get("data_quality") or {}).get("warnings") or []),
         )
     ]
+
+    recommendation = canonical.get("recommendation") or {}
+    selector = str(recommendation.get("selector") or "")
+    if canonical.get("strategy_stage") != "final_validated":
+        blockers.append("canonical strategy has not completed final validation")
+    if selector not in FINAL_SELECTORS:
+        blockers.append("canonical recommendation does not use an allowed final strategy selector")
 
     canonical_snapshot = canonical.get("official_snapshot") or {}
     pinnacle_snapshot = pinnacle.get("official_snapshot") or {}
@@ -228,7 +202,10 @@ def build_answer_context(
         }
         source_health.append(row)
         if row["name"] in REQUIRED_SOURCES and (
-            not row["configured"] or not row["ok"] or age is None or age > MAX_SOURCE_AGE_HOURS
+            not row["configured"]
+            or not row["ok"]
+            or age is None
+            or age > MAX_SOURCE_AGE_HOURS
         ):
             blockers.append(f"required/configured source is unhealthy or stale: {row['name']}")
 
@@ -250,18 +227,57 @@ def build_answer_context(
     if not isinstance(strategy, dict):
         blockers.append("strategy/transfer state is missing")
 
-    selected = selected_player_reasons(canonical, pinnacle)
-    player_evidence = pinnacle.get("selected_player_evidence")
-    if not isinstance(player_evidence, dict):
-        blockers.append("selected-player evidence dossier artifact is missing")
+    truth = canonical.get("all_player_truth")
+    if not isinstance(truth, dict) or truth.get("ready") is not True:
+        blockers.append("all-player truth audit is missing or not ready")
+    else:
+        for field in (
+            "hard_fact_coverage",
+            "canonical_projection_pair_coverage",
+            "airsenal_projection_pair_coverage",
+        ):
+            try:
+                value = float(truth.get(field))
+            except (TypeError, ValueError):
+                value = 0.0
+            if abs(value - 1.0) > 1e-12:
+                blockers.append(f"all-player truth coverage is incomplete: {field}={value:.3f}")
+        warnings.extend(str(row) for row in truth.get("warnings") or [])
+
+    final_evidence = canonical.get("final_selected_player_evidence")
+    if not isinstance(final_evidence, dict):
+        blockers.append("final selected-player evidence dossier artifact is missing")
         evidence_coverage = {}
     else:
-        evidence_coverage = player_evidence.get("coverage") or {}
+        evidence_coverage = final_evidence.get("coverage") or {}
+        if final_evidence.get("contract") != "apex-player-evidence-v2":
+            blockers.append("final selected-player evidence contract is not v2")
+        if len(final_evidence.get("dossiers") or []) != 15:
+            blockers.append("final selected-player evidence does not cover the full squad")
         if evidence_coverage.get("ready") is not True:
-            blockers.append("selected-player evidence coverage is not ready")
+            blockers.append("final selected-player evidence coverage is not ready")
+        if evidence_coverage.get("captain_evidence_eligible") is not True:
+            blockers.append("final captain is evidence-ineligible")
+        if evidence_coverage.get("selected_xi_ineligible_ids"):
+            blockers.append("final XI contains evidence-ineligible players")
+
+    selected = selected_player_reasons(canonical, pinnacle)
+    final_squad_ids = {
+        int(row["player_id"])
+        for row in recommendation.get("squad") or []
+        if isinstance(row, dict) and row.get("player_id") is not None
+    }
+    evidence_ids = {
+        int(row["player_id"])
+        for row in (final_evidence or {}).get("dossiers") or []
+        if isinstance(row, dict) and row.get("player_id") is not None
+    }
+    if len(final_squad_ids) != 15 or evidence_ids != final_squad_ids:
+        blockers.append("final evidence identities do not match the canonical 15")
+
     for player in selected:
         if player.get("expected_minutes") is None or player.get("start_probability") is None:
-            blockers.append(f"selected player lacks expected-minutes evidence: {player['web_name']}")
+            blockers.append(f"selected player lacks expected-minutes forecast: {player['web_name']}")
         if not player.get("role_source"):
             blockers.append(f"selected player lacks role provenance: {player['web_name']}")
     inferred_roles = [
@@ -271,8 +287,8 @@ def build_answer_context(
     ]
     if inferred_roles:
         warnings.append(
-            "selected-player roles still rely on statistical inference rather than verified "
-            "authoritative overrides: " + ", ".join(inferred_roles)
+            "selected-player roles are statistical forecasts rather than verified overrides: "
+            + ", ".join(inferred_roles)
         )
 
     blockers = list(dict.fromkeys(blockers))
@@ -290,6 +306,7 @@ def build_answer_context(
         "generated_at": now.isoformat(),
         "only_input_for_apex_answers": True,
         "safe_to_act": safe,
+        "ready_to_act": safe,
         "blockers": blockers,
         "warnings": warnings,
         "run_age_hours": official_age,
@@ -309,18 +326,22 @@ def build_answer_context(
             "solver_parity": parity,
             "pinnacle_gate": pinnacle.get("pinnacle_gate"),
             "captain_surfaces": _captain_surfaces(canonical, pinnacle),
-            "exact_horizon_equivalence": (
+            "static_exact_horizon_equivalence": (
                 (pinnacle.get("authoritative_decision") or {}).get("equivalence")
             ),
+            "static_exact_horizon_is_authoritative": False,
         },
+        "all_player_truth": truth,
         "news_role_evidence": {
             "sources": [
-                row for row in source_health if row["name"] in {"news_feeds", "tactical_roles"}
+                row
+                for row in source_health
+                if row["name"] in {"news_feeds", "tactical_roles"}
             ],
             "selected_players": selected,
             "coverage": evidence_coverage,
         },
-        "production_result": canonical.get("recommendation") if safe else None,
+        "production_result": recommendation if safe else None,
         "canonical_strategy": strategy if safe else None,
         "selected_player_reasons": selected,
         "response_sections": (
