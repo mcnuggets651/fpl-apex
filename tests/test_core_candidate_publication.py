@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from scripts.validate_core_candidate import validate_frames
+from apex_fpl.services.core_candidate import validate_core_candidate_frames
 
 
 def _official() -> pd.DataFrame:
@@ -36,7 +36,7 @@ def _previous() -> pd.DataFrame:
 def test_candidate_requires_complete_official_player_coverage() -> None:
     core = _core().query("player_id == 1").copy()
     with pytest.raises(ValueError, match="lacks current Official FPL player coverage"):
-        validate_frames(_official(), core, _previous())
+        validate_core_candidate_frames(_official(), core, _previous())
 
 
 def test_candidate_reuses_longitudinal_reconciliation_fail_closed_semantics() -> None:
@@ -45,17 +45,17 @@ def test_candidate_reuses_longitudinal_reconciliation_fail_closed_semantics() ->
         ignore_index=True,
     )
     with pytest.raises(ValueError, match="ambiguous duplicate player/GW snapshots"):
-        validate_frames(_official(), core, _previous())
+        validate_core_candidate_frames(_official(), core, _previous())
 
 
 def test_candidate_requires_complete_current_to_previous_bridge() -> None:
     previous = _previous().query("player_id == 1").copy()
     with pytest.raises(ValueError, match="cannot bridge every current Official FPL player ID"):
-        validate_frames(_official(), _core(), previous)
+        validate_core_candidate_frames(_official(), _core(), previous)
 
 
 def test_valid_candidate_passes_without_mutating_canonical_identity() -> None:
-    summary = validate_frames(_official(), _core(), _previous())
+    summary = validate_core_candidate_frames(_official(), _core(), _previous())
     assert summary["official_player_coverage"] == 1.0
     assert summary["previous_bridge_player_coverage"] == 1.0
     assert summary["previous_minutes_coverage"] == 1.0
