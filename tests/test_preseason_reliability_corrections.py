@@ -61,8 +61,64 @@ def test_ambiguous_preseason_downside_cannot_erase_established_starting_role():
 
     out = minutes_profile(df).iloc[0]
 
+    assert bool(out["preseason_downside_protection_applied"]) is True
     assert out["preseason_role_weight_raw"] > 0.30
     assert out["preseason_downside_reliability"] < 0.06
     assert out["preseason_role_weight"] < 0.03
     assert out["start_probability"] > 0.90
     assert out["expected_minutes"] > 77.0
+
+
+def test_rotation_prior_keeps_incumbent_preseason_weighting():
+    df = pd.DataFrame(
+        [
+            {
+                "minutes": 0,
+                "starts": 0,
+                "starts_per_90": 0.0,
+                "previous_starts": 15,
+                "previous_minutes_per_match": 42.0,
+                "previous_start_probability": 0.50,
+                "preseason_minutes": 146,
+                "preseason_starts": 1,
+                "preseason_appearances": 3,
+                "status": "a",
+            }
+        ]
+    )
+
+    out = minutes_profile(df).iloc[0]
+
+    assert bool(out["preseason_downside_protection_applied"]) is False
+    assert out["preseason_downside_reliability"] == pytest.approx(1.0)
+    assert out["preseason_role_weight"] == pytest.approx(
+        out["preseason_role_weight_raw"]
+    )
+
+
+def test_cameo_only_established_player_keeps_incumbent_preseason_weighting():
+    df = pd.DataFrame(
+        [
+            {
+                "minutes": 0,
+                "starts": 0,
+                "starts_per_90": 0.0,
+                "previous_starts": 30,
+                "previous_minutes_per_match": 75.0,
+                "previous_start_probability": 0.82,
+                "preseason_minutes": 25,
+                "preseason_starts": 0,
+                "preseason_appearances": 1,
+                "status": "a",
+            }
+        ]
+    )
+
+    out = minutes_profile(df).iloc[0]
+
+    assert bool(out["preseason_downside_protection_applied"]) is False
+    assert out["preseason_downside_reliability"] == pytest.approx(1.0)
+    assert out["preseason_role_weight"] == pytest.approx(
+        out["preseason_role_weight_raw"]
+    )
+    assert out["preseason_role_weight"] <= 0.12
