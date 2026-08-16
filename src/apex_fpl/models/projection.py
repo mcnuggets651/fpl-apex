@@ -40,17 +40,24 @@ def _preseason_rate_weight(
     effective starts/appearances and then with minutes. The 35% ceiling is the
     incumbent production ceiling; this change only makes the path to that ceiling
     sample-reliability aware.
+
+    Older/synthetic callers can contain observed preseason minutes but no explicit
+    team-sheet counts. Those rows retain the incumbent minutes-only fallback rather
+    than being mistaken for a measured zero-sample.
     """
     mins = pd.to_numeric(preseason_minutes, errors="coerce").fillna(0.0)
+    legacy_weight = pd.Series(np.clip(mins / 270.0, 0.0, 0.35), index=mins.index)
     if preseason_starts is None or preseason_appearances is None:
-        return pd.Series(np.clip(mins / 270.0, 0.0, 0.35), index=mins.index)
+        return legacy_weight
 
     starts = pd.to_numeric(preseason_starts, errors="coerce").fillna(0.0)
     apps = pd.to_numeric(preseason_appearances, errors="coerce").fillna(0.0)
     effective_games = starts + 0.25 * np.maximum(apps - starts, 0.0)
     sample_reliability = 1.0 - np.exp(-effective_games / 1.8)
     minutes_reliability = np.clip(mins / 270.0, 0.0, 1.0)
-    weight = 0.35 * sample_reliability * (0.70 + 0.30 * minutes_reliability)
+    reliable_weight = 0.35 * sample_reliability * (0.70 + 0.30 * minutes_reliability)
+    has_team_sheet_sample = apps > 0
+    weight = np.where(has_team_sheet_sample, reliable_weight, legacy_weight)
     return pd.Series(np.clip(weight, 0.0, 0.35), index=mins.index)
 
 
