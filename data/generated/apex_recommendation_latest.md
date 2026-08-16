@@ -7,7 +7,7 @@ Reason: Exact GW1 expected points are the primary launch objective. Apex permits
 
 Captain: **Haaland**
 Vice-captain: **Thiago**
-Expected total with exact mechanics: **55.86**
+Expected total with exact mechanics: **55.88**
 
 ### Starting XI
 
@@ -29,12 +29,12 @@ Expected total with exact mechanics: **55.86**
 
 | Player | Club | Pos | Price | GW xP |
 |:--|:--|:--:|--:|--:|
-| O'Shea | Ipswich Town | DEF | 4.0 | 1.41 |
+| Davis | Ipswich Town | DEF | 4.0 | 1.45 |
 | Davies | Spurs | DEF | 4.0 | 2.08 |
 | Thiaw | Newcastle | DEF | 5.0 | 3.42 |
 | Guéhi | Man City | DEF | 6.0 | 4.18 |
 | Virgil | Liverpool | DEF | 6.5 | 3.79 |
-| Scarlett | Spurs | FWD | 4.5 | 0.91 |
+| Neave | Newcastle | FWD | 4.5 | 1.16 |
 | Thiago | Brentford | FWD | 8.0 | 4.82 |
 | Haaland | Man City | FWD | 15.5 | 6.39 |
 | Dubravka | Spurs | GK | 4.0 | 1.96 |
@@ -46,6 +46,6 @@ Expected total with exact mechanics: **55.86**
 | Semenyo | Man City | MID | 8.5 | 4.72 |
 
 Bench GK: **Dubravka**
-Outfield bench: **Davies → O'Shea → Scarlett**
+Outfield bench: **Davies → Neave → Davis**
 
 Future moves are contingencies only. Refresh projections and re-solve before the next deadline.
