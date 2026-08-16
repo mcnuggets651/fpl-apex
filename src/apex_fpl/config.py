@@ -103,7 +103,7 @@ class Settings:
     max_official_age_hours: float = 26.0
     max_airsenal_age_hours: float = 36.0
     max_core_age_hours: float = 18.0
-    min_airsenal_player_coverage: float = 0.95
+    min_airsenal_player_coverage: float = 1.0
     understat_enabled: bool = True
     understat_history_seasons: int = 5
     understat_team_model_mode: str = "shadow"
