@@ -118,18 +118,21 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         preseason_weight_raw,
     )
 
-    # A managed or tournament-delayed preseason often produces fewer starts without
-    # implying that an established first-team player has lost his role. When the
-    # preseason signal is negative, require it to compete with the actual volume of
-    # prior starting evidence. This is an evidence-ratio adjustment, not a player
-    # override: weak/stale incumbents remain easy to displace, while a long-standing
-    # starter needs either much stronger preseason evidence or explicit current news.
+    # A managed or tournament-delayed return can produce a lower preseason start
+    # rate without implying that an established first-team role has disappeared.
+    # Protect only the narrow evidence pattern we can identify generically: a strong
+    # historical starting prior, at least one preseason start confirming continued
+    # first-team use, and a lower preseason start rate. Rotation priors and cameo-only
+    # players keep the incumbent treatment. Explicit current news can still override.
     role_downside = pre_start_prob < hist_start_prob
+    established_prior = hist_start_prob >= 0.65
+    has_preseason_start = np.asarray(pre_starts, dtype=float) > 0
+    protect_downside = role_downside & established_prior & has_preseason_start
     prior_role_games = np.maximum(previous_starts.to_numpy(float), 0.0)
     effective_games_array = np.asarray(effective_preseason_games, dtype=float)
     evidence_denominator = effective_games_array + prior_role_games
     downside_reliability = np.where(
-        role_downside & (prior_role_games > 0),
+        protect_downside & (prior_role_games > 0),
         np.divide(
             effective_games_array,
             evidence_denominator,
@@ -139,7 +142,7 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         1.0,
     )
     preseason_weight = np.where(
-        role_downside,
+        protect_downside,
         preseason_weight_raw * downside_reliability,
         preseason_weight_raw,
     )
@@ -254,6 +257,7 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         "availability_probability": availability,
         "preseason_role_weight_raw": preseason_weight_raw,
         "preseason_downside_reliability": downside_reliability,
+        "preseason_downside_protection_applied": protect_downside,
         "preseason_role_weight": preseason_weight,
         "preseason_effective_games": effective_preseason_games,
     }, index=df.index)
