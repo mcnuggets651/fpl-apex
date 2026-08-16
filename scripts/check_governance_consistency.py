@@ -16,13 +16,38 @@ FINAL_SELECTORS = (
     "adaptive_gw1_launch_with_transfer_option_value",
     "receding_horizon_current_team_maximum_ev",
 )
-ARCHIVED_PUBLISHERS = (
-    ".github/workflows/publish-apex.yml",
-    ".github/workflows/bootstrap-publish.yml",
-)
+ACTIVE_WORKFLOWS = {
+    "airsenal.yml",
+    "apex.yml",
+    "gw1-final-2026.yml",
+    "joint-path-promotion-audit.yml",
+    "pinnacle.yml",
+    "production-readiness.yml",
+    "projection-policy-audit.yml",
+    "projection-shadow-audit.yml",
+    "refresh-core-pin.yml",
+    "team-strength-validation.yml",
+    "understat-player-production-ab.yml",
+}
+ARCHIVED_WORKFLOWS = {
+    "bootstrap-publish.yml",
+    "publish-apex.yml",
+    "fixture-blend-decision-audit.yml",
+    "joint-initial-path-audit.yml",
+    "solver-parity.yml",
+    "understat-player-predictive-audit.yml",
+}
+CONCURRENT_PR_AUDITS = {
+    "apex.yml": "github.event.pull_request.number || github.ref",
+    "joint-path-promotion-audit.yml": "github.event.pull_request.number || github.ref",
+    "projection-policy-audit.yml": "github.event.pull_request.number || github.ref",
+    "projection-shadow-audit.yml": "github.event.pull_request.number || github.ref",
+    "team-strength-validation.yml": "github.event.pull_request.number || github.ref",
+    "understat-player-production-ab.yml": "github.event.pull_request.number || github.ref",
+}
 
 
-def _text(path: str) -> str:
+def _text(path: str | Path) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
@@ -36,7 +61,32 @@ def main() -> None:
         if "APEX_OPERATING_MANUAL.md" not in text:
             failures.append(f"{name} does not redirect to {AUTHORITY}")
 
-    workflow = _text(".github/workflows/pinnacle.yml")
+    active_dir = Path(".github/workflows")
+    active = {path.name for path in active_dir.glob("*.yml")}
+    if active != ACTIVE_WORKFLOWS:
+        failures.append(
+            "active workflow surface drifted: "
+            f"expected={sorted(ACTIVE_WORKFLOWS)} actual={sorted(active)}"
+        )
+    archive_dir = Path("archive/workflows")
+    archived = {path.name for path in archive_dir.glob("*.yml")}
+    missing_archived = sorted(ARCHIVED_WORKFLOWS - archived)
+    if missing_archived:
+        failures.append(f"superseded workflows are missing from archive: {missing_archived}")
+    if not (archive_dir / "README.md").exists():
+        failures.append("workflow archive manifest is missing")
+    for name in ARCHIVED_WORKFLOWS:
+        if (active_dir / name).exists():
+            failures.append(f"superseded workflow remains executable: {name}")
+
+    for name, group_expr in CONCURRENT_PR_AUDITS.items():
+        text = _text(active_dir / name)
+        if "cancel-in-progress: true" not in text or group_expr not in text:
+            failures.append(
+                f"expensive PR workflow does not cancel superseded runs: {name}"
+            )
+
+    workflow = _text(active_dir / "pinnacle.yml")
     if "scripts/run_apex.py" not in workflow:
         failures.append("production workflow does not use the single Apex runner")
     if "apex_answer_context.json" not in workflow:
@@ -100,12 +150,7 @@ def main() -> None:
     if "architecture freeze" not in operating.casefold():
         failures.append("operating manual does not define the post-PR64 architecture freeze")
 
-    for archived in ARCHIVED_PUBLISHERS:
-        text = _text(archived)
-        if "git push" in text:
-            failures.append(f"archived workflow can still push production state: {archived}")
-
-    gw1 = _text(".github/workflows/gw1-final-2026.yml")
+    gw1 = _text(active_dir / "gw1-final-2026.yml")
     if "scripts/run_apex.py" not in gw1:
         failures.append("GW1 final workflow bypasses the single canonical runner")
 
