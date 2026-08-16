@@ -52,6 +52,12 @@ The canonical policy/architecture still described static exact-horizon selection
 
 Correction: docs are part of the governed contract. They now describe the two final selectors and preserve the EV-first rule: forecast uncertainty is priced into xP; only attributable adverse/contradictory evidence can make XI/captain ineligible.
 
+### 8. Workflow archaeology remained on the active execution surface
+
+GitHub retained 28 historical workflow registrations in the Actions UI, while the current repository tree still contained 17 executable workflow YAMLs. Several were promotion-era or superseded one-off audits. Repeated surgical commits also started multiple expensive PR audits without per-PR cancellation, creating a large queue of obsolete runs.
+
+Correction: six superseded workflows are moved intact to `archive/workflows/` and removed from `.github/workflows`, leaving an explicit 11-workflow governed active surface. The permanent expensive PR audits use per-PR/ref concurrency with `cancel-in-progress: true`, so only the newest relevant commit remains live. GitHub may continue to display historical workflow registrations/runs; those are history, not executable repository state.
+
 ## Frozen final production chain
 
 1. Official FPL canonical universe.
@@ -85,6 +91,8 @@ Correction: docs are part of the governed contract. They now describe the two fi
 - captain and vice IDs reconcile to the final XI.
 - answer reasons use the actual final selector.
 - static exact-horizon regret is not attributed as causal evidence for adaptive/receding picks.
+- active workflow tree equals the governed 11-workflow allowlist; superseded workflows remain archived outside `.github/workflows`.
+- expensive permanent PR audits cancel superseded runs on the same PR/ref.
 - CVaR, exact mechanics, parity and existing robustness gates remain unchanged; no scenario-count or tolerance weakening.
 - fresh run on current `main` data pins must pass before merge approval is requested.
 
