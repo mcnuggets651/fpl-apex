@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -115,3 +116,12 @@ def test_truth_contract_rejects_unreconciled_airsenal_absence():
     audit = audit_player_truth(players, projections, expected_players=1)
     assert not audit["ready"]
     assert any("lack explicit fixed-weight Apex fallback" in item for item in audit["blockers"])
+
+
+def test_adaptive_workflow_accepts_resolved_not_fabricated_airsenal_coverage():
+    workflow = Path(".github/workflows/joint-path-promotion-audit.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "airsenal_projection_pair_coverage'] == 1.0" not in workflow
+    assert "present_pairs + absent_pairs == expected_pairs" in workflow
+    assert "assert not truth['blockers']" in workflow
