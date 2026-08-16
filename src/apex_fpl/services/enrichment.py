@@ -30,6 +30,12 @@ CONTEXT_FIELDS = [
     "clearances_blocks_interceptions",
 ]
 
+# The projection-truth audit already defines <270 competitive minutes as a low
+# sample and the top positional decile as an extreme rate. Production reuses those
+# existing semantics rather than introducing a player-specific threshold here.
+LOW_SAMPLE_ATTACK_MINUTES = 270.0
+LOW_SAMPLE_ATTACK_UPPER_QUANTILE = 0.90
+
 
 def _understat_player_mode() -> str:
     mode = os.getenv("APEX_UNDERSTAT_PLAYER_MODEL_MODE", "production").strip().casefold()
@@ -114,6 +120,92 @@ def _enrich_understat_player_rates(out: pd.DataFrame) -> pd.DataFrame:
     return enriched
 
 
+def _position_rate_reference(
+    raw_rate: pd.Series,
+    positions: pd.Series,
+    previous_minutes: pd.Series,
+) -> tuple[pd.Series, pd.Series]:
+    """Return mature positional mean and upper-decile reference for each row."""
+    prior = pd.Series(np.nan, index=raw_rate.index, dtype=float)
+    upper = pd.Series(np.nan, index=raw_rate.index, dtype=float)
+    for position in positions.dropna().unique():
+        same_position = positions.eq(position)
+        mature = (
+            same_position
+            & previous_minutes.ge(LOW_SAMPLE_ATTACK_MINUTES)
+            & raw_rate.notna()
+            & raw_rate.ge(0)
+        )
+        if not mature.any():
+            continue
+        weights = previous_minutes.loc[mature]
+        prior_value = float(np.average(raw_rate.loc[mature], weights=weights))
+        upper_value = float(
+            raw_rate.loc[mature].quantile(LOW_SAMPLE_ATTACK_UPPER_QUANTILE)
+        )
+        prior.loc[same_position] = prior_value
+        upper.loc[same_position] = upper_value
+    return prior, upper
+
+
+def stabilise_low_sample_attack_context(players: pd.DataFrame) -> pd.DataFrame:
+    """Shrink only extreme pre-GW1 attacking rates backed by a tiny PL sample.
+
+    FPL/Core preseason context can carry a prior-season per-90 rate even though the
+    new season has zero competitive minutes. An extreme rate from only a few prior
+    minutes must not be treated like a mature estimate. Returning players with
+    1-269 prior Premier League minutes are therefore shrunk only when their rate is
+    above the mature positional 90th percentile. Reliability rises linearly to one
+    at the already-governed 270-minute boundary, so mature rates are exact no-ops.
+
+    Players with no prior Premier League sample are deliberately untouched: their
+    cross-league/other-source treatment belongs to the independent source model,
+    not this narrow returning-player correction.
+    """
+    out = players.copy()
+    if "position" not in out.columns or "previous_minutes" not in out.columns:
+        return out
+
+    positions = out["position"].astype("string")
+    previous_minutes = pd.to_numeric(
+        out["previous_minutes"], errors="coerce"
+    ).fillna(0.0).clip(lower=0.0)
+    current_minutes = pd.to_numeric(
+        out.get("minutes", pd.Series(0.0, index=out.index)), errors="coerce"
+    ).fillna(0.0).clip(lower=0.0)
+    pre_gw1_context = current_minutes.le(0.0)
+    reliability = (previous_minutes / LOW_SAMPLE_ATTACK_MINUTES).clip(0.0, 1.0)
+
+    for label, field in (
+        ("xg90", "expected_goals_per_90"),
+        ("xa90", "expected_assists_per_90"),
+    ):
+        if field not in out.columns:
+            continue
+        raw = pd.to_numeric(out[field], errors="coerce")
+        prior, upper = _position_rate_reference(raw, positions, previous_minutes)
+        eligible = (
+            pre_gw1_context
+            & previous_minutes.gt(0.0)
+            & previous_minutes.lt(LOW_SAMPLE_ATTACK_MINUTES)
+            & raw.notna()
+            & prior.notna()
+            & upper.notna()
+            & raw.ge(upper)
+            & raw.gt(prior)
+        )
+        adjusted = prior + reliability * (raw - prior)
+
+        out[f"{label}_context_raw"] = raw
+        out[f"{label}_context_prior"] = prior
+        out[f"{label}_context_mature_p90"] = upper
+        out[f"{label}_context_reliability"] = reliability
+        out[f"{label}_low_sample_adjusted"] = eligible.astype(bool)
+        out.loc[eligible, field] = adjusted.loc[eligible]
+
+    return out
+
+
 def coalesce_context(df: pd.DataFrame) -> pd.DataFrame:
     """Use auxiliary context when official current-season context is blank/zero.
 
@@ -133,6 +225,7 @@ def coalesce_context(df: pd.DataFrame) -> pd.DataFrame:
         cur = pd.to_numeric(out[field], errors="coerce")
         use_ext = cur.isna() | ((cur == 0) & ext.notna() & (ext != 0))
         out.loc[use_ext, field] = ext[use_ext]
+    out = stabilise_low_sample_attack_context(out)
     return _enrich_understat_player_rates(out)
 
 
