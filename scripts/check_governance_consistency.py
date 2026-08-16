@@ -45,6 +45,10 @@ CONCURRENT_PR_AUDITS = {
     "team-strength-validation.yml": "github.event.pull_request.number || github.ref",
     "understat-player-production-ab.yml": "github.event.pull_request.number || github.ref",
 }
+REQUIRED_SOURCE_INVALIDATORS = {
+    "airsenal.yml": "--source airsenal",
+    "refresh-core-pin.yml": "--source fpl_core_insights",
+}
 
 
 def _text(path: str | Path) -> str:
@@ -84,6 +88,19 @@ def main() -> None:
         if "cancel-in-progress: true" not in text or group_expr not in text:
             failures.append(
                 f"expensive PR workflow does not cancel superseded runs: {name}"
+            )
+
+    if not Path("scripts/invalidate_published_decision.py").exists():
+        failures.append("required-source canonical invalidation CLI is missing")
+    for name, source_arg in REQUIRED_SOURCE_INVALIDATORS.items():
+        text = _text(active_dir / name)
+        if "scripts/invalidate_published_decision.py" not in text or source_arg not in text:
+            failures.append(
+                f"required-source refresh can leave a stale actionable decision: {name}"
+            )
+        if "apex_answer_context.json" not in text or "apex_recommendation_latest.json" not in text:
+            failures.append(
+                f"required-source refresh does not atomically stage invalidated canonical files: {name}"
             )
 
     workflow = _text(active_dir / "pinnacle.yml")
