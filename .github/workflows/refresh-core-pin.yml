@@ -107,7 +107,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Commit current FPL Core data revision
+      - name: Commit current FPL Core data revision and invalidate older decision
         shell: bash
         run: |
           set -euo pipefail
@@ -118,6 +118,13 @@ jobs:
             echo "FPL Core pin is already current"
             exit 0
           fi
+          python scripts/invalidate_published_decision.py \
+            --source fpl_core_insights \
+            --reason "pinned FPL Core snapshot changed"
+          git add \
+            data/generated/apex_recommendation_latest.json \
+            data/generated/apex_recommendation_latest.md \
+            data/generated/apex_answer_context.json
           git commit -m "data: refresh pinned FPL Core snapshot"
           git fetch origin main
           if [ "$(git rev-parse origin/main)" != "${{ github.sha }}" ]; then
