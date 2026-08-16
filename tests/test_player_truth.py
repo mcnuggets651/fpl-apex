@@ -101,7 +101,7 @@ def test_all_player_truth_requires_complete_facts_and_required_expert_pairs():
     assert payload["players"][0]["role_class"] == "statistical_inference"
 
 
-def test_missing_required_airsenal_pair_is_a_truth_blocker():
+def test_unreconciled_missing_airsenal_pair_is_a_truth_blocker():
     players = pd.DataFrame([_player()])
     projections = _auditable_projection(players)
     projections["source_present_airsenal"] = False
@@ -109,7 +109,10 @@ def test_missing_required_airsenal_pair_is_a_truth_blocker():
 
     assert payload["ready"] is False
     assert payload["airsenal_projection_pair_coverage"] == pytest.approx(0.0)
-    assert any("AIrsenal player/Gameweek coverage" in row for row in payload["blockers"])
+    assert any(
+        "AIrsenal source absence is not explicitly reconciled" in row
+        for row in payload["blockers"]
+    )
 
 
 def test_unsourced_set_piece_share_is_a_truth_blocker():
