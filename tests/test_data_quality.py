@@ -106,3 +106,22 @@ def test_invalid_official_strength_is_disclosed_when_fallback_is_complete():
     strength = next(check for check in quality.checks if check.name == "official_team_strength")
     assert strength.status == "fallback"
     assert quality.warnings
+
+
+def test_required_fpl_core_player_id_coverage_is_100_percent():
+    official = _official(1000.0)
+    quality = assess_data_quality(
+        official,
+        pd.DataFrame({"player_id": [1]}),
+        pd.DataFrame(),
+        _fixture_surface(),
+        _projections(),
+        [1],
+        fixture_fallback_ok=True,
+    )
+
+    assert quality.ready is False
+    core = next(check for check in quality.checks if check.name == "fpl_core_playerstats")
+    assert core.minimum_coverage == 1.0
+    assert core.coverage == 0.5
+    assert core.status == "fail"
