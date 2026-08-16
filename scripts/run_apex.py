@@ -2,7 +2,9 @@
 """Run the single canonical Apex decision workflow.
 
 User-facing rule: run this command, then read apex_recommendation_latest.json.
-Pinnacle and Elite files are internal diagnostics only.
+Pinnacle and Elite files are internal diagnostics only. The workflow is deliberately
+one-way: sealed surface -> non-actionable staging -> all-player truth -> one final
+strategy selector -> final selected-player evidence -> actionable output.
 """
 from __future__ import annotations
 
@@ -31,11 +33,11 @@ def _run(command: list[str]) -> int:
 
 
 def _fail_close_strategy_output(output_dir: Path, reason: str) -> None:
-    """Never leave an invalid decision actionable after a production gate fails."""
+    """Never leave an invalid or intermediate decision actionable."""
     recommendation_path = output_dir / "apex_recommendation_latest.json"
     context_path = output_dir / "apex_answer_context.json"
     markdown_path = output_dir / "apex_recommendation_latest.md"
-    blocker = f"adaptive strategy policy failed: {reason}"
+    blocker = f"canonical decision gate failed: {reason}"
 
     if recommendation_path.exists():
         try:
@@ -47,6 +49,7 @@ def _fail_close_strategy_output(output_dir: Path, reason: str) -> None:
     if not isinstance(payload, dict):
         payload = {}
     payload["ready_to_act"] = False
+    payload["strategy_stage"] = "blocked"
     payload["recommendation"] = None
     payload["blockers"] = list(
         dict.fromkeys([*(payload.get("blockers") or []), blocker])
@@ -64,7 +67,9 @@ def _fail_close_strategy_output(output_dir: Path, reason: str) -> None:
     if not isinstance(context, dict):
         context = {}
     context["safe_to_act"] = False
+    context["ready_to_act"] = False
     context["recommendation"] = None
+    context["production_result"] = None
     context["blockers"] = list(
         dict.fromkeys([*(context.get("blockers") or []), blocker])
     )
@@ -101,6 +106,7 @@ def main() -> None:
     bundle_dir = Path(args.bundle_dir)
     pinnacle_path = output_dir / "pinnacle_latest.json"
     elite_path = output_dir / "elite_latest.json"
+    truth_path = Path("reports/player_truth_audit.json")
 
     if not args.reuse_bundle and not args.reuse_pinnacle:
         bundle_cmd = [
@@ -144,8 +150,7 @@ def main() -> None:
         raise SystemExit(f"cannot reuse missing Pinnacle artifact: {pinnacle_path}")
 
     # Deliberately do not force-refresh again. Elite must consume the cached source
-    # surface created by Pinnacle so the canonical builder can require identical
-    # official snapshot identity.
+    # surface created by Pinnacle so staging can require identical snapshot identity.
     elite_status = _run(
         [
             sys.executable,
@@ -161,7 +166,7 @@ def main() -> None:
     if elite_status != 0:
         raise SystemExit(elite_status)
 
-    canonical_status = _run(
+    staging_status = _run(
         [
             sys.executable,
             "scripts/build_canonical_recommendation.py",
@@ -175,8 +180,31 @@ def main() -> None:
             str(bundle_dir),
         ]
     )
-    if canonical_status != 0:
-        raise SystemExit(canonical_status)
+    if staging_status != 0:
+        _fail_close_strategy_output(output_dir, f"staging exit status {staging_status}")
+        raise SystemExit(staging_status)
+
+    # Validate the complete official player universe before any final selector is
+    # allowed to become actionable. This includes factual completeness, projection
+    # pair completeness, required AIrsenal coverage and set-piece provenance.
+    truth_status = _run(
+        [
+            sys.executable,
+            "scripts/audit_player_truth.py",
+            "--recommendation",
+            str(output_dir / "apex_recommendation_latest.json"),
+            "--output",
+            str(truth_path),
+            "--csv",
+            "reports/player_truth_audit.csv",
+        ]
+    )
+    if truth_status != 0:
+        _fail_close_strategy_output(
+            output_dir,
+            f"player truth audit failed with exit status {truth_status}",
+        )
+        raise SystemExit(truth_status)
 
     promotion_status = _run(
         [
@@ -186,30 +214,13 @@ def main() -> None:
             str(output_dir),
             "--bundle-dir",
             str(bundle_dir),
+            "--truth-audit",
+            str(truth_path),
         ]
     )
     if promotion_status != 0:
-        _fail_close_strategy_output(output_dir, f"exit status {promotion_status}")
-        raise SystemExit(promotion_status)
-
-    # The canonical strategy may be mathematically valid while still depending on
-    # malformed factual semantics. Audit every Official FPL player after the final
-    # selector is built and fail closed before publication if factual/provenance
-    # invariants are not satisfied.
-    truth_status = _run(
-        [
-            sys.executable,
-            "scripts/audit_player_truth.py",
-            "--recommendation",
-            str(output_dir / "apex_recommendation_latest.json"),
-        ]
-    )
-    if truth_status != 0:
-        _fail_close_strategy_output(
-            output_dir,
-            f"player truth audit failed with exit status {truth_status}",
-        )
-    raise SystemExit(truth_status)
+        _fail_close_strategy_output(output_dir, f"final strategy exit status {promotion_status}")
+    raise SystemExit(promotion_status)
 
 
 if __name__ == "__main__":
