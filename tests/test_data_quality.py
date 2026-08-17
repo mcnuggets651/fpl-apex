@@ -40,6 +40,17 @@ def _official(strength: float = 1000.0) -> OfficialSnapshot:
     return OfficialSnapshot(players, teams, fixtures, pd.DataFrame(), {})
 
 
+def _official_many(count: int = 101) -> OfficialSnapshot:
+    base = _official(1000.0)
+    players = pd.DataFrame(
+        [
+            {"player_id": player_id, "position": "MID", "price": 5.0}
+            for player_id in range(1, count + 1)
+        ]
+    )
+    return OfficialSnapshot(players, base.teams, base.fixtures, pd.DataFrame(), {})
+
+
 def _fixture_surface() -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -61,11 +72,17 @@ def _fixture_surface() -> pd.DataFrame:
     )
 
 
-def _projections() -> pd.DataFrame:
+def _projections(player_ids: list[int] | None = None) -> pd.DataFrame:
+    ids = player_ids or [1, 2]
     return pd.DataFrame(
         [
-            {"player_id": 1, "gw": 1, "xp": 4.0, "projection_confidence": 0.7},
-            {"player_id": 2, "gw": 1, "xp": 3.0, "projection_confidence": 0.8},
+            {
+                "player_id": player_id,
+                "gw": 1,
+                "xp": 3.0,
+                "projection_confidence": 0.8,
+            }
+            for player_id in ids
         ]
     )
 
@@ -125,3 +142,67 @@ def test_required_fpl_core_player_id_coverage_is_100_percent():
     assert core.minimum_coverage == 1.0
     assert core.coverage == 0.5
     assert core.status == "fail"
+
+
+def test_small_append_only_core_registration_lag_uses_explicit_fallback():
+    official = _official_many(101)
+    core = pd.DataFrame({"player_id": range(1, 101)})
+    quality = assess_data_quality(
+        official,
+        core,
+        pd.DataFrame(),
+        _fixture_surface(),
+        _projections(list(range(1, 102))),
+        [1],
+        fixture_fallback_ok=True,
+    )
+
+    assert quality.ready is True
+    check = next(row for row in quality.checks if row.name == "fpl_core_playerstats")
+    assert check.status == "fallback"
+    assert check.minimum_coverage == 1.0
+    assert check.coverage >= 0.99
+    assert "missing_ids=[101]" in check.detail
+    assert "not fabricated" in check.detail
+    assert any("registration lag" in warning for warning in quality.warnings)
+
+
+def test_internal_core_hole_never_qualifies_as_registration_lag():
+    official = _official_many(101)
+    # Same 100/101 coverage, but the missing player is inside Core's established ID
+    # universe rather than a newly appended Official registration.
+    core = pd.DataFrame({"player_id": [*range(1, 100), 101]})
+    quality = assess_data_quality(
+        official,
+        core,
+        pd.DataFrame(),
+        _fixture_surface(),
+        _projections(list(range(1, 102))),
+        [1],
+        fixture_fallback_ok=True,
+    )
+
+    assert quality.ready is False
+    check = next(row for row in quality.checks if row.name == "fpl_core_playerstats")
+    assert check.status == "fail"
+    assert "not an append-only trailing registration block" in check.detail
+
+
+def test_registration_lag_requires_complete_canonical_projection_surface():
+    official = _official_many(101)
+    core = pd.DataFrame({"player_id": range(1, 101)})
+    quality = assess_data_quality(
+        official,
+        core,
+        pd.DataFrame(),
+        _fixture_surface(),
+        _projections(list(range(1, 101))),
+        [1],
+        fixture_fallback_ok=True,
+    )
+
+    assert quality.ready is False
+    check = next(row for row in quality.checks if row.name == "fpl_core_playerstats")
+    assert check.status == "fail"
+    assert "lack complete canonical projections" in check.detail
+    assert any("player_projection_surface" in blocker for blocker in quality.blockers)
