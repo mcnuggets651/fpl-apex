@@ -368,7 +368,11 @@ def _evaluate_exact_candidates(
 
     previous = list(existing_candidates or [])
     best_future = max(
-        (float(candidate.future_objective) for candidate in previous),
+        (
+            float(candidate.future_objective)
+            for candidate in previous
+            if candidate.within_gw1_band
+        ),
         default=None,
     )
     evaluated: list[JointPathCandidate] = []
@@ -396,7 +400,9 @@ def _evaluate_exact_candidates(
         )
         if candidate is not None:
             evaluated.append(candidate)
-            if best_future is None or candidate.future_objective > best_future:
+            if candidate.within_gw1_band and (
+                best_future is None or candidate.future_objective > best_future
+            ):
                 best_future = float(candidate.future_objective)
     return evaluated
 
@@ -458,13 +464,14 @@ def optimise_joint_initial_path(
     transfer option value can only distinguish squads inside the existing GW1
     near-equivalent band.
 
-    Convergence is adaptive and cached. We first compare the rank-1..16 winner with
-    the rank-1..32 winner. Only when that identity changes do we solve ranks 33..48;
-    if 32..48 changes again we extend once to rank 64. Transfer MILPs use a short
-    scan and a bounded retry. A solver-limit candidate may be pruned only when its
-    branch-and-bound upper bound is strictly below an already proven incumbent;
-    otherwise unresolved limits fail closed. No legality, budget, GW1 floor or
-    promotion gate is weakened.
+    Convergence is adaptive and cached. The canonical launch pool is evaluated
+    through rank 32, then ranks 33..48 are solved unless the exact shortlist has
+    already completed. The 32->48 winner must be identical; only another identity
+    change extends once to rank 64. Transfer MILPs use a short scan and a bounded
+    retry. A solver-limit candidate may be pruned only when its branch-and-bound
+    upper bound is strictly below an already proven in-band incumbent; otherwise
+    unresolved limits fail closed. No legality, budget, GW1 floor or promotion gate
+    is weakened.
     """
     gws = [int(gw) for gw in gameweeks]
     tolerance = max(float(gw1_regret_tolerance), 0.0)
@@ -518,12 +525,11 @@ def optimise_joint_initial_path(
         )
 
     evaluated: list[JointPathCandidate] = []
-    first_comparison = base_prefix
     current_prefix = min(base_prefix * 2, initial_launch_limit)
     previous_winner: JointPathCandidate | None = None
     selected: JointPathCandidate | None = None
     stable = False
-    comparison_left = first_comparison
+    comparison_left = current_prefix
     comparison_right = current_prefix
 
     try:
@@ -548,21 +554,12 @@ def optimise_joint_initial_path(
                 transfer_retry_time_limit=transfer_retry_time_limit,
             )
         )
-        previous_winner = _winner_through_rank(evaluated, first_comparison)
         selected = _winner_through_rank(evaluated, current_prefix)
         max_generated_rank = max(
             (int(row.generation_rank) for row in launch.candidates),
             default=0,
         )
-        complete = bool(launch.shortlist_complete and max_generated_rank <= current_prefix)
-        stable = bool(
-            complete
-            or (
-                previous_winner is not None
-                and selected is not None
-                and previous_winner.squad_ids == selected.squad_ids
-            )
-        )
+        stable = bool(launch.shortlist_complete and max_generated_rank <= current_prefix)
 
         if not stable and current_prefix < initial_launch_limit:
             next_prefix = initial_launch_limit
@@ -767,10 +764,11 @@ def optimise_joint_initial_path(
             "near-equivalent point band is a hard floor; only then may the legal "
             "future transfer path choose between launch-equivalent squads. Candidate "
             f"convergence was checked between rank prefixes {comparison_left} and "
-            f"{comparison_right}; larger prefixes are solved only after an identity "
+            f"{comparison_right}; rank 64 is solved only after another identity "
             "change. Solver-limit candidates are pruned only by certified objective "
-            "bounds, otherwise the selector fails closed. Execute only the current "
-            "decision and rebuild projections before every later deadline."
+            "bounds against an in-band incumbent, otherwise the selector fails closed. "
+            "Execute only the current decision and rebuild projections before every "
+            "later deadline."
             f"{baseline_note}"
         ),
     )
