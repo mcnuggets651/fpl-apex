@@ -28,15 +28,15 @@ def test_forced_refresh_prefers_live_response_and_updates_cache(tmp_path, monkey
     payload = client.get_json("https://example.test/live", "official", force=True)
 
     assert payload == {"source": "live"}
-    assert json.loads((tmp_path / "official.json").read_text()) == {"source": "live"}
+    assert json.loads(client._path("official.json").read_text()) == {"source": "live"}
 
 
 def test_forced_refresh_uses_recent_cache_on_transport_failure(tmp_path, monkeypatch):
-    cache_file = tmp_path / "official.json"
+    client = CachedHttp(tmp_path, ttl_seconds=60, stale_if_error_seconds=3600)
+    cache_file = client._path("official.json")
     cache_file.write_text(json.dumps({"source": "cache"}))
     recent = time.time() - 1800
     os.utime(cache_file, (recent, recent))
-    client = CachedHttp(tmp_path, ttl_seconds=60, stale_if_error_seconds=3600)
 
     def fail(*args, **kwargs):
         raise requests.ConnectionError("temporary DNS failure")
@@ -49,11 +49,11 @@ def test_forced_refresh_uses_recent_cache_on_transport_failure(tmp_path, monkeyp
 
 
 def test_forced_refresh_fails_closed_when_cache_is_too_old(tmp_path, monkeypatch):
-    cache_file = tmp_path / "official.json"
+    client = CachedHttp(tmp_path, ttl_seconds=60, stale_if_error_seconds=3600)
+    cache_file = client._path("official.json")
     cache_file.write_text(json.dumps({"source": "stale-cache"}))
     stale = time.time() - 7200
     os.utime(cache_file, (stale, stale))
-    client = CachedHttp(tmp_path, ttl_seconds=60, stale_if_error_seconds=3600)
 
     def fail(*args, **kwargs):
         raise requests.ConnectionError("temporary DNS failure")
