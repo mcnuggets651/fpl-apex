@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - "src/apex_fpl/data/http.py"
+      - "src/apex_fpl/optimisation/transfers.py"
+      - "src/apex_fpl/optimisation/transfer_views.py"
       - "src/apex_fpl/services/joint_initial_path.py"
       - "src/apex_fpl/services/strategy.py"
       - "src/apex_fpl/services/player_truth.py"
@@ -17,6 +19,7 @@ on:
       - "scripts/audit_player_truth.py"
       - "scripts/run_apex.py"
       - "tests/test_http_cache.py"
+      - "tests/test_transfer_candidate_pool.py"
       - "tests/test_joint_path_promotion.py"
       - "tests/test_joint_initial_path.py"
       - "tests/test_strategy.py"
@@ -50,6 +53,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_http_cache.py \
+            tests/test_transfer_candidate_pool.py \
             tests/test_joint_path_promotion.py \
             tests/test_joint_initial_path.py \
             tests/test_strategy.py \
