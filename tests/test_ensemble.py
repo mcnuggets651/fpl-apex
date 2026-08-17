@@ -16,7 +16,8 @@ def test_missing_configured_airsenal_weight_is_explicitly_delegated_to_apex():
     # AIrsenal source does not silently renormalise the surviving experts; its
     # one-third weight is explicitly delegated to Apex and remains auditable.
     assert abs(out["xp"] - (16.0 / 3.0)) < 1e-9
-    assert out["effective_weight_apex_model"] == (1.0 / 3.0)
+    assert out["effective_weight_apex_model"] == (2.0 / 3.0)
+    assert out["effective_weight_apex_model_direct"] == (1.0 / 3.0)
     assert out["effective_weight_official_ep"] == (1.0 / 3.0)
     assert out["effective_weight_airsenal"] == 0.0
     assert out["effective_weight_airsenal_fallback_apex"] == (1.0 / 3.0)
@@ -74,6 +75,8 @@ def test_airsenal_structural_zero_abstains_when_current_role_sources_disagree():
     assert out["source_usable_airsenal"].tolist() == [False, False]
     assert out["effective_weight_airsenal"].tolist() == [0.0, 0.0]
     assert (out["effective_weight_airsenal_fallback_apex"] > 0).all()
+    assert out.iloc[0]["effective_weight_apex_model"] == pytest.approx(0.8)
+    assert out.iloc[0]["effective_weight_apex_model_direct"] == pytest.approx(0.6)
     # GW1 = (0.6*5 + 0.2*2.5 + 0.2*5) / 1.0.
     assert out.iloc[0]["xp"] == pytest.approx(4.5)
     # Official is unavailable after GW1, so Apex plus the explicit fallback retain
