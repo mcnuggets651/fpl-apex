@@ -4,9 +4,14 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "config/apex.yaml"
+      - "src/apex_fpl/config.py"
       - "src/apex_fpl/data/http.py"
+      - "src/apex_fpl/models/ensemble.py"
       - "src/apex_fpl/optimisation/transfers.py"
       - "src/apex_fpl/optimisation/transfer_views.py"
+      - "src/apex_fpl/services/data_quality.py"
+      - "src/apex_fpl/services/enrichment.py"
       - "src/apex_fpl/services/joint_initial_path.py"
       - "src/apex_fpl/services/strategy.py"
       - "src/apex_fpl/services/player_truth.py"
@@ -27,6 +32,10 @@ on:
       - "tests/test_player_truth.py"
       - "tests/test_answer_context.py"
       - "tests/test_canonical_recommendation.py"
+      - "tests/test_data_quality.py"
+      - "tests/test_ensemble.py"
+      - "tests/test_low_sample_attack_reliability.py"
+      - "tests/test_weight_contract.py"
       - ".github/workflows/joint-path-promotion-audit.yml"
 
 permissions:
@@ -61,7 +70,11 @@ jobs:
             tests/test_strategy.py \
             tests/test_player_truth.py \
             tests/test_answer_context.py \
-            tests/test_canonical_recommendation.py
+            tests/test_canonical_recommendation.py \
+            tests/test_data_quality.py \
+            tests/test_ensemble.py \
+            tests/test_low_sample_attack_reliability.py \
+            tests/test_weight_contract.py
 
       - name: Cache AIrsenal database
         uses: actions/cache@v4
