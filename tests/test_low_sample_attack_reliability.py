@@ -39,6 +39,57 @@ def test_extreme_tiny_sample_rate_is_shrunk_toward_mature_position_prior():
     assert target["expected_goals_per_90"] < 0.45
 
 
+def test_minutes_weighted_mature_reference_resists_marginal_outlier():
+    """A barely-mature outlier must not define the tiny-sample ceiling.
+
+    This mirrors the production failure mode: a player with only a few prior
+    Premier League minutes can carry an extreme per-90 rate, while a small number
+    of other marginal samples can make an unweighted percentile look permissive.
+    Established minutes must dominate the mature reference.
+    """
+    frame = pd.DataFrame(
+        {
+            "player_id": range(1, 12),
+            "position": ["MID"] * 11,
+            "minutes": [0.0] * 11,
+            "previous_minutes": [
+                2800.0,
+                2600.0,
+                2400.0,
+                2200.0,
+                2000.0,
+                1800.0,
+                1600.0,
+                1400.0,
+                1200.0,
+                270.0,
+                21.0,
+            ],
+            "expected_goals_per_90": [
+                0.10,
+                0.14,
+                0.18,
+                0.22,
+                0.26,
+                0.30,
+                0.34,
+                0.38,
+                0.42,
+                2.20,
+                1.59,
+            ],
+            "expected_assists_per_90": [0.15] * 11,
+        }
+    )
+
+    out = stabilise_low_sample_attack_context(frame)
+    target = out.loc[out.player_id == 11].iloc[0]
+
+    assert target["xg90_context_mature_p90"] < 1.0
+    assert bool(target["xg90_low_sample_adjusted"]) is True
+    assert target["expected_goals_per_90"] < 0.50
+
+
 def test_mature_ordinary_and_no_prior_rows_are_exact_noops():
     frame = _base_frame()
     out = stabilise_low_sample_attack_context(frame)
