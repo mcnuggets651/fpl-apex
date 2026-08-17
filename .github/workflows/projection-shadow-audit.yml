@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "src/apex_fpl/data/http.py"
       - "src/apex_fpl/models/ensemble.py"
       - "src/apex_fpl/models/minute_states.py"
       - "src/apex_fpl/models/minutes.py"
@@ -13,6 +14,7 @@ on:
       - "scripts/run_projection_audit.py"
       - "scripts/audit_projection_truth.py"
       - "scripts/audit_max_ev_policy.py"
+      - "tests/test_http_cache.py"
       - "tests/test_projection_audit.py"
       - "tests/test_projection_truth_audit.py"
       - "tests/test_minute_states.py"
@@ -40,6 +42,7 @@ jobs:
       - name: Unit tests
         run: |
           pytest -q \
+            tests/test_http_cache.py \
             tests/test_projection_audit.py \
             tests/test_projection_truth_audit.py \
             tests/test_minute_states.py \
@@ -51,6 +54,13 @@ jobs:
         with:
           path: ${{ runner.temp }}/airsenal.db
           key: airsenal-2627-${{ runner.os }}-v3
+      - name: Cache official FPL HTTP payloads
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: official-fpl-2627-${{ runner.os }}-v1-${{ github.sha }}
+          restore-keys: |
+            official-fpl-2627-${{ runner.os }}-v1-
       - name: Refresh genuine AIrsenal forecasts
         env:
           AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
@@ -63,6 +73,18 @@ jobs:
             --db "$AIRSENAL_DB_FILE" \
             --horizon 8 \
             --output data/generated/airsenal.csv
+      - name: Warm official FPL cache
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          from apex_fpl.data.http import CachedHttp
+          from apex_fpl.data.official import OfficialFPLClient
+
+          snapshot = OfficialFPLClient(CachedHttp(Path("data/cache"))).snapshot(force=True)
+          print("official_bootstrap_sha256", snapshot.bootstrap_sha256)
+          print("official_fixtures_sha256", snapshot.fixtures_sha256)
+          PY
       - name: Run production-vs-Understat shadow audit
         env:
           APEX_SEASON: "2026-2027"
