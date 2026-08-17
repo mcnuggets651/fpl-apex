@@ -14,6 +14,7 @@ from apex_fpl.models.defcon import expected_defensive_contribution_points
 # challenger; changing them requires a new predictive and decision-level audit.
 UNDERSTAT_XG_WEIGHT = 0.50
 UNDERSTAT_XA_WEIGHT = 0.30
+RATE_RELIABILITY_MINUTES = 270.0
 
 
 def _num(df: pd.DataFrame, col: str, default: float = 0.0) -> pd.Series:
@@ -33,18 +34,7 @@ def _preseason_rate_weight(
     preseason_starts: pd.Series | None = None,
     preseason_appearances: pd.Series | None = None,
 ) -> pd.Series:
-    """Return reliability-weighted influence for preseason per-90 rates.
-
-    Minutes alone are not enough to make one exceptional friendly a season-sized
-    attacking prior. When team-sheet evidence is available, weight grows with
-    effective starts/appearances and then with minutes. The 35% ceiling is the
-    incumbent production ceiling; this change only makes the path to that ceiling
-    sample-reliability aware.
-
-    Older/synthetic callers can contain observed preseason minutes but no explicit
-    team-sheet counts. Those rows retain the incumbent minutes-only fallback rather
-    than being mistaken for a measured zero-sample.
-    """
+    """Return reliability-weighted influence for preseason per-90 rates."""
     mins = pd.to_numeric(preseason_minutes, errors="coerce").fillna(0.0)
     legacy_weight = pd.Series(np.clip(mins / 270.0, 0.0, 0.35), index=mins.index)
     if preseason_starts is None or preseason_appearances is None:
@@ -71,10 +61,6 @@ def _blend_rate(
     p = pd.to_numeric(primary, errors="coerce").fillna(0)
     pre_raw = pd.to_numeric(preseason, errors="coerce")
     pre = pre_raw.fillna(0)
-    # Missing preseason return data is not a measured zero. Minutes may still be
-    # useful for role/start evidence, but cannot pull an attacking rate down unless
-    # that return statistic was actually observed by the source. Observed rates are
-    # reliability-weighted by effective team-sheet sample, not minutes alone.
     pre_weight = _preseason_rate_weight(
         preseason_minutes,
         preseason_starts,
@@ -92,13 +78,7 @@ def _appearance_probabilities(expected_mins: pd.Series) -> tuple[np.ndarray, np.
 
 
 def _order_share(order: pd.Series) -> pd.Series:
-    """Do not turn an ordinal set-piece rank into fabricated probability.
-
-    Official FPL's order fields say who is first/second/third in a hierarchy. They
-    do not say that rank 1 takes 100%, rank 2 takes 45% or rank 3 takes 15% of future
-    events. Production therefore gives ordinal rank zero additive share. A literal
-    share may enter only through the separately sourced override columns.
-    """
+    """Do not turn an ordinal set-piece rank into fabricated probability."""
     return pd.Series(0.0, index=order.index, dtype=float)
 
 
@@ -113,17 +93,86 @@ def _at(values, idx: int) -> float:
     return float(values[idx])
 
 
+def _rate_reliability(
+    d: pd.DataFrame,
+    rate: pd.Series,
+    label: str,
+    preseason_weight: pd.Series,
+    understat_rate: pd.Series,
+) -> pd.Series:
+    """Measure evidence support for an extreme attacking rate, not role certainty.
+
+    Ordinary and mature rates retain reliability 1.  Only a rate above the mature
+    same-position reference with <270 prior PL minutes is treated as evidence-thin.
+    A genuine Understat match or observed preseason attacking sample can rebuild
+    reliability.  Zero prior minutes are therefore not automatically penalised: a
+    new player with an ordinary rate remains untouched, while an unsupported extreme
+    rate is labelled weak so independent expert disagreement can police it later.
+    """
+    previous_minutes = _num(d, "previous_minutes", 0.0).clip(lower=0.0)
+    mature = _optional_num(d, f"{label}_context_mature_p90")
+    context_rel = _optional_num(d, f"{label}_context_reliability").fillna(
+        np.clip(previous_minutes / RATE_RELIABILITY_MINUTES, 0.0, 1.0)
+    )
+    thin_extreme = (
+        previous_minutes.lt(RATE_RELIABILITY_MINUTES)
+        & mature.notna()
+        & rate.notna()
+        & rate.gt(mature)
+    )
+
+    pre_support = np.clip(preseason_weight / 0.35, 0.0, 1.0) * 0.60
+    us = pd.to_numeric(understat_rate, errors="coerce")
+    relative_gap = (us - rate).abs() / np.maximum(rate.abs(), 0.10)
+    us_support = np.where(
+        us.notna() & relative_gap.le(0.50),
+        0.80,
+        np.where(us.notna() & relative_gap.le(1.00), 0.55, 0.0),
+    )
+    evidence = np.maximum.reduce(
+        [
+            np.clip(context_rel.to_numpy(float), 0.0, 1.0),
+            np.asarray(pre_support, dtype=float),
+            np.asarray(us_support, dtype=float),
+            np.full(len(d), 0.15, dtype=float),
+        ]
+    )
+    return pd.Series(np.where(thin_extreme, evidence, 1.0), index=d.index).clip(0.15, 1.0)
+
+
+def _position_defcon_reference(
+    d: pd.DataFrame,
+    dc90: pd.Series,
+    club_changed: pd.Series,
+) -> pd.Series:
+    """Return a mature same-position defensive-rate reference for transfer resets."""
+    positions = d.get("position", pd.Series("MID", index=d.index)).astype("string")
+    previous_minutes = _num(d, "previous_minutes", 0.0)
+    reference = pd.Series(np.nan, index=d.index, dtype=float)
+    for position in positions.dropna().unique():
+        same = positions.eq(position)
+        mature = (
+            same
+            & ~club_changed
+            & previous_minutes.ge(RATE_RELIABILITY_MINUTES)
+            & dc90.notna()
+            & dc90.ge(0.0)
+        )
+        if mature.any():
+            value = float(np.median(dc90.loc[mature]))
+        else:
+            fallback = same & dc90.notna() & dc90.ge(0.0)
+            value = float(np.median(dc90.loc[fallback])) if fallback.any() else 0.0
+        reference.loc[same] = value
+    return reference.fillna(0.0)
+
+
 def project_players(
     players: pd.DataFrame,
     fixture_mult: pd.DataFrame,
     gameweeks: list[int],
 ) -> pd.DataFrame:
-    """Generate one transparent projection row per player/fixture.
-
-    This function is intentionally data-source agnostic. Production enrichment is
-    responsible for supplying optional ``understat_xg90``/``understat_xa90``
-    columns. If they are absent, the baseline Apex attacking rates are preserved.
-    """
+    """Generate one transparent projection row per player/fixture."""
     rows = []
     for gw in gameweeks:
         fx_cols = [
@@ -149,15 +198,11 @@ def project_players(
         min_share = np.clip(em / 90.0, 0, 1)
         p_app, p60 = _appearance_probabilities(em)
         if "appearance_probability" in d.columns:
-            p_app = np.clip(
-                _num(d, "appearance_probability", 0.8), 0, 1
-            ).to_numpy(float)
+            p_app = np.clip(_num(d, "appearance_probability", 0.8), 0, 1).to_numpy(float)
         if "minutes_60_plus_probability" in d.columns:
             p60 = np.minimum(
                 p_app,
-                np.clip(
-                    _num(d, "minutes_60_plus_probability", 0.6), 0, 1
-                ).to_numpy(float),
+                np.clip(_num(d, "minutes_60_plus_probability", 0.6), 0, 1).to_numpy(float),
             )
         role_multiplier = np.clip(_num(d, "role_multiplier", 1.0), 0.80, 1.20)
         premins = _num(d, "preseason_minutes", 0)
@@ -178,21 +223,33 @@ def project_players(
             prestarts,
             preapps,
         )
-        dc90 = _blend_rate(
+        raw_dc90 = _blend_rate(
             _num(d, "defensive_contribution_per_90", 0),
             _optional_num(d, "preseason_defcon90"),
             premins,
             prestarts,
             preapps,
         )
+        club_changed = d.get("club_changed", pd.Series(False, index=d.index)).fillna(False).astype(bool)
+        transfer_evidence = _num(d, "transfer_current_role_evidence", 0.0).clip(0.0, 1.0)
+        defensive_reliability = pd.Series(
+            np.where(club_changed, 0.35 + 0.65 * transfer_evidence, 1.0),
+            index=d.index,
+        ).clip(0.35, 1.0)
+        dc_reference = _position_defcon_reference(d, raw_dc90, club_changed)
+        dc90 = pd.Series(
+            np.where(
+                club_changed,
+                dc_reference + defensive_reliability * (raw_dc90 - dc_reference),
+                raw_dc90,
+            ),
+            index=d.index,
+        ).clip(lower=0.0)
+
         pos = d["position"].fillna("MID")
         goal_pts = pos.map({"GK": 10, "DEF": 6, "MID": 5, "FWD": 4}).fillna(5)
         clean_pts = pos.map({"GK": 4, "DEF": 4, "MID": 1, "FWD": 0}).fillna(0)
 
-        # Apply the exact validated 50% xG / 30% xA player blend to the direct
-        # attacking signal only when the pipeline supplied a matched Understat rate.
-        # The separate bonus prior deliberately retains baseline model rates, exactly
-        # matching the sealed A/B contract.
         us_xg90 = _optional_num(d, "understat_xg90")
         us_xa90 = _optional_num(d, "understat_xa90")
         matched = xg90.notna() & xa90.notna() & us_xg90.notna() & us_xa90.notna()
@@ -209,6 +266,23 @@ def project_players(
             + UNDERSTAT_XA_WEIGHT * us_xa90.loc[repricable]
         )
 
+        xg_reliability = _rate_reliability(
+            d, xg90, "xg90", preseason_rate_weight, us_xg90
+        )
+        xa_reliability = _rate_reliability(
+            d, xa90, "xa90", preseason_rate_weight, us_xa90
+        )
+        xg_signal = np.maximum(attack_xg90.to_numpy(float) * goal_pts.to_numpy(float), 0.0)
+        xa_signal = np.maximum(attack_xa90.to_numpy(float) * 3.0, 0.0)
+        attack_signal_total = xg_signal + xa_signal
+        attack_reliability = np.divide(
+            xg_signal * xg_reliability.to_numpy(float)
+            + xa_signal * xa_reliability.to_numpy(float),
+            np.maximum(attack_signal_total, 1e-12),
+            out=np.ones(len(d), dtype=float),
+            where=attack_signal_total > 1e-12,
+        )
+
         appearance = p_app + p60
         attack = (
             min_share
@@ -217,9 +291,7 @@ def project_players(
             * (attack_xg90 * goal_pts + attack_xa90 * 3.0)
         )
         if "clean_sheet_prob" in d.columns:
-            cs_prob = pd.to_numeric(
-                d["clean_sheet_prob"], errors="coerce"
-            ).fillna(0.30)
+            cs_prob = pd.to_numeric(d["clean_sheet_prob"], errors="coerce").fillna(0.30)
             cs_prob = np.clip(cs_prob, 0.04, 0.72)
         else:
             cs_prob = np.clip(0.30 * d["defence_multiplier"], 0.08, 0.60)
@@ -228,37 +300,21 @@ def project_players(
 
         saves90 = _num(d, "saves_per_90", 0)
         save_points = np.where(pos.eq("GK"), min_share * saves90 / 3.0, 0.0)
-
-        # 2026/27 bonus potential is a separate calibrated prior. It incorporates
-        # historical/current BPS but explicitly adjusts for this season's removal
-        # of the tackled penalty, reduced CBI reward and stronger goalkeeper-save BPS.
         bonus_proxy = expected_bonus_proxy(d, min_share, xg90, xa90, dc90)
 
-        # Official set-piece order is ordinal context only. `_order_share` therefore
-        # contributes zero. Only current sourced override columns may create an
-        # additive set-piece share. This avoids fabricated rank probabilities and
-        # keeps the separate current-role adjustment distinct from historical xG/xA.
         official_pen = _order_share(_num(d, "penalties_order", 99))
         official_corner_indirect = _order_share(
             _num(d, "corners_and_indirect_freekicks_order", 99)
         )
         official_direct = _order_share(_num(d, "direct_freekicks_order", 99))
-        penalty_share = _with_override(
-            official_pen,
-            _optional_num(d, "penalty_share"),
-        )
+        penalty_share = _with_override(official_pen, _optional_num(d, "penalty_share"))
         corners_share = _with_override(
-            official_corner_indirect,
-            _optional_num(d, "corners_share"),
+            official_corner_indirect, _optional_num(d, "corners_share")
         )
         indirect_share = _with_override(
-            official_corner_indirect,
-            _optional_num(d, "indirect_freekick_share"),
+            official_corner_indirect, _optional_num(d, "indirect_freekick_share")
         )
-        direct_share = _with_override(
-            official_direct,
-            _optional_num(d, "direct_freekick_share"),
-        )
+        direct_share = _with_override(official_direct, _optional_num(d, "direct_freekick_share"))
         set_piece = (
             0.34 * penalty_share
             + 0.09 * corners_share
@@ -274,15 +330,39 @@ def project_players(
         save_points = save_points * fixture
         bonus_proxy = bonus_proxy * fixture
         set_piece = set_piece * fixture
-        xp = (
-            appearance
-            + attack
-            + clean
-            + defensive
-            + save_points
-            + bonus_proxy
-            + set_piece
+        xp = appearance + attack + clean + defensive + save_points + bonus_proxy + set_piece
+
+        stable_components = np.maximum(
+            np.asarray(appearance + clean + save_points + set_piece, dtype=float),
+            0.0,
         )
+        attack_component = np.maximum(np.asarray(attack, dtype=float), 0.0)
+        defensive_component = np.maximum(np.asarray(defensive, dtype=float), 0.0)
+        bonus_component = np.maximum(np.asarray(bonus_proxy, dtype=float), 0.0)
+        bonus_reliability = np.clip(
+            0.50
+            + 0.50
+            * np.minimum(
+                np.asarray(attack_reliability, dtype=float),
+                defensive_reliability.to_numpy(float),
+            ),
+            0.50,
+            1.0,
+        )
+        reliability_numerator = (
+            stable_components
+            + attack_component * np.asarray(attack_reliability, dtype=float)
+            + defensive_component * defensive_reliability.to_numpy(float)
+            + bonus_component * bonus_reliability
+        )
+        apex_model_reliability = np.divide(
+            reliability_numerator,
+            np.maximum(np.asarray(xp, dtype=float), 1e-12),
+            out=np.ones(len(d), dtype=float),
+            where=np.asarray(xp, dtype=float) > 1e-12,
+        )
+        apex_model_reliability = np.clip(apex_model_reliability, 0.15, 1.0)
+
         variance = np.where(
             fixture > 0,
             np.maximum(0.8, 0.45 * xp + (1 - min_share) * 2.2),
@@ -294,16 +374,12 @@ def project_players(
                 {
                     "player_id": int(row["player_id"]),
                     "gw": gw,
-                    "opponent": (
-                        int(row["opponent"])
-                        if "opponent" in row and pd.notna(row["opponent"])
-                        else None
-                    ),
-                    "is_home": (
-                        bool(row["is_home"])
-                        if "is_home" in row and pd.notna(row["is_home"])
-                        else None
-                    ),
+                    "opponent": int(row["opponent"])
+                    if "opponent" in row and pd.notna(row["opponent"])
+                    else None,
+                    "is_home": bool(row["is_home"])
+                    if "is_home" in row and pd.notna(row["is_home"])
+                    else None,
                     "apex_xp": max(_at(xp, idx), 0.0),
                     "apex_sd": math.sqrt(max(_at(variance, idx), 0.01)),
                     "xp_appearance": max(_at(appearance, idx), 0.0),
@@ -317,6 +393,13 @@ def project_players(
                     "model_xa90": max(_at(xa90, idx), 0.0),
                     "attack_model_xg90": max(_at(attack_xg90, idx), 0.0),
                     "attack_model_xa90": max(_at(attack_xa90, idx), 0.0),
+                    "raw_defensive_contribution_per_90": max(_at(raw_dc90, idx), 0.0),
+                    "model_defensive_contribution_per_90": max(_at(dc90, idx), 0.0),
+                    "attack_rate_reliability": _at(attack_reliability, idx),
+                    "defensive_rate_reliability": _at(defensive_reliability, idx),
+                    "apex_model_reliability": _at(apex_model_reliability, idx),
+                    "club_changed": bool(club_changed.iloc[idx]),
+                    "transfer_current_role_evidence": _at(transfer_evidence, idx),
                     "preseason_rate_weight": max(_at(preseason_rate_weight, idx), 0.0),
                     "understat_player_matched": bool(_at(matched.astype(float), idx)),
                     "understat_player_repricable": bool(_at(repricable.astype(float), idx)),
