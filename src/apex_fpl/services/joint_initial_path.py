@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pandas as pd
 
@@ -9,6 +9,7 @@ from apex_fpl.optimisation.exact_decision import (
     optimise_exact_horizon_decision,
     optimise_fixed_squad_gameweek,
 )
+from apex_fpl.optimisation.transfers import TransferPlan
 from apex_fpl.optimisation.transfer_views import optimise_transfer_plan_view
 
 
@@ -84,6 +85,10 @@ class JointInitialPathResult:
         }
 
 
+class _TransferPlanInconclusive(RuntimeError):
+    pass
+
+
 def _projection_map(
     projections: pd.DataFrame,
     gw: int,
@@ -125,6 +130,85 @@ def select_best_joint_candidate(
     return min(eligible, key=_candidate_key)
 
 
+def _plan_bound_cannot_beat(
+    plan: TransferPlan,
+    best_future_objective: float | None,
+) -> bool:
+    if best_future_objective is None or plan.objective_upper_bound is None:
+        return False
+    # Strict inequality preserves every deterministic tie-break path. A candidate
+    # whose certified upper bound can still tie the incumbent must be resolved.
+    return float(plan.objective_upper_bound) < float(best_future_objective) - 1e-9
+
+
+def _transfer_plan_or_prune(
+    players: pd.DataFrame,
+    projections: pd.DataFrame,
+    future: list[int],
+    ids: tuple[int, ...],
+    *,
+    projection_col: str,
+    starting_bank: float,
+    max_per_team: int,
+    decay: float,
+    selling_prices: dict[int, float],
+    transfer_candidate_limit: int,
+    captain_eligible: set[int] | None,
+    best_future_objective: float | None,
+    scan_time_limit: float,
+    retry_time_limit: float,
+    source_rank: int,
+) -> TransferPlan | None:
+    def run(limit: float) -> TransferPlan:
+        return optimise_transfer_plan_view(
+            players,
+            projections,
+            future,
+            set(ids),
+            projection_col=projection_col,
+            bank=starting_bank,
+            free_transfers=1,
+            max_per_team=max_per_team,
+            decay=decay,
+            selling_prices=selling_prices,
+            candidate_limit=transfer_candidate_limit,
+            captain_eligible=captain_eligible,
+            solver_time_limit=max(float(limit), 0.01),
+        )
+
+    plan = run(scan_time_limit)
+    if plan.status == "Optimal":
+        return plan
+    if plan.status.startswith("Infeasible"):
+        return None
+    if plan.status == "SolverLimit" and _plan_bound_cannot_beat(
+        plan, best_future_objective
+    ):
+        return None
+
+    if plan.status == "SolverLimit" and float(retry_time_limit) > float(scan_time_limit):
+        plan = run(retry_time_limit)
+        if plan.status == "Optimal":
+            return plan
+        if plan.status.startswith("Infeasible"):
+            return None
+        if plan.status == "SolverLimit" and _plan_bound_cannot_beat(
+            plan, best_future_objective
+        ):
+            return None
+
+    detail = plan.solver_message or "no solver message"
+    bound = (
+        f"{float(plan.objective_upper_bound):.6f}"
+        if plan.objective_upper_bound is not None
+        else "unknown"
+    )
+    raise _TransferPlanInconclusive(
+        f"launch rank {source_rank} transfer plan ended {plan.status} "
+        f"(solver_status={plan.solver_status_code}, upper_bound={bound}; {detail})"
+    )
+
+
 def _evaluate_starting_squad(
     squad: pd.DataFrame,
     players: pd.DataFrame,
@@ -141,6 +225,9 @@ def _evaluate_starting_squad(
     transfer_candidate_limit: int,
     best_gw1_points: float,
     gw1_regret_tolerance: float,
+    best_future_objective: float | None = None,
+    transfer_scan_time_limit: float = 15.0,
+    transfer_retry_time_limit: float = 60.0,
 ) -> JointPathCandidate | None:
     ids = tuple(sorted(squad["player_id"].astype(int).tolist()))
     if len(ids) != 15:
@@ -188,21 +275,24 @@ def _evaluate_starting_squad(
         int(row.player_id): float(row.price)
         for row in squad[["player_id", "price"]].itertuples(index=False)
     }
-    transfer_plan = optimise_transfer_plan_view(
+    transfer_plan = _transfer_plan_or_prune(
         players,
         projections,
         future,
-        set(ids),
+        ids,
         projection_col=projection_col,
-        bank=starting_bank,
-        free_transfers=1,
+        starting_bank=starting_bank,
         max_per_team=max_per_team,
         decay=decay,
         selling_prices=selling_prices,
-        candidate_limit=transfer_candidate_limit,
+        transfer_candidate_limit=transfer_candidate_limit,
         captain_eligible=captain_eligible,
+        best_future_objective=best_future_objective,
+        scan_time_limit=transfer_scan_time_limit,
+        retry_time_limit=transfer_retry_time_limit,
+        source_rank=source_rank,
     )
-    if transfer_plan.status != "Optimal":
+    if transfer_plan is None:
         return None
     hit_cost = sum(int(week.get("hit_cost", 0) or 0) for week in transfer_plan.weeks)
     return JointPathCandidate(
@@ -220,6 +310,24 @@ def _evaluate_starting_squad(
     )
 
 
+def _future_proxy_scores(
+    projections: pd.DataFrame,
+    gameweeks: list[int],
+    projection_col: str,
+    decay: float,
+) -> dict[int, float]:
+    scores: dict[int, float] = {}
+    for offset, gw in enumerate(gameweeks[1:]):
+        rows = projections[projections["gw"].astype(int).eq(int(gw))]
+        if projection_col not in rows.columns:
+            continue
+        values = rows.groupby("player_id")[projection_col].sum()
+        weight = float(decay) ** offset
+        for pid, value in values.items():
+            scores[int(pid)] = scores.get(int(pid), 0.0) + weight * float(value)
+    return scores
+
+
 def _evaluate_exact_candidates(
     exact: ExactHorizonDecision,
     players: pd.DataFrame,
@@ -234,12 +342,37 @@ def _evaluate_exact_candidates(
     xi_eligible: set[int] | None,
     transfer_candidate_limit: int,
     gw1_regret_tolerance: float,
+    min_source_rank: int = 1,
+    max_source_rank: int | None = None,
+    existing_candidates: list[JointPathCandidate] | None = None,
+    transfer_scan_time_limit: float = 15.0,
+    transfer_retry_time_limit: float = 60.0,
 ) -> list[JointPathCandidate]:
     best_gw1 = float(exact.objective)
+    upper_rank = int(max_source_rank) if max_source_rank is not None else 10**9
+    rows = [
+        row
+        for row in exact.candidates
+        if int(min_source_rank) <= int(row.generation_rank) <= upper_rank
+        and best_gw1 - float(row.exact_objective)
+        <= float(gw1_regret_tolerance) + 1e-9
+    ]
+    proxy = _future_proxy_scores(projections, gameweeks, projection_col, decay)
+    rows.sort(
+        key=lambda row: (
+            -sum(float(proxy.get(int(pid), 0.0)) for pid in row.squad_ids),
+            int(row.generation_rank),
+            tuple(int(pid) for pid in row.squad_ids),
+        )
+    )
+
+    previous = list(existing_candidates or [])
+    best_future = max(
+        (float(candidate.future_objective) for candidate in previous),
+        default=None,
+    )
     evaluated: list[JointPathCandidate] = []
-    for row in exact.candidates:
-        if best_gw1 - float(row.exact_objective) > float(gw1_regret_tolerance) + 1e-9:
-            continue
+    for row in rows:
         ids = {int(pid) for pid in row.squad_ids}
         squad = players[players["player_id"].astype(int).isin(ids)].copy()
         candidate = _evaluate_starting_squad(
@@ -257,10 +390,49 @@ def _evaluate_exact_candidates(
             transfer_candidate_limit=transfer_candidate_limit,
             best_gw1_points=best_gw1,
             gw1_regret_tolerance=gw1_regret_tolerance,
+            best_future_objective=best_future,
+            transfer_scan_time_limit=transfer_scan_time_limit,
+            transfer_retry_time_limit=transfer_retry_time_limit,
         )
         if candidate is not None:
             evaluated.append(candidate)
+            if best_future is None or candidate.future_objective > best_future:
+                best_future = float(candidate.future_objective)
     return evaluated
+
+
+def _rebase_gw1_band(
+    candidates: list[JointPathCandidate],
+    best_gw1_points: float,
+    tolerance: float,
+) -> list[JointPathCandidate]:
+    rebased: list[JointPathCandidate] = []
+    for candidate in candidates:
+        regret = max(float(best_gw1_points) - float(candidate.gw1_expected_points), 0.0)
+        rebased.append(
+            replace(
+                candidate,
+                gw1_regret=regret,
+                within_gw1_band=regret <= float(tolerance) + 1e-9,
+            )
+        )
+    return rebased
+
+
+def _winner_through_rank(
+    candidates: list[JointPathCandidate],
+    source_rank: int,
+) -> JointPathCandidate | None:
+    return select_best_joint_candidate(
+        [candidate for candidate in candidates if int(candidate.source_rank) <= int(source_rank)]
+    )
+
+
+def _candidate_with_source_rank(
+    candidate: JointPathCandidate,
+    source_rank: int,
+) -> JointPathCandidate:
+    return replace(candidate, source_rank=int(source_rank))
 
 
 def optimise_joint_initial_path(
@@ -277,23 +449,22 @@ def optimise_joint_initial_path(
     transfer_candidate_limit: int = 180,
     exact_candidate_limit: int = 16,
     gw1_regret_tolerance: float = 0.25,
+    transfer_scan_time_limit: float = 15.0,
+    transfer_retry_time_limit: float = 60.0,
 ) -> JointInitialPathResult:
     """Choose a GW1 launch squad before valuing future transfer options.
 
-    The opening squad is generated and exact-rescored on GW1 only. The existing
-    near-equivalent points band is then a hard floor: no frozen future forecast may
-    displace a launch squad by more than that GW1 expected-points tolerance. Only
-    squads inside the GW1 band are ranked by the legal future transfer planner,
-    which values bank, rolled free transfers and hit costs. Future moves remain
-    contingencies and must be re-solved from fresh projections before each deadline.
+    GW1 exact expected points remain the primary launch objective. Future legal
+    transfer option value can only distinguish squads inside the existing GW1
+    near-equivalent band.
 
-    Production convergence is checked on an expanded launch shortlist. The previous
-    implementation solved/evaluated 16 candidates and then repeated the same work for
-    32 candidates, failing whenever ranks 17-32 contained the better legal future
-    path. We now enumerate up to 64 once, evaluate each qualifying transfer path once,
-    and compare the winner in the first 32 against the winner in the full expanded
-    pool. A complete exact shortlist is stronger evidence than prefix identity and is
-    also accepted. The GW1 floor and every exact FPL legality constraint are unchanged.
+    Convergence is adaptive and cached. We first compare the rank-1..16 winner with
+    the rank-1..32 winner. Only when that identity changes do we solve ranks 33..48;
+    if 32..48 changes again we extend once to rank 64. Transfer MILPs use a short
+    scan and a bounded retry. A solver-limit candidate may be pruned only when its
+    branch-and-bound upper bound is strictly below an already proven incumbent;
+    otherwise unresolved limits fail closed. No legality, budget, GW1 floor or
+    promotion gate is weakened.
     """
     gws = [int(gw) for gw in gameweeks]
     tolerance = max(float(gw1_regret_tolerance), 0.0)
@@ -323,83 +494,243 @@ def optimise_joint_initial_path(
             "The static comparison baseline is not optimal.",
         )
 
-    # Convergence must be tested beyond the historical 16/32 boundary that failed
-    # on the live 2026-08-17 production surface. Enumerate the expanded pool once so
-    # candidates in the first prefix are not transfer-planned twice.
-    small_limit = max(int(exact_candidate_limit) * 2, 32)
-    full_limit = max(small_limit * 2, small_limit + 16)
-    launch_full = optimise_exact_horizon_decision(
+    base_prefix = max(int(exact_candidate_limit), 16)
+    initial_launch_limit = max(base_prefix * 3, 48)
+    extended_launch_limit = max(base_prefix * 4, 64)
+    launch = optimise_exact_horizon_decision(
         players,
         projections,
         [gws[0]],
         budget=budget,
         max_per_team=max_per_team,
         decay=1.0,
-        candidate_limit=full_limit,
+        candidate_limit=initial_launch_limit,
         near_equivalent_points=tolerance,
         captain_eligible=captain_eligible,
         xi_eligible=xi_eligible,
         projection_col=projection_col,
     )
-    if launch_full.status != "Optimal":
+    if launch.status != "Optimal":
         return JointInitialPathResult(
             "infeasible", None, None, tuple(), None, tolerance, None,
             None, None, False, None, None, None, projection_col,
             "The GW1-first launch solve is not optimal.",
         )
 
-    full_candidates = _evaluate_exact_candidates(
-        launch_full,
-        players,
-        projections,
-        gws,
-        budget=budget,
-        max_per_team=max_per_team,
-        decay=decay,
-        projection_col=projection_col,
-        captain_eligible=captain_eligible,
-        xi_eligible=xi_eligible,
-        transfer_candidate_limit=transfer_candidate_limit,
-        gw1_regret_tolerance=tolerance,
-    )
-    small_candidates = [
-        candidate
-        for candidate in full_candidates
-        if int(candidate.source_rank) <= int(small_limit)
-    ]
-    small = select_best_joint_candidate(small_candidates)
-    selected = select_best_joint_candidate(full_candidates)
-    best_gw1 = float(launch_full.objective)
+    evaluated: list[JointPathCandidate] = []
+    first_comparison = base_prefix
+    current_prefix = min(base_prefix * 2, initial_launch_limit)
+    previous_winner: JointPathCandidate | None = None
+    selected: JointPathCandidate | None = None
+    stable = False
+    comparison_left = first_comparison
+    comparison_right = current_prefix
+
+    try:
+        evaluated.extend(
+            _evaluate_exact_candidates(
+                launch,
+                players,
+                projections,
+                gws,
+                budget=budget,
+                max_per_team=max_per_team,
+                decay=decay,
+                projection_col=projection_col,
+                captain_eligible=captain_eligible,
+                xi_eligible=xi_eligible,
+                transfer_candidate_limit=transfer_candidate_limit,
+                gw1_regret_tolerance=tolerance,
+                min_source_rank=1,
+                max_source_rank=current_prefix,
+                existing_candidates=evaluated,
+                transfer_scan_time_limit=transfer_scan_time_limit,
+                transfer_retry_time_limit=transfer_retry_time_limit,
+            )
+        )
+        previous_winner = _winner_through_rank(evaluated, first_comparison)
+        selected = _winner_through_rank(evaluated, current_prefix)
+        max_generated_rank = max(
+            (int(row.generation_rank) for row in launch.candidates),
+            default=0,
+        )
+        complete = bool(launch.shortlist_complete and max_generated_rank <= current_prefix)
+        stable = bool(
+            complete
+            or (
+                previous_winner is not None
+                and selected is not None
+                and previous_winner.squad_ids == selected.squad_ids
+            )
+        )
+
+        if not stable and current_prefix < initial_launch_limit:
+            next_prefix = initial_launch_limit
+            evaluated.extend(
+                _evaluate_exact_candidates(
+                    launch,
+                    players,
+                    projections,
+                    gws,
+                    budget=budget,
+                    max_per_team=max_per_team,
+                    decay=decay,
+                    projection_col=projection_col,
+                    captain_eligible=captain_eligible,
+                    xi_eligible=xi_eligible,
+                    transfer_candidate_limit=transfer_candidate_limit,
+                    gw1_regret_tolerance=tolerance,
+                    min_source_rank=current_prefix + 1,
+                    max_source_rank=next_prefix,
+                    existing_candidates=evaluated,
+                    transfer_scan_time_limit=transfer_scan_time_limit,
+                    transfer_retry_time_limit=transfer_retry_time_limit,
+                )
+            )
+            previous_winner = selected
+            comparison_left = current_prefix
+            current_prefix = next_prefix
+            comparison_right = current_prefix
+            selected = _winner_through_rank(evaluated, current_prefix)
+            complete = bool(launch.shortlist_complete and max_generated_rank <= current_prefix)
+            stable = bool(
+                complete
+                or (
+                    previous_winner is not None
+                    and selected is not None
+                    and previous_winner.squad_ids == selected.squad_ids
+                )
+            )
+
+        if not stable and not launch.shortlist_complete and current_prefix < extended_launch_limit:
+            extended = optimise_exact_horizon_decision(
+                players,
+                projections,
+                [gws[0]],
+                budget=budget,
+                max_per_team=max_per_team,
+                decay=1.0,
+                candidate_limit=extended_launch_limit,
+                near_equivalent_points=tolerance,
+                captain_eligible=captain_eligible,
+                xi_eligible=xi_eligible,
+                projection_col=projection_col,
+            )
+            if extended.status != "Optimal":
+                raise _TransferPlanInconclusive(
+                    "extended GW1 launch shortlist did not solve optimally"
+                )
+            launch = extended
+            evaluated = _rebase_gw1_band(evaluated, float(launch.objective), tolerance)
+            next_prefix = extended_launch_limit
+            evaluated.extend(
+                _evaluate_exact_candidates(
+                    launch,
+                    players,
+                    projections,
+                    gws,
+                    budget=budget,
+                    max_per_team=max_per_team,
+                    decay=decay,
+                    projection_col=projection_col,
+                    captain_eligible=captain_eligible,
+                    xi_eligible=xi_eligible,
+                    transfer_candidate_limit=transfer_candidate_limit,
+                    gw1_regret_tolerance=tolerance,
+                    min_source_rank=current_prefix + 1,
+                    max_source_rank=next_prefix,
+                    existing_candidates=evaluated,
+                    transfer_scan_time_limit=transfer_scan_time_limit,
+                    transfer_retry_time_limit=transfer_retry_time_limit,
+                )
+            )
+            previous_winner = _winner_through_rank(evaluated, current_prefix)
+            comparison_left = current_prefix
+            current_prefix = next_prefix
+            comparison_right = current_prefix
+            selected = _winner_through_rank(evaluated, current_prefix)
+            max_generated_rank = max(
+                (int(row.generation_rank) for row in launch.candidates),
+                default=0,
+            )
+            complete = bool(launch.shortlist_complete and max_generated_rank <= current_prefix)
+            stable = bool(
+                complete
+                or (
+                    previous_winner is not None
+                    and selected is not None
+                    and previous_winner.squad_ids == selected.squad_ids
+                )
+            )
+    except _TransferPlanInconclusive as exc:
+        best_gw1 = float(launch.objective)
+        floor = best_gw1 - tolerance
+        return JointInitialPathResult(
+            "inconclusive",
+            None,
+            None,
+            tuple(sorted(evaluated, key=_candidate_key)),
+            best_gw1,
+            tolerance,
+            floor,
+            previous_winner.squad_ids if previous_winner else None,
+            None,
+            False,
+            None,
+            None,
+            None,
+            projection_col,
+            f"Final launch transfer planning is inconclusive: {exc}",
+        )
+
+    best_gw1 = float(launch.objective)
+    evaluated = _rebase_gw1_band(evaluated, best_gw1, tolerance)
+    previous_winner = _winner_through_rank(evaluated, comparison_left)
+    selected = _winner_through_rank(evaluated, comparison_right)
     floor = best_gw1 - tolerance
     if selected is None:
         return JointInitialPathResult(
-            "infeasible", None, None, tuple(full_candidates), best_gw1, tolerance,
-            floor, small.squad_ids if small else None, None, False, None, None,
-            None, projection_col,
+            "infeasible", None, None, tuple(sorted(evaluated, key=_candidate_key)),
+            best_gw1, tolerance, floor,
+            previous_winner.squad_ids if previous_winner else None,
+            None, False, None, None, None, projection_col,
             "No launch candidate survives the GW1 expected-points floor.",
         )
 
-    baseline = _evaluate_starting_squad(
-        static.solution.squad,
-        players,
-        projections,
-        gws,
-        budget=budget,
-        max_per_team=max_per_team,
-        decay=decay,
-        projection_col=projection_col,
-        captain_eligible=captain_eligible,
-        xi_eligible=xi_eligible,
-        source_rank=0,
-        transfer_candidate_limit=transfer_candidate_limit,
-        best_gw1_points=best_gw1,
-        gw1_regret_tolerance=tolerance,
+    baseline_ids = tuple(sorted(static.solution.squad["player_id"].astype(int).tolist()))
+    baseline_match = next(
+        (candidate for candidate in evaluated if candidate.squad_ids == baseline_ids),
+        None,
     )
-    small_ids = small.squad_ids if small else None
-    stable = bool(
-        launch_full.shortlist_complete
-        or (small_ids is not None and small_ids == selected.squad_ids)
-    )
+    baseline_note = ""
+    if baseline_match is not None:
+        baseline = _candidate_with_source_rank(baseline_match, 0)
+    else:
+        try:
+            baseline = _evaluate_starting_squad(
+                static.solution.squad,
+                players,
+                projections,
+                gws,
+                budget=budget,
+                max_per_team=max_per_team,
+                decay=decay,
+                projection_col=projection_col,
+                captain_eligible=captain_eligible,
+                xi_eligible=xi_eligible,
+                source_rank=0,
+                transfer_candidate_limit=transfer_candidate_limit,
+                best_gw1_points=best_gw1,
+                gw1_regret_tolerance=tolerance,
+                best_future_objective=None,
+                transfer_scan_time_limit=transfer_scan_time_limit,
+                transfer_retry_time_limit=transfer_retry_time_limit,
+            )
+        except _TransferPlanInconclusive as exc:
+            baseline = None
+            baseline_note = f" Static comparison future path unavailable: {exc}."
+
+    small_ids = previous_winner.squad_ids if previous_winner else None
     overlap = (
         len(set(selected.squad_ids) & set(baseline.squad_ids))
         if baseline is not None
@@ -420,7 +751,7 @@ def optimise_joint_initial_path(
         "optimal",
         baseline,
         selected,
-        tuple(sorted(full_candidates, key=_candidate_key)),
+        tuple(sorted(evaluated, key=_candidate_key)),
         best_gw1,
         tolerance,
         floor,
@@ -435,9 +766,11 @@ def optimise_joint_initial_path(
             "GW1 exact expected points are the primary launch objective. The existing "
             "near-equivalent point band is a hard floor; only then may the legal "
             "future transfer path choose between launch-equivalent squads. Candidate "
-            f"convergence is checked between the first {small_limit} and expanded "
-            f"{full_limit} launch candidates, unless the exact shortlist completes "
-            "earlier. Execute only the current decision and rebuild projections before "
-            "every later deadline."
+            f"convergence was checked between rank prefixes {comparison_left} and "
+            f"{comparison_right}; larger prefixes are solved only after an identity "
+            "change. Solver-limit candidates are pruned only by certified objective "
+            "bounds, otherwise the selector fails closed. Execute only the current "
+            "decision and rebuild projections before every later deadline."
+            f"{baseline_note}"
         ),
     )
