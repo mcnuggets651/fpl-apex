@@ -38,12 +38,15 @@ class FPLCoreClient:
     def _stable_identity_rows(players: pd.DataFrame, label: str) -> pd.DataFrame:
         """Return one unambiguous stable identity row per player code.
 
-        ``player_code`` is the cross-season identity key.  When FPL Core publishes
+        ``player_code`` is the cross-season identity key. When FPL Core publishes
         ``team_code`` we retain it as decision context so the minutes model can tell
         whether prior-season starts belong to the player's current club or to a club
-        they have since left.  Team membership is not an identity authority: current
-        Official FPL identity still wins in production.  We merely require one
-        unambiguous team_code per player_code within each season before using it.
+        they have since left. Team membership is not an identity authority: current
+        Official FPL identity still wins in production.
+
+        Some synthetic/legacy Core frames deliberately omit ``team_code``. In that
+        case club-change state is unknown rather than an error or fabricated change;
+        the returned nullable column keeps the downstream schema stable.
         """
         required = {"player_code", "player_id"}
         if not required.issubset(players.columns):
@@ -51,13 +54,9 @@ class FPLCoreClient:
                 f"{label} FPL Core players.csv lacks stable player_code/player_id mapping"
             )
 
-        columns = ["player_code", "player_id"]
-        if "team_code" in players.columns:
-            columns.append("team_code")
-        identity = players[columns].copy()
+        identity = players.reindex(columns=["player_code", "player_id", "team_code"]).copy()
         identity["player_id"] = pd.to_numeric(identity["player_id"], errors="coerce")
-        if "team_code" in identity.columns:
-            identity["team_code"] = pd.to_numeric(identity["team_code"], errors="coerce")
+        identity["team_code"] = pd.to_numeric(identity["team_code"], errors="coerce")
         identity = identity.dropna(subset=["player_code", "player_id"])
         identity["player_id"] = identity["player_id"].astype(int)
 
@@ -77,20 +76,19 @@ class FPLCoreClient:
                 + ", ".join(map(str, bad_ids.index[:10]))
             )
 
-        if "team_code" in identity.columns:
-            team_conflicts = (
-                identity.dropna(subset=["team_code"])
-                .groupby("player_code")["team_code"]
-                .nunique()
+        team_conflicts = (
+            identity.dropna(subset=["team_code"])
+            .groupby("player_code")["team_code"]
+            .nunique()
+        )
+        bad_teams = team_conflicts[team_conflicts > 1]
+        if not bad_teams.empty:
+            raise ValueError(
+                f"{label} FPL Core contains conflicting team_code mappings: "
+                + ", ".join(map(str, bad_teams.index[:10]))
             )
-            bad_teams = team_conflicts[team_conflicts > 1]
-            if not bad_teams.empty:
-                raise ValueError(
-                    f"{label} FPL Core contains conflicting team_code mappings: "
-                    + ", ".join(map(str, bad_teams.index[:10]))
-                )
 
-        return identity.drop_duplicates(columns).reset_index(drop=True)
+        return identity.drop_duplicates(["player_code", "player_id", "team_code"]).reset_index(drop=True)
 
     def previous_season_playerstats(self, force: bool = False) -> pd.DataFrame:
         """Map prior-season playing time and club context to current official IDs."""
@@ -114,12 +112,6 @@ class FPLCoreClient:
             )
             if col in prior_stats.columns
         ]
-        # FPL Core playerstats.csv is a longitudinal table: cumulative player
-        # snapshots are appended once per Gameweek. Joining it directly to the
-        # one-row player identity table creates many matches per established player.
-        # Select the latest published snapshot per official prior-season ID and
-        # reject genuinely ambiguous duplicate snapshots instead of silently
-        # aggregating or double-counting them.
         if prior_stats["player_id"].duplicated().any():
             if "gw" not in prior_stats.columns:
                 raise ValueError(
@@ -137,23 +129,19 @@ class FPLCoreClient:
                 "player_id", keep="last"
             )
 
-        prior_identity_columns = ["player_code", "player_id"]
-        if "team_code" in prior_players.columns:
-            prior_identity_columns.append("team_code")
-        previous_rows = prior_players[prior_identity_columns].merge(
+        previous_rows = prior_players[["player_code", "player_id", "team_code"]].merge(
             prior_stats[["player_id", *available]],
             on="player_id",
             how="left",
             validate="one_to_one",
         )
         rename = {col: f"previous_{col}" for col in available}
-        if "team_code" in previous_rows.columns:
-            rename["team_code"] = "previous_team_code"
+        rename["team_code"] = "previous_team_code"
         previous_rows = previous_rows.rename(columns=rename).drop(columns="player_id")
 
-        current = current_players.rename(columns={"player_id": "current_player_id"})
-        if "team_code" in current.columns:
-            current = current.rename(columns={"team_code": "current_team_code"})
+        current = current_players.rename(
+            columns={"player_id": "current_player_id", "team_code": "current_team_code"}
+        )
         out = current.merge(
             previous_rows,
             on="player_code",
@@ -167,13 +155,12 @@ class FPLCoreClient:
             pd.to_numeric(out.get("previous_minutes"), errors="coerce") / 38.0
         ).clip(0, 90)
 
-        current_team = pd.to_numeric(out.get("current_team_code"), errors="coerce")
-        previous_team = pd.to_numeric(out.get("previous_team_code"), errors="coerce")
-        out["club_changed"] = (
-            current_team.notna()
-            & previous_team.notna()
-            & current_team.ne(previous_team)
-        )
+        current_team = pd.to_numeric(out["current_team_code"], errors="coerce")
+        previous_team = pd.to_numeric(out["previous_team_code"], errors="coerce")
+        known = current_team.notna() & previous_team.notna()
+        club_changed = pd.Series(pd.NA, index=out.index, dtype="boolean")
+        club_changed.loc[known] = current_team.loc[known].ne(previous_team.loc[known])
+        out["club_changed"] = club_changed
         return out.drop(columns="player_code")
 
     def teams(self, force: bool = False) -> pd.DataFrame:
@@ -210,15 +197,7 @@ class FPLCoreClient:
         gameweeks: list[int],
         force: bool = False,
     ) -> pd.DataFrame:
-        """Return FPL-team-ID Elo context for requested Premier League fixtures.
-
-        FPL Core fixture files use the historical team ``code`` column (e.g.
-        Arsenal=3, Man City=43), while its current ``teams.csv`` also includes
-        the official FPL ``id`` 1..20. The per-Gameweek fixture files can also
-        contain cup matches. Only rows explicitly labelled ``prem`` are valid for
-        the FPL fixture surface; otherwise cup Elo can masquerade as league
-        coverage when future Premier League Elo values are still unpublished.
-        """
+        """Return FPL-team-ID Elo context for requested Premier League fixtures."""
         teams = self.teams(force=force)
         required_team_cols = {"code", "id"}
         if not required_team_cols.issubset(teams.columns):
