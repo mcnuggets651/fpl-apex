@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 import pandas as pd
 
+import apex_fpl.optimisation.transfers as transfers
 from apex_fpl.optimisation.transfers import _next_ft, optimise_transfer_plan
 
 
@@ -22,6 +25,13 @@ def _pool():
     return pd.DataFrame(rows)
 
 
+def _legal_current(players: pd.DataFrame) -> set[int]:
+    current: set[int] = set()
+    for pos, need in {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3}.items():
+        current.update(players[players.position == pos].head(need).player_id.astype(int))
+    return current
+
+
 def test_ft_transition_rule():
     assert _next_ft(1, 0) == 2
     assert _next_ft(5, 0) == 5
@@ -32,11 +42,7 @@ def test_ft_transition_rule():
 
 def test_multiweek_transfer_plan_is_legal():
     players = _pool()
-    # Construct a legal but deliberately weak initial squad.
-    current = set()
-    for pos, need in {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3}.items():
-        for _, r in players[players.position == pos].head(need).iterrows():
-            current.add(int(r.player_id))
+    current = _legal_current(players)
     gws = [1, 2]
     proj = pd.DataFrame([
         {"player_id": int(r.player_id), "gw": gw, "risk_adjusted_xp": 2.0 + r.player_id / 20 + gw / 10}
@@ -59,11 +65,7 @@ def test_multiweek_transfer_plan_is_legal():
 
 def test_transfer_plan_never_captains_ineligible_projection_outlier():
     players = _pool()
-    current = set()
-    for pos, need in {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3}.items():
-        current.update(
-            players[players.position == pos].head(need).player_id.astype(int)
-        )
+    current = _legal_current(players)
     outlier = int(players.player_id.max())
     projections = pd.DataFrame(
         [
@@ -88,3 +90,41 @@ def test_transfer_plan_never_captains_ineligible_projection_outlier():
     assert plan.status == "Optimal"
     assert plan.weeks[0]["captain"][0]["player_id"] in eligible
     assert plan.weeks[0]["vice_captain"][0]["player_id"] in eligible
+
+
+def test_solver_limit_is_not_reported_as_infeasible(monkeypatch):
+    players = _pool()
+    current = _legal_current(players)
+    projections = pd.DataFrame(
+        [
+            {"player_id": int(pid), "gw": 1, "risk_adjusted_xp": 3.0}
+            for pid in players.player_id
+        ]
+    )
+
+    fake_result = SimpleNamespace(
+        success=False,
+        status=1,
+        x=None,
+        fun=-100.0,
+        message="Time limit reached",
+        mip_dual_bound=-105.0,
+        mip_gap=0.05,
+    )
+    monkeypatch.setattr(transfers, "milp", lambda **kwargs: fake_result)
+
+    plan = transfers.optimise_transfer_plan(
+        players,
+        projections,
+        [1],
+        current,
+        bank=20.0,
+        candidate_limit=60,
+        solver_time_limit=0.1,
+    )
+
+    assert plan.status == "SolverLimit"
+    assert plan.solver_status_code == 1
+    assert plan.objective == 100.0
+    assert plan.objective_upper_bound == 105.0
+    assert plan.mip_gap == 0.05
