@@ -86,6 +86,35 @@ def _enrich_understat_player_rates(out: pd.DataFrame) -> pd.DataFrame:
     return enriched
 
 
+def _weighted_quantile(
+    values: pd.Series,
+    weights: pd.Series,
+    quantile: float,
+) -> float:
+    """Return a deterministic weighted empirical quantile.
+
+    The low-sample guard is meant to compare a tiny sample with established role
+    evidence.  An unweighted percentile lets a handful of players barely above the
+    270-minute maturity floor influence the reference as much as 3,000-minute
+    regulars.  Weighting by competitive minutes keeps the reference anchored to the
+    evidence volume without imposing a hand-tuned attacking-rate cap.
+    """
+    value = pd.to_numeric(values, errors="coerce").to_numpy(float)
+    weight = pd.to_numeric(weights, errors="coerce").to_numpy(float)
+    valid = np.isfinite(value) & np.isfinite(weight) & (weight > 0)
+    if not valid.any():
+        return float("nan")
+    value = value[valid]
+    weight = weight[valid]
+    order = np.argsort(value, kind="mergesort")
+    value = value[order]
+    weight = weight[order]
+    cumulative = np.cumsum(weight)
+    threshold = float(np.clip(quantile, 0.0, 1.0)) * float(cumulative[-1])
+    idx = int(np.searchsorted(cumulative, threshold, side="left"))
+    return float(value[min(idx, len(value) - 1)])
+
+
 def _position_rate_reference(
     raw_rate: pd.Series,
     positions: pd.Series,
@@ -105,7 +134,15 @@ def _position_rate_reference(
             continue
         weights = previous_minutes.loc[mature]
         prior_value = float(np.average(raw_rate.loc[mature], weights=weights))
-        upper_value = float(raw_rate.loc[mature].quantile(LOW_SAMPLE_ATTACK_UPPER_QUANTILE))
+        upper_value = _weighted_quantile(
+            raw_rate.loc[mature],
+            weights,
+            LOW_SAMPLE_ATTACK_UPPER_QUANTILE,
+        )
+        # The upper reference can never sit below the weighted position mean.  This
+        # preserves ordinary established attacking rates while still preventing a
+        # marginal mature outlier from defining the tiny-sample ceiling.
+        upper_value = max(prior_value, float(upper_value))
         prior.loc[same_position] = prior_value
         upper.loc[same_position] = upper_value
     return prior, upper
@@ -120,12 +157,21 @@ def stabilise_low_sample_attack_context(players: pd.DataFrame) -> pd.DataFrame:
     must not make the reliability gate believe the new PL season has already been
     played.  ``_official_current_minutes_for_attack_reliability`` preserves the
     official value across coalescing for exactly this decision.
+
+    The extreme-rate reference is minutes-weighted across mature same-position
+    players.  This is deliberately narrower than the retired global empirical-Bayes
+    challenger: only an extreme rate with <270 prior Premier League minutes is
+    adjusted, and ordinary/mature rates remain exact.
     """
     out = players.copy()
     if "position" not in out.columns or "previous_minutes" not in out.columns:
         return out
     positions = out["position"].astype("string")
-    previous_minutes = pd.to_numeric(out["previous_minutes"], errors="coerce").fillna(0.0).clip(lower=0.0)
+    previous_minutes = (
+        pd.to_numeric(out["previous_minutes"], errors="coerce")
+        .fillna(0.0)
+        .clip(lower=0.0)
+    )
     current_minutes = pd.to_numeric(
         out.get(
             "_official_current_minutes_for_attack_reliability",
@@ -135,7 +181,10 @@ def stabilise_low_sample_attack_context(players: pd.DataFrame) -> pd.DataFrame:
     ).fillna(0.0).clip(lower=0.0)
     pre_gw1_context = current_minutes.le(0.0)
     reliability = (previous_minutes / LOW_SAMPLE_ATTACK_MINUTES).clip(0.0, 1.0)
-    for label, field in (("xg90", "expected_goals_per_90"), ("xa90", "expected_assists_per_90")):
+    for label, field in (
+        ("xg90", "expected_goals_per_90"),
+        ("xa90", "expected_assists_per_90"),
+    ):
         if field not in out.columns:
             continue
         raw = pd.to_numeric(out[field], errors="coerce")
@@ -147,7 +196,7 @@ def stabilise_low_sample_attack_context(players: pd.DataFrame) -> pd.DataFrame:
             & raw.notna()
             & prior.notna()
             & upper.notna()
-            & raw.ge(upper)
+            & raw.gt(upper)
             & raw.gt(prior)
         )
         adjusted = prior + reliability * (raw - prior)
@@ -181,7 +230,10 @@ def coalesce_context(df: pd.DataFrame) -> pd.DataFrame:
         use_ext = cur.isna() | ((cur == 0) & ext.notna() & (ext != 0))
         out.loc[use_ext, field] = ext[use_ext]
     out = stabilise_low_sample_attack_context(out)
-    out = out.drop(columns=["_official_current_minutes_for_attack_reliability"], errors="ignore")
+    out = out.drop(
+        columns=["_official_current_minutes_for_attack_reliability"],
+        errors="ignore",
+    )
     return _enrich_understat_player_rates(out)
 
 
@@ -216,7 +268,9 @@ def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> p
         f["minutes_played"] = 0.0
     minutes = pd.to_numeric(f["minutes_played"], errors="coerce").fillna(0.0)
     f["is_appearance"] = minutes.gt(0).astype(int)
-    start_min = pd.to_numeric(f.get("start_min", pd.Series(0, index=f.index)), errors="coerce").fillna(0)
+    start_min = pd.to_numeric(
+        f.get("start_min", pd.Series(0, index=f.index)), errors="coerce"
+    ).fillna(0)
     f["is_start"] = (minutes.gt(0) & start_min.le(1)).astype(int)
     for source in rate_sources.values():
         if source not in f.columns:
@@ -233,7 +287,9 @@ def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> p
     rename = {source: f"preseason_{stat}" for stat, source in rate_sources.items()}
     sums = sums.rename(columns=rename)
     agg = agg.merge(sums, on="player_id", how="left", validate="one_to_one")
-    mins = np.maximum(pd.to_numeric(agg["preseason_minutes"], errors="coerce").fillna(0), 1)
+    mins = np.maximum(
+        pd.to_numeric(agg["preseason_minutes"], errors="coerce").fillna(0), 1
+    )
     for stat in rate_sources:
         total = pd.to_numeric(agg[f"preseason_{stat}"], errors="coerce")
         agg[f"preseason_{stat}90"] = total * 90 / mins
