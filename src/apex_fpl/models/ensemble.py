@@ -11,12 +11,13 @@ EXPERT_COLUMNS = {
     "market": "market_xp",
 }
 
-# These experts currently enter Apex as one total expected-points value per
-# player/Gameweek. The transparent Apex model is the only fixture-row expert.
 FULL_GAMEWEEK_EXPERTS = {"official_xp", "airsenal_xp", "market_xp"}
 AIRSENAL_ZERO_TOLERANCE = 1e-12
 AIRSENAL_ROLE_CONFLICT_MIN_APPEARANCE_XP = 1.0
 AIRSENAL_ROLE_CONFLICT_MIN_OFFICIAL_XP = 1.0
+APEX_RELIABILITY_MIN_MULTIPLIER = 0.20
+APEX_OUTLIER_ABSOLUTE_MARGIN = 0.75
+APEX_OUTLIER_RELATIVE_MARGIN = 0.20
 
 
 def _allocate_gameweek_experts(out: pd.DataFrame) -> pd.DataFrame:
@@ -34,20 +35,7 @@ def _allocate_gameweek_experts(out: pd.DataFrame) -> pd.DataFrame:
 
 
 def _airsenal_zero_role_conflict(out: pd.DataFrame) -> np.ndarray:
-    """Identify exact-zero AIrsenal rows contradicted by current role evidence.
-
-    The pinned AIrsenal model explicitly predicts zero when its recent-minutes
-    history sums to zero. Before GW1 that history falls back to previous-season
-    minutes for the player's *current* club, so transfers/new roles can receive a
-    structural zero despite current evidence of participation. We only abstain when
-    two independent current signals agree that the zero-minute premise is stale:
-    Official FPL expected points and Apex's explicit appearance component must both
-    imply meaningful participation.
-
-    Once that contradiction is established for a player on a row where Official EP
-    exists, other exact-zero AIrsenal rows for the same player in the horizon inherit
-    the abstention. Positive AIrsenal forecasts are never suppressed.
-    """
+    """Identify exact-zero AIrsenal rows contradicted by current role evidence."""
     n = len(out)
     if "airsenal_xp" not in out.columns:
         return np.zeros(n, dtype=bool)
@@ -78,6 +66,137 @@ def _airsenal_zero_role_conflict(out: pd.DataFrame) -> np.ndarray:
     return (zero & player_ids.isin(conflicted_ids)).to_numpy(bool)
 
 
+def _apex_reliability_policy(
+    out: pd.DataFrame,
+    expert_values: dict[str, np.ndarray],
+    expert_usable: dict[str, np.ndarray],
+    expert_weights: dict[str, float],
+) -> dict[str, np.ndarray]:
+    """Attenuate only unsupported Apex outliers confirmed by independent experts.
+
+    Generic minutes or role uncertainty is *not* a reason to lower expected value.
+    The nominal Apex expert weight remains the ceiling.  A row is attenuated only
+    when all three conditions are true:
+
+    1. Apex itself marks the component evidence as less than fully reliable;
+    2. at least two independent experts are simultaneously usable and Apex lies
+       materially outside their envelope; and
+    3. for later horizon rows where Official EP is unavailable, the same player's
+       Apex forecast remains on the already-confirmed side of the independent
+       consensus.
+
+    This lets Apex keep differentiated high-EV views when evidence is strong, while
+    preventing a tiny-sample attacking rate from dominating two independent models.
+    """
+    n = len(out)
+    apex = expert_values.get("apex_model", np.full(n, np.nan, dtype=float))
+    apex_usable = expert_usable.get("apex_model", np.zeros(n, dtype=bool))
+    reliability = pd.to_numeric(
+        out.get("apex_model_reliability", pd.Series(1.0, index=out.index)),
+        errors="coerce",
+    ).fillna(1.0).clip(0.0, 1.0).to_numpy(float)
+
+    independent_keys = ["official_ep", "airsenal", "market"]
+    independent_count = np.zeros(n, dtype=int)
+    independent_weight = np.zeros(n, dtype=float)
+    consensus_num = np.zeros(n, dtype=float)
+    lower = np.full(n, np.nan, dtype=float)
+    upper = np.full(n, np.nan, dtype=float)
+
+    for key in independent_keys:
+        if key not in expert_values:
+            continue
+        values = expert_values[key]
+        usable = expert_usable[key]
+        weight = max(float(expert_weights.get(key, 0.0)), 0.0)
+        active = usable & (weight > 0)
+        independent_count[active] += 1
+        independent_weight[active] += weight
+        consensus_num[active] += values[active] * weight
+        lower = np.where(
+            active & (np.isnan(lower) | (values < lower)), values, lower
+        )
+        upper = np.where(
+            active & (np.isnan(upper) | (values > upper)), values, upper
+        )
+
+    consensus = np.divide(
+        consensus_num,
+        np.maximum(independent_weight, 1e-12),
+        out=np.full(n, np.nan, dtype=float),
+        where=independent_weight > 0,
+    )
+    margin = np.maximum(
+        APEX_OUTLIER_ABSOLUTE_MARGIN,
+        APEX_OUTLIER_RELATIVE_MARGIN * np.maximum(np.abs(consensus), 1.0),
+    )
+    direct_high = (
+        apex_usable
+        & (reliability < 0.999)
+        & (independent_count >= 2)
+        & np.isfinite(upper)
+        & (apex > upper + margin)
+    )
+    direct_low = (
+        apex_usable
+        & (reliability < 0.999)
+        & (independent_count >= 2)
+        & np.isfinite(lower)
+        & (apex < lower - margin)
+    )
+    direct = direct_high | direct_low
+    direction = np.where(direct_high, 1, np.where(direct_low, -1, 0)).astype(int)
+
+    inherited = np.zeros(n, dtype=bool)
+    if "player_id" in out.columns and direct.any():
+        player_ids = pd.to_numeric(out["player_id"], errors="coerce")
+        direct_frame = pd.DataFrame(
+            {"player_id": player_ids, "direction": direction, "direct": direct}
+        )
+        confirmed: dict[int, int] = {}
+        for player_id, group in direct_frame[direct_frame["direct"]].groupby("player_id"):
+            directions = set(group["direction"].astype(int)) - {0}
+            if len(directions) == 1 and pd.notna(player_id):
+                confirmed[int(player_id)] = int(next(iter(directions)))
+        for idx, player_id in enumerate(player_ids):
+            if direct[idx] or pd.isna(player_id):
+                continue
+            inherited_direction = confirmed.get(int(player_id), 0)
+            if inherited_direction == 0 or independent_count[idx] < 1:
+                continue
+            if inherited_direction > 0:
+                inherited[idx] = bool(
+                    np.isfinite(consensus[idx]) and apex[idx] > consensus[idx] + margin[idx]
+                )
+            else:
+                inherited[idx] = bool(
+                    np.isfinite(consensus[idx]) and apex[idx] < consensus[idx] - margin[idx]
+                )
+            if inherited[idx]:
+                direction[idx] = inherited_direction
+
+    conflict = direct | inherited
+    multiplier = np.ones(n, dtype=float)
+    multiplier[conflict] = np.clip(
+        reliability[conflict],
+        APEX_RELIABILITY_MIN_MULTIPLIER,
+        1.0,
+    )
+    return {
+        "reliability": reliability,
+        "independent_count": independent_count,
+        "consensus": consensus,
+        "lower": lower,
+        "upper": upper,
+        "margin": margin,
+        "direct": direct,
+        "inherited": inherited,
+        "direction": direction,
+        "conflict": conflict,
+        "multiplier": multiplier,
+    }
+
+
 def blend_projection(
     base: pd.DataFrame,
     weights: dict[str, float],
@@ -85,31 +204,16 @@ def blend_projection(
 ) -> pd.DataFrame:
     """Blend expert forecasts while keeping expected value separate from risk.
 
-    AIrsenal can legitimately omit a newly registered player even after the player
-    exists in its refreshed database. Missing AIrsenal rows must not be fabricated,
-    but they also must not silently increase every other expert's effective weight.
-    Its configured weight is explicitly assigned to the transparent Apex estimate.
-
-    A second explicit AIrsenal abstention handles a known pre-GW1 source semantic:
-    exact zero can mean "no recent minutes at the current club" rather than a
-    current-role forecast. If Official FPL and Apex both contradict that zero-minute
-    premise, the raw AIrsenal source remains visible but is not allowed to vote as a
-    certain zero. Its weight follows the same auditable Apex fallback as a missing
-    AIrsenal prediction.
-
-    Market xP has no such fallback. A positive market weight therefore requires a
-    genuine market_xp surface; otherwise the model fails instead of silently
-    renormalising a configured expert away.
+    Missing AIrsenal rows retain the explicit Apex fallback contract. Market xP has
+    no fallback.  Apex-specific reliability can reduce only the *direct* Apex vote,
+    and only under independently confirmed material disagreement; generic uncertainty
+    remains diagnostic and cannot turn the optimiser into a nailed-minutes selector.
     """
     out = _allocate_gameweek_experts(base.copy())
     n = len(out)
-    numerator = np.zeros(n, dtype=float)
-    denominator = np.zeros(n, dtype=float)
-    sumsq = np.zeros(n, dtype=float)
     total_configured_weight = (
         sum(max(float(weights.get(k, 0)), 0) for k in EXPERT_COLUMNS) or 1.0
     )
-    expert_count = np.zeros(n, dtype=int)
     expert_values: dict[str, np.ndarray] = {}
     expert_weights: dict[str, float] = {}
     expert_usable: dict[str, np.ndarray] = {}
@@ -125,33 +229,50 @@ def blend_projection(
             "set market weight to zero until a production market source is configured"
         )
 
-    fallback = (
-        pd.to_numeric(out.get("apex_xp", 0), errors="coerce")
-        .fillna(0)
-        .to_numpy(float)
-    )
+    fallback = pd.to_numeric(
+        out.get("apex_xp", pd.Series(0.0, index=out.index)), errors="coerce"
+    ).fillna(0).to_numpy(float)
     air_role_conflict = _airsenal_zero_role_conflict(out)
 
     for key, col in EXPERT_COLUMNS.items():
         if col not in out.columns:
             continue
-        v = pd.to_numeric(out[col], errors="coerce").to_numpy(float)
-        source_present = np.isfinite(v)
-        usable = source_present.copy()
+        values = pd.to_numeric(out[col], errors="coerce").to_numpy(float)
+        usable = np.isfinite(values)
         if key == "airsenal":
             usable &= ~air_role_conflict
-        w = max(float(weights.get(key, 0)), 0.0)
-        expert_values[key] = v
-        expert_weights[key] = w
+        expert_values[key] = values
+        expert_weights[key] = max(float(weights.get(key, 0)), 0.0)
         expert_usable[key] = usable
-        numerator[usable] += v[usable] * w
-        sumsq[usable] += (v[usable] ** 2) * w
-        denominator[usable] += w
-        expert_count[usable] += 1
 
-    # Required-source absence/abstention policy: preserve AIrsenal provenance as
-    # source-present where appropriate, but keep configured weights fixed by assigning
-    # unavailable/unusable AIrsenal weight explicitly to transparent Apex.
+    policy = _apex_reliability_policy(
+        out,
+        expert_values,
+        expert_usable,
+        expert_weights,
+    )
+    apex_nominal = max(float(weights.get("apex_model", 0.0)), 0.0)
+    apex_row_weight = apex_nominal * policy["multiplier"]
+
+    numerator = np.zeros(n, dtype=float)
+    denominator = np.zeros(n, dtype=float)
+    sumsq = np.zeros(n, dtype=float)
+    expert_count = np.zeros(n, dtype=int)
+    row_weights: dict[str, np.ndarray] = {}
+
+    for key, values in expert_values.items():
+        usable = expert_usable[key]
+        if key == "apex_model":
+            weight = apex_row_weight
+        else:
+            weight = np.full(n, expert_weights[key], dtype=float)
+        row_weights[key] = weight
+        active = usable & (weight > 0)
+        numerator[active] += values[active] * weight[active]
+        sumsq[active] += (values[active] ** 2) * weight[active]
+        denominator[active] += weight[active]
+        expert_count[active] += 1
+
     air_w = max(float(weights.get("airsenal", 0)), 0.0)
     if air_w > 0:
         if "airsenal" in expert_values:
@@ -182,11 +303,9 @@ def blend_projection(
     )
     disagreement_var = np.maximum(weighted_second - mean**2, 0)
     disagreement_sd = np.sqrt(disagreement_var)
-    model_sd = (
-        pd.to_numeric(out.get("apex_sd", 0), errors="coerce")
-        .fillna(0)
-        .to_numpy(float)
-    )
+    model_sd = pd.to_numeric(
+        out.get("apex_sd", pd.Series(0.0, index=out.index)), errors="coerce"
+    ).fillna(0).to_numpy(float)
     total_sd = np.sqrt(model_sd**2 + disagreement_sd**2)
     coverage = np.clip(denominator / total_configured_weight, 0, 1)
     agreement = np.exp(-disagreement_sd / 3.0)
@@ -217,8 +336,18 @@ def blend_projection(
     out["expert_disagreement_sd"] = disagreement_sd
     out["configured_weight_total"] = float(total_configured_weight)
     out["available_or_fallback_weight"] = denominator
+    out["apex_model_reliability"] = policy["reliability"]
+    out["apex_reliability_conflict"] = policy["direct"]
+    out["apex_reliability_conflict_inherited"] = policy["inherited"]
+    out["apex_reliability_conflict_direction"] = policy["direction"]
+    out["apex_reliability_weight_multiplier"] = policy["multiplier"]
+    out["independent_expert_count"] = policy["independent_count"]
+    out["independent_consensus_xp"] = policy["consensus"]
+    out["independent_consensus_lower"] = policy["lower"]
+    out["independent_consensus_upper"] = policy["upper"]
+    out["independent_consensus_margin"] = policy["margin"]
 
-    for key, column in EXPERT_COLUMNS.items():
+    for key in EXPERT_COLUMNS:
         contrib = np.zeros(n, dtype=float)
         effective_weight = np.zeros(n, dtype=float)
         source_present = np.zeros(n, dtype=bool)
@@ -227,9 +356,10 @@ def blend_projection(
             values = expert_values[key]
             source_present = np.isfinite(values)
             source_usable = expert_usable[key]
-            valid = source_usable & (denominator > 0)
-            effective_weight[valid] = (
-                expert_weights[key] / np.maximum(denominator[valid], 1e-12)
+            weights_for_key = row_weights[key]
+            valid = source_usable & (denominator > 0) & (weights_for_key > 0)
+            effective_weight[valid] = weights_for_key[valid] / np.maximum(
+                denominator[valid], 1e-12
             )
             contrib[valid] = values[valid] * effective_weight[valid]
         out[f"xp_expert_{key}"] = contrib
@@ -254,15 +384,9 @@ def blend_projection(
     out["effective_weight_airsenal_fallback_apex"] = air_fallback_weight
     out["xp_expert_airsenal_fallback_apex"] = air_fallback_contrib
 
-    # Canonical Apex contribution includes any explicitly delegated AIrsenal share.
-    # Preserve the direct values separately so provenance can still distinguish the
-    # configured Apex vote from the source-fallback vote. This keeps decomposition
-    # additive: official + Apex(total) + usable AIrsenal + market == canonical xP.
     out["xp_expert_apex_model_direct"] = out["xp_expert_apex_model"]
     out["effective_weight_apex_model_direct"] = out["effective_weight_apex_model"]
-    out["xp_expert_apex_model"] = (
-        out["xp_expert_apex_model"] + air_fallback_contrib
-    )
+    out["xp_expert_apex_model"] = out["xp_expert_apex_model"] + air_fallback_contrib
     out["effective_weight_apex_model"] = (
         out["effective_weight_apex_model"] + air_fallback_weight
     )
@@ -274,9 +398,7 @@ def blend_projection(
         out.loc[no_expert, "source_usable_apex_model"] = True
 
     evidence_gap_sd = np.maximum(mean, 0.0) * (0.05 + 0.25 * (1.0 - confidence))
-    out["forecast_uncertainty_sd"] = np.sqrt(
-        disagreement_sd**2 + evidence_gap_sd**2
-    )
+    out["forecast_uncertainty_sd"] = np.sqrt(disagreement_sd**2 + evidence_gap_sd**2)
     out["projection_sd"] = total_sd
     out["projection_confidence"] = confidence
 
