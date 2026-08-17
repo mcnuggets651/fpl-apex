@@ -182,7 +182,12 @@ jobs:
           FPL_ENTRY_ID: "63984"
           AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
-        run: python scripts/run_apex.py --force
+        run: |
+          python scripts/run_apex.py \
+            --horizon 8 \
+            --reuse-pinnacle \
+            --output-dir data/generated \
+            --bundle-dir data/generated/decision_bundle
 
       - name: Verify final canonical contract
         run: |
@@ -190,29 +195,73 @@ jobs:
           import json
           from pathlib import Path
 
-          payload = json.loads(Path("data/generated/apex_recommendation_latest.json").read_text())
-          context = json.loads(Path("data/generated/apex_answer_context.json").read_text())
-          assert payload["ready_to_act"] is True, payload.get("blockers")
-          assert payload.get("recommendation") is not None
-          assert payload.get("strategy_stage") == "final_strategy_applied"
-          assert context["safe_to_act"] is True, context.get("blockers")
-          assert context.get("recommendation") is not None
-          assert context.get("strategy_stage") == "final_strategy_applied"
-          assert context.get("final_strategy_applied") is True
-          assert (context.get("final_selected_evidence") or {}).get("ready") is True
+          payload = json.loads(Path('data/generated/apex_recommendation_latest.json').read_text())
+          context = json.loads(Path('data/generated/apex_answer_context.json').read_text())
+          truth = json.loads(Path('reports/player_truth_audit.json').read_text())
+
+          assert payload['strategy_stage'] == 'final_validated'
+          assert payload['strategy_base_ready'] is True
+          assert payload['ready_to_act'] is True
+          assert context['safe_to_act'] is True
+          assert truth['ready'] is True
+          assert truth['hard_fact_coverage'] == 1.0
+          assert truth['canonical_projection_pair_coverage'] == 1.0
+
+          # Required-source completeness is resolved, not fabricated: every
+          # official player/Gameweek pair must either have a genuine AIrsenal
+          # prediction or be explicitly classified source-absent with the fixed-
+          # weight Apex fallback already verified by the player-truth gate.
+          expected_pairs = int(truth['player_count']) * len(truth['gameweeks'])
+          present_pairs = round(
+              float(truth['airsenal_projection_pair_coverage']) * expected_pairs
+          )
+          absent_pairs = int(truth['airsenal_source_absent_pair_count'])
+          assert present_pairs + absent_pairs == expected_pairs
+          assert not truth['blockers']
+          assert truth['player_count'] == payload['official_snapshot']['players']
+
+          rec = payload['recommendation']
+          assert rec['selector'] in {
+              'adaptive_gw1_launch_with_transfer_option_value',
+              'receding_horizon_current_team_maximum_ev',
+          }
+          assert rec['selector'] != 'exact_horizon_maximum_ev'
+          assert len(rec['squad']) == 15
+          assert len(rec['xi']) == 11
+          assert rec['captain_id'] != rec['vice_captain_id']
+
+          final_evidence = payload['final_selected_player_evidence']
+          assert final_evidence['contract'] == 'apex-player-evidence-v2'
+          assert final_evidence['coverage']['ready'] is True
+          squad_ids = {int(row['player_id']) for row in rec['squad']}
+          dossier_ids = {int(row['player_id']) for row in final_evidence['dossiers']}
+          assert len(squad_ids) == 15
+          assert dossier_ids == squad_ids
+
+          if rec['selector'] == 'adaptive_gw1_launch_with_transfer_option_value':
+              diag = payload['internal_diagnostics']['joint_initial_path']
+              gate = diag['promotion_gate']
+              assert diag['status'] == 'optimal'
+              assert diag['candidate_pool_stable'] is True
+              assert gate['gw1_first_optimal'] is True
+              assert gate['gw1_floor_respected'] is True
+              assert gate['promotion_candidate'] is True
+              assert rec['gw1_regret_vs_max'] <= rec['gw1_regret_tolerance'] + 1e-9
+              assert rec['future_moves_are_contingent'] is True
           PY
 
-      - name: Upload adaptive strategy artifacts
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: apex-adaptive-strategy-audit
+          name: adaptive-strategy-${{ github.run_id }}
           path: |
-            data/generated/apex_answer_context.json
             data/generated/apex_recommendation_latest.json
             data/generated/apex_recommendation_latest.md
+            data/generated/apex_answer_context.json
             data/generated/pinnacle_latest.json
             data/generated/solver_parity.json
             reports/player_truth_audit.json
-            reports/player_truth_audit.md
-          if-no-files-found: error
+            reports/player_truth_audit.csv
+            reports/players.csv
+            reports/projections.csv
+          retention-days: 90
