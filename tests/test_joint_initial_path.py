@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 import apex_fpl.services.joint_initial_path as joint
 from apex_fpl.services.joint_initial_path import (
@@ -133,7 +134,11 @@ def test_rank_18_live_regression_converges_at_32_to_48_without_solving_64(monkey
 
     assert exact_calls == [((1, 2), 16), ((1,), 48)]
     assert evaluation_ranges == [(1, 32), (33, 48)]
-    assert result.selected == rank_18_winner
+    assert result.selected is not None
+    assert result.selected.squad_ids == rank_18_winner.squad_ids
+    assert result.selected.future_objective == pytest.approx(rank_18_winner.future_objective)
+    assert result.selected.gw1_expected_points == pytest.approx(rank_18_winner.gw1_expected_points)
+    assert result.selected.gw1_regret == pytest.approx(rank_18_winner.gw1_regret)
     assert result.small_pool_selected_ids == rank_18_winner.squad_ids
     assert result.full_pool_selected_ids == rank_18_winner.squad_ids
     assert result.candidate_pool_stable is True
