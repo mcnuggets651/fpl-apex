@@ -44,9 +44,8 @@ class FPLCoreClient:
         they have since left. Team membership is not an identity authority: current
         Official FPL identity still wins in production.
 
-        Some synthetic/legacy Core frames deliberately omit ``team_code``. In that
-        case club-change state is unknown rather than an error or fabricated change;
-        the returned nullable column keeps the downstream schema stable.
+        Minimal synthetic/legacy identity frames may omit ``team_code``; that is a
+        supported schema and means club-change state is unknown, not false evidence.
         """
         required = {"player_code", "player_id"}
         if not required.issubset(players.columns):
@@ -54,9 +53,13 @@ class FPLCoreClient:
                 f"{label} FPL Core players.csv lacks stable player_code/player_id mapping"
             )
 
-        identity = players.reindex(columns=["player_code", "player_id", "team_code"]).copy()
+        columns = ["player_code", "player_id"]
+        if "team_code" in players.columns:
+            columns.append("team_code")
+        identity = players[columns].copy()
         identity["player_id"] = pd.to_numeric(identity["player_id"], errors="coerce")
-        identity["team_code"] = pd.to_numeric(identity["team_code"], errors="coerce")
+        if "team_code" in identity.columns:
+            identity["team_code"] = pd.to_numeric(identity["team_code"], errors="coerce")
         identity = identity.dropna(subset=["player_code", "player_id"])
         identity["player_id"] = identity["player_id"].astype(int)
 
@@ -76,19 +79,20 @@ class FPLCoreClient:
                 + ", ".join(map(str, bad_ids.index[:10]))
             )
 
-        team_conflicts = (
-            identity.dropna(subset=["team_code"])
-            .groupby("player_code")["team_code"]
-            .nunique()
-        )
-        bad_teams = team_conflicts[team_conflicts > 1]
-        if not bad_teams.empty:
-            raise ValueError(
-                f"{label} FPL Core contains conflicting team_code mappings: "
-                + ", ".join(map(str, bad_teams.index[:10]))
+        if "team_code" in identity.columns:
+            team_conflicts = (
+                identity.dropna(subset=["team_code"])
+                .groupby("player_code")["team_code"]
+                .nunique()
             )
+            bad_teams = team_conflicts[team_conflicts > 1]
+            if not bad_teams.empty:
+                raise ValueError(
+                    f"{label} FPL Core contains conflicting team_code mappings: "
+                    + ", ".join(map(str, bad_teams.index[:10]))
+                )
 
-        return identity.drop_duplicates(["player_code", "player_id", "team_code"]).reset_index(drop=True)
+        return identity.drop_duplicates(columns).reset_index(drop=True)
 
     def previous_season_playerstats(self, force: bool = False) -> pd.DataFrame:
         """Map prior-season playing time and club context to current official IDs."""
@@ -129,7 +133,13 @@ class FPLCoreClient:
                 "player_id", keep="last"
             )
 
-        previous_rows = prior_players[["player_code", "player_id", "team_code"]].merge(
+        # Reindex adds an all-null optional team_code only inside the bridge. This
+        # preserves the historical public shape of _stable_identity_rows while making
+        # the cross-season join schema deterministic when either season lacks team data.
+        prior_identity = prior_players.reindex(
+            columns=["player_code", "player_id", "team_code"]
+        )
+        previous_rows = prior_identity.merge(
             prior_stats[["player_id", *available]],
             on="player_id",
             how="left",
@@ -139,7 +149,9 @@ class FPLCoreClient:
         rename["team_code"] = "previous_team_code"
         previous_rows = previous_rows.rename(columns=rename).drop(columns="player_id")
 
-        current = current_players.rename(
+        current = current_players.reindex(
+            columns=["player_code", "player_id", "team_code"]
+        ).rename(
             columns={"player_id": "current_player_id", "team_code": "current_team_code"}
         )
         out = current.merge(
