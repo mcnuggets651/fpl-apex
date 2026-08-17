@@ -254,6 +254,19 @@ def blend_projection(
     out["effective_weight_airsenal_fallback_apex"] = air_fallback_weight
     out["xp_expert_airsenal_fallback_apex"] = air_fallback_contrib
 
+    # Canonical Apex contribution includes any explicitly delegated AIrsenal share.
+    # Preserve the direct values separately so provenance can still distinguish the
+    # configured Apex vote from the source-fallback vote. This keeps decomposition
+    # additive: official + Apex(total) + usable AIrsenal + market == canonical xP.
+    out["xp_expert_apex_model_direct"] = out["xp_expert_apex_model"]
+    out["effective_weight_apex_model_direct"] = out["effective_weight_apex_model"]
+    out["xp_expert_apex_model"] = (
+        out["xp_expert_apex_model"] + air_fallback_contrib
+    )
+    out["effective_weight_apex_model"] = (
+        out["effective_weight_apex_model"] + air_fallback_weight
+    )
+
     no_expert = denominator <= 0
     if np.any(no_expert):
         out.loc[no_expert, "xp_expert_apex_model"] = fallback[no_expert]
