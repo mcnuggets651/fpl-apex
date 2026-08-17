@@ -87,7 +87,7 @@ def test_candidate_pool_preserves_required_ids_without_spending_discretionary_sl
     assert (ids - required).issubset(projected_ids)
 
 
-def test_transfer_view_retries_full_universe_after_bounded_nonoptimal(monkeypatch):
+def _large_pool_fixture():
     rows = []
     projections = []
     pid = 1
@@ -106,6 +106,11 @@ def test_transfer_view_retries_full_universe_after_bounded_nonoptimal(monkeypatc
     players = pd.DataFrame(rows)
     px = pd.DataFrame(projections)
     current = set(players.head(15).player_id.astype(int))
+    return players, px, current
+
+
+def test_transfer_view_retries_full_universe_after_bounded_nonoptimal(monkeypatch):
+    players, px, current = _large_pool_fixture()
     calls: list[tuple[int, int]] = []
 
     def fake_optimise(players_arg, projections_arg, gameweeks, current_squad, **kwargs):
@@ -129,3 +134,34 @@ def test_transfer_view_retries_full_universe_after_bounded_nonoptimal(monkeypatc
     assert calls[0][0] < len(players)
     assert calls[1][0] == len(players)
     assert calls[1][1] >= players.player_id.nunique()
+
+
+def test_transfer_view_does_not_escalate_solver_limit_to_full_universe(monkeypatch):
+    players, px, current = _large_pool_fixture()
+    calls: list[int] = []
+
+    def fake_optimise(players_arg, projections_arg, gameweeks, current_squad, **kwargs):
+        calls.append(len(players_arg))
+        return TransferPlan(
+            "SolverLimit",
+            120.0,
+            [],
+            solver_status_code=1,
+            solver_message="Time limit reached",
+            objective_upper_bound=125.0,
+            mip_gap=0.04,
+        )
+
+    monkeypatch.setattr(transfer_views, "optimise_transfer_plan", fake_optimise)
+
+    plan = transfer_views.optimise_transfer_plan_view(
+        players,
+        px,
+        [2],
+        current,
+        candidate_limit=40,
+    )
+
+    assert plan.status == "SolverLimit"
+    assert len(calls) == 1
+    assert calls[0] < len(players)
