@@ -1,5 +1,7 @@
 import pandas as pd
 
+import apex_fpl.optimisation.transfer_views as transfer_views
+from apex_fpl.optimisation.transfers import TransferPlan
 from apex_fpl.optimisation.transfer_views import _pinnacle_candidate_ids
 
 
@@ -44,3 +46,86 @@ def test_candidate_pool_does_not_prune_low_absolute_xp_goalkeepers_or_enablers()
             .player_id.astype(int)
         )
         assert ids & cheap
+
+
+def test_candidate_pool_preserves_required_ids_without_spending_discretionary_slots_on_unprojected_players():
+    rows = []
+    projections = []
+    pid = 1
+    unprojected: set[int] = set()
+    for pos in ("GK", "DEF", "MID", "FWD"):
+        for j in range(24):
+            rows.append(
+                {
+                    "player_id": pid,
+                    "position": pos,
+                    "price": 4.0 + (j % 8) * 0.5,
+                    "team_name": f"T{pid % 20}",
+                }
+            )
+            if j < 20:
+                projections.append({"player_id": pid, "gw": 2, "xp": 3.0 + j / 10})
+            else:
+                unprojected.add(pid)
+            pid += 1
+    players = pd.DataFrame(rows)
+    px = pd.DataFrame(projections)
+    required = {max(unprojected)}
+
+    ids = _pinnacle_candidate_ids(
+        players,
+        px,
+        [2],
+        set(),
+        projection_col="xp",
+        target_size=40,
+        required_ids=required,
+    )
+
+    projected_ids = set(px.player_id.astype(int))
+    assert required.issubset(ids)
+    assert (ids - required).issubset(projected_ids)
+
+
+def test_transfer_view_retries_full_universe_after_bounded_nonoptimal(monkeypatch):
+    rows = []
+    projections = []
+    pid = 1
+    for pos in ("GK", "DEF", "MID", "FWD"):
+        for j in range(50):
+            rows.append(
+                {
+                    "player_id": pid,
+                    "position": pos,
+                    "price": 4.0 + (j % 8) * 0.5,
+                    "team_name": f"T{pid % 20}",
+                }
+            )
+            projections.append({"player_id": pid, "gw": 2, "xp": 2.0 + j / 10})
+            pid += 1
+    players = pd.DataFrame(rows)
+    px = pd.DataFrame(projections)
+    current = set(players.head(15).player_id.astype(int))
+    calls: list[tuple[int, int]] = []
+
+    def fake_optimise(players_arg, projections_arg, gameweeks, current_squad, **kwargs):
+        calls.append((len(players_arg), int(kwargs["candidate_limit"])))
+        if len(calls) == 1:
+            return TransferPlan("Infeasible", float("nan"), [])
+        return TransferPlan("Optimal", 123.0, [{"gw": 2}])
+
+    monkeypatch.setattr(transfer_views, "optimise_transfer_plan", fake_optimise)
+
+    plan = transfer_views.optimise_transfer_plan_view(
+        players,
+        px,
+        [2],
+        current,
+        candidate_limit=40,
+    )
+
+    assert plan.status == "Optimal"
+    assert len(calls) == 2
+    assert calls[0][0] < len(players)
+    assert calls[1][0] == len(players)
+    assert calls[1][1] >= players.player_id.nunique()
