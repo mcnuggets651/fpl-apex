@@ -286,6 +286,14 @@ def optimise_joint_initial_path(
     squads inside the GW1 band are ranked by the legal future transfer planner,
     which values bank, rolled free transfers and hit costs. Future moves remain
     contingencies and must be re-solved from fresh projections before each deadline.
+
+    Production convergence is checked on an expanded launch shortlist. The previous
+    implementation solved/evaluated 16 candidates and then repeated the same work for
+    32 candidates, failing whenever ranks 17-32 contained the better legal future
+    path. We now enumerate up to 64 once, evaluate each qualifying transfer path once,
+    and compare the winner in the first 32 against the winner in the full expanded
+    pool. A complete exact shortlist is stronger evidence than prefix identity and is
+    also accepted. The GW1 floor and every exact FPL legality constraint are unchanged.
     """
     gws = [int(gw) for gw in gameweeks]
     tolerance = max(float(gw1_regret_tolerance), 0.0)
@@ -315,21 +323,11 @@ def optimise_joint_initial_path(
             "The static comparison baseline is not optimal.",
         )
 
-    small_limit = max(int(exact_candidate_limit), 8)
-    full_limit = max(small_limit * 2, small_limit + 8)
-    launch_small = optimise_exact_horizon_decision(
-        players,
-        projections,
-        [gws[0]],
-        budget=budget,
-        max_per_team=max_per_team,
-        decay=1.0,
-        candidate_limit=small_limit,
-        near_equivalent_points=tolerance,
-        captain_eligible=captain_eligible,
-        xi_eligible=xi_eligible,
-        projection_col=projection_col,
-    )
+    # Convergence must be tested beyond the historical 16/32 boundary that failed
+    # on the live 2026-08-17 production surface. Enumerate the expanded pool once so
+    # candidates in the first prefix are not transfer-planned twice.
+    small_limit = max(int(exact_candidate_limit) * 2, 32)
+    full_limit = max(small_limit * 2, small_limit + 16)
     launch_full = optimise_exact_horizon_decision(
         players,
         projections,
@@ -343,27 +341,13 @@ def optimise_joint_initial_path(
         xi_eligible=xi_eligible,
         projection_col=projection_col,
     )
-    if launch_small.status != "Optimal" or launch_full.status != "Optimal":
+    if launch_full.status != "Optimal":
         return JointInitialPathResult(
             "infeasible", None, None, tuple(), None, tolerance, None,
             None, None, False, None, None, None, projection_col,
             "The GW1-first launch solve is not optimal.",
         )
 
-    small_candidates = _evaluate_exact_candidates(
-        launch_small,
-        players,
-        projections,
-        gws,
-        budget=budget,
-        max_per_team=max_per_team,
-        decay=decay,
-        projection_col=projection_col,
-        captain_eligible=captain_eligible,
-        xi_eligible=xi_eligible,
-        transfer_candidate_limit=transfer_candidate_limit,
-        gw1_regret_tolerance=tolerance,
-    )
     full_candidates = _evaluate_exact_candidates(
         launch_full,
         players,
@@ -378,6 +362,11 @@ def optimise_joint_initial_path(
         transfer_candidate_limit=transfer_candidate_limit,
         gw1_regret_tolerance=tolerance,
     )
+    small_candidates = [
+        candidate
+        for candidate in full_candidates
+        if int(candidate.source_rank) <= int(small_limit)
+    ]
     small = select_best_joint_candidate(small_candidates)
     selected = select_best_joint_candidate(full_candidates)
     best_gw1 = float(launch_full.objective)
@@ -407,7 +396,10 @@ def optimise_joint_initial_path(
         gw1_regret_tolerance=tolerance,
     )
     small_ids = small.squad_ids if small else None
-    stable = bool(small_ids is not None and small_ids == selected.squad_ids)
+    stable = bool(
+        launch_full.shortlist_complete
+        or (small_ids is not None and small_ids == selected.squad_ids)
+    )
     overlap = (
         len(set(selected.squad_ids) & set(baseline.squad_ids))
         if baseline is not None
@@ -442,7 +434,10 @@ def optimise_joint_initial_path(
         (
             "GW1 exact expected points are the primary launch objective. The existing "
             "near-equivalent point band is a hard floor; only then may the legal "
-            "future transfer path choose between launch-equivalent squads. Execute "
-            "only the current decision and rebuild projections before every later deadline."
+            "future transfer path choose between launch-equivalent squads. Candidate "
+            f"convergence is checked between the first {small_limit} and expanded "
+            f"{full_limit} launch candidates, unless the exact shortlist completes "
+            "earlier. Execute only the current decision and rebuild projections before "
+            "every later deadline."
         ),
     )
