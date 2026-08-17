@@ -15,6 +15,7 @@ from apex_fpl.models.defcon import expected_defensive_contribution_points
 UNDERSTAT_XG_WEIGHT = 0.50
 UNDERSTAT_XA_WEIGHT = 0.30
 RATE_RELIABILITY_MINUTES = 270.0
+RATE_CREDIBILITY_FLOOR = 0.05
 
 
 def _num(df: pd.DataFrame, col: str, default: float = 0.0) -> pd.Series:
@@ -93,51 +94,141 @@ def _at(values, idx: int) -> float:
     return float(values[idx])
 
 
-def _rate_reliability(
+def _weighted_quantile(values: np.ndarray, weights: np.ndarray, quantile: float) -> float:
+    valid = np.isfinite(values) & np.isfinite(weights) & (weights > 0)
+    if not valid.any():
+        return float("nan")
+    v = values[valid]
+    w = weights[valid]
+    order = np.argsort(v, kind="mergesort")
+    v = v[order]
+    w = w[order]
+    cumulative = np.cumsum(w)
+    threshold = float(np.clip(quantile, 0.0, 1.0)) * float(cumulative[-1])
+    idx = int(np.searchsorted(cumulative, threshold, side="left"))
+    return float(v[min(idx, len(v) - 1)])
+
+
+def _position_attack_reference(
+    d: pd.DataFrame,
+    rate: pd.Series,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Build a mature, minutes-weighted same-position attack-rate reference.
+
+    The projection layer reconstructs this independently from enrichment so a
+    statistically explosive per-90 row can never bypass credibility control because
+    of merge order or an optional upstream field. Before GW1, Core's generic
+    ``minutes`` column may contain the same prior-season context; it is used only as
+    a fallback when the explicit cross-season bridge has no sample.
+    """
+    positions = d.get("position", pd.Series("MID", index=d.index)).astype("string")
+    previous = _optional_num(d, "previous_minutes")
+    current_context = _num(d, "minutes", 0.0).clip(lower=0.0)
+    current_team_matches = _num(d, "current_team_matches", 0.0).clip(lower=0.0)
+    sample = previous.where(previous.notna() & previous.gt(0.0), np.nan)
+    pre_gw1_fallback = sample.isna() & current_team_matches.le(0.0)
+    sample.loc[pre_gw1_fallback] = current_context.loc[pre_gw1_fallback]
+    sample = sample.fillna(0.0).clip(lower=0.0)
+
+    prior = pd.Series(np.nan, index=d.index, dtype=float)
+    upper = pd.Series(np.nan, index=d.index, dtype=float)
+    for position in positions.dropna().unique():
+        same = positions.eq(position)
+        mature = same & sample.ge(RATE_RELIABILITY_MINUTES) & rate.notna() & rate.ge(0.0)
+        if not mature.any():
+            continue
+        values = rate.loc[mature].to_numpy(float)
+        weights = sample.loc[mature].to_numpy(float)
+        prior_value = float(np.average(values, weights=weights))
+        upper_value = _weighted_quantile(values, weights, 0.90)
+        prior.loc[same] = prior_value
+        upper.loc[same] = max(prior_value, upper_value)
+    return sample, prior, upper
+
+
+def _evidence_support(
+    target_rate: pd.Series,
+    evidence_rate: pd.Series,
+    *,
+    strong: float,
+    moderate: float,
+) -> np.ndarray:
+    target = pd.to_numeric(target_rate, errors="coerce")
+    evidence = pd.to_numeric(evidence_rate, errors="coerce")
+    gap = (evidence - target).abs() / np.maximum(target.abs(), 0.10)
+    return np.where(
+        evidence.notna() & gap.le(0.50),
+        strong,
+        np.where(evidence.notna() & gap.le(1.00), moderate, 0.0),
+    )
+
+
+def _credible_attack_rate(
     d: pd.DataFrame,
     rate: pd.Series,
     label: str,
-    preseason_weight: pd.Series,
     understat_rate: pd.Series,
-) -> pd.Series:
-    """Measure evidence support for an extreme attacking rate, not role certainty.
+    preseason_rate: pd.Series,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Return a credibility-adjusted attacking rate and its evidence reliability.
 
-    Ordinary and mature rates retain reliability 1.  Only a rate above the mature
-    same-position reference with <270 prior PL minutes is treated as evidence-thin.
-    A genuine Understat match or observed preseason attacking sample can rebuild
-    reliability.  Zero prior minutes are therefore not automatically penalised: a
-    new player with an ordinary rate remains untouched, while an unsupported extreme
-    rate is labelled weak so independent expert disagreement can police it later.
+    Expected minutes determine opportunity; they must not suppress upside merely
+    because a player is uncertain to start. This function addresses a different
+    problem: estimating a *per-90 scoring rate* from a tiny sample. A 21-minute
+    1.59 xG/90 observation is mathematically valid but cannot be treated as a mature
+    expectation without corroboration.
+
+    Only a materially extreme rate with <270 prior PL minutes is adjusted. The rate
+    is shrunk toward a mature same-position, minutes-weighted prior. Genuine
+    Understat or observed preseason xG/xA can rebuild credibility when it supports
+    the same rate. Team-sheet appearances alone never count as attacking-rate
+    evidence.
     """
-    previous_minutes = _num(d, "previous_minutes", 0.0).clip(lower=0.0)
-    mature = _optional_num(d, f"{label}_context_mature_p90")
-    context_rel = _optional_num(d, f"{label}_context_reliability").fillna(
-        np.clip(previous_minutes / RATE_RELIABILITY_MINUTES, 0.0, 1.0)
-    )
-    thin_extreme = (
-        previous_minutes.lt(RATE_RELIABILITY_MINUTES)
-        & mature.notna()
-        & rate.notna()
-        & rate.gt(mature)
-    )
+    raw = pd.to_numeric(rate, errors="coerce").fillna(0.0).clip(lower=0.0)
+    sample, computed_prior, computed_upper = _position_attack_reference(d, raw)
+    context_prior = _optional_num(d, f"{label}_context_prior")
+    context_upper = _optional_num(d, f"{label}_context_mature_p90")
+    prior = context_prior.where(context_prior.notna(), computed_prior)
+    upper = context_upper.where(context_upper.notna(), computed_upper)
 
-    pre_support = np.clip(preseason_weight / 0.35, 0.0, 1.0) * 0.60
-    us = pd.to_numeric(understat_rate, errors="coerce")
-    relative_gap = (us - rate).abs() / np.maximum(rate.abs(), 0.10)
-    us_support = np.where(
-        us.notna() & relative_gap.le(0.50),
-        0.80,
-        np.where(us.notna() & relative_gap.le(1.00), 0.55, 0.0),
-    )
-    evidence = np.maximum.reduce(
+    sample_reliability = np.clip(sample / RATE_RELIABILITY_MINUTES, 0.0, 1.0)
+    us_support = _evidence_support(raw, understat_rate, strong=0.90, moderate=0.60)
+    pre_support = _evidence_support(raw, preseason_rate, strong=0.80, moderate=0.50)
+    reliability = np.maximum.reduce(
         [
-            np.clip(context_rel.to_numpy(float), 0.0, 1.0),
-            np.asarray(pre_support, dtype=float),
+            sample_reliability.to_numpy(float),
             np.asarray(us_support, dtype=float),
-            np.full(len(d), 0.15, dtype=float),
+            np.asarray(pre_support, dtype=float),
+            np.full(len(d), RATE_CREDIBILITY_FLOOR, dtype=float),
         ]
     )
-    return pd.Series(np.where(thin_extreme, evidence, 1.0), index=d.index).clip(0.15, 1.0)
+    reliability = np.clip(reliability, RATE_CREDIBILITY_FLOOR, 1.0)
+
+    # Use the empirical 90th percentile as the first-line materiality threshold.
+    # If an upstream context percentile is itself permissive, a rate more than one
+    # mature-prior above the mean is still treated as an extreme. This second guard
+    # is scale-relative rather than a player-specific hard cap.
+    scale_guard = prior + np.maximum(prior, 0.10)
+    threshold = pd.concat([upper, scale_guard], axis=1).min(axis=1, skipna=True)
+    eligible = (
+        sample.lt(RATE_RELIABILITY_MINUTES)
+        & raw.notna()
+        & prior.notna()
+        & threshold.notna()
+        & raw.gt(threshold)
+        & raw.gt(prior)
+    )
+    adjusted = raw.copy()
+    adjusted.loc[eligible] = (
+        prior.loc[eligible]
+        + reliability[eligible] * (raw.loc[eligible] - prior.loc[eligible])
+    )
+    row_reliability = np.where(eligible, reliability, 1.0)
+    return (
+        pd.Series(adjusted, index=d.index).clip(lower=0.0),
+        pd.Series(row_reliability, index=d.index).clip(RATE_CREDIBILITY_FLOOR, 1.0),
+        pd.Series(eligible, index=d.index, dtype=bool),
+    )
 
 
 def _position_defcon_reference(
@@ -209,16 +300,18 @@ def project_players(
         prestarts = _num(d, "preseason_starts", 0)
         preapps = _num(d, "preseason_appearances", 0)
         preseason_rate_weight = _preseason_rate_weight(premins, prestarts, preapps)
+        preseason_xg90 = _optional_num(d, "preseason_xg90")
+        preseason_xa90 = _optional_num(d, "preseason_xa90")
         xg90 = _blend_rate(
             _num(d, "expected_goals_per_90", 0),
-            _optional_num(d, "preseason_xg90"),
+            preseason_xg90,
             premins,
             prestarts,
             preapps,
         )
         xa90 = _blend_rate(
             _num(d, "expected_assists_per_90", 0),
-            _optional_num(d, "preseason_xa90"),
+            preseason_xa90,
             premins,
             prestarts,
             preapps,
@@ -252,26 +345,32 @@ def project_players(
 
         us_xg90 = _optional_num(d, "understat_xg90")
         us_xa90 = _optional_num(d, "understat_xa90")
-        matched = xg90.notna() & xa90.notna() & us_xg90.notna() & us_xa90.notna()
-        base_signal = xg90.fillna(0.0) * goal_pts + xa90.fillna(0.0) * 3.0
+        credible_xg90, xg_reliability, xg_credibility_adjusted = _credible_attack_rate(
+            d, xg90, "xg90", us_xg90, preseason_xg90
+        )
+        credible_xa90, xa_reliability, xa_credibility_adjusted = _credible_attack_rate(
+            d, xa90, "xa90", us_xa90, preseason_xa90
+        )
+
+        matched = (
+            credible_xg90.notna()
+            & credible_xa90.notna()
+            & us_xg90.notna()
+            & us_xa90.notna()
+        )
+        base_signal = credible_xg90.fillna(0.0) * goal_pts + credible_xa90.fillna(0.0) * 3.0
         repricable = matched & base_signal.gt(1e-9)
-        attack_xg90 = xg90.copy()
-        attack_xa90 = xa90.copy()
+        attack_xg90 = credible_xg90.copy()
+        attack_xa90 = credible_xa90.copy()
         attack_xg90.loc[repricable] = (
-            (1.0 - UNDERSTAT_XG_WEIGHT) * xg90.loc[repricable]
+            (1.0 - UNDERSTAT_XG_WEIGHT) * credible_xg90.loc[repricable]
             + UNDERSTAT_XG_WEIGHT * us_xg90.loc[repricable]
         )
         attack_xa90.loc[repricable] = (
-            (1.0 - UNDERSTAT_XA_WEIGHT) * xa90.loc[repricable]
+            (1.0 - UNDERSTAT_XA_WEIGHT) * credible_xa90.loc[repricable]
             + UNDERSTAT_XA_WEIGHT * us_xa90.loc[repricable]
         )
 
-        xg_reliability = _rate_reliability(
-            d, xg90, "xg90", preseason_rate_weight, us_xg90
-        )
-        xa_reliability = _rate_reliability(
-            d, xa90, "xa90", preseason_rate_weight, us_xa90
-        )
         xg_signal = np.maximum(attack_xg90.to_numpy(float) * goal_pts.to_numpy(float), 0.0)
         xa_signal = np.maximum(attack_xa90.to_numpy(float) * 3.0, 0.0)
         attack_signal_total = xg_signal + xa_signal
@@ -300,7 +399,9 @@ def project_players(
 
         saves90 = _num(d, "saves_per_90", 0)
         save_points = np.where(pos.eq("GK"), min_share * saves90 / 3.0, 0.0)
-        bonus_proxy = expected_bonus_proxy(d, min_share, xg90, xa90, dc90)
+        # Bonus must use the same credibility-adjusted attacking rates as the direct
+        # attack component; otherwise an unsupported rate can leak back into xP.
+        bonus_proxy = expected_bonus_proxy(d, min_share, attack_xg90, attack_xa90, dc90)
 
         official_pen = _order_share(_num(d, "penalties_order", 99))
         official_corner_indirect = _order_share(
@@ -393,6 +494,8 @@ def project_players(
                     "model_xa90": max(_at(xa90, idx), 0.0),
                     "attack_model_xg90": max(_at(attack_xg90, idx), 0.0),
                     "attack_model_xa90": max(_at(attack_xa90, idx), 0.0),
+                    "xg_rate_credibility_adjusted": bool(xg_credibility_adjusted.iloc[idx]),
+                    "xa_rate_credibility_adjusted": bool(xa_credibility_adjusted.iloc[idx]),
                     "raw_defensive_contribution_per_90": max(_at(raw_dc90, idx), 0.0),
                     "model_defensive_contribution_per_90": max(_at(dc90, idx), 0.0),
                     "attack_rate_reliability": _at(attack_reliability, idx),
