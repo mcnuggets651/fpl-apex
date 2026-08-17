@@ -1,0 +1,21 @@
+{
+  "contract": "apex-production-run-v1",
+  "run_id": "31991569381",
+  "generated_at": "2026-08-17T03:36:58.377680+00:00",
+  "status": "not_ready",
+  "decision_bundle_id": null,
+  "official_snapshot": {
+    "snapshot_id": null,
+    "bootstrap_sha256": null,
+    "fixtures_sha256": null
+  },
+  "blockers": [
+    "Apex Unified production run did not complete canonical assembly"
+  ],
+  "rejected_stale_diagnostics": {
+    "pinnacle_latest.json": "186486b36e4c610fc1eff72b644adde0b13f1d7716b2cf4a1527ce6a5d981b95",
+    "solver_parity.json": "15839435680180fb87dbeab6f5878abcbbb1185a10940107974b8b8ea0547b47",
+    "elite_latest.json": "e3fcaac2938d10eaa67b2487323f7e6af22b131c7de9cce10c57d78374f502bd"
+  },
+  "manifest_sha256": null
+}
