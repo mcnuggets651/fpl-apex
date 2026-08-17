@@ -63,13 +63,12 @@ def test_equal_future_value_prefers_more_gw1_points_then_bank() -> None:
     assert select_best_joint_candidate([higher_gw1, same_gw1_more_bank]) == same_gw1_more_bank
 
 
-def test_expanded_launch_pool_converges_when_rank_18_improves_the_first_16(monkeypatch) -> None:
+def test_rank_18_live_regression_converges_at_32_to_48_without_solving_64(monkeypatch) -> None:
     """Regression for the live failure where a rank-18 launch beat rank <=16.
 
-    The production selector should evaluate the expanded shortlist once, use the
-    first 32 as its convergence prefix, and remain stable when ranks 33-64 do not
-    displace the rank-18 winner. This preserves the GW1 floor while avoiding the old
-    false failure caused by comparing only 16 candidates against 32.
+    The selector must not reject that improvement. It compares 16->32, sees the
+    rank-18 identity change, evaluates only ranks 33->48, and accepts once the winner
+    remains rank 18. Ranks 49->64 are never requested in this converged case.
     """
     first_16_winner = candidate(
         250.0,
@@ -92,10 +91,10 @@ def test_expanded_launch_pool_converges_when_rank_18_improves_the_first_16(monke
         regret=0.04,
         source_rank=33,
     )
-    evaluated = [first_16_winner, rank_18_winner, later_candidate]
+    all_evaluated = [first_16_winner, rank_18_winner, later_candidate]
 
     exact_calls: list[tuple[tuple[int, ...], int]] = []
-    evaluation_calls = 0
+    evaluation_ranges: list[tuple[int, int]] = []
 
     def fake_exact(players, projections, gameweeks, **kwargs):
         exact_calls.append((tuple(int(gw) for gw in gameweeks), int(kwargs["candidate_limit"])))
@@ -113,16 +112,16 @@ def test_expanded_launch_pool_converges_when_rank_18_improves_the_first_16(monke
         )
 
     def fake_evaluate(*args, **kwargs):
-        nonlocal evaluation_calls
-        evaluation_calls += 1
-        return list(evaluated)
-
-    def fake_baseline(*args, **kwargs):
-        return first_16_winner
+        lower = int(kwargs.get("min_source_rank", 1))
+        upper = int(kwargs.get("max_source_rank", 10**9))
+        evaluation_ranges.append((lower, upper))
+        return [
+            row for row in all_evaluated
+            if lower <= int(row.source_rank) <= upper
+        ]
 
     monkeypatch.setattr(joint, "optimise_exact_horizon_decision", fake_exact)
     monkeypatch.setattr(joint, "_evaluate_exact_candidates", fake_evaluate)
-    monkeypatch.setattr(joint, "_evaluate_starting_squad", fake_baseline)
 
     result = joint.optimise_joint_initial_path(
         pd.DataFrame({"player_id": range(1, 20)}),
@@ -132,8 +131,8 @@ def test_expanded_launch_pool_converges_when_rank_18_improves_the_first_16(monke
         gw1_regret_tolerance=0.25,
     )
 
-    assert exact_calls == [((1, 2), 16), ((1,), 64)]
-    assert evaluation_calls == 1
+    assert exact_calls == [((1, 2), 16), ((1,), 48)]
+    assert evaluation_ranges == [(1, 32), (33, 48)]
     assert result.selected == rank_18_winner
     assert result.small_pool_selected_ids == rank_18_winner.squad_ids
     assert result.full_pool_selected_ids == rank_18_winner.squad_ids
