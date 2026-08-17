@@ -106,10 +106,12 @@ def optimise_transfer_plan_view(
     candidate universe. The legacy risk-adjusted surface remains available
     explicitly. The underlying transfer constraints are unchanged.
 
-    A bounded-pool failure is not proof of mathematical infeasibility. When the
-    loss-resistant bounded solve is non-optimal, retry exactly once on the complete
-    usable player/projection universe. Only the full solve may therefore return the
-    final non-optimal status to callers such as the joint launch planner.
+    A bounded-pool solver-proven infeasibility is not proof that the complete player
+    universe is infeasible, so that one case retries once on the full usable universe.
+    Solver limits, unbounded results and solver errors are *inconclusive*, not
+    infeasible; they are returned to the caller without launching a larger and even
+    more expensive model. This prevents a timeout from being amplified into a second
+    full-universe timeout while preserving the fail-closed decision contract.
     """
     if projection_col not in projections.columns:
         if projection_col == "xp" and "risk_adjusted_xp" in projections.columns:
@@ -154,6 +156,12 @@ def optimise_transfer_plan_view(
         **kwargs,
     )
     if bounded.status == "Optimal" or not pinnacle_pool:
+        return bounded
+
+    # Only a solver-proven infeasible bounded model justifies retrying a larger
+    # universe. A solver limit/error must remain inconclusive; otherwise a 120-second
+    # bounded timeout is automatically followed by a harder full-universe timeout.
+    if bounded.status != "Infeasible":
         return bounded
 
     # A lossy bounded universe can make an otherwise feasible transfer path appear
