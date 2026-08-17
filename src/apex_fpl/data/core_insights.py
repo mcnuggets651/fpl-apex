@@ -36,19 +36,28 @@ class FPLCoreClient:
 
     @staticmethod
     def _stable_identity_rows(players: pd.DataFrame, label: str) -> pd.DataFrame:
-        """Return one unambiguous player_code -> player_id identity row.
+        """Return one unambiguous stable identity row per player code.
 
-        FPL Core occasionally contains repeated identical identity rows. Those are
-        harmless, but a true conflicting mapping must never be silently resolved.
-        Normalising here keeps the prior-season bridge one-to-one without weakening
-        identity validation.
+        ``player_code`` is the cross-season identity key.  When FPL Core publishes
+        ``team_code`` we retain it as decision context so the minutes model can tell
+        whether prior-season starts belong to the player's current club or to a club
+        they have since left.  Team membership is not an identity authority: current
+        Official FPL identity still wins in production.  We merely require one
+        unambiguous team_code per player_code within each season before using it.
         """
         required = {"player_code", "player_id"}
         if not required.issubset(players.columns):
-            raise ValueError(f"{label} FPL Core players.csv lacks stable player_code/player_id mapping")
+            raise ValueError(
+                f"{label} FPL Core players.csv lacks stable player_code/player_id mapping"
+            )
 
-        identity = players[["player_code", "player_id"]].copy()
+        columns = ["player_code", "player_id"]
+        if "team_code" in players.columns:
+            columns.append("team_code")
+        identity = players[columns].copy()
         identity["player_id"] = pd.to_numeric(identity["player_id"], errors="coerce")
+        if "team_code" in identity.columns:
+            identity["team_code"] = pd.to_numeric(identity["team_code"], errors="coerce")
         identity = identity.dropna(subset=["player_code", "player_id"])
         identity["player_id"] = identity["player_id"].astype(int)
 
@@ -68,10 +77,23 @@ class FPLCoreClient:
                 + ", ".join(map(str, bad_ids.index[:10]))
             )
 
-        return identity.drop_duplicates(["player_code", "player_id"]).reset_index(drop=True)
+        if "team_code" in identity.columns:
+            team_conflicts = (
+                identity.dropna(subset=["team_code"])
+                .groupby("player_code")["team_code"]
+                .nunique()
+            )
+            bad_teams = team_conflicts[team_conflicts > 1]
+            if not bad_teams.empty:
+                raise ValueError(
+                    f"{label} FPL Core contains conflicting team_code mappings: "
+                    + ", ".join(map(str, bad_teams.index[:10]))
+                )
+
+        return identity.drop_duplicates(columns).reset_index(drop=True)
 
     def previous_season_playerstats(self, force: bool = False) -> pd.DataFrame:
-        """Map prior-season playing time to current official IDs via stable codes."""
+        """Map prior-season playing time and club context to current official IDs."""
         parts = [int(value) for value in str(self.season).replace("/", "-").split("-")]
         if len(parts) != 2:
             raise ValueError(f"unsupported FPL season format: {self.season!r}")
@@ -115,16 +137,23 @@ class FPLCoreClient:
                 "player_id", keep="last"
             )
 
-        previous_rows = prior_players.merge(
+        prior_identity_columns = ["player_code", "player_id"]
+        if "team_code" in prior_players.columns:
+            prior_identity_columns.append("team_code")
+        previous_rows = prior_players[prior_identity_columns].merge(
             prior_stats[["player_id", *available]],
             on="player_id",
             how="left",
             validate="one_to_one",
         )
-        previous_rows = previous_rows.rename(
-            columns={col: f"previous_{col}" for col in available}
-        ).drop(columns="player_id")
+        rename = {col: f"previous_{col}" for col in available}
+        if "team_code" in previous_rows.columns:
+            rename["team_code"] = "previous_team_code"
+        previous_rows = previous_rows.rename(columns=rename).drop(columns="player_id")
+
         current = current_players.rename(columns={"player_id": "current_player_id"})
+        if "team_code" in current.columns:
+            current = current.rename(columns={"team_code": "current_team_code"})
         out = current.merge(
             previous_rows,
             on="player_code",
@@ -137,6 +166,14 @@ class FPLCoreClient:
         out["previous_minutes_per_match"] = (
             pd.to_numeric(out.get("previous_minutes"), errors="coerce") / 38.0
         ).clip(0, 90)
+
+        current_team = pd.to_numeric(out.get("current_team_code"), errors="coerce")
+        previous_team = pd.to_numeric(out.get("previous_team_code"), errors="coerce")
+        out["club_changed"] = (
+            current_team.notna()
+            & previous_team.notna()
+            & current_team.ne(previous_team)
+        )
         return out.drop(columns="player_code")
 
     def teams(self, force: bool = False) -> pd.DataFrame:
