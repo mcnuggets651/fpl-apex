@@ -66,9 +66,9 @@ def test_equal_future_value_prefers_more_gw1_points_then_bank() -> None:
 def test_rank_18_live_regression_converges_at_32_to_48_without_solving_64(monkeypatch) -> None:
     """Regression for the live failure where a rank-18 launch beat rank <=16.
 
-    The selector must not reject that improvement. It compares 16->32, sees the
-    rank-18 identity change, evaluates only ranks 33->48, and accepts once the winner
-    remains rank 18. Ranks 49->64 are never requested in this converged case.
+    Rank 18 must be present in the canonical first-32 pool. The selector then solves
+    only ranks 33->48 and accepts once that winner remains rank 18. Ranks 49->64 are
+    never requested in this converged case.
     """
     first_16_winner = candidate(
         250.0,
