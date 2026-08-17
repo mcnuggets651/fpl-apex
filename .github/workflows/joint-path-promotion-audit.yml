@@ -4,17 +4,46 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "config/apex.yaml"
+      - "src/apex_fpl/config.py"
+      - "src/apex_fpl/data/http.py"
+      - "src/apex_fpl/models/ensemble.py"
+      - "src/apex_fpl/optimisation/transfers.py"
+      - "src/apex_fpl/optimisation/transfer_views.py"
+      - "src/apex_fpl/services/data_quality.py"
+      - "src/apex_fpl/services/enrichment.py"
       - "src/apex_fpl/services/joint_initial_path.py"
       - "src/apex_fpl/services/strategy.py"
+      - "src/apex_fpl/services/player_truth.py"
+      - "src/apex_fpl/services/player_evidence.py"
+      - "src/apex_fpl/services/answer_context.py"
+      - "src/apex_fpl/services/integrity.py"
+      - "src/apex_fpl/models/projection.py"
       - "scripts/apply_joint_path_promotion.py"
+      - "scripts/build_canonical_recommendation.py"
+      - "scripts/audit_player_truth.py"
       - "scripts/run_apex.py"
+      - "tests/test_http_cache.py"
+      - "tests/test_transfers.py"
+      - "tests/test_transfer_candidate_pool.py"
       - "tests/test_joint_path_promotion.py"
       - "tests/test_joint_initial_path.py"
       - "tests/test_strategy.py"
+      - "tests/test_player_truth.py"
+      - "tests/test_answer_context.py"
+      - "tests/test_canonical_recommendation.py"
+      - "tests/test_data_quality.py"
+      - "tests/test_ensemble.py"
+      - "tests/test_low_sample_attack_reliability.py"
+      - "tests/test_weight_contract.py"
       - ".github/workflows/joint-path-promotion-audit.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: adaptive-strategy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   audit:
@@ -30,14 +59,36 @@ jobs:
       - name: Install Apex + pinned AIrsenal worker
         run: bash scripts/install_pinned_airsenal.sh
 
-      - name: Strategy unit tests
-        run: pytest -q tests/test_joint_path_promotion.py tests/test_joint_initial_path.py tests/test_strategy.py
+      - name: Strategy and truth unit tests
+        run: |
+          pytest -q \
+            tests/test_http_cache.py \
+            tests/test_transfers.py \
+            tests/test_transfer_candidate_pool.py \
+            tests/test_joint_path_promotion.py \
+            tests/test_joint_initial_path.py \
+            tests/test_strategy.py \
+            tests/test_player_truth.py \
+            tests/test_answer_context.py \
+            tests/test_canonical_recommendation.py \
+            tests/test_data_quality.py \
+            tests/test_ensemble.py \
+            tests/test_low_sample_attack_reliability.py \
+            tests/test_weight_contract.py
 
       - name: Cache AIrsenal database
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/airsenal.db
           key: airsenal-2627-${{ runner.os }}-v3
+
+      - name: Cache official FPL HTTP payloads
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: official-fpl-2627-${{ runner.os }}-v1-${{ github.sha }}
+          restore-keys: |
+            official-fpl-2627-${{ runner.os }}-v1-
 
       - name: Refresh genuine AIrsenal forecasts
         env:
@@ -46,6 +97,19 @@ jobs:
           if [ ! -s "$AIRSENAL_DB_FILE" ]; then airsenal_setup_initial_db --fpl_team_id 1; fi
           python scripts/update_airsenal_worker.py
           python scripts/run_airsenal_worker.py --db "$AIRSENAL_DB_FILE" --horizon 8 --output data/generated/airsenal.csv
+
+      - name: Warm official FPL cache
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          from apex_fpl.data.http import CachedHttp
+          from apex_fpl.data.official import OfficialFPLClient
+
+          snapshot = OfficialFPLClient(CachedHttp(Path("data/cache"))).snapshot(force=True)
+          print("official_bootstrap_sha256", snapshot.bootstrap_sha256)
+          print("official_fixtures_sha256", snapshot.fixtures_sha256)
+          PY
 
       - name: Build sealed GW1-GW8 decision bundle
         env:
@@ -124,7 +188,7 @@ jobs:
             data/generated/pinnacle_latest.json \
             data/generated/solver_parity.json
 
-      - name: Run canonical Apex with adaptive strategy policy
+      - name: Run canonical Apex with final strategy policy
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
@@ -138,30 +202,65 @@ jobs:
             --output-dir data/generated \
             --bundle-dir data/generated/decision_bundle
 
-      - name: Verify adaptive canonical contract
+      - name: Verify final canonical contract
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
+
           payload = json.loads(Path('data/generated/apex_recommendation_latest.json').read_text())
           context = json.loads(Path('data/generated/apex_answer_context.json').read_text())
+          truth = json.loads(Path('reports/player_truth_audit.json').read_text())
+
+          assert payload['strategy_stage'] == 'final_validated'
+          assert payload['strategy_base_ready'] is True
           assert payload['ready_to_act'] is True
           assert context['safe_to_act'] is True
+          assert truth['ready'] is True
+          assert truth['hard_fact_coverage'] == 1.0
+          assert truth['canonical_projection_pair_coverage'] == 1.0
+
+          # Required-source completeness is resolved, not fabricated: every
+          # official player/Gameweek pair must either have a genuine AIrsenal
+          # prediction or be explicitly classified source-absent with the fixed-
+          # weight Apex fallback already verified by the player-truth gate.
+          expected_pairs = int(truth['player_count']) * len(truth['gameweeks'])
+          present_pairs = round(
+              float(truth['airsenal_projection_pair_coverage']) * expected_pairs
+          )
+          absent_pairs = int(truth['airsenal_source_absent_pair_count'])
+          assert present_pairs + absent_pairs == expected_pairs
+          assert not truth['blockers']
+          assert truth['player_count'] == payload['official_snapshot']['players']
+
           rec = payload['recommendation']
-          diag = payload['internal_diagnostics']['joint_initial_path']
-          gate = diag['promotion_gate']
-          assert diag['status'] == 'optimal'
-          assert diag['candidate_pool_stable'] is True
-          assert gate['gw1_first_optimal'] is True
-          assert gate['gw1_floor_respected'] is True
-          assert gate['promotion_candidate'] is True
-          assert rec['selector'] == 'adaptive_gw1_launch_with_transfer_option_value'
-          assert rec['gw1_regret_vs_max'] <= rec['gw1_regret_tolerance'] + 1e-9
+          assert rec['selector'] in {
+              'adaptive_gw1_launch_with_transfer_option_value',
+              'receding_horizon_current_team_maximum_ev',
+          }
+          assert rec['selector'] != 'exact_horizon_maximum_ev'
           assert len(rec['squad']) == 15
           assert len(rec['xi']) == 11
-          assert rec['future_moves_are_contingent'] is True
-          assert payload['decision_policy']['adaptive_launch_active'] is True
-          assert payload['decision_policy']['weekly_receding_horizon_is_canonical'] is True
+          assert rec['captain_id'] != rec['vice_captain_id']
+
+          final_evidence = payload['final_selected_player_evidence']
+          assert final_evidence['contract'] == 'apex-player-evidence-v2'
+          assert final_evidence['coverage']['ready'] is True
+          squad_ids = {int(row['player_id']) for row in rec['squad']}
+          dossier_ids = {int(row['player_id']) for row in final_evidence['dossiers']}
+          assert len(squad_ids) == 15
+          assert dossier_ids == squad_ids
+
+          if rec['selector'] == 'adaptive_gw1_launch_with_transfer_option_value':
+              diag = payload['internal_diagnostics']['joint_initial_path']
+              gate = diag['promotion_gate']
+              assert diag['status'] == 'optimal'
+              assert diag['candidate_pool_stable'] is True
+              assert gate['gw1_first_optimal'] is True
+              assert gate['gw1_floor_respected'] is True
+              assert gate['promotion_candidate'] is True
+              assert rec['gw1_regret_vs_max'] <= rec['gw1_regret_tolerance'] + 1e-9
+              assert rec['future_moves_are_contingent'] is True
           PY
 
       - uses: actions/upload-artifact@v4
@@ -174,4 +273,8 @@ jobs:
             data/generated/apex_answer_context.json
             data/generated/pinnacle_latest.json
             data/generated/solver_parity.json
+            reports/player_truth_audit.json
+            reports/player_truth_audit.csv
+            reports/players.csv
+            reports/projections.csv
           retention-days: 90

@@ -129,7 +129,7 @@ def validate_airsenal_forecast(
     *,
     expected_source_version: str = "",
     max_age_hours: float = 36.0,
-    min_player_coverage: float = 0.95,
+    min_player_coverage: float = 1.0,
 ) -> tuple[bool, str]:
     """Validate that an AIrsenal file is genuine, current and horizon-complete."""
     if forecast.empty:

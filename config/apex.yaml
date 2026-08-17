@@ -3,14 +3,19 @@ horizon: 8
 budget: 100.0
 max_per_team: 3
 fpl_entry_id: 63984
+# Pre-GW1 prior policy across the three production experts that actually exist.
+# These preserve the prior 24:46:20 relative weights after removing the dormant
+# 10% market slot, so the change is semantic/auditable rather than a retune to a
+# preferred squad. Recalibration remains blocked until genuine sealed outcomes meet
+# the >=8 completed-GW / >=200-row promotion contract.
 weights:
-  official_ep: 0.24
-  apex_model: 0.46
-  airsenal: 0.20
-  market: 0.10
+  official_ep: 0.2666666667
+  apex_model: 0.5111111111
+  airsenal: 0.2222222222
+  market: 0.0
 fixture_decay: 0.90
-# Used only to generate the near-optimal MILP shortlist. The authoritative decision
-# is rescored with exact XI, captain/vice and autosub mechanics across the horizon.
+# Used only to generate the internal near-optimal diagnostic shortlist. The final
+# production team is chosen later by the GW1-first/receding-horizon strategy gate.
 approximate_bench_weight: 0.08
 exact_candidate_limit: 16
 exact_candidate_regret_fraction: 0.005
@@ -24,6 +29,9 @@ understat_history_seasons: 5
 understat_team_model_mode: production
 max_official_age_hours: 26
 max_core_age_hours: 18
+# AIrsenal is a required forecast expert. Missing required players must fail closed
+# rather than silently renormalising ensemble weights for only part of the pool.
+min_airsenal_player_coverage: 1.0
 required_sources:
   - official_fpl
   - fpl_core_playerstats

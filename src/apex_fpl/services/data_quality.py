@@ -16,6 +16,13 @@ OFFICIAL_STRENGTH_COLUMNS = (
     "strength_defence_away",
 )
 
+# FPL can append new players between FPL Core refreshes. Core remains a required
+# enrichment source, but Official FPL is canonical identity and the complete Apex
+# projection surface is independently required. Permit only a tiny *trailing* ID
+# block so this cannot hide arbitrary holes inside Core's established universe.
+MAX_CORE_REGISTRATION_LAG_PLAYERS = 5
+MIN_CORE_REGISTRATION_LAG_COVERAGE = 0.99
+
 
 @dataclass(frozen=True)
 class QualityCheck:
@@ -66,11 +73,132 @@ def official_strength_is_usable(teams: pd.DataFrame) -> tuple[bool, str]:
     return True, f"{len(values)}/{len(values)} teams have positive, varying strength fields"
 
 
+def _core_ids(core: pd.DataFrame) -> set[int]:
+    if core.empty or "player_id" not in core.columns:
+        return set()
+    return set(pd.to_numeric(core["player_id"], errors="coerce").dropna().astype(int))
+
+
 def _core_coverage(core: pd.DataFrame, valid_ids: set[int]) -> float:
-    if core.empty or "player_id" not in core.columns or not valid_ids:
+    if not valid_ids:
         return 0.0
-    ids = set(pd.to_numeric(core["player_id"], errors="coerce").dropna().astype(int))
+    ids = _core_ids(core)
     return len(ids & valid_ids) / len(valid_ids)
+
+
+def _projection_pairs_complete(
+    projections: pd.DataFrame,
+    player_ids: set[int],
+    gameweeks: list[int],
+) -> bool:
+    if not player_ids:
+        return True
+    if not {"player_id", "gw", "xp", "projection_confidence"}.issubset(projections.columns):
+        return False
+    rows = projections.copy()
+    rows["player_id"] = pd.to_numeric(rows["player_id"], errors="coerce")
+    rows["gw"] = pd.to_numeric(rows["gw"], errors="coerce")
+    rows["xp"] = pd.to_numeric(rows["xp"], errors="coerce")
+    rows["projection_confidence"] = pd.to_numeric(
+        rows["projection_confidence"], errors="coerce"
+    )
+    rows = rows[
+        rows["player_id"].isin(player_ids)
+        & rows["gw"].isin(gameweeks)
+        & rows["xp"].notna()
+        & np.isfinite(rows["xp"])
+        & rows["xp"].ge(0)
+        & rows["projection_confidence"].notna()
+        & np.isfinite(rows["projection_confidence"])
+        & rows["projection_confidence"].between(0, 1, inclusive="both")
+    ]
+    pairs = set(
+        (int(pid), int(gw))
+        for pid, gw in rows[["player_id", "gw"]]
+        .drop_duplicates()
+        .itertuples(index=False, name=None)
+    )
+    expected = {(pid, int(gw)) for pid in player_ids for gw in gameweeks}
+    return pairs == expected
+
+
+def _core_playerstats_check(
+    core: pd.DataFrame,
+    valid_ids: set[int],
+    projections: pd.DataFrame,
+    gameweeks: list[int],
+    minimum_core_coverage: float,
+) -> QualityCheck:
+    """Validate Core coverage with one bounded append-only registration fallback.
+
+    The target remains 100%. A fallback is allowed only when all missing Official IDs
+    are a tiny trailing block above the largest Core ID and those players already have
+    a complete canonical projection surface. This distinguishes the normal race where
+    Official FPL has just registered new players from arbitrary data loss inside Core.
+    No missing Core statistic is fabricated; the Official/Apex path remains explicit.
+    """
+    core_ids = _core_ids(core)
+    coverage = _core_coverage(core, valid_ids)
+    if coverage >= minimum_core_coverage:
+        return QualityCheck(
+            "fpl_core_playerstats",
+            "pass",
+            True,
+            f"official-player coverage={coverage:.1%}",
+            coverage,
+            minimum_core_coverage,
+        )
+
+    missing = sorted(valid_ids - core_ids)
+    max_core_id = max(core_ids) if core_ids else None
+    trailing_only = bool(
+        missing
+        and max_core_id is not None
+        and all(player_id > max_core_id for player_id in missing)
+    )
+    bounded = (
+        len(missing) <= MAX_CORE_REGISTRATION_LAG_PLAYERS
+        and coverage >= MIN_CORE_REGISTRATION_LAG_COVERAGE
+    )
+    projected = _projection_pairs_complete(projections, set(missing), gameweeks)
+    if trailing_only and bounded and projected:
+        return QualityCheck(
+            "fpl_core_playerstats",
+            "fallback",
+            True,
+            (
+                f"official-player coverage={coverage:.1%}; bounded trailing Official "
+                f"registration lag missing_ids={missing}; Core values remain absent "
+                "(not fabricated) and every missing player has a complete canonical "
+                "projection surface"
+            ),
+            coverage,
+            minimum_core_coverage,
+        )
+
+    reasons: list[str] = []
+    if not trailing_only:
+        reasons.append("missing IDs are not an append-only trailing registration block")
+    if not bounded:
+        reasons.append(
+            f"gap exceeds bounded lag policy (max {MAX_CORE_REGISTRATION_LAG_PLAYERS} "
+            f"players and minimum {MIN_CORE_REGISTRATION_LAG_COVERAGE:.1%} coverage)"
+        )
+    if not projected:
+        reasons.append("missing Core players lack complete canonical projections")
+    detail = f"official-player coverage={coverage:.1%}"
+    if missing:
+        detail += f"; missing_ids={missing[:20]}"
+    if reasons:
+        detail += "; " + "; ".join(reasons)
+    return QualityCheck(
+        "fpl_core_playerstats",
+        "fail",
+        True,
+        detail,
+        coverage,
+        minimum_core_coverage,
+    )
 
 
 def _preseason_check(friendlies: pd.DataFrame) -> QualityCheck:
@@ -242,7 +370,7 @@ def assess_data_quality(
     gameweeks: list[int],
     *,
     fixture_fallback_ok: bool,
-    minimum_core_coverage: float = 0.95,
+    minimum_core_coverage: float = 1.0,
 ) -> DataQualityAssessment:
     checks: list[QualityCheck] = []
     valid_ids = set(official.players["player_id"].astype(int))
@@ -275,14 +403,12 @@ def assess_data_quality(
             )
         )
 
-    core_coverage = _core_coverage(core, valid_ids)
     checks.append(
-        QualityCheck(
-            "fpl_core_playerstats",
-            "pass" if core_coverage >= minimum_core_coverage else "fail",
-            True,
-            f"official-player coverage={core_coverage:.1%}",
-            core_coverage,
+        _core_playerstats_check(
+            core,
+            valid_ids,
+            projections,
+            gameweeks,
             minimum_core_coverage,
         )
     )

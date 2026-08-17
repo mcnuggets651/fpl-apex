@@ -16,6 +16,18 @@ class TransferPlan:
     status: str
     objective: float
     weeks: list[dict]
+    solver_status_code: int | None = None
+    solver_message: str | None = None
+    objective_upper_bound: float | None = None
+    mip_gap: float | None = None
+
+
+def _finite_float(value) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
 
 
 def _next_ft(ft: int, transfers: int) -> int:
@@ -39,6 +51,8 @@ def optimise_transfer_plan(
     candidate_limit: int = 110,
     selling_prices: dict[int, float] | None = None,
     captain_eligible: set[int] | None = None,
+    solver_time_limit: float = 120.0,
+    solver_relative_gap: float = 0.002,
 ) -> TransferPlan:
     """Multi-period FPL transfer MILP with exact rolled-FT state transitions.
 
@@ -51,6 +65,11 @@ def optimise_transfer_plan(
     Supported fixed chips: Wildcard, Bench Boost and Triple Captain. Free Hit is
     intentionally evaluated as a separate one-week scenario because its squad
     reversion semantics are different from permanent transfer planning.
+
+    Solver-limit termination is deliberately distinct from mathematical
+    infeasibility. A time/iteration limit may still have a feasible incumbent and a
+    branch-and-bound objective bound; callers can use that bound for safe pruning or
+    retry the same model without falsely escalating to a larger universe.
     """
     locked, banned = locked or set(), banned or set()
     captain_eligible = (
@@ -298,15 +317,44 @@ def optimise_transfer_plan(
         for col, val in coeffs.items():
             A[r, col] = val
 
+    time_limit = max(float(solver_time_limit), 0.01)
+    relative_gap = max(float(solver_relative_gap), 0.0)
     res = milp(
         c=-objective,
         integrality=integrality,
         bounds=Bounds(lb, ub),
         constraints=LinearConstraint(A.tocsr(), np.asarray(lower), np.asarray(upper)),
-        options={"time_limit": 120, "mip_rel_gap": 0.002},
+        options={"time_limit": time_limit, "mip_rel_gap": relative_gap},
     )
-    if not res.success or res.x is None:
-        return TransferPlan("Infeasible", float("nan"), [])
+
+    status_code_raw = getattr(res, "status", None)
+    status_code = int(status_code_raw) if status_code_raw is not None else None
+    message_raw = getattr(res, "message", None)
+    message = str(message_raw) if message_raw is not None else None
+    incumbent_fun = _finite_float(getattr(res, "fun", None))
+    incumbent_objective = (
+        -float(incumbent_fun) if incumbent_fun is not None else float("nan")
+    )
+    dual_bound = _finite_float(getattr(res, "mip_dual_bound", None))
+    objective_upper_bound = -float(dual_bound) if dual_bound is not None else None
+    mip_gap = _finite_float(getattr(res, "mip_gap", None))
+
+    if not bool(getattr(res, "success", False)) or getattr(res, "x", None) is None:
+        status = {
+            1: "SolverLimit",
+            2: "Infeasible",
+            3: "Unbounded",
+            4: "SolverError",
+        }.get(status_code, "SolverError")
+        return TransferPlan(
+            status,
+            incumbent_objective,
+            [],
+            solver_status_code=status_code,
+            solver_message=message,
+            objective_upper_bound=objective_upper_bound,
+            mip_gap=mip_gap,
+        )
 
     sol = res.x
     weeks: list[dict] = []
@@ -383,4 +431,12 @@ def optimise_transfer_plan(
                 "squad": records(squad_i),
             }
         )
-    return TransferPlan("Optimal", float(-res.fun), weeks)
+    return TransferPlan(
+        "Optimal",
+        incumbent_objective,
+        weeks,
+        solver_status_code=status_code,
+        solver_message=message,
+        objective_upper_bound=objective_upper_bound,
+        mip_gap=mip_gap,
+    )
