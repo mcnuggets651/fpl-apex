@@ -3,38 +3,38 @@
   "projection_surface": "ensemble_mean_xp",
   "gameweek": 1,
   "apex_squad": [
+    4,
     57,
+    68,
     94,
     106,
-    112,
+    109,
     113,
     127,
     165,
     204,
-    375,
+    367,
     388,
     411,
-    426,
-    481,
-    497,
-    498
+    427,
+    445
   ],
   "external_squad": [
+    4,
     57,
+    68,
     94,
     106,
-    112,
+    109,
     113,
     127,
     165,
     204,
-    375,
+    367,
     388,
     411,
-    426,
-    481,
-    497,
-    498
+    427,
+    445
   ],
   "squad_overlap": 15,
   "squad_overlap_pct": 1.0,
@@ -45,12 +45,12 @@
   "captain_agrees": true,
   "only_apex": [],
   "only_external": [],
-  "decision_bundle_id": "acb041820e50718f9933be75f49d20fc6b61f8400323676fe8603a5c508aa108",
+  "decision_bundle_id": "fb8ba403c88179f73f6ce15b3a73e9d42f7b9eac7c47929f51c7025daa5c7f01",
   "official_snapshot": {
-    "snapshot_id": "20260817T193521Z-160be682",
-    "bootstrap_sha256": "e2e5d78cfca7ad5c99d09e055e8ba4e6e0a68023e337cee7b257a96a89ccafac",
-    "fixtures_sha256": "a478e20d030d3dc53477a3cd3afc5a496c62e550b2fb1f905963d59d62891554"
+    "snapshot_id": "20260818T172854Z-b83bedd2",
+    "bootstrap_sha256": "40ca8827d59685ae7fb5fc4dcbe386aa7b23308823baae96c9f2a46ddd47e9f0",
+    "fixtures_sha256": "0058ca4b1a4645ddf1c863c2fb31629ef581f14a85cec9ec49affcf7ef54fdbf"
   },
-  "projection_export_sha256": "529cd5b34b3541ccda46850310e85a6a21da5c5abca89ed92cd2a1c7a438cdad",
-  "external_solver_result_sha256": "6e1e45c528e5fcbfea850ab56a31679e6f9ed510352b90b25fa681485043d7f0"
+  "projection_export_sha256": "4cdf0cf2557bb0540d87684171de020cc97c24b5a77185ff6111d3ec1e4a95c0",
+  "external_solver_result_sha256": "9e148d38b4e1b0dc08bc3995d5971318315b3702c09a8f7bed89dad8c9d01893"
 }
