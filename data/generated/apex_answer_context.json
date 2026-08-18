@@ -1,17 +1,13 @@
 {
   "contract": "apex-answer-context-v1",
-  "generated_at": "2026-08-18T03:29:14.214516+00:00",
+  "generated_at": "2026-08-18T08:08:58.933179+00:00",
   "safe_to_act": false,
   "ready_to_act": false,
   "blockers": [
     "Apex Unified production run did not complete canonical assembly",
     "data quality failed: fpl_core_playerstats: official-player coverage=0.0%; missing_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; missing IDs are not an append-only trailing registration block; gap exceeds bounded lag policy (max 5 players and minimum 99.0% coverage)",
-    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (19.4h old; max 18.0h)",
-    "required source changed after canonical build: airsenal: validated AIrsenal forecast changed"
+    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (24.0h old; max 18.0h)"
   ],
-  "decision_bundle_id": "7b334a7ea214ab655d3e1e1fb3f6ce27974a5bd92ab293262db9dd8789c11baf",
-  "recommendation": null,
-  "production_result": null,
-  "invalidated_at": "2026-08-18T05:51:48.388621+00:00",
-  "invalidated_source": "airsenal"
+  "decision_bundle_id": "0f3c628679f2c0d6692042b481e416d424425b8a0005045b33278b9529b50c66",
+  "recommendation": null
 }
