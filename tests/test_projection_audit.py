@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from apex_fpl.models.ensemble import blend_projection
-from apex_fpl.models.projection import _rate_reliability, project_players
+from apex_fpl.models.projection import _credible_attack_rate, project_players
 from apex_fpl.services.projection_audit import (
     build_fixture_shadow_comparison,
     build_player_shadow_comparison,
@@ -191,28 +191,35 @@ def test_player_shadow_comparison_separates_raw_xp_and_discounted_utility() -> N
     assert np.isclose(row["delta_apex_xp_discounted_utility"], 1.9)
 
 
-def test_zero_sample_extreme_rate_is_low_reliability_but_ordinary_rate_is_not():
+def test_zero_sample_extreme_rate_is_credibility_adjusted_but_ordinary_rate_is_not():
     d = pd.DataFrame(
         {
+            "position": ["MID", "MID"],
             "previous_minutes": [0.0, 0.0],
+            "minutes": [0.0, 0.0],
+            "current_team_matches": [0.0, 0.0],
+            "xg90_context_prior": [0.30, 0.30],
             "xg90_context_mature_p90": [0.50, 0.50],
-            "xg90_context_reliability": [0.0, 0.0],
         }
     )
     rates = pd.Series([1.59, 0.30])
-    preseason_weight = pd.Series([0.0, 0.0])
     understat = pd.Series([np.nan, np.nan])
+    preseason = pd.Series([np.nan, np.nan])
 
-    reliability = _rate_reliability(
+    adjusted, reliability, eligible = _credible_attack_rate(
         d,
         rates,
         "xg90",
-        preseason_weight,
         understat,
+        preseason,
     )
 
-    assert reliability.iloc[0] == pytest.approx(0.15)
+    assert bool(eligible.iloc[0]) is True
+    assert reliability.iloc[0] < 0.20
+    assert adjusted.iloc[0] < 0.50
+    assert bool(eligible.iloc[1]) is False
     assert reliability.iloc[1] == pytest.approx(1.0)
+    assert adjusted.iloc[1] == pytest.approx(0.30)
 
 
 def test_club_change_shrinks_historical_defcon_toward_position_reference():
