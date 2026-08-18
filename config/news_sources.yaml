@@ -1,7 +1,13 @@
-# Default 2026/27 public news layer.
+# Default 2026/27 public news and FPL-specialist evidence layer.
 # Official FPL status/chance fields remain stronger than every headline signal.
 # PremierLeague.com adds the official league / syndicated club-news channel;
 # BBC Sport and Sky Sports provide independent trusted-media cross-checks.
+# Fantasy Football Scout and AllAboutFPL are specialist corroboration sources:
+# they can trigger lineup/role/minutes/set-piece review flags but must never
+# override official identity, price, availability or directly inject xP.
+# Fabrizio Romano is transfer-specialist corroboration only: transfer reports
+# can trigger transfer-risk review, but cannot directly rewrite tactical role,
+# minutes, availability, canonical club identity or xP before official confirmation.
 # Add direct official-club feeds here whenever a club publishes a stable feed.
 feeds:
   - name: Premier League News
@@ -13,3 +19,12 @@ feeds:
   - name: Sky Sports Football
     url: https://www.skysports.com/rss/12040
     tier: trusted_media
+  - name: Fantasy Football Scout
+    url: https://www.fantasyfootballscout.co.uk/
+    tier: fpl_specialist
+  - name: AllAboutFPL
+    url: https://allaboutfpl.com/
+    tier: fpl_specialist
+  - name: Fabrizio Romano
+    url: https://t.me/s/fabrizioromanotg
+    tier: transfer_specialist
