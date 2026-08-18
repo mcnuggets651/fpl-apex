@@ -98,9 +98,9 @@ class FPLCoreClient:
     def _longitudinal_role_counts(prior_stats: pd.DataFrame) -> pd.DataFrame:
         """Recover factual appearances and available-role games from cumulative GW rows.
 
-        FPL Core stores cumulative player snapshots.  Dividing last-season starts or
+        FPL Core stores cumulative player snapshots. Dividing last-season starts or
         minutes by 38 confounds tactical role with injuries, suspensions and other
-        absences.  Current availability is modelled separately by Apex, so the prior
+        absences. Current availability is modelled separately by Apex, so the prior
         role bridge must be conditional on games where the player was actually in the
         selectable/participating population.
 
@@ -114,13 +114,15 @@ class FPLCoreClient:
         if not required.issubset(prior_stats.columns):
             return pd.DataFrame(columns=["player_id", "appearances", "role_games"])
 
-        stats = prior_stats[[
-            "player_id",
-            "gw",
-            "minutes",
-            "starts",
-            *(["status"] if "status" in prior_stats.columns else []),
-        ]].copy()
+        stats = prior_stats[
+            [
+                "player_id",
+                "gw",
+                "minutes",
+                "starts",
+                *(["status"] if "status" in prior_stats.columns else []),
+            ]
+        ].copy()
         stats["player_id"] = pd.to_numeric(stats["player_id"], errors="coerce")
         stats["gw"] = pd.to_numeric(stats["gw"], errors="coerce")
         stats["minutes"] = pd.to_numeric(stats["minutes"], errors="coerce")
@@ -233,10 +235,18 @@ class FPLCoreClient:
             validate="one_to_one",
         ).rename(columns={"current_player_id": "player_id"})
 
-        previous_starts = pd.to_numeric(out.get("previous_starts"), errors="coerce")
-        previous_minutes = pd.to_numeric(out.get("previous_minutes"), errors="coerce")
-        role_games = pd.to_numeric(out.get("previous_role_games"), errors="coerce")
-        appearances = pd.to_numeric(out.get("previous_appearances"), errors="coerce")
+        def optional_numeric(column: str) -> pd.Series:
+            source = (
+                out[column]
+                if column in out.columns
+                else pd.Series(float("nan"), index=out.index, dtype=float)
+            )
+            return pd.to_numeric(source, errors="coerce")
+
+        previous_starts = optional_numeric("previous_starts")
+        previous_minutes = optional_numeric("previous_minutes")
+        role_games = optional_numeric("previous_role_games")
+        appearances = optional_numeric("previous_appearances")
         denominator = role_games.where(role_games.gt(0), appearances)
         out["previous_start_probability"] = (
             previous_starts / denominator
