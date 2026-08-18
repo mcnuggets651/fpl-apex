@@ -223,9 +223,18 @@ def build_disagreement_report(
         ] if col in players.columns
     ]
     summary = summary.merge(players[keep].drop_duplicates("player_id"), on="player_id", how="left")
-    current = _numeric(summary, "minutes").fillna(0.0)
-    previous = _numeric(summary, "previous_minutes").fillna(0.0)
-    summary["competitive_evidence_minutes"] = current + previous
+
+    # Never convert unavailable evidence metadata into a factual zero-minute sample.
+    # The report-facing player table intentionally omits some raw modelling inputs.
+    # When those inputs are present, expose their numeric sum. When they are absent,
+    # keep the sample unknown and use the projection layer's own credibility-adjusted
+    # flags as the authoritative signal that a <270-minute extreme was identified.
+    current = _numeric(summary, "minutes")
+    previous = _numeric(summary, "previous_minutes")
+    evidence_known = current.notna() | previous.notna()
+    summary["competitive_evidence_minutes"] = (
+        current.fillna(0.0) + previous.fillna(0.0)
+    ).where(evidence_known, np.nan)
     if "position" in summary.columns:
         summary["xg90_position_percentile"] = summary.groupby("position")["model_xg90"].rank(pct=True)
         summary["xa90_position_percentile"] = summary.groupby("position")["model_xa90"].rank(pct=True)
@@ -234,18 +243,24 @@ def build_disagreement_report(
         summary["xa90_position_percentile"] = np.nan
 
     # Source-model disagreement and low-sample rate credibility are separate risks.
-    # A tiny-sample extreme rate must remain visible even when AIrsenal happens to
-    # agree with the player's aggregate xP. Disagreement is retained as an
-    # additional prioritisation flag, never as a prerequisite for detecting the
-    # unsupported rate itself.
+    # Projection-layer credibility flags are exact: they are set only when the rate
+    # estimator found a materially extreme rate with <270 minutes of supporting
+    # competitive sample. Raw sample minutes are an optional explanatory field, not
+    # a prerequisite for this diagnostic.
     summary["high_disagreement"] = summary["raw_absolute_disagreement_xp"].ge(3.0)
-    summary["low_sample_extreme_rate"] = (
-        summary["competitive_evidence_minutes"].lt(270.0)
+    projection_low_sample = pd.Series(False, index=summary.index, dtype=bool)
+    for column in ["xg_rate_credibility_adjusted", "xa_rate_credibility_adjusted"]:
+        if column in summary.columns:
+            projection_low_sample = projection_low_sample | summary[column].fillna(False).astype(bool)
+    explicit_low_sample = (
+        summary["competitive_evidence_minutes"].notna()
+        & summary["competitive_evidence_minutes"].lt(270.0)
         & (
             summary["xg90_position_percentile"].ge(0.90)
             | summary["xa90_position_percentile"].ge(0.90)
         )
     )
+    summary["low_sample_extreme_rate"] = projection_low_sample | explicit_low_sample
     summary["low_sample_extreme_rate_with_disagreement"] = (
         summary["low_sample_extreme_rate"]
         & summary["raw_absolute_disagreement_xp"].ge(2.0)
@@ -372,7 +387,7 @@ def main() -> None:
         "notes": [
             "Ablations reuse the same players, prices, fixture surface, availability, evidence eligibility and exact XI/captain/vice/autosub mechanics.",
             "No source weight or projection component is promoted by this audit.",
-            "Low-sample extreme-rate flags are independent of AIrsenal disagreement; a separate joint flag records cases where both risks coincide.",
+            "Low-sample extreme-rate flags use the projection layer's credibility decision and never coerce unavailable sample metadata to zero.",
             "Selected-player regret is exact within the authoritative exact-horizon candidate shortlist; absence of an alternative is reported rather than extrapolated.",
         ],
     }
