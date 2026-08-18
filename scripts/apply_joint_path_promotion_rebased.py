@@ -31,6 +31,22 @@ def _frame_if_present(path: Path) -> pd.DataFrame | None:
         return None
 
 
+def _current_hierarchy_evidence(path: Path) -> pd.DataFrame | None:
+    frame = _frame_if_present(path)
+    if frame is None or frame.empty:
+        return frame
+    if "valid_until" not in frame.columns:
+        return frame
+    expiry = pd.to_datetime(frame["valid_until"], errors="coerce", utc=True)
+    now = pd.Timestamp.now(tz="UTC")
+    # A row that declares a validity window must parse cleanly and still be live.
+    # Rows without an expiry remain supported for tests/legacy inputs, but governed
+    # production evidence added by this PR always supplies valid_until.
+    has_value = frame["valid_until"].fillna("").astype(str).str.strip().ne("")
+    current = (~has_value) | (expiry.notna() & expiry.ge(now))
+    return frame.loc[current].copy()
+
+
 def _cli_path(flag: str, default: str) -> Path:
     try:
         index = sys.argv.index(flag)
@@ -155,7 +171,7 @@ def _audit_final_selection(*, output_dir: Path, bundle_dir: Path) -> None:
         xi_ids=xi_ids,
         bench_ids=bench_ids,
         specialist_report=_frame_if_present(output_dir / "specialist_disagreement.csv"),
-        hierarchy_evidence=_frame_if_present(Path("data/manual/squad_hierarchy.csv")),
+        hierarchy_evidence=_current_hierarchy_evidence(Path("data/manual/squad_hierarchy.csv")),
         transfer_report=_frame_if_present(output_dir / "transfer_intelligence.csv"),
     )
     payload.setdefault("internal_diagnostics", {})["selection_reality"] = {
