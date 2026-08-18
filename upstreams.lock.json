@@ -16,12 +16,12 @@
     },
     "fpl_core_insights": {
       "repository": "olbauday/FPL-Core-Insights",
-      "commit": "0b27bac58b51337fc6f798c8c45b9885af8ea57b",
-      "committed_at": "2026-08-17T08:07:09+00:00",
-      "resolved_at": "2026-08-17T08:08:57.281853+00:00",
-      "resolved_age_hours": 0.03,
+      "commit": "0accbdda2bb514497579802b8c2a6f6fd8fd7dc8",
+      "committed_at": "2026-08-18T08:03:36+00:00",
+      "resolved_at": "2026-08-18T09:50:27+00:00",
+      "resolved_age_hours": 1.78,
       "newer_revision_available": false,
-      "resolution_policy": "moving main resolved to immutable latest verified commit",
+      "resolution_policy": "moving main candidate refreshed on reliability branch for governed audit; CI must validate before merge",
       "role": "enrichment_data",
       "required_for_full_apex": true
     },
