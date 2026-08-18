@@ -14,14 +14,23 @@ class SelectionRealityResult:
     report: pd.DataFrame
 
 
-def _probability_map(players: pd.DataFrame, column: str, default: float = 0.0) -> dict[int, float]:
+def _numeric_map(
+    players: pd.DataFrame,
+    column: str,
+    default: float = 0.0,
+    *,
+    upper: float | None = None,
+) -> dict[int, float]:
     if column not in players.columns:
         return {int(pid): default for pid in players["player_id"].astype(int)}
     values = pd.to_numeric(players[column], errors="coerce").fillna(default)
-    return {
-        int(pid): min(max(float(value), 0.0), 1.0)
-        for pid, value in zip(players["player_id"].astype(int), values)
-    }
+    result: dict[int, float] = {}
+    for pid, value in zip(players["player_id"].astype(int), values):
+        parsed = max(float(value), 0.0)
+        if upper is not None:
+            parsed = min(parsed, upper)
+        result[int(pid)] = parsed
+    return result
 
 
 def audit_selected_squad_reality(
@@ -34,7 +43,9 @@ def audit_selected_squad_reality(
     hierarchy_evidence: pd.DataFrame | None = None,
     transfer_report: pd.DataFrame | None = None,
     first_bench_min_appearance: float = 0.70,
+    first_bench_min_expected_minutes: float = 30.0,
     playable_bench_min_appearance: float = 0.60,
+    playable_bench_min_expected_minutes: float = 20.0,
     minimum_playable_outfield_bench: int = 2,
 ) -> SelectionRealityResult:
     """Fail closed on unresolved real-football selection fragility.
@@ -42,20 +53,22 @@ def audit_selected_squad_reality(
     This audit never changes xP, minutes, roles, club identity or optimiser weights.
     It is a readiness gate applied *after* the optimiser has produced a candidate.
     The purpose is to prevent a mathematically valid squad from being called high
-    confidence when selected players rely on unresolved predicted-XI, squad-hierarchy
-    or transfer-state assumptions.
+    confidence when selected players rely on unresolved predicted-XI, squad-hierarchy,
+    transfer-state, or unusably thin bench assumptions.
     """
     selected_ids = {int(pid) for pid in selected_ids}
     xi_ids = {int(pid) for pid in xi_ids}
     bench_ids = [int(pid) for pid in bench_ids]
     outfield_bench = [pid for pid in bench_ids if pid not in xi_ids]
 
-    appearance = _probability_map(players, "appearance_probability", 0.0)
-    starts = _probability_map(players, "start_probability", 0.0)
+    appearance = _numeric_map(players, "appearance_probability", 0.0, upper=1.0)
+    starts = _numeric_map(players, "start_probability", 0.0, upper=1.0)
+    minutes = _numeric_map(players, "expected_minutes", 0.0, upper=90.0)
     names = {
         int(row.player_id): str(getattr(row, "web_name", row.player_id))
         for row in players.itertuples(index=False)
     }
+    ids_by_name = {str(name).strip().casefold(): pid for pid, name in names.items()}
 
     specialist_by_id: dict[int, tuple[str, str]] = {}
     if specialist_report is not None and not specialist_report.empty:
@@ -69,11 +82,22 @@ def audit_selected_squad_reality(
     hierarchy_by_id: dict[int, str] = {}
     if hierarchy_evidence is not None and not hierarchy_evidence.empty:
         frame = hierarchy_evidence.copy()
-        if {"player_id", "hierarchy_status"}.issubset(frame.columns):
-            frame["player_id"] = pd.to_numeric(frame["player_id"], errors="coerce")
-            frame = frame[frame["player_id"].notna()].copy()
+        if "hierarchy_status" in frame.columns:
             for row in frame.itertuples(index=False):
-                hierarchy_by_id[int(row.player_id)] = str(row.hierarchy_status).strip().casefold()
+                pid_value = getattr(row, "player_id", None)
+                pid: int | None = None
+                if pid_value is not None and not pd.isna(pid_value):
+                    try:
+                        pid = int(pid_value)
+                    except (TypeError, ValueError):
+                        pid = None
+                if pid is None:
+                    name = str(getattr(row, "web_name", "")).strip().casefold()
+                    pid = ids_by_name.get(name)
+                if pid is not None:
+                    hierarchy_by_id[pid] = str(
+                        getattr(row, "hierarchy_status")
+                    ).strip().casefold()
 
     transfer_by_id: dict[int, tuple[str, str]] = {}
     if transfer_report is not None and not transfer_report.empty:
@@ -89,6 +113,7 @@ def audit_selected_squad_reality(
     report_rows: list[dict] = []
     playable_outfield = 0
 
+    weak_hierarchy = {"academy", "u21", "youth", "fringe", "reserve"}
     for pid in sorted(selected_ids):
         name = names.get(pid, str(pid))
         is_xi = pid in xi_ids
@@ -98,6 +123,7 @@ def audit_selected_squad_reality(
         transfer_priority, transfer_reason = transfer_by_id.get(pid, ("none", ""))
         app = appearance.get(pid, 0.0)
         start = starts.get(pid, 0.0)
+        exp_min = minutes.get(pid, 0.0)
 
         reasons: list[str] = []
         priority = "none"
@@ -105,17 +131,14 @@ def audit_selected_squad_reality(
         if transfer_priority == "high":
             priority = "blocker"
             reasons.append(transfer_reason or "high transfer risk")
-
         if specialist_priority == "high":
             priority = "blocker"
             reasons.append(specialist_reason or "high predicted-XI disagreement")
+        if hierarchy in weak_hierarchy and (is_xi or is_bench):
+            priority = "blocker"
+            reasons.append(f"current squad hierarchy is {hierarchy}")
 
-        if hierarchy in {"academy", "u21", "youth", "fringe", "reserve"}:
-            if is_xi or is_bench:
-                priority = "blocker"
-                reasons.append(f"current squad hierarchy is {hierarchy}")
-
-        if is_xi and app < 0.70:
+        if is_xi and app > 0 and app < 0.70:
             priority = "blocker"
             reasons.append(f"XI appearance probability only {app:.0%}")
         elif is_xi and start < 0.65:
@@ -124,20 +147,24 @@ def audit_selected_squad_reality(
             reasons.append(f"XI start probability only {start:.0%}")
 
         if is_bench:
-            playable = app >= playable_bench_min_appearance and hierarchy not in {
-                "academy",
-                "u21",
-                "youth",
-                "fringe",
-                "reserve",
-            }
+            appearance_ok = app >= playable_bench_min_appearance if app > 0 else False
+            minutes_ok = exp_min >= playable_bench_min_expected_minutes
+            playable = (appearance_ok or minutes_ok) and hierarchy not in weak_hierarchy
             if playable:
                 playable_outfield += 1
-            if outfield_bench and pid == outfield_bench[0] and app < first_bench_min_appearance:
-                priority = "blocker"
-                reasons.append(
-                    f"first outfield bench appearance probability only {app:.0%}"
-                )
+            if outfield_bench and pid == outfield_bench[0]:
+                first_appearance_bad = app > 0 and app < first_bench_min_appearance
+                first_minutes_bad = exp_min < first_bench_min_expected_minutes
+                if first_appearance_bad or first_minutes_bad:
+                    priority = "blocker"
+                    details = []
+                    if first_appearance_bad:
+                        details.append(f"appearance probability {app:.0%}")
+                    if first_minutes_bad:
+                        details.append(f"expected minutes {exp_min:.1f}")
+                    reasons.append(
+                        "first outfield bench is not a credible autosub: " + ", ".join(details)
+                    )
 
         if specialist_priority == "medium" and priority == "none":
             priority = "warning"
@@ -157,6 +184,7 @@ def audit_selected_squad_reality(
                 "web_name": name,
                 "in_xi": is_xi,
                 "on_outfield_bench": is_bench,
+                "expected_minutes": exp_min,
                 "appearance_probability": app,
                 "start_probability": start,
                 "hierarchy_status": hierarchy,
@@ -170,9 +198,8 @@ def audit_selected_squad_reality(
     if playable_outfield < int(minimum_playable_outfield_bench):
         blockers.append(
             "bench resilience: only "
-            f"{playable_outfield} outfield bench players clear the "
-            f"{playable_bench_min_appearance:.0%} appearance threshold; "
-            f"minimum for high-confidence launch is {minimum_playable_outfield_bench}"
+            f"{playable_outfield} outfield bench players clear the playable appearance/minutes "
+            f"threshold; minimum for high-confidence launch is {minimum_playable_outfield_bench}"
         )
 
     report = pd.DataFrame(report_rows)
