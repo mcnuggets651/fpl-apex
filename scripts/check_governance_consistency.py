@@ -16,6 +16,10 @@ FINAL_SELECTORS = (
     "adaptive_gw1_launch_with_transfer_option_value",
     "receding_horizon_current_team_maximum_ev",
 )
+FINAL_PROMOTION_ENTRYPOINTS = (
+    "scripts/apply_joint_path_promotion.py",
+    "scripts/apply_joint_path_promotion_rebased.py",
+)
 ACTIVE_WORKFLOWS = {
     "airsenal.yml",
     "apex.yml",
@@ -141,7 +145,9 @@ def main() -> None:
 
     runner = _text("scripts/run_apex.py")
     truth_pos = runner.find("scripts/audit_player_truth.py")
-    final_pos = runner.find("scripts/apply_joint_path_promotion.py")
+    final_positions = [runner.find(name) for name in FINAL_PROMOTION_ENTRYPOINTS]
+    final_positions = [pos for pos in final_positions if pos >= 0]
+    final_pos = min(final_positions) if final_positions else -1
     if truth_pos < 0 or final_pos < 0 or truth_pos > final_pos:
         failures.append("single Apex runner does not gate final selection behind all-player truth")
 

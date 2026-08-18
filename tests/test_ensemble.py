@@ -12,9 +12,6 @@ def test_missing_configured_airsenal_weight_is_explicitly_delegated_to_apex():
         0,
     ).iloc[0]
 
-    # Configured weights normalise to one third each. A genuinely absent
-    # AIrsenal source does not silently renormalise the surviving experts; its
-    # one-third weight is explicitly delegated to Apex and remains auditable.
     assert abs(out["xp"] - (16.0 / 3.0)) < 1e-9
     assert out["effective_weight_apex_model"] == (2.0 / 3.0)
     assert out["effective_weight_apex_model_direct"] == (1.0 / 3.0)
@@ -77,10 +74,7 @@ def test_airsenal_structural_zero_abstains_when_current_role_sources_disagree():
     assert (out["effective_weight_airsenal_fallback_apex"] > 0).all()
     assert out.iloc[0]["effective_weight_apex_model"] == pytest.approx(0.8)
     assert out.iloc[0]["effective_weight_apex_model_direct"] == pytest.approx(0.6)
-    # GW1 = (0.6*5 + 0.2*2.5 + 0.2*5) / 1.0.
     assert out.iloc[0]["xp"] == pytest.approx(4.5)
-    # Official is unavailable after GW1, so Apex plus the explicit fallback retain
-    # the whole usable weight rather than allowing the structural zero to suppress EV.
     assert out.iloc[1]["xp"] == pytest.approx(4.5)
 
 
@@ -141,3 +135,105 @@ def test_risk_is_diagnostic_and_cannot_lower_canonical_expected_points():
     assert out["risk_adjusted_xp"] == 7.0
     assert out["downside_adjusted_xp"] < 7.0
     assert out["projection_confidence"] < 1.0
+
+
+def test_nyoni_class_unsupported_apex_outlier_is_attenuated_and_propagates():
+    """Regression for the production 7.93 / 1.50 / 1.03 failure mode.
+
+    The test is deliberately identity-free: any player with a weakly supported Apex
+    rate and two independent experts materially below it must lose only the direct
+    Apex vote needed to reflect that evidence weakness.  Once confirmed at GW1, the
+    same-sided conflict carries forward when Official EP is no longer published.
+    """
+    df = pd.DataFrame(
+        [
+            {
+                "player_id": 375,
+                "gw": 1,
+                "apex_xp": 7.93,
+                "official_xp": 1.50,
+                "airsenal_xp": 1.03,
+                "apex_model_reliability": 0.25,
+                "apex_sd": 1.0,
+            },
+            {
+                "player_id": 375,
+                "gw": 2,
+                "apex_xp": 7.40,
+                "official_xp": None,
+                "airsenal_xp": 1.03,
+                "apex_model_reliability": 0.25,
+                "apex_sd": 1.0,
+            },
+        ]
+    )
+    weights = {
+        "official_ep": 0.2666666667,
+        "apex_model": 0.5111111111,
+        "airsenal": 0.2222222222,
+        "market": 0.0,
+    }
+    out = blend_projection(df, weights, 0)
+
+    gw1, gw2 = out.iloc[0], out.iloc[1]
+    assert bool(gw1["apex_reliability_conflict"]) is True
+    assert bool(gw1["apex_reliability_conflict_inherited"]) is False
+    assert gw1["independent_expert_count"] == 2
+    assert gw1["apex_reliability_weight_multiplier"] == pytest.approx(0.25)
+    assert gw1["xp"] < 3.20
+    assert gw1["xp"] < 4.68
+
+    assert bool(gw2["apex_reliability_conflict"]) is False
+    assert bool(gw2["apex_reliability_conflict_inherited"]) is True
+    assert gw2["independent_expert_count"] == 1
+    assert gw2["apex_reliability_weight_multiplier"] == pytest.approx(0.25)
+    assert gw2["xp"] < 3.50
+
+
+def test_high_reliability_apex_outlier_keeps_nominal_ev_vote():
+    df = pd.DataFrame(
+        [{
+            "player_id": 9,
+            "gw": 1,
+            "apex_xp": 7.93,
+            "official_xp": 1.50,
+            "airsenal_xp": 1.03,
+            "apex_model_reliability": 1.0,
+            "apex_sd": 1.0,
+        }]
+    )
+    weights = {
+        "official_ep": 0.2666666667,
+        "apex_model": 0.5111111111,
+        "airsenal": 0.2222222222,
+        "market": 0.0,
+    }
+    out = blend_projection(df, weights, 0).iloc[0]
+    expected = 7.93 * weights["apex_model"] + 1.50 * weights["official_ep"] + 1.03 * weights["airsenal"]
+
+    assert bool(out["apex_reliability_conflict"]) is False
+    assert out["apex_reliability_weight_multiplier"] == pytest.approx(1.0)
+    assert out["xp"] == pytest.approx(expected)
+
+
+def test_weak_reliability_without_independent_disagreement_does_not_penalise_ev():
+    df = pd.DataFrame(
+        [{
+            "player_id": 10,
+            "gw": 1,
+            "apex_xp": 5.0,
+            "official_xp": 4.8,
+            "airsenal_xp": 4.9,
+            "apex_model_reliability": 0.20,
+            "minutes_confidence": 0.35,
+            "role_confidence": 0.35,
+            "apex_sd": 1.0,
+        }]
+    )
+    weights = {"apex_model": 0.5, "official_ep": 0.3, "airsenal": 0.2}
+    out = blend_projection(df, weights, 0).iloc[0]
+    expected = 5.0 * 0.5 + 4.8 * 0.3 + 4.9 * 0.2
+
+    assert bool(out["apex_reliability_conflict"]) is False
+    assert out["apex_reliability_weight_multiplier"] == pytest.approx(1.0)
+    assert out["xp"] == pytest.approx(expected)

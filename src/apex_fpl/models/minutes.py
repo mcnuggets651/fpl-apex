@@ -6,6 +6,11 @@ import pandas as pd
 from apex_fpl.models.minute_states import minute_state_probabilities
 
 
+TRANSFER_NEUTRAL_START = {"GK": 0.25, "DEF": 0.45, "MID": 0.45, "FWD": 0.45}
+TRANSFER_NEUTRAL_MINUTES = {"GK": 22.5, "DEF": 36.0, "MID": 36.0, "FWD": 36.0}
+TRANSFER_PRIOR_RETENTION = {"GK": 0.20, "DEF": 0.55, "MID": 0.55, "FWD": 0.55}
+
+
 def availability_probability(row: pd.Series) -> float:
     status = str(row.get("status", "a"))
     chance = row.get("chance_of_playing_next_round")
@@ -25,17 +30,26 @@ def _optional_series(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_numeric(df[col], errors="coerce")
 
 
+def _bool_series(df: pd.DataFrame, col: str, default: bool = False) -> pd.Series:
+    if col not in df.columns:
+        return pd.Series(default, index=df.index, dtype=bool)
+    return df[col].fillna(default).astype(bool)
+
+
 def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
     """Estimate minutes plus explicit start/appearance probabilities and confidence.
 
-    Preseason and verified team-news evidence can override stale historical roles
-    when they are strong enough. Official availability remains the hard ceiling:
-    upside evidence can raise a healthy player's role estimate, but cannot erase
-    an injury, suspension or explicit negative availability signal.
-
     Expected minutes are an input to expected FPL points, not a standalone safety
-    score. The returned mutually-exclusive minute states make threshold mechanics
-    explicit without rewarding probability of 90 minutes for its own sake.
+    score.  Historical starts describe a role at a particular club, so a player who
+    changes club cannot inherit that role unchanged.  The transfer bridge regresses
+    the old role toward a neutral depth-chart prior until current preseason/team-news
+    evidence establishes the new role.  Goalkeepers receive the strongest reset
+    because there is only one starting slot.
+
+    Preseason role evidence is recency aware when dated friendly rows are available:
+    the final rehearsals matter more for the imminent team sheet than early tour
+    matches.  Explicit attributable deadline overrides still replace these statistical
+    priors and therefore remain the highest-authority role input.
     """
     mins = _series(df, "minutes", 0)
     starts = _series(df, "starts", 0)
@@ -74,8 +88,6 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         np.where(np.isfinite(current_minutes), current_minutes, prior_minutes),
     )
 
-    # Backward-compatible in-season fallback when a caller has accumulated starts
-    # and minutes but no explicit team-match count or prior-season bridge.
     if float(starts.max()) > 0:
         fallback_start = np.clip(
             np.where(starts > 0, mins / np.maximum(starts * 90.0, 1), starts90),
@@ -91,19 +103,63 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         np.isfinite(blended_minutes), blended_minutes, fallback_minutes
     )
 
-    pre_start_prob = np.where(pre_apps > 0, np.clip(pre_starts / np.maximum(pre_apps, 1), 0, 1), 0.50)
-    pre_avg_minutes = np.where(pre_apps > 0, np.clip(pre_mins / np.maximum(pre_apps, 1), 0, 90), 55)
+    aggregate_pre_start = np.where(
+        pre_apps > 0,
+        np.clip(pre_starts / np.maximum(pre_apps, 1), 0, 1),
+        0.50,
+    )
+    aggregate_pre_minutes = np.where(
+        pre_apps > 0,
+        np.clip(pre_mins / np.maximum(pre_apps, 1), 0, 90),
+        55,
+    )
+    recent_start = _optional_series(df, "preseason_recent_start_probability").to_numpy(float)
+    recent_minutes = _optional_series(df, "preseason_recent_average_minutes").to_numpy(float)
+    recency_evidence = _series(df, "preseason_recency_evidence", 0.0).to_numpy(float)
+    recent_share = np.clip(recency_evidence / 2.0, 0.0, 0.75)
+    recent_share = np.where(np.isfinite(recent_start), recent_share, 0.0)
+    pre_start_prob = (
+        (1.0 - recent_share) * aggregate_pre_start
+        + recent_share * np.where(np.isfinite(recent_start), recent_start, aggregate_pre_start)
+    )
+    recent_minutes_share = np.where(np.isfinite(recent_minutes), recent_share, 0.0)
+    pre_avg_minutes = (
+        (1.0 - recent_minutes_share) * aggregate_pre_minutes
+        + recent_minutes_share
+        * np.where(np.isfinite(recent_minutes), recent_minutes, aggregate_pre_minutes)
+    )
+
+    effective_preseason_games = pre_starts + 0.25 * np.maximum(pre_apps - pre_starts, 0)
+    club_changed = _bool_series(df, "club_changed", False).to_numpy(bool)
+    positions = df.get("position", pd.Series("MID", index=df.index)).astype(str)
+    neutral_start = positions.map(TRANSFER_NEUTRAL_START).fillna(0.45).to_numpy(float)
+    neutral_minutes = positions.map(TRANSFER_NEUTRAL_MINUTES).fillna(36.0).to_numpy(float)
+    base_retention = positions.map(TRANSFER_PRIOR_RETENTION).fillna(0.55).to_numpy(float)
+    current_role_evidence = np.clip(
+        np.maximum(effective_preseason_games / 2.5, recency_evidence / 2.5),
+        0.0,
+        1.0,
+    )
+    transfer_role_retention = base_retention + (1.0 - base_retention) * current_role_evidence
+    transfer_role_retention = np.where(club_changed, transfer_role_retention, 1.0)
+    hist_start_prob = np.where(
+        club_changed,
+        transfer_role_retention * hist_start_prob
+        + (1.0 - transfer_role_retention) * neutral_start,
+        hist_start_prob,
+    )
+    historic_expected_minutes = np.where(
+        club_changed,
+        transfer_role_retention * historic_expected_minutes
+        + (1.0 - transfer_role_retention) * neutral_minutes,
+        historic_expected_minutes,
+    )
+
     preseason_signal = 0.60 * (90 * pre_start_prob) + 0.40 * pre_avg_minutes
     historic_signal = 0.65 * historic_expected_minutes + 0.35 * (
         avg_if_started * hist_start_prob
     )
     has_preseason = pre_apps > 0
-    # Preseason is evidence, not a new season-sized prior. The old formula assigned
-    # 58% to *any* appearance, so one 45-minute cameo could overwhelm 30 competitive
-    # starts. Weight now grows from effective team-sheet evidence: starts are much
-    # stronger than cameos, minutes add support, and repeated starts can still
-    # supersede a stale historical role. A single non-start is capped at 12%.
-    effective_preseason_games = pre_starts + 0.25 * np.maximum(pre_apps - pre_starts, 0)
     sample_reliability = 1.0 - np.exp(-effective_preseason_games / 1.8)
     minutes_reliability = np.clip(pre_mins / 270.0, 0, 1)
     preseason_weight_raw = np.clip(
@@ -118,16 +174,15 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         preseason_weight_raw,
     )
 
-    # A managed or tournament-delayed return can produce a lower preseason start
-    # rate without implying that an established first-team role has disappeared.
-    # Protect only the narrow evidence pattern we can identify generically: a strong
-    # historical starting prior, at least one preseason start confirming continued
-    # first-team use, and a lower preseason start rate. Rotation priors and cameo-only
-    # players keep the incumbent treatment. Explicit current news can still override.
     role_downside = pre_start_prob < hist_start_prob
     established_prior = hist_start_prob >= 0.65
     has_preseason_start = np.asarray(pre_starts, dtype=float) > 0
-    protect_downside = role_downside & established_prior & has_preseason_start
+    # Old-club incumbency is not evidence that a transfer retains the same place in
+    # a new depth chart.  Transferred players therefore use current evidence without
+    # the incumbent downside shield.
+    protect_downside = (
+        role_downside & established_prior & has_preseason_start & ~club_changed
+    )
     prior_role_games = np.maximum(previous_starts.to_numpy(float), 0.0)
     effective_games_array = np.asarray(effective_preseason_games, dtype=float)
     evidence_denominator = effective_games_array + prior_role_games
@@ -157,20 +212,11 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         hist_start_prob,
     )
 
-    # Current, attributable starting-role evidence can raise a healthy player's
-    # statistical prior by only a small, source-tiered amount. The producer caps
-    # these deltas; this consumer defensively re-caps them so malformed inputs can
-    # never manufacture a near-certain starter.
     news_minutes_delta = _series(df, "news_minutes_delta", 0.0).clip(0, 8.0)
-    news_start_delta = _series(
-        df, "news_start_probability_delta", 0.0
-    ).clip(0, 0.10)
+    news_start_delta = _series(df, "news_start_probability_delta", 0.0).clip(0, 0.10)
     base_minutes = np.minimum(base_minutes + news_minutes_delta, 85.0)
     base_start = np.minimum(base_start + news_start_delta, 0.95)
 
-    # Explicit deadline evidence from official press conferences, club releases or
-    # a verified projected XI may replace the statistical role prior. Overrides are
-    # inputs to expected value, not confidence multipliers or optimiser bonuses.
     minutes_override = _optional_series(df, "expected_minutes_override")
     start_override = _optional_series(df, "start_probability_override")
     base_minutes = np.where(
@@ -191,8 +237,6 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
 
     expected = np.clip(base_minutes * availability, 0, 90)
     start = np.clip(np.asarray(base_start, dtype=float) * availability, 0, 1)
-    # A non-starter can still appear from the bench. The coefficient is deliberately
-    # below 1 because substitute usage is uncertain rather than guaranteed.
     appearance = np.clip(start + (1 - start) * 0.52 * availability, start, 1)
     appearance_override = _optional_series(df, "appearance_probability_override")
     appearance = np.where(
@@ -201,8 +245,14 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         appearance,
     )
     conditional_60 = 1.0 / (1.0 + np.exp(-(np.asarray(expected, dtype=float) - 58.0) / 8.0))
-    p60 = np.minimum(appearance, np.clip(0.15 * appearance + 0.85 * conditional_60 * start, 0, 1))
-    p80 = np.minimum(p60, np.clip((np.asarray(expected, dtype=float) - 45) / 40, 0, 1) * start)
+    p60 = np.minimum(
+        appearance,
+        np.clip(0.15 * appearance + 0.85 * conditional_60 * start, 0, 1),
+    )
+    p80 = np.minimum(
+        p60,
+        np.clip((np.asarray(expected, dtype=float) - 45) / 40, 0, 1) * start,
+    )
     states = minute_state_probabilities(start, appearance, p60, p80)
     states.index = df.index
 
@@ -213,11 +263,29 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         1,
     )
     preseason_evidence = np.clip(effective_preseason_games / 4.0, 0, 1)
-    availability_clarity = np.where(df.get("chance_of_playing_next_round", pd.Series(np.nan, index=df.index)).notna(), 0.95, 0.72)
+    availability_clarity = np.where(
+        df.get(
+            "chance_of_playing_next_round",
+            pd.Series(np.nan, index=df.index),
+        ).notna(),
+        0.95,
+        0.72,
+    )
     confidence = np.clip(
-        0.35 + 0.28 * np.maximum(historic_evidence, preseason_evidence) + 0.22 * availability_clarity,
+        0.35
+        + 0.28 * np.maximum(historic_evidence, preseason_evidence)
+        + 0.22 * availability_clarity,
         0.35,
         0.95,
+    )
+    # A club change reduces the relevance of old role evidence until current role
+    # evidence replaces it.  This affects uncertainty metadata only; expected minutes
+    # were already changed above by the explicit transfer bridge.
+    transfer_confidence_ceiling = 0.60 + 0.30 * current_role_evidence
+    confidence = np.where(
+        club_changed,
+        np.minimum(confidence, transfer_confidence_ceiling),
+        confidence,
     )
     evidence_confidence = _optional_series(df, "minutes_evidence_confidence")
     news_confidence = _optional_series(df, "news_confidence")
@@ -231,36 +299,39 @@ def minutes_profile(df: pd.DataFrame) -> pd.DataFrame:
         np.maximum(confidence, news_confidence.clip(0, 0.92)),
         confidence,
     )
-    # Explicit news/manual overrides are useful evidence, but also signal that the
-    # situation may be moving. They should not create false certainty.
     override_present = (manual < 0.999) | (news < 0.999) | (news_minutes_delta > 0)
     confidence = np.where(override_present, np.minimum(confidence, 0.82), confidence)
 
-    result = pd.DataFrame({
-        "expected_minutes": expected,
-        "start_probability": start,
-        "appearance_probability": appearance,
-        "minutes_60_plus_probability": p60,
-        "minutes_80_plus_probability": p80,
-        "minutes_confidence": confidence,
-        # Decision-grade observability: these fields explain the incumbent model
-        # without changing it. A future decomposed challenger must be validated
-        # before it can replace expected_minutes/start_probability.
-        "historical_start_probability": hist_start_prob,
-        "historical_expected_minutes": historic_expected_minutes,
-        "preseason_start_probability": pre_start_prob,
-        "preseason_average_minutes": pre_avg_minutes,
-        "preseason_signal_minutes": preseason_signal,
-        "historical_signal_minutes": historic_signal,
-        "role_expected_minutes_pre_availability": base_minutes,
-        "role_start_probability_pre_availability": base_start,
-        "availability_probability": availability,
-        "preseason_role_weight_raw": preseason_weight_raw,
-        "preseason_downside_reliability": downside_reliability,
-        "preseason_downside_protection_applied": protect_downside,
-        "preseason_role_weight": preseason_weight,
-        "preseason_effective_games": effective_preseason_games,
-    }, index=df.index)
+    result = pd.DataFrame(
+        {
+            "expected_minutes": expected,
+            "start_probability": start,
+            "appearance_probability": appearance,
+            "minutes_60_plus_probability": p60,
+            "minutes_80_plus_probability": p80,
+            "minutes_confidence": confidence,
+            "historical_start_probability": hist_start_prob,
+            "historical_expected_minutes": historic_expected_minutes,
+            "preseason_start_probability": pre_start_prob,
+            "preseason_average_minutes": pre_avg_minutes,
+            "preseason_signal_minutes": preseason_signal,
+            "historical_signal_minutes": historic_signal,
+            "role_expected_minutes_pre_availability": base_minutes,
+            "role_start_probability_pre_availability": base_start,
+            "availability_probability": availability,
+            "preseason_role_weight_raw": preseason_weight_raw,
+            "preseason_downside_reliability": downside_reliability,
+            "preseason_downside_protection_applied": protect_downside,
+            "preseason_role_weight": preseason_weight,
+            "preseason_effective_games": effective_preseason_games,
+            "preseason_recent_start_probability_used": pre_start_prob,
+            "preseason_recent_average_minutes_used": pre_avg_minutes,
+            "club_changed": club_changed,
+            "transfer_current_role_evidence": current_role_evidence,
+            "transfer_role_retention": transfer_role_retention,
+        },
+        index=df.index,
+    )
     for column in states.columns:
         result[column] = states[column]
     return result

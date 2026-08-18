@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from apex_fpl.models.ensemble import blend_projection
+from apex_fpl.models.projection import _credible_attack_rate, project_players
 from apex_fpl.services.projection_audit import (
     build_fixture_shadow_comparison,
     build_player_shadow_comparison,
@@ -43,7 +45,7 @@ def test_expert_contributions_sum_to_canonical_xp() -> None:
     out = blend_projection(base, ACTIVE_WEIGHTS, risk_penalty=0.15)
     contrib_cols = [
         "xp_expert_official_ep",
-        "xp_expert_apex_model",
+        "xp_expert_apex_model_direct",
         "xp_expert_airsenal",
         "xp_expert_market",
         "xp_expert_airsenal_fallback_apex",
@@ -100,7 +102,6 @@ def test_decomposition_preserves_canonical_and_apex_totals() -> None:
     )
     assert np.isclose(expert_total, row["raw_horizon_canonical_xp"])
     assert np.isclose(discounted_expert_total, row["discounted_horizon_utility"])
-    # GW1 has discount 1.0, so the transparent Apex components reconcile exactly.
     assert np.isclose(component_total, row["raw_horizon_apex_contribution"])
 
 
@@ -188,3 +189,88 @@ def test_player_shadow_comparison_separates_raw_xp_and_discounted_utility() -> N
     assert np.isclose(row["production_apex_xp_discounted_utility"], 7.6)
     assert np.isclose(row["shadow_apex_xp_discounted_utility"], 9.5)
     assert np.isclose(row["delta_apex_xp_discounted_utility"], 1.9)
+
+
+def test_zero_sample_extreme_rate_is_credibility_adjusted_but_ordinary_rate_is_not():
+    d = pd.DataFrame(
+        {
+            "position": ["MID", "MID"],
+            "previous_minutes": [0.0, 0.0],
+            "minutes": [0.0, 0.0],
+            "current_team_matches": [0.0, 0.0],
+            "xg90_context_prior": [0.30, 0.30],
+            "xg90_context_mature_p90": [0.50, 0.50],
+        }
+    )
+    rates = pd.Series([1.59, 0.30])
+    understat = pd.Series([np.nan, np.nan])
+    preseason = pd.Series([np.nan, np.nan])
+
+    adjusted, reliability, eligible = _credible_attack_rate(
+        d,
+        rates,
+        "xg90",
+        understat,
+        preseason,
+    )
+
+    assert bool(eligible.iloc[0]) is True
+    assert reliability.iloc[0] < 0.20
+    assert adjusted.iloc[0] < 0.50
+    assert bool(eligible.iloc[1]) is False
+    assert reliability.iloc[1] == pytest.approx(1.0)
+    assert adjusted.iloc[1] == pytest.approx(0.30)
+
+
+def test_club_change_shrinks_historical_defcon_toward_position_reference():
+    players = pd.DataFrame(
+        [
+            {
+                "player_id": 1,
+                "team": 1,
+                "position": "MID",
+                "expected_minutes": 90.0,
+                "appearance_probability": 1.0,
+                "minutes_60_plus_probability": 1.0,
+                "role_multiplier": 1.0,
+                "previous_minutes": 2000.0,
+                "defensive_contribution_per_90": 4.0,
+                "club_changed": False,
+                "transfer_current_role_evidence": 1.0,
+            },
+            {
+                "player_id": 2,
+                "team": 1,
+                "position": "MID",
+                "expected_minutes": 90.0,
+                "appearance_probability": 1.0,
+                "minutes_60_plus_probability": 1.0,
+                "role_multiplier": 1.0,
+                "previous_minutes": 2000.0,
+                "defensive_contribution_per_90": 12.0,
+                "club_changed": True,
+                "transfer_current_role_evidence": 0.0,
+            },
+        ]
+    )
+    fixtures = pd.DataFrame(
+        [
+            {
+                "gw": 1,
+                "team": 1,
+                "opponent": 2,
+                "is_home": True,
+                "attack_multiplier": 1.0,
+                "defence_multiplier": 1.0,
+                "clean_sheet_prob": 0.30,
+            }
+        ]
+    )
+
+    out = project_players(players, fixtures, [1])
+    moved = out.loc[out.player_id == 2].iloc[0]
+
+    assert moved["raw_defensive_contribution_per_90"] == pytest.approx(12.0)
+    assert moved["defensive_rate_reliability"] == pytest.approx(0.35)
+    assert moved["model_defensive_contribution_per_90"] == pytest.approx(6.8)
+    assert moved["model_defensive_contribution_per_90"] < moved["raw_defensive_contribution_per_90"]

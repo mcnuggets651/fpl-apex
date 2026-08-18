@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 
 import numpy as np
 import pandas as pd
@@ -32,6 +33,8 @@ CONTEXT_FIELDS = [
 
 LOW_SAMPLE_ATTACK_MINUTES = 270.0
 LOW_SAMPLE_ATTACK_UPPER_QUANTILE = 0.90
+PRESEASON_ROLE_RECENCY_HALF_LIFE_DAYS = 10.0
+_MATCH_DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})$")
 
 
 def _understat_player_mode() -> str:
@@ -91,14 +94,7 @@ def _weighted_quantile(
     weights: pd.Series,
     quantile: float,
 ) -> float:
-    """Return a deterministic weighted empirical quantile.
-
-    The low-sample guard is meant to compare a tiny sample with established role
-    evidence.  An unweighted percentile lets a handful of players barely above the
-    270-minute maturity floor influence the reference as much as 3,000-minute
-    regulars.  Weighting by competitive minutes keeps the reference anchored to the
-    evidence volume without imposing a hand-tuned attacking-rate cap.
-    """
+    """Return a deterministic weighted empirical quantile."""
     value = pd.to_numeric(values, errors="coerce").to_numpy(float)
     weight = pd.to_numeric(weights, errors="coerce").to_numpy(float)
     valid = np.isfinite(value) & np.isfinite(weight) & (weight > 0)
@@ -139,9 +135,6 @@ def _position_rate_reference(
             weights,
             LOW_SAMPLE_ATTACK_UPPER_QUANTILE,
         )
-        # The upper reference can never sit below the weighted position mean.  This
-        # preserves ordinary established attacking rates while still preventing a
-        # marginal mature outlier from defining the tiny-sample ceiling.
         upper_value = max(prior_value, float(upper_value))
         prior.loc[same_position] = prior_value
         upper.loc[same_position] = upper_value
@@ -151,17 +144,12 @@ def _position_rate_reference(
 def stabilise_low_sample_attack_context(players: pd.DataFrame) -> pd.DataFrame:
     """Shrink extreme attacking rates backed by a tiny prior-PL sample.
 
-    The pre-GW1 decision must be based on official current-season minutes, not a
-    Core fallback copied into the generic ``minutes`` context column.  Coalescing
-    can legitimately populate that generic column with historical context, but it
-    must not make the reliability gate believe the new PL season has already been
-    played.  ``_official_current_minutes_for_attack_reliability`` preserves the
-    official value across coalescing for exactly this decision.
-
-    The extreme-rate reference is minutes-weighted across mature same-position
-    players.  This is deliberately narrower than the retired global empirical-Bayes
-    challenger: only an extreme rate with <270 prior Premier League minutes is
-    adjusted, and ordinary/mature rates remain exact.
+    Zero-sample players deliberately remain untouched here.  A new signing or a
+    promoted player can genuinely have no Premier League sample, so mutating their
+    rate purely because the sample is zero would be an information-destroying rule.
+    The projection layer instead exposes the evidence reliability of an unsupported
+    extreme rate, and the ensemble may attenuate Apex only when independent experts
+    materially disagree in the same direction.
     """
     out = players.copy()
     if "position" not in out.columns or "previous_minutes" not in out.columns:
@@ -212,9 +200,6 @@ def stabilise_low_sample_attack_context(players: pd.DataFrame) -> pd.DataFrame:
 def coalesce_context(df: pd.DataFrame) -> pd.DataFrame:
     """Use auxiliary context when official current-season context is blank/zero."""
     out = df.copy()
-    # Preserve the official season-playing-time state before Core context is allowed
-    # to fill generic performance columns.  This prevents a historical Core minutes
-    # value from bypassing the pre-GW1 low-sample attacking-rate correction.
     out["_official_current_minutes_for_attack_reliability"] = pd.to_numeric(
         out.get("minutes", pd.Series(0.0, index=out.index)), errors="coerce"
     ).fillna(0.0)
@@ -237,8 +222,21 @@ def coalesce_context(df: pd.DataFrame) -> pd.DataFrame:
     return _enrich_understat_player_rates(out)
 
 
+def _friendly_match_dates(match_ids: pd.Series) -> pd.Series:
+    raw = match_ids.astype("string")
+    extracted = raw.str.extract(_MATCH_DATE_RE, expand=False)
+    return pd.to_datetime(extracted, errors="coerce", utc=True)
+
+
 def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> pd.DataFrame:
-    """Attach preseason role and attacking evidence without inventing missing xG/xA."""
+    """Attach preseason attacking and recency-aware role evidence.
+
+    Attacking returns keep the full measured friendly sample.  Role inference is
+    different: a final full-strength rehearsal is more relevant to the imminent
+    league team sheet than a July tour match.  FPL Core match IDs include the match
+    date, allowing a deterministic exponential recency weight without hand-coding
+    clubs, players or a subjective "final friendly" flag.
+    """
     rate_sources = {
         "xg": "xg",
         "xa": "xa",
@@ -255,10 +253,15 @@ def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> p
         out["preseason_minutes"] = 0.0
         out["preseason_starts"] = 0.0
         out["preseason_appearances"] = 0.0
+        out["preseason_recent_start_probability"] = np.nan
+        out["preseason_recent_average_minutes"] = np.nan
+        out["preseason_recency_evidence"] = 0.0
+        out["preseason_latest_match_date"] = pd.NaT
         for stat in rate_sources:
             out[f"preseason_{stat}90"] = np.nan
             out[f"preseason_{stat}_observed"] = False
         return out
+
     f = friendlies.copy()
     numeric_cols = ["minutes_played", "start_min", *rate_sources.values()]
     for col in numeric_cols:
@@ -272,16 +275,54 @@ def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> p
         f.get("start_min", pd.Series(0, index=f.index)), errors="coerce"
     ).fillna(0)
     f["is_start"] = (minutes.gt(0) & start_min.le(1)).astype(int)
+
+    if "match_id" in f.columns:
+        f["_match_date"] = _friendly_match_dates(f["match_id"])
+    else:
+        f["_match_date"] = pd.NaT
+    latest = f.groupby("player_id")["_match_date"].transform("max")
+    age_days = (latest - f["_match_date"]).dt.total_seconds() / 86400.0
+    decay = np.exp(
+        -np.log(2.0)
+        * age_days.fillna(0.0).clip(lower=0.0)
+        / PRESEASON_ROLE_RECENCY_HALF_LIFE_DAYS
+    )
+    # Rows without a parseable date still count, but only at half strength; this
+    # makes missing source metadata conservative without deleting observed football.
+    decay = np.where(f["_match_date"].notna(), decay, 0.5)
+    f["_recency_weight"] = np.asarray(decay, dtype=float)
+    f["_recent_app_weight"] = f["is_appearance"] * f["_recency_weight"]
+    f["_recent_start_weight"] = f["is_start"] * f["_recency_weight"]
+    f["_recent_minutes_weight"] = minutes * f["_recency_weight"]
+
     for source in rate_sources.values():
         if source not in f.columns:
             f[source] = np.nan
         f.loc[~minutes.gt(0), source] = np.nan
+
     grouped = f.groupby("player_id", as_index=False)
     agg = grouped.agg(
         preseason_minutes=("minutes_played", "sum"),
         preseason_starts=("is_start", "sum"),
         preseason_appearances=("is_appearance", "sum"),
+        preseason_recent_appearance_weight=("_recent_app_weight", "sum"),
+        preseason_recent_start_weight=("_recent_start_weight", "sum"),
+        preseason_recent_minutes_weight=("_recent_minutes_weight", "sum"),
+        preseason_latest_match_date=("_match_date", "max"),
     )
+    denom = pd.to_numeric(
+        agg["preseason_recent_appearance_weight"], errors="coerce"
+    ).replace(0.0, np.nan)
+    agg["preseason_recent_start_probability"] = (
+        pd.to_numeric(agg["preseason_recent_start_weight"], errors="coerce") / denom
+    ).clip(0.0, 1.0)
+    agg["preseason_recent_average_minutes"] = (
+        pd.to_numeric(agg["preseason_recent_minutes_weight"], errors="coerce") / denom
+    ).clip(0.0, 90.0)
+    # Effective recency evidence is bounded by the number of ordinary appearances;
+    # it is used as role evidence, never as an xP bonus.
+    agg["preseason_recency_evidence"] = np.clip(denom.fillna(0.0), 0.0, 4.0)
+
     source_columns = list(dict.fromkeys(rate_sources.values()))
     sums = grouped[source_columns].sum(min_count=1)
     rename = {source: f"preseason_{stat}" for stat, source in rate_sources.items()}
@@ -294,11 +335,16 @@ def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> p
         total = pd.to_numeric(agg[f"preseason_{stat}"], errors="coerce")
         agg[f"preseason_{stat}90"] = total * 90 / mins
         agg[f"preseason_{stat}_observed"] = total.notna()
+
     keep = [
         "player_id",
         "preseason_minutes",
         "preseason_starts",
         "preseason_appearances",
+        "preseason_recent_start_probability",
+        "preseason_recent_average_minutes",
+        "preseason_recency_evidence",
+        "preseason_latest_match_date",
         *[f"preseason_{stat}90" for stat in rate_sources],
         *[f"preseason_{stat}_observed" for stat in rate_sources],
     ]
@@ -306,6 +352,9 @@ def add_preseason_features(players: pd.DataFrame, friendlies: pd.DataFrame) -> p
     out[["preseason_minutes", "preseason_starts", "preseason_appearances"]] = out[
         ["preseason_minutes", "preseason_starts", "preseason_appearances"]
     ].fillna(0.0)
+    out["preseason_recency_evidence"] = pd.to_numeric(
+        out["preseason_recency_evidence"], errors="coerce"
+    ).fillna(0.0)
     for stat in rate_sources:
         col = f"preseason_{stat}_observed"
         out[col] = out[col].fillna(False).astype(bool)

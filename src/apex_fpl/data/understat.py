@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
 import gzip
 import hashlib
@@ -59,13 +60,48 @@ def decode_league_payload(payload: str | bytes | dict) -> dict:
     return data
 
 
+def _decode_embedded_json(html: str, variable: str):
+    pattern = re.compile(
+        rf"(?:var\s+)?{re.escape(variable)}\s*=\s*JSON\.parse\((.+?)\)\s*;",
+        flags=re.DOTALL,
+    )
+    match = pattern.search(html)
+    if not match:
+        raise UnderstatDataError(f"Understat league page has no {variable} payload")
+    try:
+        encoded = ast.literal_eval(match.group(1).strip())
+        return json.loads(encoded)
+    except (SyntaxError, ValueError, json.JSONDecodeError) as exc:
+        raise UnderstatDataError(
+            f"Understat league page {variable} payload is invalid: {exc}"
+        ) from exc
+
+
+def decode_league_page(html: str | bytes) -> dict:
+    """Decode the canonical league payload embedded in Understat's HTML page.
+
+    Understat historically exposed ``getLeagueData`` as a convenient JSON endpoint,
+    but older completed seasons can return 404 there while the canonical league page
+    remains available. The page embeds the same match/team data in ``datesData`` and
+    ``teamsData``. This adapter is a transport fallback only: the resulting object is
+    passed through the same strict ``decode_league_payload`` contract as API data.
+    """
+    if isinstance(html, bytes):
+        html = html.decode("utf-8")
+    dates_data = _decode_embedded_json(html, "datesData")
+    teams_data = _decode_embedded_json(html, "teamsData")
+    dates = dates_data.get("dates") if isinstance(dates_data, dict) else dates_data
+    teams = teams_data.get("teams") if isinstance(teams_data, dict) else teams_data
+    return decode_league_payload({"dates": dates, "teams": teams})
+
+
 def _default_fetch(url: str, timeout: int) -> str:
     season = url.rstrip("/").rsplit("/", 1)[-1]
     request = urllib.request.Request(
         url,
         headers={
             "User-Agent": "Mozilla/5.0 (compatible; apex-fpl/0.1)",
-            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept": "application/json, text/javascript, text/html, */*; q=0.01",
             "Accept-Encoding": "gzip, deflate",
             "Referer": UNDERSTAT_PAGE_URL.format(season=season),
             "X-Requested-With": "XMLHttpRequest",
@@ -118,9 +154,20 @@ def fetch_understat_season(
     errors: list[str] = []
     for attempt in range(1, max(attempts, 1) + 1):
         try:
-            payload = decode_league_payload(
-                fetcher(UNDERSTAT_API_URL.format(season=year), timeout)
-            )
+            try:
+                payload = decode_league_payload(
+                    fetcher(UNDERSTAT_API_URL.format(season=year), timeout)
+                )
+            except Exception as api_exc:
+                try:
+                    payload = decode_league_page(
+                        fetcher(UNDERSTAT_PAGE_URL.format(season=year), timeout)
+                    )
+                except Exception as page_exc:
+                    raise UnderstatDataError(
+                        f"API transport failed ({type(api_exc).__name__}: {api_exc}); "
+                        f"league-page fallback failed ({type(page_exc).__name__}: {page_exc})"
+                    ) from page_exc
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             temporary = cache_path.with_suffix(".tmp")
             temporary.write_text(
