@@ -179,13 +179,13 @@ def main() -> None:
         "understat_completed_seasons": history.completed_seasons,
         "understat_warnings": history.warnings,
         "largest_player_shadow_xp_increases": (
-            player_shadow.nlargest(20, "delta_apex_xp").to_dict("records")
-            if "delta_apex_xp" in player_shadow.columns
+            player_shadow.nlargest(20, "delta_apex_xp_raw").to_dict("records")
+            if "delta_apex_xp_raw" in player_shadow.columns
             else []
         ),
         "largest_player_shadow_xp_decreases": (
-            player_shadow.nsmallest(20, "delta_apex_xp").to_dict("records")
-            if "delta_apex_xp" in player_shadow.columns
+            player_shadow.nsmallest(20, "delta_apex_xp_raw").to_dict("records")
+            if "delta_apex_xp_raw" in player_shadow.columns
             else []
         ),
     }
