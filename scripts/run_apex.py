@@ -209,7 +209,7 @@ def main() -> None:
     promotion_status = _run(
         [
             sys.executable,
-            "scripts/apply_joint_path_promotion.py",
+            "scripts/apply_joint_path_promotion_rebased.py",
             "--output-dir",
             str(output_dir),
             "--bundle-dir",
