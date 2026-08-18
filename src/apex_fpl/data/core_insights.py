@@ -94,6 +94,72 @@ class FPLCoreClient:
 
         return identity.drop_duplicates(columns).reset_index(drop=True)
 
+    @staticmethod
+    def _longitudinal_role_counts(prior_stats: pd.DataFrame) -> pd.DataFrame:
+        """Recover factual appearances and available-role games from cumulative GW rows.
+
+        FPL Core stores cumulative player snapshots.  Dividing last-season starts or
+        minutes by 38 confounds tactical role with injuries, suspensions and other
+        absences.  Current availability is modelled separately by Apex, so the prior
+        role bridge must be conditional on games where the player was actually in the
+        selectable/participating population.
+
+        ``previous_appearances`` is reconstructed from positive cumulative minute
+        deltas. ``previous_role_games`` counts snapshots where FPL status was available
+        or doubtful, but is never allowed below factual appearances or starts. This
+        retains healthy unused-bench games as rotation evidence while excluding old
+        injury/suspension absences from the starter prior.
+        """
+        required = {"player_id", "gw", "minutes", "starts"}
+        if not required.issubset(prior_stats.columns):
+            return pd.DataFrame(columns=["player_id", "appearances", "role_games"])
+
+        stats = prior_stats[[
+            "player_id",
+            "gw",
+            "minutes",
+            "starts",
+            *(["status"] if "status" in prior_stats.columns else []),
+        ]].copy()
+        stats["player_id"] = pd.to_numeric(stats["player_id"], errors="coerce")
+        stats["gw"] = pd.to_numeric(stats["gw"], errors="coerce")
+        stats["minutes"] = pd.to_numeric(stats["minutes"], errors="coerce")
+        stats["starts"] = pd.to_numeric(stats["starts"], errors="coerce")
+        stats = stats.dropna(subset=["player_id", "gw", "minutes", "starts"])
+        stats = stats.sort_values(["player_id", "gw"])
+
+        minute_delta = stats.groupby("player_id", sort=False)["minutes"].diff()
+        first = stats.groupby("player_id", sort=False).cumcount().eq(0)
+        minute_delta = minute_delta.where(~first, stats["minutes"])
+        appeared = minute_delta.fillna(0.0).gt(0.0)
+
+        if "status" in stats.columns:
+            status = stats["status"].fillna("a").astype(str).str.casefold()
+            available = status.isin({"a", "d"})
+        else:
+            available = appeared.copy()
+
+        work = stats[["player_id"]].copy()
+        work["appeared"] = appeared.astype(int)
+        work["available"] = available.astype(int)
+        counts = work.groupby("player_id", as_index=False).agg(
+            appearances=("appeared", "sum"),
+            available_games=("available", "sum"),
+        )
+        latest = stats.groupby("player_id", as_index=False).tail(1)[
+            ["player_id", "starts"]
+        ]
+        counts = counts.merge(latest, on="player_id", how="left", validate="one_to_one")
+        counts["role_games"] = pd.concat(
+            [
+                counts["available_games"],
+                counts["appearances"],
+                counts["starts"],
+            ],
+            axis=1,
+        ).max(axis=1)
+        return counts[["player_id", "appearances", "role_games"]]
+
     def previous_season_playerstats(self, force: bool = False) -> pd.DataFrame:
         """Map prior-season playing time and club context to current official IDs."""
         parts = [int(value) for value in str(self.season).replace("/", "-").split("-")]
@@ -116,6 +182,7 @@ class FPLCoreClient:
             )
             if col in prior_stats.columns
         ]
+        role_counts = self._longitudinal_role_counts(prior_stats)
         if prior_stats["player_id"].duplicated().any():
             if "gw" not in prior_stats.columns:
                 raise ValueError(
@@ -132,10 +199,15 @@ class FPLCoreClient:
             prior_stats = stats.sort_values(["player_id", "gw"]).drop_duplicates(
                 "player_id", keep="last"
             )
+        if not role_counts.empty:
+            prior_stats = prior_stats.merge(
+                role_counts,
+                on="player_id",
+                how="left",
+                validate="one_to_one",
+            )
+            available.extend(["appearances", "role_games"])
 
-        # Reindex adds an all-null optional team_code only inside the bridge. This
-        # preserves the historical public shape of _stable_identity_rows while making
-        # the cross-season join schema deterministic when either season lacks team data.
         prior_identity = prior_players.reindex(
             columns=["player_code", "player_id", "team_code"]
         )
@@ -160,12 +232,18 @@ class FPLCoreClient:
             how="left",
             validate="one_to_one",
         ).rename(columns={"current_player_id": "player_id"})
+
+        previous_starts = pd.to_numeric(out.get("previous_starts"), errors="coerce")
+        previous_minutes = pd.to_numeric(out.get("previous_minutes"), errors="coerce")
+        role_games = pd.to_numeric(out.get("previous_role_games"), errors="coerce")
+        appearances = pd.to_numeric(out.get("previous_appearances"), errors="coerce")
+        denominator = role_games.where(role_games.gt(0), appearances)
         out["previous_start_probability"] = (
-            pd.to_numeric(out.get("previous_starts"), errors="coerce") / 38.0
-        ).clip(0, 1)
+            previous_starts / denominator
+        ).where(denominator.gt(0), previous_starts / 38.0).clip(0, 1)
         out["previous_minutes_per_match"] = (
-            pd.to_numeric(out.get("previous_minutes"), errors="coerce") / 38.0
-        ).clip(0, 90)
+            previous_minutes / denominator
+        ).where(denominator.gt(0), previous_minutes / 38.0).clip(0, 90)
 
         current_team = pd.to_numeric(out["current_team_code"], errors="coerce")
         previous_team = pd.to_numeric(out["previous_team_code"], errors="coerce")
