@@ -183,13 +183,27 @@ def build_disagreement_report(
     frame["_airsenal_raw"] = _numeric(frame, "airsenal_xp").fillna(0.0)
     frame["_apex_discounted_utility"] = frame["_apex_raw"] * frame["_discount"]
     frame["_airsenal_discounted_utility"] = frame["_airsenal_raw"] * frame["_discount"]
+
+    rate_aggregations: dict[str, tuple[str, str]] = {
+        "model_xg90": ("model_xg90", "first"),
+        "model_xa90": ("model_xa90", "first"),
+    }
+    for column in [
+        "attack_model_xg90",
+        "attack_model_xa90",
+        "xg_rate_credibility_adjusted",
+        "xa_rate_credibility_adjusted",
+        "attack_rate_reliability",
+    ]:
+        if column in frame.columns:
+            rate_aggregations[column] = (column, "first")
+
     summary = frame.groupby("player_id", as_index=False).agg(
         apex_raw_horizon_xp=("_apex_raw", "sum"),
         airsenal_raw_horizon_xp=("_airsenal_raw", "sum"),
         apex_discounted_horizon_utility=("_apex_discounted_utility", "sum"),
         airsenal_discounted_horizon_utility=("_airsenal_discounted_utility", "sum"),
-        model_xg90=("model_xg90", "first"),
-        model_xa90=("model_xa90", "first"),
+        **rate_aggregations,
     )
     summary["raw_apex_minus_airsenal_xp"] = (
         summary["apex_raw_horizon_xp"] - summary["airsenal_raw_horizon_xp"]
@@ -218,9 +232,12 @@ def build_disagreement_report(
     else:
         summary["xg90_position_percentile"] = np.nan
         summary["xa90_position_percentile"] = np.nan
-    # Source-model disagreement is a forecast diagnostic, so thresholds are
-    # evaluated on undiscounted expected points. Discounted utility remains visible
-    # for decision-policy analysis but cannot be labelled or ranked as xP.
+
+    # Source-model disagreement and low-sample rate credibility are separate risks.
+    # A tiny-sample extreme rate must remain visible even when AIrsenal happens to
+    # agree with the player's aggregate xP. Disagreement is retained as an
+    # additional prioritisation flag, never as a prerequisite for detecting the
+    # unsupported rate itself.
     summary["high_disagreement"] = summary["raw_absolute_disagreement_xp"].ge(3.0)
     summary["low_sample_extreme_rate"] = (
         summary["competitive_evidence_minutes"].lt(270.0)
@@ -228,6 +245,9 @@ def build_disagreement_report(
             summary["xg90_position_percentile"].ge(0.90)
             | summary["xa90_position_percentile"].ge(0.90)
         )
+    )
+    summary["low_sample_extreme_rate_with_disagreement"] = (
+        summary["low_sample_extreme_rate"]
         & summary["raw_absolute_disagreement_xp"].ge(2.0)
     )
     return summary.sort_values(
@@ -298,6 +318,8 @@ def main() -> None:
         "effective_weight_airsenal", "effective_weight_market",
         "xp_appearance", "xp_attack", "xp_clean_sheet", "xp_defensive_contribution",
         "xp_saves", "xp_bonus_prior", "xp_set_piece_prior", "model_xg90", "model_xa90",
+        "attack_model_xg90", "attack_model_xa90", "xg_rate_credibility_adjusted",
+        "xa_rate_credibility_adjusted", "attack_rate_reliability",
     ]
     component_cols = [column for column in component_cols if column in out.projections.columns]
     components = out.projections[component_cols].copy()
@@ -341,12 +363,16 @@ def main() -> None:
         "eligibility_contract": eligibility,
         "high_disagreement_count": int(disagreement["high_disagreement"].sum()),
         "low_sample_extreme_rate_count": int(disagreement["low_sample_extreme_rate"].sum()),
+        "low_sample_extreme_rate_with_disagreement_count": int(
+            disagreement["low_sample_extreme_rate_with_disagreement"].sum()
+        ),
         "largest_disagreements": disagreement.head(20).to_dict("records"),
         "source_ablations": ablation_results,
         "ablation_candidate_limit": min(int(args.ablation_candidates), int(settings.exact_candidate_limit)),
         "notes": [
             "Ablations reuse the same players, prices, fixture surface, availability, evidence eligibility and exact XI/captain/vice/autosub mechanics.",
             "No source weight or projection component is promoted by this audit.",
+            "Low-sample extreme-rate flags are independent of AIrsenal disagreement; a separate joint flag records cases where both risks coincide.",
             "Selected-player regret is exact within the authoritative exact-horizon candidate shortlist; absence of an alternative is reported rather than extrapolated.",
         ],
     }
