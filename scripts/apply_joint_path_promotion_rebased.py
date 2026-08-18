@@ -9,32 +9,10 @@ remained false. This wrapper corrects only that exact finalized-identity case.
 """
 from __future__ import annotations
 
-from dataclasses import replace
 import runpy
 
 import apex_fpl.services.joint_initial_path as joint
-
-
-def reconcile_finalized_stability(result):
-    """Mark stable only when finalized prefix identities are both present and equal."""
-    small = result.small_pool_selected_ids
-    full = result.full_pool_selected_ids
-    if (
-        result.status == "optimal"
-        and result.candidate_pool_stable is False
-        and small is not None
-        and full is not None
-        and tuple(small) == tuple(full)
-    ):
-        return replace(
-            result,
-            candidate_pool_stable=True,
-            note=(
-                f"{result.note} Finalized GW1-band reconciliation confirmed identical "
-                "small/full prefix squad identities."
-            ),
-        )
-    return result
+from apex_fpl.services.finalized_stability import reconcile_finalized_stability
 
 
 def main() -> None:
