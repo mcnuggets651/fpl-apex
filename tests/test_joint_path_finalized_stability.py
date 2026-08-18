@@ -1,5 +1,5 @@
+from apex_fpl.services.finalized_stability import reconcile_finalized_stability
 from apex_fpl.services.joint_initial_path import JointInitialPathResult
-from scripts.apply_joint_path_promotion_rebased import reconcile_finalized_stability
 
 
 def result(*, small, full, stable=False):
