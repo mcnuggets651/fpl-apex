@@ -1,9 +1,9 @@
 # Apex Unified Recommendation — NOT READY
 
-Generated: 2026-08-18T08:08:58.933179+00:00
+Generated: 2026-08-18T14:20:13.858284+00:00
 
 The production run stopped before canonical assembly:
 
 - Apex Unified production run did not complete canonical assembly
 - data quality failed: fpl_core_playerstats: official-player coverage=0.0%; missing_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; missing IDs are not an append-only trailing registration block; gap exceeds bounded lag policy (max 5 players and minimum 99.0% coverage)
-- required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (24.0h old; max 18.0h)
+- required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (30.2h old; max 18.0h)
