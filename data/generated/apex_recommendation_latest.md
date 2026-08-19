@@ -1,51 +1,9 @@
-# Apex Unified Recommendation
+# Apex Unified Recommendation — NOT READY
 
-Canonical selector: **adaptive_gw1_launch_with_transfer_option_value**
-Reason: Exact GW1 expected points are the primary launch objective. Apex permits only the existing near-equivalent GW1 point tolerance, then uses the legal future transfer path to choose the most useful bank/FT structure.
+Generated: 2026-08-19T03:31:04.740175+00:00
 
-## GW1
+The production run stopped before canonical assembly:
 
-Captain: **Haaland**
-Vice-captain: **Gabriel**
-Expected total with exact mechanics: **56.24**
-
-### Starting XI
-
-| Player | Club | Pos | Price | GW xP |
-|:--|:--|:--:|--:|--:|
-| Wieffer | Brighton | DEF | 5.0 | 3.52 |
-| Thiaw | Newcastle | DEF | 5.0 | 3.43 |
-| Guéhi | Man City | DEF | 6.0 | 4.18 |
-| Gabriel | Arsenal | DEF | 8.0 | 4.96 |
-| Thiago | Brentford | FWD | 8.0 | 4.92 |
-| Haaland | Man City | FWD | 15.5 | 6.23 |
-| Raya | Arsenal | GK | 6.0 | 4.07 |
-| Schade | Brentford | MID | 6.0 | 4.41 |
-| Gakpo | Liverpool | MID | 7.0 | 4.18 |
-| Mbeumo | Man Utd | MID | 8.0 | 4.52 |
-| Semenyo | Man City | MID | 8.5 | 4.70 |
-
-### Full 15
-
-| Player | Club | Pos | Price | GW xP |
-|:--|:--|:--:|--:|--:|
-| Coyle | Hull City | DEF | 4.0 | 1.23 |
-| Wieffer | Brighton | DEF | 5.0 | 3.52 |
-| Thiaw | Newcastle | DEF | 5.0 | 3.43 |
-| Guéhi | Man City | DEF | 6.0 | 4.18 |
-| Gabriel | Arsenal | DEF | 8.0 | 4.96 |
-| Neave | Newcastle | FWD | 4.5 | 1.01 |
-| Thiago | Brentford | FWD | 8.0 | 4.92 |
-| Haaland | Man City | FWD | 15.5 | 6.23 |
-| Dubravka | Spurs | GK | 4.0 | 1.23 |
-| Raya | Arsenal | GK | 6.0 | 4.07 |
-| Hughes | Crystal Palace | MID | 4.5 | 1.22 |
-| Schade | Brentford | MID | 6.0 | 4.41 |
-| Gakpo | Liverpool | MID | 7.0 | 4.18 |
-| Mbeumo | Man Utd | MID | 8.0 | 4.52 |
-| Semenyo | Man City | MID | 8.5 | 4.70 |
-
-Bench GK: **Dubravka**
-Outfield bench: **Neave → Hughes → Coyle**
-
-Future moves are contingencies only. Refresh projections and re-solve before the next deadline.
+- Apex Unified production run did not complete canonical assembly
+- data quality failed: fpl_core_playerstats: official-player coverage=0.0%; missing_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; missing IDs are not an append-only trailing registration block; gap exceeds bounded lag policy (max 5 players and minimum 99.0% coverage)
+- required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (19.5h old; max 18.0h)
