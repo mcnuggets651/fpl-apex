@@ -11,6 +11,7 @@ from apex_fpl.services.finalized_stability import (
 @dataclass(frozen=True)
 class _Selected:
     within_gw1_band: bool = True
+    squad_ids: tuple[int, ...] = tuple(range(1, 16))
 
 
 @dataclass(frozen=True)
@@ -36,11 +37,12 @@ def test_reconcile_only_repairs_identical_finalized_squads() -> None:
     assert reconcile_finalized_stability(different).candidate_pool_stable is False
 
 
-def test_genuine_instability_gets_one_broader_bounded_retry() -> None:
+def test_genuine_instability_gets_broader_bounded_certification() -> None:
     calls: list[int] = []
     first = _Result()
     stable_ids = tuple(range(101, 116))
     second = _Result(
+        selected=_Selected(squad_ids=stable_ids),
         candidate_pool_stable=True,
         small_pool_selected_ids=stable_ids,
         full_pool_selected_ids=stable_ids,
@@ -61,7 +63,7 @@ def test_genuine_instability_gets_one_broader_bounded_retry() -> None:
     assert "expanded exact_candidate_limit from 16 to 24" in result.note
 
 
-def test_broader_retry_remains_fail_closed_when_still_unstable() -> None:
+def test_broader_certification_remains_fail_closed_when_still_unstable() -> None:
     calls: list[int] = []
 
     def optimiser(*args, **kwargs):
@@ -77,11 +79,27 @@ def test_broader_retry_remains_fail_closed_when_still_unstable() -> None:
     assert result.candidate_pool_stable is False
 
 
+def test_narrow_stable_result_is_still_broadly_certified() -> None:
+    calls: list[int] = []
+    stable = _Result(
+        candidate_pool_stable=True,
+        small_pool_selected_ids=tuple(range(1, 16)),
+        full_pool_selected_ids=tuple(range(1, 16)),
+    )
+
+    def optimiser(*args, **kwargs):
+        calls.append(int(kwargs.get("exact_candidate_limit", 16)))
+        return stable
+
+    result = optimise_with_bounded_stability_retry(optimiser, exact_candidate_limit=16)
+    assert calls == [16, 24]
+    assert result.candidate_pool_stable is True
+
+
 def test_non_optimal_or_out_of_band_result_does_not_retry() -> None:
     for result in (
         _Result(status="inconclusive"),
         _Result(selected=_Selected(within_gw1_band=False)),
-        _Result(candidate_pool_stable=True),
     ):
         calls = 0
 
