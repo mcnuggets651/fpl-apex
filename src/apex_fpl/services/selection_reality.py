@@ -42,6 +42,8 @@ def audit_selected_squad_reality(
     specialist_report: pd.DataFrame | None = None,
     hierarchy_evidence: pd.DataFrame | None = None,
     transfer_report: pd.DataFrame | None = None,
+    require_current_evidence: bool = False,
+    minimum_specialist_sources: int = 2,
     first_bench_min_appearance: float = 0.70,
     first_bench_min_expected_minutes: float = 30.0,
     playable_bench_min_appearance: float = 0.60,
@@ -52,9 +54,9 @@ def audit_selected_squad_reality(
 
     This audit never changes xP, minutes, roles, club identity or optimiser weights.
     It is a readiness gate applied *after* the optimiser has produced a candidate.
-    The purpose is to prevent a mathematically valid squad from being called high
-    confidence when selected players rely on unresolved predicted-XI, squad-hierarchy,
-    transfer-state, or unusably thin bench assumptions.
+    Production can require complete current hierarchy, specialist-XI and transfer
+    review coverage for every selected player. Missing evidence is then a blocker,
+    never an implicit neutral signal.
     """
     selected_ids = {int(pid) for pid in selected_ids}
     xi_ids = {int(pid) for pid in xi_ids}
@@ -70,13 +72,14 @@ def audit_selected_squad_reality(
     }
     ids_by_name = {str(name).strip().casefold(): pid for pid, name in names.items()}
 
-    specialist_by_id: dict[int, tuple[str, str]] = {}
+    specialist_by_id: dict[int, tuple[str, str, int]] = {}
     if specialist_report is not None and not specialist_report.empty:
         for row in specialist_report.itertuples(index=False):
             pid = int(getattr(row, "player_id"))
             specialist_by_id[pid] = (
                 str(getattr(row, "review_priority", "none")),
                 str(getattr(row, "review_reason", "")),
+                int(getattr(row, "specialist_source_count", 0) or 0),
             )
 
     hierarchy_by_id: dict[int, str] = {}
@@ -119,7 +122,9 @@ def audit_selected_squad_reality(
         is_xi = pid in xi_ids
         is_bench = pid in outfield_bench
         hierarchy = hierarchy_by_id.get(pid, "unknown")
-        specialist_priority, specialist_reason = specialist_by_id.get(pid, ("none", ""))
+        specialist_priority, specialist_reason, specialist_count = specialist_by_id.get(
+            pid, ("none", "", 0)
+        )
         transfer_priority, transfer_reason = transfer_by_id.get(pid, ("none", ""))
         app = appearance.get(pid, 0.0)
         start = starts.get(pid, 0.0)
@@ -127,6 +132,20 @@ def audit_selected_squad_reality(
 
         reasons: list[str] = []
         priority = "none"
+
+        if require_current_evidence:
+            if pid not in hierarchy_by_id:
+                priority = "blocker"
+                reasons.append("missing current squad-hierarchy evidence")
+            if specialist_count < int(minimum_specialist_sources):
+                priority = "blocker"
+                reasons.append(
+                    "predicted-XI evidence coverage only "
+                    f"{specialist_count}/{int(minimum_specialist_sources)} governed specialist sources"
+                )
+            if pid not in transfer_by_id:
+                priority = "blocker"
+                reasons.append("missing current transfer-state review")
 
         if transfer_priority == "high":
             priority = "blocker"
@@ -188,7 +207,9 @@ def audit_selected_squad_reality(
                 "appearance_probability": app,
                 "start_probability": start,
                 "hierarchy_status": hierarchy,
+                "specialist_source_count": specialist_count,
                 "specialist_priority": specialist_priority,
+                "transfer_review_present": pid in transfer_by_id,
                 "transfer_priority": transfer_priority,
                 "reality_priority": priority,
                 "reality_reason": "; ".join(dict.fromkeys(reasons)),
