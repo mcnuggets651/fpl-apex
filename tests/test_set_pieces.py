@@ -5,14 +5,29 @@ import pytest
 
 from apex_fpl.data.tactical import load_tactical_roles
 from apex_fpl.models.projection import project_players
+from apex_fpl.services.player_identity import activate_official_identity_registry
 
 
 def test_verified_set_piece_shares_override_order_prior(tmp_path):
+    activate_official_identity_registry(
+        pd.DataFrame(
+            [
+                {
+                    "player_id": 1,
+                    "web_name": "Test",
+                    "team": 1,
+                    "team_name": "Example FC",
+                    "position": "MID",
+                }
+            ]
+        )
+    )
     context = tmp_path / "tactical_roles.csv"
     pd.DataFrame(
         [
             {
                 "player_id": 1,
+                "source_player_name": "Test",
                 "tactical_role": "penalty taker",
                 "role_multiplier": 1.0,
                 "role_confidence": 0.95,
@@ -42,6 +57,7 @@ def test_stale_or_unverifiable_tactical_override_is_rejected(tmp_path):
         [
             {
                 "player_id": 1,
+                "source_player_name": "Test",
                 "expected_minutes_override": 80,
                 "lineup_evidence_type": "projected_xi",
                 "source_name": "Unknown",
