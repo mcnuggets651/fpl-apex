@@ -173,6 +173,7 @@ def _audit_final_selection(*, output_dir: Path, bundle_dir: Path) -> None:
         specialist_report=_frame_if_present(output_dir / "specialist_disagreement.csv"),
         hierarchy_evidence=_current_hierarchy_evidence(Path("data/manual/squad_hierarchy.csv")),
         transfer_report=_frame_if_present(output_dir / "transfer_intelligence.csv"),
+        require_current_evidence=True,
     )
     payload.setdefault("internal_diagnostics", {})["selection_reality"] = {
         "contract": "apex-selection-reality-v1",
