@@ -234,6 +234,32 @@ jobs:
             --output-dir data/generated \
             --bundle-dir data/generated/decision_bundle
 
+      - name: Run adversarial launch bans
+        if: always()
+        shell: bash
+        run: |
+          if [ -d data/generated/decision_bundle ]; then
+            python scripts/run_adversarial_launch_ban.py \
+              --bundle-dir data/generated/decision_bundle \
+              --output reports/adversarial_launch_bans.json \
+              --csv reports/adversarial_launch_bans.csv
+          else
+            echo "sealed decision bundle unavailable; adversarial audit cannot run"
+          fi
+
+      - name: Run submitted-XI bench stress
+        if: always()
+        shell: bash
+        run: |
+          if [ -d data/generated/decision_bundle ]; then
+            python scripts/audit_bench_stress.py \
+              --bundle-dir data/generated/decision_bundle \
+              --output reports/bench_stress.json \
+              --csv reports/bench_stress.csv
+          else
+            echo "sealed decision bundle unavailable; bench stress cannot run"
+          fi
+
       - name: Verify final canonical contract
         run: |
           python - <<'PY'
@@ -305,11 +331,17 @@ jobs:
             data/generated/apex_answer_context.json
             data/generated/pinnacle_latest.json
             data/generated/solver_parity.json
+            data/generated/specialist_disagreement.csv
+            data/generated/transfer_intelligence.csv
             reports/player_identity_audit.json
             reports/player_identity_audit.csv
             reports/statistical_truth_audit.json
             reports/player_truth_audit.json
             reports/player_truth_audit.csv
+            reports/adversarial_launch_bans.json
+            reports/adversarial_launch_bans.csv
+            reports/bench_stress.json
+            reports/bench_stress.csv
             reports/players.csv
             reports/projections.csv
           retention-days: 90
