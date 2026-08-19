@@ -15,6 +15,55 @@ def _read(path: Path) -> pd.DataFrame:
     return pd.read_csv(path) if path.exists() else pd.DataFrame()
 
 
+def _sealed_core_identity(players: pd.DataFrame) -> pd.DataFrame:
+    """Recover the exact FPL Core identity witnesses retained in the sealed bundle."""
+    if "player_id" not in players.columns:
+        return pd.DataFrame()
+    candidate_name_cols = [
+        col
+        for col in ("web_name_core", "source_player_name_core", "player_name_core", "name_core")
+        if col in players.columns
+    ]
+    full_name_available = {"first_name_core", "second_name_core"}.issubset(players.columns)
+    if not candidate_name_cols and not full_name_available:
+        return pd.DataFrame()
+
+    cols = ["player_id"]
+    cols.extend(candidate_name_cols)
+    for col in ("first_name_core", "second_name_core", "team_core", "team_name_core", "position_core"):
+        if col in players.columns:
+            cols.append(col)
+    frame = players[cols].copy()
+    witness_cols = candidate_name_cols + (["first_name_core", "second_name_core"] if full_name_available else [])
+    present = pd.Series(False, index=frame.index)
+    for col in witness_cols:
+        present |= frame[col].notna() & frame[col].astype(str).str.strip().ne("")
+    frame = frame.loc[present].copy()
+    if frame.empty:
+        return frame
+
+    rename = {
+        "web_name_core": "source_player_name",
+        "source_player_name_core": "source_player_name",
+        "player_name_core": "source_player_name",
+        "name_core": "source_player_name",
+        "first_name_core": "first_name",
+        "second_name_core": "second_name",
+        "team_core": "team",
+        "team_name_core": "team_name",
+        "position_core": "position",
+    }
+    # Prefer an explicit Core name column. If the source only carried first+second
+    # names the resolver will use those as the independent witness.
+    chosen_name = candidate_name_cols[0] if candidate_name_cols else None
+    if chosen_name:
+        for col in candidate_name_cols:
+            if col != chosen_name and col in frame.columns:
+                frame.drop(columns=[col], inplace=True)
+        rename[chosen_name] = "source_player_name"
+    return frame.rename(columns={k: v for k, v in rename.items() if k in frame.columns})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
@@ -34,6 +83,10 @@ def main() -> None:
     blockers: list[str] = []
     warnings: list[str] = []
 
+    core_identity = _sealed_core_identity(players)
+    if not core_identity.empty:
+        sources["fpl_core"] = core_identity
+
     air_path = Path(args.airsenal)
     if bool(bundle.settings.get("source_configuration", {}).get("airsenal_configured")):
         air = _read(air_path)
@@ -46,7 +99,9 @@ def main() -> None:
         elif set(air["identity_witness_type"].dropna().astype(str)) != {"airsenal_name"}:
             blockers.append("configured AIrsenal export contains non-authoritative identity witnesses")
         else:
-            sources["airsenal"] = air.drop_duplicates("player_id")
+            # Keep every GW/source row. A later bad row must not be hidden by an
+            # earlier correct row for the same player.
+            sources["airsenal"] = air
 
     for name, path in (
         ("fpl_specialist_manual", Path(args.specialist)),
@@ -62,7 +117,9 @@ def main() -> None:
                     f"{name} contains player-linked rows without an independent name witness"
                 )
             else:
-                sources[name] = frame.drop_duplicates("player_id")
+                # Multiple specialist/source rows per player are legitimate and all
+                # must be identity-certified independently.
+                sources[name] = frame
 
     audit = audit_identity_sources(players, sources, require_identity_witness=True)
     blockers.extend(audit.get("blockers") or [])

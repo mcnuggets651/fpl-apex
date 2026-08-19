@@ -44,7 +44,8 @@ def reconcile(official: pd.DataFrame, core: pd.DataFrame) -> tuple[pd.DataFrame,
 
     Official FPL remains canonical. A Core row with an ID/name/team/position conflict
     is withheld completely rather than retaining statistics on a potentially wrong
-    player. The identity report remains available to diagnostics.
+    player. Independent Core identity witnesses are retained with ``_core`` suffixes
+    so a sealed DecisionBundle can prove which external identity was reconciled.
     """
     o = official.copy()
     activate_official_identity_registry(o)
@@ -91,8 +92,6 @@ def reconcile(official: pd.DataFrame, core: pd.DataFrame) -> tuple[pd.DataFrame,
                 }
             )
 
-    # The full Core snapshot normally carries independent name witnesses. If it does,
-    # any conflict is a source-integrity failure rather than a soft warning.
     if require_witness and not identity.ready:
         raise ValueError(
             "FPL Core identity integrity failed; statistical rows withheld: "
@@ -107,15 +106,8 @@ def reconcile(official: pd.DataFrame, core: pd.DataFrame) -> tuple[pd.DataFrame,
         suffixes=("", "_core"),
         validate="one_to_one",
     )
-    for col in [
-        "web_name_core",
-        "first_name_core",
-        "second_name_core",
-        "team_core",
-        "team_name_core",
-        "position_core",
-        "price_core",
-    ]:
-        if col in merged:
-            merged.drop(columns=col, inplace=True)
+    # Current price is canonical Official FPL state and need not be retained twice.
+    # Name/team/position witnesses stay sealed as provenance for the identity audit.
+    if "price_core" in merged:
+        merged.drop(columns=["price_core"], inplace=True)
     return merged, pd.DataFrame(warnings)

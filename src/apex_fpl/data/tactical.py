@@ -5,8 +5,14 @@ from pathlib import Path
 
 import pandas as pd
 
+from apex_fpl.services.player_identity import (
+    active_official_identity_registry,
+    resolve_source_identities,
+)
+
 ROLE_COLUMNS = [
     "player_id",
+    "source_player_name",
     "tactical_role",
     "role_multiplier",
     "role_confidence",
@@ -47,16 +53,17 @@ def load_tactical_roles(
 ) -> pd.DataFrame:
     """Load verified tactical/set-piece overrides keyed by official FPL ID.
 
-    ``role_multiplier`` is deliberately modest. Optional set-piece shares are
-    probabilities/shares from 0–1 and override the cruder official FPL order
-    heuristic only when explicitly populated. The file cannot alter canonical
-    club, FPL position, price or name.
+    Every non-empty player-linked override must carry an independent player-name
+    witness and reconcile to the active Official-FPL registry before any role,
+    minutes or set-piece value can reach the model surface.
     """
     if not path.exists():
         return pd.DataFrame(columns=ROLE_COLUMNS)
     df = pd.read_csv(path)
     if "player_id" not in df.columns:
         raise ValueError("tactical role file requires official player_id")
+    if not df.empty and "source_player_name" not in df.columns:
+        raise ValueError("tactical role file requires independent source_player_name")
 
     forbidden = {"team", "team_name", "position", "price", "now_cost", "web_name"} & set(df.columns)
     if forbidden:
@@ -66,6 +73,8 @@ def load_tactical_roles(
 
     out = df.copy()
     out["player_id"] = pd.to_numeric(out["player_id"], errors="raise").astype(int)
+    if "source_player_name" not in out:
+        out["source_player_name"] = pd.NA
     if "tactical_role" not in out:
         out["tactical_role"] = "verified-role"
     if "role_multiplier" not in out:
@@ -142,5 +151,26 @@ def load_tactical_roles(
             raise ValueError(f"tactical override row {idx} is expired")
 
     out["retrieved_at"] = now_utc.isoformat()
+    if not out.empty:
+        registry = active_official_identity_registry()
+        if registry is None:
+            raise ValueError(
+                "tactical role identity validation requires active Official-FPL registry"
+            )
+        safe, result = resolve_source_identities(
+            registry,
+            out,
+            source="manual_tactical_roles",
+            name_columns=("source_player_name",),
+            allow_name_fallback=False,
+            require_identity_witness=True,
+            raise_on_error=False,
+        )
+        if not result.ready:
+            raise ValueError(
+                "tactical role identity integrity failed: "
+                + "; ".join(result.blockers[:10])
+            )
+        out = safe
 
     return out[ROLE_COLUMNS].drop_duplicates("player_id", keep="last")

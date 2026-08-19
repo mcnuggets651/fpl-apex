@@ -26,6 +26,46 @@ def test_core_wrong_name_on_valid_id_fails_closed():
         reconcile(official, core)
 
 
+def test_core_identity_witness_is_retained_for_sealed_audit():
+    official = pd.DataFrame(
+        [
+            {
+                "player_id": 1,
+                "web_name": "Coyle",
+                "first_name": "Lewie",
+                "second_name": "Coyle",
+                "team": 2,
+                "team_name": "Hull",
+                "position": "DEF",
+                "price": 4.5,
+            }
+        ]
+    )
+    core = pd.DataFrame(
+        [
+            {
+                "player_id": 1,
+                "web_name": "Coyle",
+                "first_name": "Lewie",
+                "second_name": "Coyle",
+                "team": 2,
+                "team_name": "Hull",
+                "position": "DEF",
+                "expected_goals_per_90": 0.3,
+            }
+        ]
+    )
+    merged, warnings = reconcile(official, core)
+
+    assert warnings.empty
+    assert merged.iloc[0]["web_name_core"] == "Coyle"
+    assert merged.iloc[0]["first_name_core"] == "Lewie"
+    assert merged.iloc[0]["second_name_core"] == "Coyle"
+    assert merged.iloc[0]["team_core"] == 2
+    assert merged.iloc[0]["position_core"] == "DEF"
+    assert merged.iloc[0]["expected_goals_per_90"] == pytest.approx(0.3)
+
+
 def test_longitudinal_core_uses_latest_player_gameweek_snapshot():
     official = pd.DataFrame(
         [{"player_id": 1, "web_name": "Player", "team": 2, "position": "MID", "price": 7.0}]
