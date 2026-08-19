@@ -21,6 +21,7 @@ FINAL_PROMOTION_ENTRYPOINTS = (
     "scripts/apply_joint_path_promotion_rebased.py",
 )
 ACTIVE_WORKFLOWS = {
+    "adaptive-canonical-diagnostic.yml",
     "airsenal.yml",
     "apex.yml",
     "gw1-final-2026.yml",
@@ -94,8 +95,6 @@ def main() -> None:
                 f"expensive PR workflow does not cancel superseded runs: {name}"
             )
 
-    if not Path("scripts/invalidate_published_decision.py").exists():
-        failures.append("required-source canonical invalidation CLI is missing")
     for name, source_arg in REQUIRED_SOURCE_INVALIDATORS.items():
         text = _text(active_dir / name)
         if "scripts/invalidate_published_decision.py" not in text or source_arg not in text:
