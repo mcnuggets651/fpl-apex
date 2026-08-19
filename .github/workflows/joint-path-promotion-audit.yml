@@ -18,11 +18,27 @@ on:
       - "src/apex_fpl/services/player_evidence.py"
       - "src/apex_fpl/services/answer_context.py"
       - "src/apex_fpl/services/integrity.py"
+      - "src/apex_fpl/services/player_identity.py"
+      - "src/apex_fpl/services/selection_reality.py"
+      - "src/apex_fpl/services/selection_reality_evidence.py"
+      - "src/apex_fpl/services/statistical_truth.py"
+      - "src/apex_fpl/services/finalized_stability.py"
       - "src/apex_fpl/models/projection.py"
       - "scripts/apply_joint_path_promotion.py"
       - "scripts/build_canonical_recommendation.py"
       - "scripts/audit_player_truth.py"
+      - "scripts/audit_player_identity.py"
+      - "scripts/audit_statistical_truth.py"
+      - "scripts/materialize_selection_reality_evidence.py"
+      - "scripts/run_adversarial_launch_ban.py"
+      - "scripts/audit_bench_stress.py"
+      - "scripts/export_airsenal.py"
+      - "scripts/run_airsenal_worker.py"
       - "scripts/run_apex.py"
+      - "data/manual/squad_hierarchy.csv"
+      - "data/manual/specialist_predictions.csv"
+      - "data/manual/transfer_checks.csv"
+      - "data/manual/tactical_roles.csv"
       - "tests/test_http_cache.py"
       - "tests/test_transfers.py"
       - "tests/test_transfer_candidate_pool.py"
@@ -30,6 +46,11 @@ on:
       - "tests/test_joint_initial_path.py"
       - "tests/test_strategy.py"
       - "tests/test_player_truth.py"
+      - "tests/test_player_identity.py"
+      - "tests/test_selection_reality.py"
+      - "tests/test_selection_reality_evidence.py"
+      - "tests/test_statistical_truth.py"
+      - "tests/test_finalized_stability.py"
       - "tests/test_answer_context.py"
       - "tests/test_canonical_recommendation.py"
       - "tests/test_data_quality.py"
@@ -69,6 +90,11 @@ jobs:
             tests/test_joint_initial_path.py \
             tests/test_strategy.py \
             tests/test_player_truth.py \
+            tests/test_player_identity.py \
+            tests/test_selection_reality.py \
+            tests/test_selection_reality_evidence.py \
+            tests/test_statistical_truth.py \
+            tests/test_finalized_stability.py \
             tests/test_answer_context.py \
             tests/test_canonical_recommendation.py \
             tests/test_data_quality.py \
@@ -273,6 +299,9 @@ jobs:
             data/generated/apex_answer_context.json
             data/generated/pinnacle_latest.json
             data/generated/solver_parity.json
+            reports/player_identity_audit.json
+            reports/player_identity_audit.csv
+            reports/statistical_truth_audit.json
             reports/player_truth_audit.json
             reports/player_truth_audit.csv
             reports/players.csv
