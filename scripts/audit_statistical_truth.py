@@ -22,6 +22,7 @@ def main() -> None:
         out.players,
         out.projections,
         expected_players=expected,
+        as_of=bundle.created_at,
     )
     audit["decision_bundle_id"] = bundle.bundle_id
     path = Path(args.output)
