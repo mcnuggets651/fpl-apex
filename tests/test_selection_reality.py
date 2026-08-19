@@ -96,3 +96,52 @@ def test_neave_shape_cannot_be_published_as_first_bench():
     )
     assert result.ready_for_high_confidence is False
     assert any("Neave" in blocker and "expected minutes 13.3" in blocker for blocker in result.blockers)
+
+
+def test_production_evidence_mode_blocks_missing_selected_player_coverage():
+    result = audit_selected_squad_reality(
+        _players(),
+        selected_ids={1, 2, 3, 4},
+        xi_ids={1},
+        bench_ids=[2, 3, 4],
+        require_current_evidence=True,
+    )
+    assert result.ready_for_high_confidence is False
+    assert any("missing current squad-hierarchy evidence" in row for row in result.blockers)
+    assert any("0/2 governed specialist sources" in row for row in result.blockers)
+    assert any("missing current transfer-state review" in row for row in result.blockers)
+
+
+def test_production_evidence_mode_passes_only_with_complete_selected_coverage():
+    hierarchy = pd.DataFrame(
+        [{"player_id": pid, "hierarchy_status": "senior_starter"} for pid in range(1, 5)]
+    )
+    specialist = pd.DataFrame(
+        [
+            {
+                "player_id": pid,
+                "specialist_source_count": 2,
+                "review_priority": "none",
+                "review_reason": "",
+            }
+            for pid in range(1, 5)
+        ]
+    )
+    transfer = pd.DataFrame(
+        [
+            {"player_id": pid, "review_priority": "none", "review_reason": ""}
+            for pid in range(1, 5)
+        ]
+    )
+    result = audit_selected_squad_reality(
+        _players(),
+        selected_ids={1, 2, 3, 4},
+        xi_ids={1},
+        bench_ids=[2, 3, 4],
+        hierarchy_evidence=hierarchy,
+        specialist_report=specialist,
+        transfer_report=transfer,
+        require_current_evidence=True,
+    )
+    assert result.ready_for_high_confidence is True
+    assert result.blockers == ()
