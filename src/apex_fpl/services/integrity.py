@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import pandas as pd
 
+from apex_fpl.services.player_identity import (
+    activate_official_identity_registry,
+    resolve_source_identities,
+)
+
 
 def _latest_core_snapshot(core: pd.DataFrame) -> pd.DataFrame:
-    """Return one unambiguous current FPL Core row per official player.
-
-    FPL Core stores longitudinal player snapshots as the season progresses. Current
-    production needs only the newest cumulative row for each player; historical
-    consumers still retain the raw longitudinal source outside this reconciliation
-    step. Ambiguous duplicate player/GW rows fail closed rather than being averaged.
-    """
+    """Return one unambiguous current FPL Core row per official player."""
     c = core.copy()
     if c.empty or "player_id" not in c.columns or not c["player_id"].duplicated().any():
         return c
@@ -41,44 +40,82 @@ def _latest_core_snapshot(core: pd.DataFrame) -> pd.DataFrame:
 
 
 def reconcile(official: pd.DataFrame, core: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Official identity always wins; external conflicts are reported."""
+    """Attach FPL Core statistics only after official-FPL identity certification.
+
+    Official FPL remains canonical. A Core row with an ID/name/team/position conflict
+    is withheld completely rather than retaining statistics on a potentially wrong
+    player. The identity report remains available to diagnostics.
+    """
     o = official.copy()
+    activate_official_identity_registry(o)
     c = _latest_core_snapshot(core)
     if c.empty:
         return o, pd.DataFrame(
             columns=["player_id", "field", "official", "external", "source"]
         )
-    merge_cols = [col for col in c.columns if col != "id"]
+
+    name_columns = tuple(
+        col
+        for col in ("web_name", "source_player_name", "player_name", "name")
+        if col in c.columns
+    )
+    require_witness = bool(
+        name_columns or {"first_name", "second_name"}.issubset(c.columns)
+    )
+    safe, identity = resolve_source_identities(
+        o,
+        c,
+        source="fpl_core",
+        name_columns=name_columns or ("source_player_name",),
+        require_identity_witness=require_witness,
+        allow_name_fallback=False,
+        raise_on_error=False,
+    )
+
+    warnings: list[dict] = []
+    if not identity.report.empty:
+        bad = identity.report[~identity.report["status"].isin(["exact_id", "name_fallback"])]
+        for row in bad.itertuples(index=False):
+            pid = row.input_player_id
+            try:
+                player_id = int(float(pid))
+            except (TypeError, ValueError):
+                player_id = -1
+            warnings.append(
+                {
+                    "player_id": player_id,
+                    "field": "identity",
+                    "official": "official_fpl",
+                    "external": str(row.reason),
+                    "source": "fpl_core",
+                }
+            )
+
+    # The full Core snapshot normally carries independent name witnesses. If it does,
+    # any conflict is a source-integrity failure rather than a soft warning.
+    if require_witness and not identity.ready:
+        raise ValueError(
+            "FPL Core identity integrity failed; statistical rows withheld: "
+            + "; ".join(identity.blockers[:10])
+        )
+
+    merge_cols = [col for col in safe.columns if col != "id"]
     merged = o.merge(
-        c[merge_cols],
+        safe[merge_cols],
         on="player_id",
         how="left",
         suffixes=("", "_core"),
         validate="one_to_one",
     )
-    warnings = []
-    checks = [
-        ("web_name", "web_name_core"),
-        ("team", "team_core"),
-        ("position", "position_core"),
-    ]
-    for left, right in checks:
-        if left in merged and right in merged:
-            mismatch = merged[right].notna() & (
-                merged[left].astype(str) != merged[right].astype(str)
-            )
-            for _, row in merged.loc[mismatch, ["player_id", left, right]].iterrows():
-                warnings.append(
-                    {
-                        "player_id": int(row["player_id"]),
-                        "field": left,
-                        "official": row[left],
-                        "external": row[right],
-                        "source": "fpl_core",
-                    }
-                )
-    # Remove conflicting auxiliary identity fields while retaining statistical enrichment.
-    for col in ["web_name_core", "team_core", "position_core", "price_core"]:
+    for col in [
+        "web_name_core",
+        "first_name_core",
+        "second_name_core",
+        "team_core",
+        "team_name_core",
+        "position_core",
+        "price_core",
+    ]:
         if col in merged:
             merged.drop(columns=col, inplace=True)
     return merged, pd.DataFrame(warnings)
