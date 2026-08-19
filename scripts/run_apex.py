@@ -3,8 +3,9 @@
 
 User-facing rule: run this command, then read apex_recommendation_latest.json.
 Pinnacle and Elite files are internal diagnostics only. The workflow is deliberately
-one-way: sealed surface -> non-actionable staging -> all-player truth -> one final
-strategy selector -> final selected-player evidence -> actionable output.
+one-way: sealed surface -> non-actionable staging -> identity/statistical truth ->
+selection-reality evidence -> all-player truth -> one final strategy selector ->
+final selected-player evidence -> actionable output.
 """
 from __future__ import annotations
 
@@ -81,6 +82,13 @@ def _fail_close_strategy_output(output_dir: Path, reason: str) -> None:
     )
 
 
+def _required_gate(command: list[str], output_dir: Path, label: str) -> None:
+    status = _run(command)
+    if status != 0:
+        _fail_close_strategy_output(output_dir, f"{label} failed with exit status {status}")
+        raise SystemExit(status)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--horizon", type=int, default=8)
@@ -149,8 +157,6 @@ def main() -> None:
     elif not pinnacle_path.exists():
         raise SystemExit(f"cannot reuse missing Pinnacle artifact: {pinnacle_path}")
 
-    # Deliberately do not force-refresh again. Elite must consume the cached source
-    # surface created by Pinnacle so staging can require identical snapshot identity.
     elite_status = _run(
         [
             sys.executable,
@@ -184,9 +190,39 @@ def main() -> None:
         _fail_close_strategy_output(output_dir, f"staging exit status {staging_status}")
         raise SystemExit(staging_status)
 
-    # Validate the complete official player universe before any final selector is
-    # allowed to become actionable. This includes factual completeness, projection
-    # pair completeness, required AIrsenal coverage and set-piece provenance.
+    _required_gate(
+        [
+            sys.executable,
+            "scripts/audit_player_identity.py",
+            "--bundle-dir",
+            str(bundle_dir),
+        ],
+        output_dir,
+        "player identity audit",
+    )
+    _required_gate(
+        [
+            sys.executable,
+            "scripts/audit_statistical_truth.py",
+            "--bundle-dir",
+            str(bundle_dir),
+        ],
+        output_dir,
+        "statistical truth audit",
+    )
+    _required_gate(
+        [
+            sys.executable,
+            "scripts/materialize_selection_reality_evidence.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--output-dir",
+            str(output_dir),
+        ],
+        output_dir,
+        "selection reality evidence materialization",
+    )
+
     truth_status = _run(
         [
             sys.executable,
