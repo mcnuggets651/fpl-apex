@@ -4,17 +4,26 @@ import pytest
 from apex_fpl.services.integrity import reconcile
 
 
-def test_official_identity_wins_on_club_conflict():
+def test_core_club_conflict_with_identity_witness_fails_closed():
     official = pd.DataFrame(
         [{"player_id": 1, "web_name": "Player", "team": 2, "position": "MID", "price": 7.0}]
     )
     core = pd.DataFrame(
         [{"player_id": 1, "web_name": "Player", "team": 9, "expected_goals_per_90": 0.3}]
     )
-    merged, warnings = reconcile(official, core)
-    assert merged.iloc[0]["team"] == 2
-    assert merged.iloc[0]["expected_goals_per_90"] == 0.3
-    assert ((warnings["field"] == "team") & (warnings["external"] == 9)).any()
+    with pytest.raises(ValueError, match="identity integrity failed"):
+        reconcile(official, core)
+
+
+def test_core_wrong_name_on_valid_id_fails_closed():
+    official = pd.DataFrame(
+        [{"player_id": 1, "web_name": "Coyle", "team": 2, "position": "DEF", "price": 4.5}]
+    )
+    core = pd.DataFrame(
+        [{"player_id": 1, "web_name": "Gabriel", "expected_goals_per_90": 0.3}]
+    )
+    with pytest.raises(ValueError, match="name conflict"):
+        reconcile(official, core)
 
 
 def test_longitudinal_core_uses_latest_player_gameweek_snapshot():
