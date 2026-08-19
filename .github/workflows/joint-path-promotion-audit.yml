@@ -7,6 +7,7 @@ on:
       - "config/apex.yaml"
       - "src/apex_fpl/config.py"
       - "src/apex_fpl/data/http.py"
+      - "src/apex_fpl/data/odds.py"
       - "src/apex_fpl/models/ensemble.py"
       - "src/apex_fpl/optimisation/transfers.py"
       - "src/apex_fpl/optimisation/transfer_views.py"
@@ -25,6 +26,7 @@ on:
       - "src/apex_fpl/services/finalized_stability.py"
       - "src/apex_fpl/models/projection.py"
       - "scripts/apply_joint_path_promotion.py"
+      - "scripts/apply_joint_path_promotion_rebased.py"
       - "scripts/build_canonical_recommendation.py"
       - "scripts/audit_player_truth.py"
       - "scripts/audit_player_identity.py"
@@ -46,11 +48,13 @@ on:
       - "tests/test_joint_initial_path.py"
       - "tests/test_strategy.py"
       - "tests/test_player_truth.py"
+      - "tests/test_integrity.py"
       - "tests/test_player_identity.py"
       - "tests/test_selection_reality.py"
       - "tests/test_selection_reality_evidence.py"
       - "tests/test_statistical_truth.py"
       - "tests/test_finalized_stability.py"
+      - "tests/test_hardened_convergence.py"
       - "tests/test_answer_context.py"
       - "tests/test_canonical_recommendation.py"
       - "tests/test_data_quality.py"
@@ -90,11 +94,13 @@ jobs:
             tests/test_joint_initial_path.py \
             tests/test_strategy.py \
             tests/test_player_truth.py \
+            tests/test_integrity.py \
             tests/test_player_identity.py \
             tests/test_selection_reality.py \
             tests/test_selection_reality_evidence.py \
             tests/test_statistical_truth.py \
             tests/test_finalized_stability.py \
+            tests/test_hardened_convergence.py \
             tests/test_answer_context.py \
             tests/test_canonical_recommendation.py \
             tests/test_data_quality.py \
