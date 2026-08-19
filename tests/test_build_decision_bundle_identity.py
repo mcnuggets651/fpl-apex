@@ -1,9 +1,23 @@
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
-from scripts.build_decision_bundle import _with_official_identity_aliases
+
+def _load_identity_alias_helper():
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "build_decision_bundle.py"
+    spec = importlib.util.spec_from_file_location("apex_build_decision_bundle", script_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module._with_official_identity_aliases
+
+
+_with_official_identity_aliases = _load_identity_alias_helper()
 
 
 def test_sealed_surface_retains_exact_official_full_name_aliases() -> None:
