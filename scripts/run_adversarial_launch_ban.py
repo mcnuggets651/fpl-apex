@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from apex_fpl.optimisation.exact_decision import optimise_fixed_squad_gameweek
+from apex_fpl.services.cached_launch import load_cached_hardened_launch
 from apex_fpl.services.decision_bundle import DecisionBundle
 from apex_fpl.services.decision_eligibility import captain_eligible_ids, evidence_eligibility
 from apex_fpl.services.finalized_stability import optimise_with_bounded_stability_retry
@@ -31,9 +32,16 @@ def _resolve_targets(players: pd.DataFrame, names: list[str]) -> dict[str, int]:
     return mapping
 
 
-def _run(bundle: DecisionBundle, banned_ids: set[int]):
+def _eligible_surface(bundle: DecisionBundle):
     out = bundle.to_pipeline_output()
     players, _ = evidence_eligibility(out.players, out.news_audit)
+    captain_eligible = captain_eligible_ids(players)
+    xi_eligible = set(players.loc[players["xi_evidence_eligible"], "player_id"].astype(int))
+    return out, players, captain_eligible, xi_eligible
+
+
+def _run(bundle: DecisionBundle, banned_ids: set[int]):
+    out, players, _, _ = _eligible_surface(bundle)
     players = players[~players["player_id"].astype(int).isin(banned_ids)].copy()
     projections = out.projections[
         ~out.projections["player_id"].astype(int).isin(banned_ids)
@@ -155,27 +163,39 @@ def _interpretation(*, certified: bool, gw1_delta: float | None, future_delta: f
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
+    parser.add_argument("--canonical", default="data/generated/apex_recommendation_latest.json")
     parser.add_argument("--targets", default=DEFAULT_TARGETS)
     parser.add_argument("--output", default="reports/adversarial_launch_bans.json")
     parser.add_argument("--csv", default="reports/adversarial_launch_bans.csv")
     args = parser.parse_args()
 
     bundle = DecisionBundle.load(args.bundle_dir)
-    out = bundle.to_pipeline_output()
+    out, baseline_players, baseline_captain_eligible, baseline_xi_eligible = _eligible_surface(bundle)
     target_names = [row.strip() for row in args.targets.split(",") if row.strip()]
     targets = _resolve_targets(out.players, target_names)
 
-    (
-        baseline,
-        baseline_players,
-        baseline_projections,
-        baseline_captain_eligible,
-        baseline_xi_eligible,
-        baseline_gameweeks,
-    ) = _run(bundle, set())
+    baseline = load_cached_hardened_launch(
+        args.canonical,
+        decision_bundle_id=bundle.bundle_id,
+    )
+    baseline_source = "canonical_hardened_launch_cache"
+    if baseline is None:
+        (
+            baseline,
+            baseline_players,
+            baseline_projections,
+            baseline_captain_eligible,
+            baseline_xi_eligible,
+            baseline_gameweeks,
+        ) = _run(bundle, set())
+        baseline_source = "fresh_hardened_launch_solve"
+    else:
+        baseline_projections = out.projections
+        baseline_gameweeks = out.gameweeks
     if not (
         baseline.status == "optimal"
         and baseline.selected is not None
+        and baseline.selected.within_gw1_band
         and baseline.candidate_pool_stable
     ):
         raise SystemExit("baseline launch is not certified; adversarial ban audit cannot compare")
@@ -254,6 +274,7 @@ def main() -> None:
     payload = {
         "contract": CONTRACT,
         "decision_bundle_id": bundle.bundle_id,
+        "baseline_source": baseline_source,
         "baseline": {
             "gw1_expected_points": baseline.selected.gw1_expected_points,
             "future_objective": baseline.selected.future_objective,

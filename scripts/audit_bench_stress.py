@@ -10,6 +10,7 @@ import pandas as pd
 
 from apex_fpl.optimisation.exact_decision import optimise_fixed_squad_gameweek
 from apex_fpl.optimisation.mechanics import autosub_weights_ids
+from apex_fpl.services.cached_launch import load_cached_hardened_launch
 from apex_fpl.services.decision_bundle import DecisionBundle
 from apex_fpl.services.decision_eligibility import captain_eligible_ids, evidence_eligibility
 from apex_fpl.services.finalized_stability import optimise_with_bounded_stability_retry
@@ -20,13 +21,17 @@ CONTRACT = "apex-bench-stress-v1"
 TRANSFER_CANDIDATE_LIMIT = 180
 
 
-def _launch(bundle: DecisionBundle):
+def _surface(bundle: DecisionBundle):
     out = bundle.to_pipeline_output()
     players, _ = evidence_eligibility(out.players, out.news_audit)
     captain_eligible = captain_eligible_ids(players)
     xi_eligible = set(players.loc[players["xi_evidence_eligible"], "player_id"].astype(int))
+    return out, players, captain_eligible, xi_eligible
+
+
+def _fresh_launch(bundle: DecisionBundle, out, players, captain_eligible, xi_eligible):
     settings = bundle.settings
-    result = optimise_with_bounded_stability_retry(
+    return optimise_with_bounded_stability_retry(
         optimise_joint_initial_path,
         players,
         out.projections,
@@ -41,14 +46,6 @@ def _launch(bundle: DecisionBundle):
         exact_candidate_limit=int(settings.get("exact_candidate_limit", 16)),
         gw1_regret_tolerance=float(settings.get("exact_near_equivalent_points", 0.25)),
     )
-    if not (
-        result.status == "optimal"
-        and result.selected is not None
-        and result.selected.within_gw1_band
-        and result.candidate_pool_stable
-    ):
-        raise SystemExit("hardened launch is not certified; bench stress cannot run")
-    return out, players, result, captain_eligible, xi_eligible
 
 
 def _fixed_total(
@@ -92,14 +89,30 @@ def _fixed_total(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
+    parser.add_argument("--canonical", default="data/generated/apex_recommendation_latest.json")
     parser.add_argument("--output", default="reports/bench_stress.json")
     parser.add_argument("--csv", default="reports/bench_stress.csv")
     args = parser.parse_args()
 
     bundle = DecisionBundle.load(args.bundle_dir)
-    out, players, result, captain_eligible, xi_eligible = _launch(bundle)
+    out, players, captain_eligible, xi_eligible = _surface(bundle)
+    result = load_cached_hardened_launch(
+        args.canonical,
+        decision_bundle_id=bundle.bundle_id,
+    )
+    launch_source = "canonical_hardened_launch_cache"
+    if result is None:
+        result = _fresh_launch(bundle, out, players, captain_eligible, xi_eligible)
+        launch_source = "fresh_hardened_launch_solve"
+    if not (
+        result.status == "optimal"
+        and result.selected is not None
+        and result.selected.within_gw1_band
+        and result.candidate_pool_stable
+    ):
+        raise SystemExit("hardened launch is not certified; bench stress cannot run")
+
     selected = result.selected
-    assert selected is not None
     squad_ids = tuple(sorted(int(pid) for pid in selected.squad_ids))
     squad = players[players["player_id"].astype(int).isin(squad_ids)].copy()
     gw = int(out.gameweeks[0])
@@ -174,6 +187,7 @@ def main() -> None:
     payload = {
         "contract": CONTRACT,
         "decision_bundle_id": bundle.bundle_id,
+        "hardened_launch_source": launch_source,
         "gameweek": gw,
         "submitted_xi": [names.get(pid, str(pid)) for pid in xi_ids],
         "captain": names.get(int(mechanics.captain_id), str(mechanics.captain_id)),
