@@ -21,6 +21,9 @@ def main() -> None:
     parser.add_argument("--airsenal", default="data/generated/airsenal.csv")
     parser.add_argument("--specialist", default="data/manual/specialist_predictions.csv")
     parser.add_argument("--transfer", default="data/manual/transfer_checks.csv")
+    parser.add_argument("--availability", default="data/manual/availability.csv")
+    parser.add_argument("--tactical", default="data/manual/tactical_roles.csv")
+    parser.add_argument("--hierarchy", default="data/manual/squad_hierarchy.csv")
     parser.add_argument("--output", default="reports/player_identity_audit.json")
     parser.add_argument("--csv", default="reports/player_identity_audit.csv")
     args = parser.parse_args()
@@ -48,10 +51,18 @@ def main() -> None:
     for name, path in (
         ("fpl_specialist_manual", Path(args.specialist)),
         ("transfer_specialist_manual", Path(args.transfer)),
+        ("manual_availability", Path(args.availability)),
+        ("manual_tactical_roles", Path(args.tactical)),
+        ("manual_squad_hierarchy", Path(args.hierarchy)),
     ):
         frame = _read(path)
         if not frame.empty:
-            sources[name] = frame.drop_duplicates("player_id")
+            if "source_player_name" not in frame.columns and "web_name" not in frame.columns:
+                blockers.append(
+                    f"{name} contains player-linked rows without an independent name witness"
+                )
+            else:
+                sources[name] = frame.drop_duplicates("player_id")
 
     audit = audit_identity_sources(players, sources, require_identity_witness=True)
     blockers.extend(audit.get("blockers") or [])
