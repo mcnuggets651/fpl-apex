@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-SPECIALIST_SOURCES = {"fantasy_football_scout", "allaboutfpl"}
+# Governed FPL-specialist predicted-XI sources. A source must publish an explicit
+# team/line-up view; generic media/team-news coverage is not sufficient here.
+SPECIALIST_SOURCES = {"fantasy_football_scout", "allaboutfpl", "onefpl"}
 
 
 def _numeric(frame: pd.DataFrame, column: str, default: float = 0.0) -> pd.Series:
@@ -18,7 +20,7 @@ def build_specialist_disagreement_report(
     selected_ids: set[int] | None = None,
     optimiser_sensitive_ids: set[int] | None = None,
 ) -> pd.DataFrame:
-    """Compare Apex minutes/start beliefs with FPL-specialist predicted-XI evidence.
+    """Compare Apex minutes/start beliefs with governed specialist predicted-XI evidence.
 
     This is diagnostic only. The result never mutates canonical minutes, roles or xP.
     A high-priority review requires independent specialist agreement against Apex;
@@ -118,22 +120,22 @@ def build_specialist_disagreement_report(
         if consensus_value == "bench" and apex_start >= 0.75:
             priorities.append("high")
             reasons.append(
-                "FFS and AllAboutFPL agree on bench/non-start while Apex carries a high start probability"
+                "two or more governed specialist sources agree on bench/non-start while Apex carries a high start probability"
             )
         elif consensus_value == "start" and apex_start <= 0.40:
             priorities.append("high")
             reasons.append(
-                "FFS and AllAboutFPL agree on a start while Apex carries a low start probability"
+                "two or more governed specialist sources agree on a start while Apex carries a low start probability"
             )
         elif count == 1 and sensitive:
             priorities.append("medium")
             reasons.append(
-                "single FPL-specialist prediction conflicts or requires review for an optimiser-sensitive player"
+                "single governed specialist prediction requires review for an optimiser-sensitive player"
             )
         elif consensus_value == "split" and sensitive:
             priorities.append("medium")
             reasons.append(
-                "FPL-specialist predicted-XI sources disagree for an optimiser-sensitive player"
+                "governed specialist predicted-XI sources disagree for an optimiser-sensitive player"
             )
         else:
             priorities.append("none")
