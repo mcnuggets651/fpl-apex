@@ -2,9 +2,10 @@
 # Official FPL status/chance fields remain stronger than every headline signal.
 # PremierLeague.com adds the official league / syndicated club-news channel;
 # BBC Sport and Sky Sports provide independent trusted-media cross-checks.
-# Fantasy Football Scout and AllAboutFPL are specialist corroboration sources:
-# they can trigger lineup/role/minutes/set-piece review flags but must never
-# override official identity, price, availability or directly inject xP.
+# Fantasy Football Scout, AllAboutFPL and OneFPL are governed specialist
+# corroboration sources: they can trigger lineup/role/minutes/set-piece review
+# flags but must never override official identity, price, availability or directly
+# inject xP. OneFPL is included specifically for its explicit all-club GW1 XI surface.
 # Fabrizio Romano is transfer-specialist corroboration only: transfer reports
 # can trigger transfer-risk review, but cannot directly rewrite tactical role,
 # minutes, availability, canonical club identity or xP before official confirmation.
@@ -24,6 +25,9 @@ feeds:
     tier: fpl_specialist
   - name: AllAboutFPL
     url: https://allaboutfpl.com/
+    tier: fpl_specialist
+  - name: OneFPL
+    url: https://onefpl.com/
     tier: fpl_specialist
   - name: Fabrizio Romano
     url: https://t.me/s/fabrizioromanotg
