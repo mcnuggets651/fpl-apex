@@ -6,8 +6,12 @@
   "blockers": [
     "Apex Unified production run did not complete canonical assembly",
     "data quality failed: fpl_core_playerstats: official-player coverage=0.0%; missing_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; missing IDs are not an append-only trailing registration block; gap exceeds bounded lag policy (max 5 players and minimum 99.0% coverage)",
-    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (43.5h old; max 18.0h)"
+    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (43.5h old; max 18.0h)",
+    "required source changed after canonical build: airsenal: validated AIrsenal forecast changed"
   ],
   "decision_bundle_id": "a4b07062583ca850a9cb3c56b44077546869e72f97a5e4514181cd89c0bc081e",
-  "recommendation": null
+  "recommendation": null,
+  "production_result": null,
+  "invalidated_at": "2026-08-20T05:54:36.417923+00:00",
+  "invalidated_source": "airsenal"
 }
