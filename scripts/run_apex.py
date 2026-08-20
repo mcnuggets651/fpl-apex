@@ -6,6 +6,11 @@ Pinnacle and Elite files are internal diagnostics only. The workflow is delibera
 one-way: sealed surface -> non-actionable staging -> identity/statistical truth ->
 selection-reality evidence -> all-player truth -> one final strategy selector ->
 final selected-player evidence -> actionable output.
+
+The sealed bundle is the source-coherence boundary: Official FPL, AIrsenal and the
+immutable FPL Core pin used to build it must remain the exact inputs consumed by all
+later gates in this invocation. A newer upstream revision belongs to the next build;
+it must never be mixed into an already-sealed decision.
 """
 from __future__ import annotations
 
