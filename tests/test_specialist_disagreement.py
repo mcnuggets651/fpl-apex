@@ -52,6 +52,20 @@ def test_two_specialists_starting_low_apex_start_is_high_priority():
     assert row.review_priority == "high"
 
 
+def test_onefpl_is_a_governed_independent_specialist_source():
+    predictions = pd.DataFrame(
+        [
+            {"player_id": 1, "source": "fantasy_football_scout", "predicted_start": False},
+            {"player_id": 1, "source": "onefpl", "predicted_start": False},
+        ]
+    )
+    out = build_specialist_disagreement_report(players(), predictions)
+    row = out[out.player_id.eq(1)].iloc[0]
+    assert row.specialist_source_count == 2
+    assert row.specialist_consensus == "bench"
+    assert row.review_priority == "high"
+
+
 def test_single_specialist_only_flags_sensitive_player_medium():
     predictions = pd.DataFrame(
         [{"player_id": 1, "source": "fantasy_football_scout", "predicted_start": False}]
