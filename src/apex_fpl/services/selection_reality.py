@@ -14,13 +14,7 @@ class SelectionRealityResult:
     report: pd.DataFrame
 
 
-def _numeric_map(
-    players: pd.DataFrame,
-    column: str,
-    default: float = 0.0,
-    *,
-    upper: float | None = None,
-) -> dict[int, float]:
+def _numeric_map(players: pd.DataFrame, column: str, default: float = 0.0, *, upper: float | None = None) -> dict[int, float]:
     if column not in players.columns:
         return {int(pid): default for pid in players["player_id"].astype(int)}
     values = pd.to_numeric(players[column], errors="coerce").fillna(default)
@@ -50,13 +44,14 @@ def audit_selected_squad_reality(
     playable_bench_min_expected_minutes: float = 20.0,
     minimum_playable_outfield_bench: int = 2,
 ) -> SelectionRealityResult:
-    """Fail closed on unresolved real-football selection fragility.
+    """Audit attributable football-reality risk without making silence a blocker.
 
-    This audit never changes xP, minutes, roles, club identity or optimiser weights.
-    It is a readiness gate applied *after* the optimiser has produced a candidate.
-    Production can require complete current hierarchy, specialist-XI and transfer
-    review coverage for every selected player. Missing evidence is then a blocker,
-    never an implicit neutral signal.
+    Live Official FPL/news evidence is applied pre-solve by evidence_eligibility, so
+    credible adverse evidence can make a player XI/captain-ineligible and the optimiser
+    can self-heal by choosing another structure. This final audit remains fail-closed
+    for positive adverse signals (weak hierarchy, high transfer risk, high specialist
+    disagreement, unsafe XI/bench mechanics). Missing optional manual corroboration is
+    an explicit warning, never fabricated confirmation and never by itself a blocker.
     """
     selected_ids = {int(pid) for pid in selected_ids}
     xi_ids = {int(pid) for pid in xi_ids}
@@ -66,10 +61,7 @@ def audit_selected_squad_reality(
     appearance = _numeric_map(players, "appearance_probability", 0.0, upper=1.0)
     starts = _numeric_map(players, "start_probability", 0.0, upper=1.0)
     minutes = _numeric_map(players, "expected_minutes", 0.0, upper=90.0)
-    names = {
-        int(row.player_id): str(getattr(row, "web_name", row.player_id))
-        for row in players.itertuples(index=False)
-    }
+    names = {int(row.player_id): str(getattr(row, "web_name", row.player_id)) for row in players.itertuples(index=False)}
     ids_by_name = {str(name).strip().casefold(): pid for pid, name in names.items()}
 
     specialist_by_id: dict[int, tuple[str, str, int]] = {}
@@ -83,69 +75,58 @@ def audit_selected_squad_reality(
             )
 
     hierarchy_by_id: dict[int, str] = {}
-    if hierarchy_evidence is not None and not hierarchy_evidence.empty:
-        frame = hierarchy_evidence.copy()
-        if "hierarchy_status" in frame.columns:
-            for row in frame.itertuples(index=False):
-                pid_value = getattr(row, "player_id", None)
-                pid: int | None = None
-                if pid_value is not None and not pd.isna(pid_value):
-                    try:
-                        pid = int(pid_value)
-                    except (TypeError, ValueError):
-                        pid = None
-                if pid is None:
-                    name = str(getattr(row, "web_name", "")).strip().casefold()
-                    pid = ids_by_name.get(name)
-                if pid is not None:
-                    hierarchy_by_id[pid] = str(
-                        getattr(row, "hierarchy_status")
-                    ).strip().casefold()
+    if hierarchy_evidence is not None and not hierarchy_evidence.empty and "hierarchy_status" in hierarchy_evidence.columns:
+        for row in hierarchy_evidence.itertuples(index=False):
+            pid_value = getattr(row, "player_id", None)
+            pid: int | None = None
+            if pid_value is not None and not pd.isna(pid_value):
+                try:
+                    pid = int(pid_value)
+                except (TypeError, ValueError):
+                    pid = None
+            if pid is None:
+                pid = ids_by_name.get(str(getattr(row, "web_name", "")).strip().casefold())
+            if pid is not None:
+                hierarchy_by_id[pid] = str(getattr(row, "hierarchy_status")).strip().casefold()
 
     transfer_by_id: dict[int, tuple[str, str]] = {}
-    if transfer_report is not None and not transfer_report.empty:
-        if {"player_id", "review_priority"}.issubset(transfer_report.columns):
-            for row in transfer_report.itertuples(index=False):
-                transfer_by_id[int(row.player_id)] = (
-                    str(getattr(row, "review_priority", "none")),
-                    str(getattr(row, "review_reason", "")),
-                )
+    if transfer_report is not None and not transfer_report.empty and {"player_id", "review_priority"}.issubset(transfer_report.columns):
+        for row in transfer_report.itertuples(index=False):
+            transfer_by_id[int(row.player_id)] = (
+                str(getattr(row, "review_priority", "none")),
+                str(getattr(row, "review_reason", "")),
+            )
 
     blockers: list[str] = []
     warnings: list[str] = []
     report_rows: list[dict] = []
     playable_outfield = 0
-
     weak_hierarchy = {"academy", "u21", "youth", "fringe", "reserve"}
+
     for pid in sorted(selected_ids):
         name = names.get(pid, str(pid))
         is_xi = pid in xi_ids
         is_bench = pid in outfield_bench
         hierarchy = hierarchy_by_id.get(pid, "unknown")
-        specialist_priority, specialist_reason, specialist_count = specialist_by_id.get(
-            pid, ("none", "", 0)
-        )
+        specialist_priority, specialist_reason, specialist_count = specialist_by_id.get(pid, ("none", "", 0))
         transfer_priority, transfer_reason = transfer_by_id.get(pid, ("none", ""))
         app = appearance.get(pid, 0.0)
         start = starts.get(pid, 0.0)
         exp_min = minutes.get(pid, 0.0)
-
         reasons: list[str] = []
+        warning_reasons: list[str] = []
         priority = "none"
 
         if require_current_evidence:
             if pid not in hierarchy_by_id:
-                priority = "blocker"
-                reasons.append("missing current squad-hierarchy evidence")
+                warning_reasons.append("no current manual squad-hierarchy corroboration; live model/news evidence remains authoritative")
             if specialist_count < int(minimum_specialist_sources):
-                priority = "blocker"
-                reasons.append(
-                    "predicted-XI evidence coverage only "
+                warning_reasons.append(
+                    "predicted-XI corroboration coverage only "
                     f"{specialist_count}/{int(minimum_specialist_sources)} governed specialist sources"
                 )
             if pid not in transfer_by_id:
-                priority = "blocker"
-                reasons.append("missing current transfer-state review")
+                warning_reasons.append("no current manual transfer-state corroboration; live official/news evidence remains authoritative")
 
         if transfer_priority == "high":
             priority = "blocker"
@@ -161,9 +142,7 @@ def audit_selected_squad_reality(
             priority = "blocker"
             reasons.append(f"XI appearance probability only {app:.0%}")
         elif is_xi and start < 0.65:
-            if priority != "blocker":
-                priority = "warning"
-            reasons.append(f"XI start probability only {start:.0%}")
+            warning_reasons.append(f"XI start probability only {start:.0%}")
 
         if is_bench:
             appearance_ok = app >= playable_bench_min_appearance if app > 0 else False
@@ -181,40 +160,36 @@ def audit_selected_squad_reality(
                         details.append(f"appearance probability {app:.0%}")
                     if first_minutes_bad:
                         details.append(f"expected minutes {exp_min:.1f}")
-                    reasons.append(
-                        "first outfield bench is not a credible autosub: " + ", ".join(details)
-                    )
+                    reasons.append("first outfield bench is not a credible autosub: " + ", ".join(details))
 
-        if specialist_priority == "medium" and priority == "none":
-            priority = "warning"
-            reasons.append(specialist_reason or "specialist review required")
-        if transfer_priority == "medium" and priority == "none":
-            priority = "warning"
-            reasons.append(transfer_reason or "transfer review required")
+        if specialist_priority == "medium":
+            warning_reasons.append(specialist_reason or "specialist review required")
+        if transfer_priority == "medium":
+            warning_reasons.append(transfer_reason or "transfer review required")
 
+        all_reasons = list(dict.fromkeys(reasons + warning_reasons))
         if priority == "blocker":
-            blockers.append(f"{name}: " + "; ".join(dict.fromkeys(reasons)))
-        elif priority == "warning":
-            warnings.append(f"{name}: " + "; ".join(dict.fromkeys(reasons)))
+            blockers.append(f"{name}: " + "; ".join(all_reasons))
+        elif warning_reasons:
+            priority = "warning"
+            warnings.append(f"{name}: " + "; ".join(dict.fromkeys(warning_reasons)))
 
-        report_rows.append(
-            {
-                "player_id": pid,
-                "web_name": name,
-                "in_xi": is_xi,
-                "on_outfield_bench": is_bench,
-                "expected_minutes": exp_min,
-                "appearance_probability": app,
-                "start_probability": start,
-                "hierarchy_status": hierarchy,
-                "specialist_source_count": specialist_count,
-                "specialist_priority": specialist_priority,
-                "transfer_review_present": pid in transfer_by_id,
-                "transfer_priority": transfer_priority,
-                "reality_priority": priority,
-                "reality_reason": "; ".join(dict.fromkeys(reasons)),
-            }
-        )
+        report_rows.append({
+            "player_id": pid,
+            "web_name": name,
+            "in_xi": is_xi,
+            "on_outfield_bench": is_bench,
+            "expected_minutes": exp_min,
+            "appearance_probability": app,
+            "start_probability": start,
+            "hierarchy_status": hierarchy,
+            "specialist_source_count": specialist_count,
+            "specialist_priority": specialist_priority,
+            "transfer_review_present": pid in transfer_by_id,
+            "transfer_priority": transfer_priority,
+            "reality_priority": priority,
+            "reality_reason": "; ".join(all_reasons),
+        })
 
     if playable_outfield < int(minimum_playable_outfield_bench):
         blockers.append(
@@ -223,11 +198,10 @@ def audit_selected_squad_reality(
             f"threshold; minimum for high-confidence launch is {minimum_playable_outfield_bench}"
         )
 
-    report = pd.DataFrame(report_rows)
     return SelectionRealityResult(
         ready_for_high_confidence=not blockers,
         blockers=tuple(blockers),
         warnings=tuple(warnings),
         playable_outfield_bench=playable_outfield,
-        report=report,
+        report=pd.DataFrame(report_rows),
     )
