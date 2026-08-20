@@ -1,1 +1,31 @@
 player_id,source_player_name,source,predicted_start,source_url,published_at,retrieved_at,expires_at
+1,Raya,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+1,Raya,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+4,Gabriel,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+4,Gabriel,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+94,Schade,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+94,Schade,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+106,Thiago,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+106,Thiago,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+109,Verbruggen,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+109,Verbruggen,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+130,Wieffer,fantasy_football_scout,false,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+130,Wieffer,onefpl,false,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+165,João Pedro,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+165,João Pedro,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+212,Hughes,fantasy_football_scout,false,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+212,Hughes,onefpl,false,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+280,Coyle,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+280,Coyle,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+289,Crooks,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+289,Crooks,onefpl,false,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+367,Gakpo,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+367,Gakpo,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+388,Guéhi,fantasy_football_scout,false,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+388,Guéhi,allaboutfpl,true,https://allaboutfpl.com/2026/07/best-premium-fpl-defenders-for-the-2026-27-fpl-season/,2026-07-29T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+391,Gvardiol,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+391,Gvardiol,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+411,Haaland,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+411,Haaland,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+427,Mbeumo,fantasy_football_scout,true,https://cdn.fantasyfootballscout.co.uk/team-news,2026-08-04T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
+427,Mbeumo,onefpl,true,https://onefpl.com/blog/fpl-gameweek-1-predicted-lineups-all-clubs-2026-27,2026-08-02T12:00:00Z,2026-08-20T06:40:00Z,2026-08-21T17:30:00Z
