@@ -19,6 +19,7 @@ MIN_HEALTHY_NEWS_SOURCES = 2
 MIN_FRESH_NEWS_ITEMS = 1
 SOURCE_HEALTH_WINDOW_HOURS = 120.0
 DEFAULT_SPECIALIST_PREDICTIONS = Path("data/manual/specialist_predictions.csv")
+MATERIAL_SPECIALIST_CONTRADICTION_START_PROBABILITY = 0.80
 
 
 def source_health_status(sources: list) -> dict:
@@ -55,7 +56,6 @@ def _decision_grade(events: pd.DataFrame) -> bool:
 
 
 def _fresh_specialist_predictions(players: pd.DataFrame, path: Path, *, now: datetime | None = None, strict_identity: bool = True) -> pd.DataFrame:
-    """Load only current, identity-safe governed predicted-XI evidence."""
     columns = {"player_id", "source_player_name", "source", "predicted_start", "published_at", "retrieved_at", "expires_at"}
     if not path.exists():
         return pd.DataFrame(columns=sorted(columns))
@@ -148,14 +148,20 @@ def evidence_eligibility(players: pd.DataFrame, news_audit: pd.DataFrame, *, spe
             pid = int(row.player_id)
             if int(row.specialist_source_count) >= 2 and str(row.specialist_consensus) == "bench" and pid not in authoritative_positive:
                 mask = out["player_id"].astype(int).eq(pid)
-                squad_ok.loc[mask] = False
                 xi_ok.loc[mask] = False
-                out.loc[mask, "evidence_state"] = "specialist_nonstart_consensus"
-                reasons.setdefault(pid, []).append("fresh two-source governed predicted-XI non-start consensus")
+                model_start = pd.to_numeric(out.loc[mask, "start_probability"], errors="coerce").fillna(0.0)
+                material_contradiction = bool((model_start >= MATERIAL_SPECIALIST_CONTRADICTION_START_PROBABILITY).any())
+                if material_contradiction:
+                    squad_ok.loc[mask] = False
+                    out.loc[mask, "evidence_state"] = "specialist_nonstart_material_contradiction"
+                    reasons.setdefault(pid, []).append("fresh two-source governed non-start consensus materially contradicts model start probability")
+                else:
+                    out.loc[mask, "evidence_state"] = "specialist_nonstart_xi_constraint"
+                    reasons.setdefault(pid, []).append("fresh two-source governed non-start consensus removes XI eligibility")
     out["squad_evidence_eligible"] = squad_ok.astype(bool)
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
     out["captain_evidence_eligible"] = xi_ok.astype(bool)
-    report = {"contract": "apex-evidence-eligibility-v3", "policy": "authoritative_adverse_plus_governed_specialist_consensus_pre_solve", "squad_ineligible_ids": sorted(out.loc[~squad_ok, "player_id"].astype(int).tolist()), "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()), "uncertainty_diagnostic_ids": sorted(uncertainty_ids), "captain_eligible_ids": sorted(out.loc[out["captain_evidence_eligible"], "player_id"].astype(int).tolist()), "reasons": {str(k): v for k, v in sorted(reasons.items())}}
+    report = {"contract": "apex-evidence-eligibility-v3", "policy": "authoritative_adverse_plus_tiered_governed_specialist_consensus_pre_solve", "squad_ineligible_ids": sorted(out.loc[~squad_ok, "player_id"].astype(int).tolist()), "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()), "uncertainty_diagnostic_ids": sorted(uncertainty_ids), "captain_eligible_ids": sorted(out.loc[out["captain_evidence_eligible"], "player_id"].astype(int).tolist()), "reasons": {str(k): v for k, v in sorted(reasons.items())}}
     if not specialist_report.empty:
         report["specialist_consensus"] = {str(int(row.player_id)): str(row.specialist_consensus) for row in specialist_report.itertuples(index=False) if int(row.specialist_source_count) > 0}
     return out.loc[squad_ok].copy().reset_index(drop=True), report
