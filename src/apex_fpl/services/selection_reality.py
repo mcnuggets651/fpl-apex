@@ -162,11 +162,6 @@ def audit_selected_squad_reality(
             priority = "blocker"
             reasons.append(transfer_reason or "high transfer risk")
 
-        # FPL-specialist predicted XIs are a corroboration/review layer, not factual
-        # authority. Even two-source disagreement must not turn an otherwise healthy
-        # production engine into a manual publication bottleneck. Keep the signal
-        # explicit and decision-visible while reserving hard blocking for official/
-        # structural evidence and exact mechanics.
         if specialist_priority == "high":
             warning_reasons.append(
                 specialist_reason or "high predicted-XI disagreement requires projection review"
@@ -183,34 +178,23 @@ def audit_selected_squad_reality(
             warning_reasons.append(f"XI start probability only {start:.0%}")
 
         if is_bench:
-            appearance_ok = (
-                app >= playable_bench_min_appearance if app > 0 else False
-            )
+            appearance_ok = app >= playable_bench_min_appearance if app > 0 else False
             minutes_ok = exp_min >= playable_bench_min_expected_minutes
-            playable = (
-                appearance_ok or minutes_ok
-            ) and hierarchy not in weak_hierarchy
+            playable = (appearance_ok or minutes_ok) and hierarchy not in weak_hierarchy
             if playable:
                 playable_outfield += 1
             if outfield_bench and pid == outfield_bench[0]:
-                first_appearance_bad = app > 0 and app < first_bench_min_appearance
-                first_minutes_bad = exp_min < first_bench_min_expected_minutes
-                if first_appearance_bad or first_minutes_bad:
+                first_appearance_ok = app >= first_bench_min_appearance if app > 0 else False
+                first_minutes_ok = exp_min >= first_bench_min_expected_minutes
+                if not (first_appearance_ok or first_minutes_ok):
                     priority = "blocker"
-                    details = []
-                    if first_appearance_bad:
-                        details.append(f"appearance probability {app:.0%}")
-                    if first_minutes_bad:
-                        details.append(f"expected minutes {exp_min:.1f}")
                     reasons.append(
                         "first outfield bench is not a credible autosub: "
-                        + ", ".join(details)
+                        f"appearance probability {app:.0%}, expected minutes {exp_min:.1f}"
                     )
 
         if specialist_priority == "medium":
-            warning_reasons.append(
-                specialist_reason or "specialist review required"
-            )
+            warning_reasons.append(specialist_reason or "specialist review required")
         if transfer_priority == "medium":
             warning_reasons.append(transfer_reason or "transfer review required")
 
@@ -219,9 +203,7 @@ def audit_selected_squad_reality(
             blockers.append(f"{name}: " + "; ".join(all_reasons))
         elif warning_reasons:
             priority = "warning"
-            warnings.append(
-                f"{name}: " + "; ".join(dict.fromkeys(warning_reasons))
-            )
+            warnings.append(f"{name}: " + "; ".join(dict.fromkeys(warning_reasons)))
 
         report_rows.append(
             {
