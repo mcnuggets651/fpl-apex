@@ -160,7 +160,7 @@ def evidence_eligibility(players: pd.DataFrame, news_audit: pd.DataFrame, *, spe
     out["squad_evidence_eligible"] = squad_ok.astype(bool)
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
     out["captain_evidence_eligible"] = xi_ok.astype(bool)
-    report = {"contract": "apex-evidence-eligibility-v3", "policy": "authoritative_adverse_plus_material_governed_specialist_xi_constraint_pre_solve", "squad_ineligible_ids": [], "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()), "uncertainty_diagnostic_ids": sorted(uncertainty_ids), "captain_eligible_ids": sorted(out.loc[out["captain_evidence_eligible"], "player_id"].astype(int).tolist()), "reasons": {str(k): v for k, v in sorted(reasons.items())}}
+    report = {"contract": "apex-evidence-eligibility-v2", "policy_version": 3, "policy": "authoritative_adverse_plus_material_governed_specialist_xi_constraint_pre_solve", "squad_ineligible_ids": [], "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()), "uncertainty_diagnostic_ids": sorted(uncertainty_ids), "captain_eligible_ids": sorted(out.loc[out["captain_evidence_eligible"], "player_id"].astype(int).tolist()), "reasons": {str(k): v for k, v in sorted(reasons.items())}}
     if not specialist_report.empty:
         report["specialist_consensus"] = {str(int(row.player_id)): str(row.specialist_consensus) for row in specialist_report.itertuples(index=False) if int(row.specialist_source_count) > 0}
     return out.reset_index(drop=True), report
