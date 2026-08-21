@@ -100,9 +100,14 @@ def optimise_initial_horizon(
     C0 = n + n * t_count
     total_vars = n + 2 * n * t_count
 
-    def s(i: int) -> int: return S0 + i
-    def x(i: int, t: int) -> int: return X0 + t * n + i
-    def c(i: int, t: int) -> int: return C0 + t * n + i
+    def s(i: int) -> int:
+        return S0 + i
+
+    def x(i: int, t: int) -> int:
+        return X0 + t * n + i
+
+    def c(i: int, t: int) -> int:
+        return C0 + t * n + i
 
     bw = float(np.clip(bench_weight, 0.0, 0.35))
 
@@ -123,7 +128,9 @@ def optimise_initial_horizon(
     upper: list[float] = []
 
     def add(coeffs: dict[int, float], lo: float, hi: float) -> None:
-        rows.append(coeffs); lower.append(lo); upper.append(hi)
+        rows.append(coeffs)
+        lower.append(lo)
+        upper.append(hi)
 
     add({s(i): 1.0 for i in range(n)}, 15, 15)
     add({s(i): float(d.loc[i, "price"]) for i in range(n)}, -np.inf, float(budget))
@@ -157,24 +164,30 @@ def optimise_initial_horizon(
 
     A = lil_matrix((len(rows), total_vars), dtype=float)
     for r, coeffs in enumerate(rows):
-        for col, value in coeffs.items(): A[r, col] = value
+        for col, value in coeffs.items():
+            A[r, col] = value
     lb = np.zeros(total_vars, dtype=float)
     ub = np.ones(total_vars, dtype=float)
     by_id = {pid: i for i, pid in enumerate(pids)}
     for pid in locked:
-        if int(pid) in by_id: lb[s(by_id[int(pid)])] = 1.0
+        if int(pid) in by_id:
+            lb[s(by_id[int(pid)])] = 1.0
     for pid in banned:
-        if int(pid) in by_id: ub[s(by_id[int(pid)])] = 0.0
+        if int(pid) in by_id:
+            ub[s(by_id[int(pid)])] = 0.0
     if captain_eligible is not None:
         for i, pid in enumerate(pids):
             if pid not in captain_eligible:
-                for t in range(t_count): ub[c(i, t)] = 0.0
+                for t in range(t_count):
+                    ub[c(i, t)] = 0.0
     if xi_eligible is not None:
         for i, pid in enumerate(pids):
             if pid not in xi_eligible:
-                for t in range(t_count): ub[x(i, t)] = 0.0
+                for t in range(t_count):
+                    ub[x(i, t)] = 0.0
 
-    configured_gap = float(max(solver_relative_gap, 0.0)); time_limit = int(max(solver_time_limit, 1))
+    configured_gap = float(max(solver_relative_gap, 0.0))
+    time_limit = int(max(solver_time_limit, 1))
     result = milp(c=-objective, integrality=np.ones(total_vars, dtype=int), bounds=Bounds(lb, ub), constraints=LinearConstraint(A.tocsr(), np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)), options={"time_limit": time_limit, "mip_rel_gap": configured_gap})
     solver = _solver_metadata(result, relative_gap=configured_gap, time_limit=time_limit)
     if not result.success or result.x is None:
@@ -190,7 +203,8 @@ def optimise_initial_horizon(
     display_values = xp if display_col == value_col else values_for(display_col)
     gw1_map = {pid: float(display_values[i, 0]) for i, pid in enumerate(pids)}
     d["gw1_xp"] = d["player_id"].map(gw1_map).fillna(0.0)
-    d["decision_projection_col"] = value_col; d["display_projection_col"] = display_col
+    d["decision_projection_col"] = value_col
+    d["display_projection_col"] = display_col
     detail_columns = ["player_id", "web_name", "team_name", "position", "price", "expected_minutes", "start_probability", "appearance_probability", "tactical_role", "tactical_role_source", "role_confidence", "gw1_xp", "xpts_3", "xpts_5", "xpts_8", "raw_horizon_xp", "discounted_horizon_utility", "horizon_xp", "fixture_decay", "projection_confidence", "decision_projection_col", "display_projection_col"]
     cols = [col for col in detail_columns if col in d.columns]
     squad_df = d.loc[chosen, cols].sort_values(["position", "horizon_xp" if "horizon_xp" in cols else "gw1_xp"], ascending=[True, False])
