@@ -83,3 +83,32 @@ def test_constrained_player_leaves_alternative_xi_candidate(tmp_path: Path) -> N
     eligible, report = evidence_eligibility(_players(), _news(), specialist_predictions_path=path, now=now)
     assert 1 in report["xi_ineligible_ids"]
     assert bool(eligible.loc[eligible["player_id"].eq(2), "xi_evidence_eligible"].iloc[0]) is True
+
+
+def test_current_weak_squad_hierarchy_excludes_player_before_solve(tmp_path: Path) -> None:
+    now = datetime.now(timezone.utc)
+    hierarchy = tmp_path / "hierarchy.csv"
+    pd.DataFrame([
+        {
+            "player_id": 1,
+            "web_name": "Alpha",
+            "hierarchy_status": "academy",
+            "checked_at": (now - timedelta(hours=1)).isoformat(),
+            "valid_until": (now + timedelta(hours=4)).isoformat(),
+            "source_name": "Official Club",
+            "source_url": "https://example.com/alpha",
+            "evidence_note": "Academy pathway; not a normal senior autosub.",
+        }
+    ]).to_csv(hierarchy, index=False)
+
+    eligible, report = evidence_eligibility(
+        _players(),
+        _news(),
+        squad_hierarchy_path=hierarchy,
+        now=now,
+    )
+    alpha = eligible.loc[eligible["player_id"].eq(1)].iloc[0]
+    assert bool(alpha["squad_evidence_eligible"]) is False
+    assert bool(alpha["xi_evidence_eligible"]) is False
+    assert report["squad_ineligible_ids"] == [1]
+    assert "academy" in report["reasons"]["1"][0]
