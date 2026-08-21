@@ -2,58 +2,13 @@
   "schema_version": 1,
   "generated_for": "Apex FPL 2026/27",
   "sources": {
-    "airsenal": {
-      "repository": "alan-turing-institute/AIrsenal",
-      "commit": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717",
-      "role": "projection_worker",
-      "required_for_full_apex": true
-    },
-    "bpl": {
-      "repository": "anguswilliams91/bpl-next",
-      "commit": "e238f742d1ea1f72a6ce8b8466f9989d6b53a819",
-      "role": "airsenal_transitive_runtime_dependency",
-      "required_for_full_apex": true
-    },
-    "fpl_core_insights": {
-      "repository": "olbauday/FPL-Core-Insights",
-      "commit": "0accbdda2bb514497579802b8c2a6f6fd8fd7dc8",
-      "committed_at": "2026-08-18T08:03:36+00:00",
-      "resolved_at": "2026-08-18T09:50:27+00:00",
-      "resolved_age_hours": 1.78,
-      "newer_revision_available": false,
-      "resolution_policy": "moving main candidate refreshed on reliability branch for governed audit; CI must validate before merge",
-      "role": "enrichment_data",
-      "required_for_full_apex": true
-    },
-    "open_fpl_solver": {
-      "repository": "solioanalytics/open-fpl-solver",
-      "commit": "45131c5a41d7caadb5cb626c012bfa9111dca7a2",
-      "role": "independent_optimisation_reference",
-      "required_for_full_apex": false
-    },
-    "openfpl_scout_ai": {
-      "repository": "elcaiseri/OpenFPL-Scout-AI",
-      "commit": "4ddd5e78b456d83a2dd1cc5f29736a9986b33954",
-      "role": "optional_projection_reference",
-      "required_for_full_apex": false
-    },
-    "fpl_mcp": {
-      "repository": "pradhann/FPL-MCP",
-      "commit": "e799fff65abbc335f340119b3fbe7f97adc1245e",
-      "role": "api_query_reference",
-      "required_for_full_apex": false
-    },
-    "vaastav_history": {
-      "repository": "vaastav/Fantasy-Premier-League",
-      "commit": "8c97b2adb123863c3dd581e730f1360e89815ac2",
-      "role": "historical_backtesting_only",
-      "required_for_full_apex": false
-    },
-    "fpl_optimization_tools": {
-      "repository": "ratisil/FPL-Optimization-Tools",
-      "commit": "b8d4c561646a744de1719c47cbc3dd9126836afc",
-      "role": "independent_optimisation_reference",
-      "required_for_full_apex": false
-    }
+    "airsenal": {"repository":"alan-turing-institute/AIrsenal","commit":"8c7e18eba1488dd5a7d4bdb00d4da0a75e895717","role":"projection_worker","required_for_full_apex":true},
+    "bpl": {"repository":"anguswilliams91/bpl-next","commit":"e238f742d1ea1f72a6ce8b8466f9989d6b53a819","role":"airsenal_transitive_runtime_dependency","required_for_full_apex":true},
+    "fpl_core_insights": {"repository":"olbauday/FPL-Core-Insights","commit":"de6b1566cc88c76aaba3559b92cc49f7346126e9","committed_at":"2026-08-21T08:06:12+00:00","resolved_at":"2026-08-21T15:05:00+00:00","resolved_age_hours":6.98,"newer_revision_available":false,"resolution_policy":"deadline-day upstream candidate identified from current FPL Core main; production validation remains mandatory before promotion","role":"enrichment_data","required_for_full_apex":true},
+    "open_fpl_solver": {"repository":"solioanalytics/open-fpl-solver","commit":"45131c5a41d7caadb5cb626c012bfa9111dca7a2","role":"independent_optimisation_reference","required_for_full_apex":false},
+    "openfpl_scout_ai": {"repository":"elcaiseri/OpenFPL-Scout-AI","commit":"4ddd5e78b456d83a2dd1cc5f29736a9986b33954","role":"optional_projection_reference","required_for_full_apex":false},
+    "fpl_mcp": {"repository":"pradhann/FPL-MCP","commit":"e799fff65abbc335f340119b3fbe7f97adc1245e","role":"api_query_reference","required_for_full_apex":false},
+    "vaastav_history": {"repository":"vaastav/Fantasy-Premier-League","commit":"8c97b2adb123863c3dd581e730f1360e89815ac2","role":"historical_backtesting_only","required_for_full_apex":false},
+    "fpl_optimization_tools": {"repository":"ratisil/FPL-Optimization-Tools","commit":"b8d4c561646a744de1719c47cbc3dd9126836afc","role":"independent_optimisation_reference","required_for_full_apex":false}
   }
 }
