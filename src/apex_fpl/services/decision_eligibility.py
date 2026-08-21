@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
+from pathlib import Path
+
 import pandas as pd
 
 from apex_fpl.data.news import TRUSTED_SOURCE_TIERS
+from apex_fpl.services.player_identity import resolve_source_identities
+from apex_fpl.services.specialist_disagreement import (
+    SPECIALIST_SOURCES,
+    build_specialist_disagreement_report,
+)
 
 
 # Compatibility symbols retained for existing readiness/report consumers. They are
@@ -18,6 +26,7 @@ MIN_SOURCE_HEALTH_RATIO = 2 / 3
 MIN_HEALTHY_NEWS_SOURCES = 2
 MIN_FRESH_NEWS_ITEMS = 1
 SOURCE_HEALTH_WINDOW_HOURS = 120.0
+DEFAULT_SPECIALIST_PREDICTIONS = Path("data/manual/specialist_predictions.csv")
 
 
 def source_health_status(sources: list) -> dict:
@@ -74,17 +83,95 @@ def _decision_grade(events: pd.DataFrame) -> bool:
     )
 
 
+def _fresh_specialist_predictions(
+    players: pd.DataFrame,
+    path: Path,
+    *,
+    now: datetime | None = None,
+) -> pd.DataFrame:
+    """Load only current, identity-safe governed predicted-XI evidence."""
+    columns = {
+        "player_id",
+        "source_player_name",
+        "source",
+        "predicted_start",
+        "published_at",
+        "retrieved_at",
+        "expires_at",
+    }
+    if not path.exists():
+        return pd.DataFrame(columns=sorted(columns))
+    frame = pd.read_csv(path)
+    missing = columns - set(frame.columns)
+    if missing:
+        raise ValueError(
+            f"{path} missing governed specialist evidence columns: {sorted(missing)}"
+        )
+    current = pd.Timestamp(now or datetime.now(timezone.utc))
+    current = current.tz_localize("UTC") if current.tzinfo is None else current.tz_convert("UTC")
+    published = pd.to_datetime(frame["published_at"], utc=True, errors="coerce")
+    retrieved = pd.to_datetime(frame["retrieved_at"], utc=True, errors="coerce")
+    expires = pd.to_datetime(frame["expires_at"], utc=True, errors="coerce")
+    invalid = published.isna() | retrieved.isna() | expires.isna() | (expires <= published)
+    if invalid.any():
+        raise ValueError("governed specialist evidence has invalid timestamps")
+    frame = frame.loc[current <= expires].copy()
+    if frame.empty:
+        return frame
+    frame, identity = resolve_source_identities(
+        players,
+        frame,
+        source="fpl_specialist_presolve",
+        name_columns=("source_player_name",),
+        allow_name_fallback=False,
+        require_identity_witness=True,
+        raise_on_error=False,
+    )
+    if not identity.ready:
+        raise ValueError(
+            "specialist pre-solve identity failed: " + "; ".join(identity.blockers[:10])
+        )
+    frame["source"] = frame["source"].astype(str).str.strip().str.casefold()
+    frame = frame[frame["source"].isin(SPECIALIST_SOURCES)].copy()
+    frame["predicted_start"] = (
+        frame["predicted_start"]
+        .astype(str)
+        .str.strip()
+        .str.casefold()
+        .map(
+            {
+                "true": True,
+                "1": True,
+                "yes": True,
+                "start": True,
+                "false": False,
+                "0": False,
+                "no": False,
+                "bench": False,
+            }
+        )
+    )
+    if frame["predicted_start"].isna().any():
+        raise ValueError("specialist predicted_start must be boolean/start/bench")
+    return frame
+
+
 def evidence_eligibility(
     players: pd.DataFrame,
     news_audit: pd.DataFrame,
+    *,
+    specialist_predictions_path: Path | None = DEFAULT_SPECIALIST_PREDICTIONS,
+    now: datetime | None = None,
 ) -> tuple[pd.DataFrame, dict]:
-    """Apply an EV-first evidence policy before production solves.
+    """Apply governed football-state eligibility before production solves.
 
-    Quantitative uncertainty is recorded, not converted into a second minutes
-    penalty. A player remains XI/captain eligible when the best forecast already
-    prices uncertain minutes/role into xP. Only official adverse status, genuinely
-    corroborated negative evidence, or an unresolved positive/negative contradiction
-    can remove XI/captain eligibility. Squad and bench eligibility are never removed.
+    Canonical xP is never rewritten here. Official FPL and current decision-grade
+    official/news evidence remain authoritative. In addition, a fresh, identity-safe
+    consensus from at least two independent governed predicted-XI sources that a player
+    will not start makes that player squad-ineligible for the current solve unless
+    stronger current positive evidence contradicts it. Split/single-source evidence is
+    diagnostic only. This lets the optimiser self-heal instead of discovering the same
+    material non-start disagreement only after an expensive solve.
     """
     out = players.copy()
     out["evidence_state"] = "stable_silence"
@@ -92,6 +179,7 @@ def evidence_eligibility(
     roles = _numeric_column(out, "role_confidence").fillna(0)
     uncertain = minutes.lt(0.75) | roles.lt(0.65)
     xi_ok = pd.Series(True, index=out.index)
+    squad_ok = pd.Series(True, index=out.index)
     reasons: dict[int, list[str]] = {}
     uncertainty_ids: list[int] = []
 
@@ -100,6 +188,7 @@ def evidence_eligibility(
         audit = audit[audit["eligible_for_projection"].eq(True)].copy()  # noqa: E712
         audit = audit[audit["source_tier"].astype(str).isin(TRUSTED_SOURCE_TIERS)]
         audit["event_fingerprint"] = audit.apply(_normalise_event, axis=1)
+    authoritative_positive: set[int] = set()
     for idx, row in out.iterrows():
         pid = int(row["player_id"])
         official_status = str(row.get("status") or "a").casefold()
@@ -138,22 +227,47 @@ def evidence_eligibility(
             xi_ok.loc[idx] = False
             out.loc[idx, "evidence_state"] = "credible_negative"
             reasons[pid] = ["current decision-grade negative evidence"]
+        elif positive_supported:
+            authoritative_positive.add(pid)
+            out.loc[idx, "evidence_state"] = "credible_positive"
         elif uncertain.loc[idx]:
             uncertainty_ids.append(pid)
             out.loc[idx, "evidence_state"] = (
                 "uncertain_supported" if role_supported else "uncertain_unverified"
             )
 
+    specialist_report = pd.DataFrame()
+    if specialist_predictions_path is not None:
+        specialist = _fresh_specialist_predictions(
+            out,
+            Path(specialist_predictions_path),
+            now=now,
+        )
+        specialist_report = build_specialist_disagreement_report(out, specialist)
+        if not specialist_report.empty:
+            for row in specialist_report.itertuples(index=False):
+                pid = int(row.player_id)
+                if (
+                    int(row.specialist_source_count) >= 2
+                    and str(row.specialist_consensus) == "bench"
+                    and pid not in authoritative_positive
+                ):
+                    mask = out["player_id"].astype(int).eq(pid)
+                    squad_ok.loc[mask] = False
+                    xi_ok.loc[mask] = False
+                    out.loc[mask, "evidence_state"] = "specialist_nonstart_consensus"
+                    reasons.setdefault(pid, []).append(
+                        "fresh two-source governed predicted-XI non-start consensus"
+                    )
+
+    out["squad_evidence_eligible"] = squad_ok.astype(bool)
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
-    # Captain eligibility follows the same evidence ceiling as XI eligibility. Raw
-    # expected points plus exact no-show vice fallback determine captain value; we
-    # do not impose an additional minutes/start-probability safety preference.
     out["captain_evidence_eligible"] = xi_ok.astype(bool)
-    return out, {
-        # Keep the existing schema ID because the report shape is backwards
-        # compatible; the explicit policy field records the semantic change.
-        "contract": "apex-evidence-eligibility-v2",
-        "policy": "adverse_evidence_only_pre_solve",
+    squad_ineligible_ids = sorted(out.loc[~squad_ok, "player_id"].astype(int).tolist())
+    report = {
+        "contract": "apex-evidence-eligibility-v3",
+        "policy": "authoritative_adverse_plus_governed_specialist_consensus_pre_solve",
+        "squad_ineligible_ids": squad_ineligible_ids,
         "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()),
         "uncertainty_diagnostic_ids": sorted(uncertainty_ids),
         "captain_eligible_ids": sorted(
@@ -161,16 +275,19 @@ def evidence_eligibility(
         ),
         "reasons": {str(k): v for k, v in sorted(reasons.items())},
     }
+    if not specialist_report.empty:
+        report["specialist_consensus"] = {
+            str(int(row.player_id)): str(row.specialist_consensus)
+            for row in specialist_report.itertuples(index=False)
+            if int(row.specialist_source_count) > 0
+        }
+    # Removing only squad-ineligible rows is an eligibility constraint, not an xP
+    # mutation. Official identity/statistical surfaces remain sealed and auditable.
+    return out.loc[squad_ok].copy().reset_index(drop=True), report
 
 
 def captain_eligible_ids(players: pd.DataFrame) -> set[int]:
-    """Return evidence-eligible captain IDs without a duplicate minutes floor.
-
-    Expected minutes, start probability and appearance probability are already
-    inputs to canonical xP and to exact captain/vice no-show mechanics. Requiring
-    arbitrary numerical floors here would systematically favour secure minutes over
-    greater expected FPL points.
-    """
+    """Return evidence-eligible captain IDs without a duplicate minutes floor."""
     if "player_id" not in players.columns:
         return set()
     d = players.drop_duplicates("player_id").copy()
