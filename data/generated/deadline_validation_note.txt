@@ -1,0 +1,1 @@
+Run scripts/validate_core_candidate.py against the pinned candidate before any production promotion.
