@@ -148,20 +148,20 @@ def evidence_eligibility(players: pd.DataFrame, news_audit: pd.DataFrame, *, spe
             pid = int(row.player_id)
             if int(row.specialist_source_count) >= 2 and str(row.specialist_consensus) == "bench" and pid not in authoritative_positive:
                 mask = out["player_id"].astype(int).eq(pid)
-                xi_ok.loc[mask] = False
                 model_start = pd.to_numeric(out.loc[mask, "start_probability"], errors="coerce").fillna(0.0)
                 material_contradiction = bool((model_start >= MATERIAL_SPECIALIST_CONTRADICTION_START_PROBABILITY).any())
                 if material_contradiction:
                     squad_ok.loc[mask] = False
+                    xi_ok.loc[mask] = False
                     out.loc[mask, "evidence_state"] = "specialist_nonstart_material_contradiction"
                     reasons.setdefault(pid, []).append("fresh two-source governed non-start consensus materially contradicts model start probability")
                 else:
-                    out.loc[mask, "evidence_state"] = "specialist_nonstart_xi_constraint"
-                    reasons.setdefault(pid, []).append("fresh two-source governed non-start consensus removes XI eligibility")
+                    out.loc[mask, "evidence_state"] = "specialist_nonstart_diagnostic"
+                    reasons.setdefault(pid, []).append("fresh two-source governed non-start consensus recorded below hard-constraint contradiction threshold")
     out["squad_evidence_eligible"] = squad_ok.astype(bool)
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
     out["captain_evidence_eligible"] = xi_ok.astype(bool)
-    report = {"contract": "apex-evidence-eligibility-v3", "policy": "authoritative_adverse_plus_tiered_governed_specialist_consensus_pre_solve", "squad_ineligible_ids": sorted(out.loc[~squad_ok, "player_id"].astype(int).tolist()), "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()), "uncertainty_diagnostic_ids": sorted(uncertainty_ids), "captain_eligible_ids": sorted(out.loc[out["captain_evidence_eligible"], "player_id"].astype(int).tolist()), "reasons": {str(k): v for k, v in sorted(reasons.items())}}
+    report = {"contract": "apex-evidence-eligibility-v3", "policy": "authoritative_adverse_plus_material_governed_specialist_consensus_pre_solve", "squad_ineligible_ids": sorted(out.loc[~squad_ok, "player_id"].astype(int).tolist()), "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()), "uncertainty_diagnostic_ids": sorted(uncertainty_ids), "captain_eligible_ids": sorted(out.loc[out["captain_evidence_eligible"], "player_id"].astype(int).tolist()), "reasons": {str(k): v for k, v in sorted(reasons.items())}}
     if not specialist_report.empty:
         report["specialist_consensus"] = {str(int(row.player_id)): str(row.specialist_consensus) for row in specialist_report.itertuples(index=False) if int(row.specialist_source_count) > 0}
     return out.loc[squad_ok].copy().reset_index(drop=True), report
