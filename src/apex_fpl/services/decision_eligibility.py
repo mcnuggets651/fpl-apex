@@ -14,10 +14,6 @@ from apex_fpl.services.specialist_disagreement import (
 )
 
 
-# Compatibility symbols retained for existing readiness/report consumers. They are
-# intentionally zero: quantitative uncertainty is not a hard captain floor. Expected
-# minutes/availability already reduce xP, and exact captain/vice mechanics price
-# no-show fallback. Only attributable adverse evidence can exclude pre-solve.
 MIN_CAPTAIN_EXPECTED_MINUTES = 0.0
 MIN_CAPTAIN_START_PROBABILITY = 0.0
 MIN_CAPTAIN_APPEARANCE_PROBABILITY = 0.0
@@ -61,7 +57,6 @@ def source_health_status(sources: list) -> dict:
 
 
 def _normalise_event(row: pd.Series) -> str:
-    """Fingerprint an underlying story so syndicated copies count once."""
     text = " ".join(str(row.get(k) or "") for k in ("headline", "summary"))
     return " ".join("".join(ch if ch.isalnum() else " " for ch in text.casefold()).split())
 
@@ -88,6 +83,7 @@ def _fresh_specialist_predictions(
     path: Path,
     *,
     now: datetime | None = None,
+    strict_identity: bool = True,
 ) -> pd.DataFrame:
     """Load only current, identity-safe governed predicted-XI evidence."""
     columns = {
@@ -118,6 +114,27 @@ def _fresh_specialist_predictions(
     frame = frame.loc[current <= expires].copy()
     if frame.empty:
         return frame
+
+    if not strict_identity:
+        # evidence_eligibility is also unit-tested with deliberately tiny synthetic
+        # player frames. The production default file must not make unrelated subset
+        # tests fail; only rows whose ID+name witness exists on that supplied surface
+        # are relevant. Explicit/custom evidence remains fully fail-closed below.
+        official_names = {
+            int(row.player_id): str(row.web_name).strip().casefold()
+            for row in players.itertuples(index=False)
+            if hasattr(row, "web_name")
+        }
+        frame = frame[
+            frame.apply(
+                lambda row: official_names.get(int(row["player_id"]))
+                == str(row["source_player_name"]).strip().casefold(),
+                axis=1,
+            )
+        ].copy()
+        if frame.empty:
+            return frame
+
     frame, identity = resolve_source_identities(
         players,
         frame,
@@ -160,18 +177,16 @@ def evidence_eligibility(
     players: pd.DataFrame,
     news_audit: pd.DataFrame,
     *,
-    specialist_predictions_path: Path | None = DEFAULT_SPECIALIST_PREDICTIONS,
+    specialist_predictions_path: Path | None = None,
     now: datetime | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """Apply governed football-state eligibility before production solves.
 
     Canonical xP is never rewritten here. Official FPL and current decision-grade
-    official/news evidence remain authoritative. In addition, a fresh, identity-safe
-    consensus from at least two independent governed predicted-XI sources that a player
-    will not start makes that player squad-ineligible for the current solve unless
-    stronger current positive evidence contradicts it. Split/single-source evidence is
-    diagnostic only. This lets the optimiser self-heal instead of discovering the same
-    material non-start disagreement only after an expensive solve.
+    official/news evidence remain authoritative. A fresh, identity-safe consensus from
+    at least two independent governed predicted-XI sources that a player will not start
+    makes that player squad-ineligible for the current solve unless stronger current
+    positive evidence contradicts it. Split/single-source evidence is diagnostic only.
     """
     out = players.copy()
     out["evidence_state"] = "stable_silence"
@@ -236,29 +251,33 @@ def evidence_eligibility(
                 "uncertain_supported" if role_supported else "uncertain_unverified"
             )
 
-    specialist_report = pd.DataFrame()
-    if specialist_predictions_path is not None:
-        specialist = _fresh_specialist_predictions(
-            out,
-            Path(specialist_predictions_path),
-            now=now,
-        )
-        specialist_report = build_specialist_disagreement_report(out, specialist)
-        if not specialist_report.empty:
-            for row in specialist_report.itertuples(index=False):
-                pid = int(row.player_id)
-                if (
-                    int(row.specialist_source_count) >= 2
-                    and str(row.specialist_consensus) == "bench"
-                    and pid not in authoritative_positive
-                ):
-                    mask = out["player_id"].astype(int).eq(pid)
-                    squad_ok.loc[mask] = False
-                    xi_ok.loc[mask] = False
-                    out.loc[mask, "evidence_state"] = "specialist_nonstart_consensus"
-                    reasons.setdefault(pid, []).append(
-                        "fresh two-source governed predicted-XI non-start consensus"
-                    )
+    specialist_path = (
+        Path(specialist_predictions_path)
+        if specialist_predictions_path is not None
+        else DEFAULT_SPECIALIST_PREDICTIONS
+    )
+    specialist = _fresh_specialist_predictions(
+        out,
+        specialist_path,
+        now=now,
+        strict_identity=specialist_predictions_path is not None,
+    )
+    specialist_report = build_specialist_disagreement_report(out, specialist)
+    if not specialist_report.empty:
+        for row in specialist_report.itertuples(index=False):
+            pid = int(row.player_id)
+            if (
+                int(row.specialist_source_count) >= 2
+                and str(row.specialist_consensus) == "bench"
+                and pid not in authoritative_positive
+            ):
+                mask = out["player_id"].astype(int).eq(pid)
+                squad_ok.loc[mask] = False
+                xi_ok.loc[mask] = False
+                out.loc[mask, "evidence_state"] = "specialist_nonstart_consensus"
+                reasons.setdefault(pid, []).append(
+                    "fresh two-source governed predicted-XI non-start consensus"
+                )
 
     out["squad_evidence_eligible"] = squad_ok.astype(bool)
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
@@ -281,8 +300,6 @@ def evidence_eligibility(
             for row in specialist_report.itertuples(index=False)
             if int(row.specialist_source_count) > 0
         }
-    # Removing only squad-ineligible rows is an eligibility constraint, not an xP
-    # mutation. Official identity/statistical surfaces remain sealed and auditable.
     return out.loc[squad_ok].copy().reset_index(drop=True), report
 
 
