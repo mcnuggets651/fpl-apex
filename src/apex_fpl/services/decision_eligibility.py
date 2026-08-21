@@ -19,7 +19,9 @@ MIN_HEALTHY_NEWS_SOURCES = 2
 MIN_FRESH_NEWS_ITEMS = 1
 SOURCE_HEALTH_WINDOW_HOURS = 120.0
 DEFAULT_SPECIALIST_PREDICTIONS = Path("data/manual/specialist_predictions.csv")
+DEFAULT_SQUAD_HIERARCHY = Path("data/manual/squad_hierarchy.csv")
 MATERIAL_SPECIALIST_CONTRADICTION_START_PROBABILITY = 0.80
+WEAK_SQUAD_HIERARCHY = {"academy", "u21", "youth", "fringe", "reserve"}
 
 
 def source_health_status(sources: list) -> dict:
@@ -93,7 +95,42 @@ def _fresh_specialist_predictions(players: pd.DataFrame, path: Path, *, now: dat
     return frame
 
 
-def evidence_eligibility(players: pd.DataFrame, news_audit: pd.DataFrame, *, specialist_predictions_path: Path | None = None, now: datetime | None = None) -> tuple[pd.DataFrame, dict]:
+def _fresh_squad_hierarchy(players: pd.DataFrame, path: Path, *, now: datetime | None = None, strict_identity: bool = True) -> pd.DataFrame:
+    required = {"player_id", "hierarchy_status", "valid_until"}
+    if not path.exists():
+        return pd.DataFrame(columns=sorted(required | {"web_name"}))
+    frame = pd.read_csv(path)
+    missing = required - set(frame.columns)
+    if missing:
+        raise ValueError(f"{path} missing governed hierarchy columns: {sorted(missing)}")
+    name_col = "source_player_name" if "source_player_name" in frame.columns else "web_name" if "web_name" in frame.columns else None
+    if name_col is None:
+        raise ValueError(f"{path} requires an independent player-name witness")
+    current = pd.Timestamp(now or datetime.now(timezone.utc))
+    current = current.tz_localize("UTC") if current.tzinfo is None else current.tz_convert("UTC")
+    expiry = pd.to_datetime(frame["valid_until"], utc=True, errors="coerce")
+    invalid = expiry.isna()
+    if invalid.any():
+        if strict_identity:
+            raise ValueError("governed squad hierarchy has invalid valid_until timestamps")
+        frame = frame.loc[~invalid].copy()
+        expiry = expiry.loc[~invalid]
+    frame = frame.loc[current <= expiry].copy()
+    if frame.empty:
+        return frame
+    if not strict_identity:
+        official_names = {int(row.player_id): str(row.web_name).strip().casefold() for row in players.itertuples(index=False) if hasattr(row, "web_name")}
+        frame = frame[frame.apply(lambda row: official_names.get(int(row["player_id"])) == str(row[name_col]).strip().casefold(), axis=1)].copy()
+        if frame.empty:
+            return frame
+    frame, identity = resolve_source_identities(players, frame, source="squad_hierarchy_presolve", name_columns=(name_col,), allow_name_fallback=False, require_identity_witness=True, raise_on_error=False)
+    if not identity.ready:
+        raise ValueError("squad hierarchy pre-solve identity failed: " + "; ".join(identity.blockers[:10]))
+    frame["hierarchy_status"] = frame["hierarchy_status"].astype(str).str.strip().str.casefold()
+    return frame
+
+
+def evidence_eligibility(players: pd.DataFrame, news_audit: pd.DataFrame, *, specialist_predictions_path: Path | None = None, squad_hierarchy_path: Path | None = None, now: datetime | None = None) -> tuple[pd.DataFrame, dict]:
     """Apply governed football-state eligibility before production solves without rewriting xP."""
     out = players.copy()
     out["evidence_state"] = "stable_silence"
@@ -140,6 +177,20 @@ def evidence_eligibility(players: pd.DataFrame, news_audit: pd.DataFrame, *, spe
         elif uncertain.loc[idx]:
             uncertainty_ids.append(pid)
             out.loc[idx, "evidence_state"] = "uncertain_supported" if role_supported else "uncertain_unverified"
+
+    hierarchy_path = Path(squad_hierarchy_path) if squad_hierarchy_path is not None else DEFAULT_SQUAD_HIERARCHY
+    hierarchy = _fresh_squad_hierarchy(out, hierarchy_path, now=now, strict_identity=squad_hierarchy_path is not None)
+    if not hierarchy.empty:
+        for row in hierarchy.itertuples(index=False):
+            pid = int(row.player_id)
+            status = str(row.hierarchy_status).strip().casefold()
+            if status in WEAK_SQUAD_HIERARCHY:
+                mask = out["player_id"].astype(int).eq(pid)
+                squad_ok.loc[mask] = False
+                xi_ok.loc[mask] = False
+                out.loc[mask, "evidence_state"] = "authoritative_weak_squad_hierarchy"
+                reasons.setdefault(pid, []).append(f"current governed squad hierarchy is {status}; excluded from production squad pre-solve")
+
     specialist_path = Path(specialist_predictions_path) if specialist_predictions_path is not None else DEFAULT_SPECIALIST_PREDICTIONS
     specialist = _fresh_specialist_predictions(out, specialist_path, now=now, strict_identity=specialist_predictions_path is not None)
     specialist_report = build_specialist_disagreement_report(out, specialist)
@@ -160,7 +211,7 @@ def evidence_eligibility(players: pd.DataFrame, news_audit: pd.DataFrame, *, spe
     out["squad_evidence_eligible"] = squad_ok.astype(bool)
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
     out["captain_evidence_eligible"] = xi_ok.astype(bool)
-    report = {"contract": "apex-evidence-eligibility-v2", "policy_version": 3, "policy": "authoritative_adverse_plus_material_governed_specialist_xi_constraint_pre_solve", "squad_ineligible_ids": [], "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()), "uncertainty_diagnostic_ids": sorted(uncertainty_ids), "captain_eligible_ids": sorted(out.loc[out["captain_evidence_eligible"], "player_id"].astype(int).tolist()), "reasons": {str(k): v for k, v in sorted(reasons.items())}}
+    report = {"contract": "apex-evidence-eligibility-v2", "policy_version": 4, "policy": "authoritative_adverse_plus_governed_hierarchy_squad_constraint_plus_material_specialist_xi_constraint_pre_solve", "squad_ineligible_ids": sorted(out.loc[~squad_ok, "player_id"].astype(int).tolist()), "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()), "uncertainty_diagnostic_ids": sorted(uncertainty_ids), "captain_eligible_ids": sorted(out.loc[out["captain_evidence_eligible"], "player_id"].astype(int).tolist()), "reasons": {str(k): v for k, v in sorted(reasons.items())}}
     if not specialist_report.empty:
         report["specialist_consensus"] = {str(int(row.player_id)): str(row.specialist_consensus) for row in specialist_report.itertuples(index=False) if int(row.specialist_source_count) > 0}
     return out.reset_index(drop=True), report
