@@ -37,7 +37,7 @@ def test_reconcile_only_repairs_identical_finalized_squads() -> None:
     assert reconcile_finalized_stability(different).candidate_pool_stable is False
 
 
-def test_wrapper_never_duplicates_expensive_joint_solve() -> None:
+def test_missing_in_solve_certificate_falls_back_to_broader_solve() -> None:
     calls: list[int] = []
     result = _Result()
 
@@ -48,14 +48,14 @@ def test_wrapper_never_duplicates_expensive_joint_solve() -> None:
     returned = optimise_with_bounded_stability_retry(
         optimiser,
         exact_candidate_limit=16,
+        retry_exact_candidate_limit=24,
     )
 
-    assert calls == [16]
-    assert returned is result
+    assert calls == [16, 24]
     assert returned.candidate_pool_stable is False
 
 
-def test_single_pass_preserves_optimizer_stability_certificate() -> None:
+def test_canonical_in_solve_certificate_avoids_duplicate_expensive_solve() -> None:
     calls: list[int] = []
     stable_ids = tuple(range(101, 116))
     stable = _Result(
@@ -63,7 +63,7 @@ def test_single_pass_preserves_optimizer_stability_certificate() -> None:
         candidate_pool_stable=True,
         small_pool_selected_ids=stable_ids,
         full_pool_selected_ids=stable_ids,
-        note="certified in solve",
+        note="Candidate convergence was checked between rank prefixes 32 and 48; rank 64 is conditional.",
     )
 
     def optimiser(*args, **kwargs):
@@ -78,23 +78,65 @@ def test_single_pass_preserves_optimizer_stability_certificate() -> None:
     assert calls == [16]
     assert returned.candidate_pool_stable is True
     assert returned.selected == stable.selected
+    assert "no duplicate joint optimisation" in returned.note
 
 
-def test_single_pass_still_reconciles_identical_final_ids() -> None:
-    calls = 0
+def test_certificate_must_cover_historical_broader_requirement() -> None:
+    calls: list[int] = []
+    ids = tuple(range(101, 116))
+
+    def optimiser(*args, **kwargs):
+        limit = int(kwargs.get("exact_candidate_limit", 16))
+        calls.append(limit)
+        return _Result(
+            selected=_Selected(squad_ids=ids),
+            candidate_pool_stable=True,
+            small_pool_selected_ids=ids,
+            full_pool_selected_ids=ids,
+            note="Candidate convergence was checked between rank prefixes 16 and 20.",
+        )
+
+    optimise_with_bounded_stability_retry(
+        optimiser,
+        exact_candidate_limit=16,
+        retry_exact_candidate_limit=24,
+    )
+    assert calls == [16, 24]
+
+
+def test_certificate_requires_full_prefix_winner_to_match_selected() -> None:
+    calls: list[int] = []
+    selected_ids = tuple(range(101, 116))
+    other_ids = tuple(range(201, 216))
+
+    def optimiser(*args, **kwargs):
+        calls.append(int(kwargs.get("exact_candidate_limit", 16)))
+        return _Result(
+            selected=_Selected(squad_ids=selected_ids),
+            candidate_pool_stable=True,
+            small_pool_selected_ids=selected_ids,
+            full_pool_selected_ids=other_ids,
+            note="Candidate convergence was checked between rank prefixes 32 and 48.",
+        )
+
+    optimise_with_bounded_stability_retry(optimiser, exact_candidate_limit=16)
+    assert calls == [16, 24]
+
+
+def test_reconciled_identity_without_breadth_proof_still_retries() -> None:
+    calls: list[int] = []
     ids = tuple(range(1, 16))
 
     def optimiser(*args, **kwargs):
-        nonlocal calls
-        calls += 1
+        calls.append(int(kwargs.get("exact_candidate_limit", 16)))
         return _Result(
             candidate_pool_stable=False,
             small_pool_selected_ids=ids,
             full_pool_selected_ids=ids,
         )
 
-    returned = optimise_with_bounded_stability_retry(optimiser)
-    assert calls == 1
+    returned = optimise_with_bounded_stability_retry(optimiser, exact_candidate_limit=16)
+    assert calls == [16, 24]
     assert returned.candidate_pool_stable is True
 
 
