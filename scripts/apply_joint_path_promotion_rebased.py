@@ -2,10 +2,9 @@
 """Run final promotion with stability correction and football-reality gating.
 
 The canonical optimiser remains unchanged. After it produces the final squad this
-wrapper applies a non-mutating selection-reality audit. A candidate that is
-mathematically optimal but structurally fragile (for example an unusable first
-bench, unresolved specialist XI conflict, or high transfer risk) is withheld rather
-than published as actionable.
+wrapper applies governed promotion-time bench ordering, then a non-mutating
+selection-reality audit. A mathematically attractive bench order cannot put a weak
+autosub ahead of a credible one merely because its conditional xP is higher.
 """
 from __future__ import annotations
 
@@ -20,6 +19,9 @@ import apex_fpl.services.joint_initial_path as joint
 from apex_fpl.services.decision_bundle import DecisionBundle
 from apex_fpl.services.finalized_stability import optimise_with_bounded_stability_retry
 from apex_fpl.services.selection_reality import audit_selected_squad_reality
+
+FIRST_BENCH_MIN_APPEARANCE = 0.70
+FIRST_BENCH_MIN_EXPECTED_MINUTES = 30.0
 
 
 def _frame_if_present(path: Path) -> pd.DataFrame | None:
@@ -39,9 +41,6 @@ def _current_hierarchy_evidence(path: Path) -> pd.DataFrame | None:
         return frame
     expiry = pd.to_datetime(frame["valid_until"], errors="coerce", utc=True)
     now = pd.Timestamp.now(tz="UTC")
-    # A row that declares a validity window must parse cleanly and still be live.
-    # Rows without an expiry remain supported for tests/legacy inputs, but governed
-    # production evidence added by this PR always supplies valid_until.
     has_value = frame["valid_until"].fillna("").astype(str).str.strip().ne("")
     current = (~has_value) | (expiry.notna() & expiry.ge(now))
     return frame.loc[current].copy()
@@ -87,6 +86,57 @@ def _bench_ids(rec: dict, squad: list[dict], xi_ids: set[int]) -> list[int]:
     ]
 
 
+def _promote_credible_first_bench(
+    payload: dict,
+    players: pd.DataFrame,
+    bench_ids: list[int],
+) -> list[int]:
+    """Apply the publication autosub floor before the final reality audit.
+
+    This is generic and data-driven: no player is manually banned. If the mechanics
+    layer placed a sub-threshold player first while another already-selected outfield
+    substitute clears the governed floor, promotion moves the first credible autosub
+    to slot one and preserves the relative order of the remaining bench. If nobody
+    clears the floor, the final fail-closed reality gate still blocks publication.
+    """
+    if not bench_ids:
+        return bench_ids
+    indexed = players.drop_duplicates("player_id").set_index("player_id")
+
+    def credible(pid: int) -> bool:
+        if int(pid) not in indexed.index:
+            return False
+        row = indexed.loc[int(pid)]
+        app = pd.to_numeric(pd.Series([row.get("appearance_probability", 0.0)]), errors="coerce").fillna(0.0).iloc[0]
+        minutes = pd.to_numeric(pd.Series([row.get("expected_minutes", 0.0)]), errors="coerce").fillna(0.0).iloc[0]
+        return float(app) >= FIRST_BENCH_MIN_APPEARANCE or float(minutes) >= FIRST_BENCH_MIN_EXPECTED_MINUTES
+
+    if credible(bench_ids[0]):
+        return bench_ids
+    replacement = next((pid for pid in bench_ids[1:] if credible(pid)), None)
+    if replacement is None:
+        return bench_ids
+
+    reordered = [int(replacement)] + [int(pid) for pid in bench_ids if int(pid) != int(replacement)]
+    rec = payload.get("recommendation") or {}
+    names = {
+        int(row.player_id): str(row.web_name)
+        for row in players[["player_id", "web_name"]].drop_duplicates("player_id").itertuples(index=False)
+    }
+    rec["outfield_bench_order_ids"] = reordered
+    rec["outfield_bench_order"] = [names.get(pid, str(pid)) for pid in reordered]
+    payload.setdefault("internal_diagnostics", {})["bench_promotion"] = {
+        "contract": "apex-first-autosub-promotion-v1",
+        "changed": True,
+        "original_order_ids": [int(pid) for pid in bench_ids],
+        "promoted_order_ids": reordered,
+        "first_bench_min_appearance": FIRST_BENCH_MIN_APPEARANCE,
+        "first_bench_min_expected_minutes": FIRST_BENCH_MIN_EXPECTED_MINUTES,
+        "rule": "appearance_probability >= floor OR expected_minutes >= floor",
+    }
+    return reordered
+
+
 def _withhold_for_reality(
     payload: dict,
     blockers: tuple[str, ...],
@@ -105,16 +155,10 @@ def _withhold_for_reality(
     }
     payload["ready_to_act"] = False
     payload["safe_to_act"] = False
-    payload["blockers"] = list(
-        dict.fromkeys((payload.get("blockers") or []) + list(blockers))
-    )
-    payload["warnings"] = list(
-        dict.fromkeys((payload.get("warnings") or []) + list(warnings))
-    )
+    payload["blockers"] = list(dict.fromkeys((payload.get("blockers") or []) + list(blockers)))
+    payload["warnings"] = list(dict.fromkeys((payload.get("warnings") or []) + list(warnings)))
     payload["recommendation"] = None
-    (output_dir / "apex_recommendation_latest.json").write_text(
-        json.dumps(payload, indent=2), encoding="utf-8"
-    )
+    (output_dir / "apex_recommendation_latest.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     (output_dir / "apex_recommendation_latest.md").write_text(
         "# Apex Unified Recommendation — NOT READY\n\n"
         + "\n".join(f"- {row}" for row in payload["blockers"])
@@ -129,9 +173,7 @@ def _withhold_for_reality(
         context["production_result"] = None
         context["blockers"] = list(payload["blockers"])
         context["warnings"] = list(payload["warnings"])
-        context.setdefault("diagnostics", {})["selection_reality"] = diagnostics[
-            "selection_reality"
-        ]
+        context.setdefault("diagnostics", {})["selection_reality"] = diagnostics["selection_reality"]
         context_path.write_text(json.dumps(context, indent=2), encoding="utf-8")
 
 
@@ -152,10 +194,6 @@ def _audit_final_selection(*, output_dir: Path, bundle_dir: Path) -> None:
     xi_ids = _ids_from_rows(xi)
     bench_ids = _bench_ids(rec, squad, xi_ids)
 
-    # Audit the exact sealed player surface used by the optimiser, not the rendered
-    # recommendation rows. Rendered rows are an output contract and may omit columns
-    # such as appearance_probability; treating an omitted field as zero would create
-    # a false readiness failure (or, worse, a selector-dependent gate).
     bundle = DecisionBundle.load(bundle_dir)
     players = bundle.to_pipeline_output().players.copy()
     if "player_id" not in players.columns:
@@ -164,6 +202,8 @@ def _audit_final_selection(*, output_dir: Path, bundle_dir: Path) -> None:
     sealed_ids = set(players["player_id"].astype(int))
     if sealed_ids != selected_ids or len(players) != 15:
         raise SystemExit("selection reality gate selected IDs do not reconcile to sealed player surface")
+
+    bench_ids = _promote_credible_first_bench(payload, players, bench_ids)
 
     result = audit_selected_squad_reality(
         players,
@@ -174,6 +214,8 @@ def _audit_final_selection(*, output_dir: Path, bundle_dir: Path) -> None:
         hierarchy_evidence=_current_hierarchy_evidence(Path("data/manual/squad_hierarchy.csv")),
         transfer_report=_frame_if_present(output_dir / "transfer_intelligence.csv"),
         require_current_evidence=True,
+        first_bench_min_appearance=FIRST_BENCH_MIN_APPEARANCE,
+        first_bench_min_expected_minutes=FIRST_BENCH_MIN_EXPECTED_MINUTES,
     )
     payload.setdefault("internal_diagnostics", {})["selection_reality"] = {
         "contract": "apex-selection-reality-v1",
@@ -185,13 +227,7 @@ def _audit_final_selection(*, output_dir: Path, bundle_dir: Path) -> None:
         "rows": json.loads(result.report.to_json(orient="records")),
     }
     if not result.ready_for_high_confidence:
-        _withhold_for_reality(
-            payload,
-            result.blockers,
-            result.warnings,
-            result.report,
-            output_dir=output_dir,
-        )
+        _withhold_for_reality(payload, result.blockers, result.warnings, result.report, output_dir=output_dir)
         raise SystemExit("selected-squad football reality gate is not ready")
     recommendation_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
