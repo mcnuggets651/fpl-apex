@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 import re
 import unicodedata
 
@@ -63,12 +64,46 @@ def _text(value: object) -> str:
     return str(value).strip()
 
 
+def parse_exact_player_id(value: object, *, label: str = "player_id") -> int:
+    """Parse an FPL player ID without truncation, rounding or boolean coercion.
+
+    CSV readers may represent integer IDs as floats (for example ``10.0``), which is
+    acceptable because it is still exactly integral. Fractional values such as
+    ``10.5`` are corruption and must never become player 10 through ``int(float(...))``.
+    Missing, non-finite, non-numeric, boolean and non-positive values also fail closed.
+    """
+    if value is None or isinstance(value, bool):
+        raise IdentityIntegrityError(f"{label} is null or invalid: {value!r}")
+    try:
+        if pd.isna(value):
+            raise IdentityIntegrityError(f"{label} is null or invalid: {value!r}")
+    except (TypeError, ValueError):
+        raise IdentityIntegrityError(f"{label} is not a scalar identity: {value!r}") from None
+
+    text = str(value).strip()
+    if not text:
+        raise IdentityIntegrityError(f"{label} is null or invalid: {value!r}")
+    try:
+        numeric = Decimal(text)
+    except (InvalidOperation, ValueError) as exc:
+        raise IdentityIntegrityError(f"{label} is non-numeric: {value!r}") from exc
+    if not numeric.is_finite():
+        raise IdentityIntegrityError(f"{label} is non-finite: {value!r}")
+    integral = numeric.to_integral_value()
+    if numeric != integral:
+        raise IdentityIntegrityError(f"{label} is non-integral: {value!r}")
+    parsed = int(integral)
+    if parsed <= 0:
+        raise IdentityIntegrityError(f"{label} must be a positive integer: {value!r}")
+    return parsed
+
+
 def build_official_identity_registry(official: pd.DataFrame) -> pd.DataFrame:
     """Build the current Official-FPL identity registry without hiding corruption.
 
     Numeric Official FPL IDs are the authority. Provider/manual names are only
-    independent witnesses. Duplicate or null/non-numeric Official IDs are a hard
-    integrity failure; never de-duplicate them silently.
+    independent witnesses. Duplicate or null/non-integral Official IDs are a hard
+    integrity failure; never de-duplicate or truncate them silently.
     """
     required = {"player_id", "web_name"}
     if not required.issubset(official.columns):
@@ -91,14 +126,18 @@ def build_official_identity_registry(official: pd.DataFrame) -> pd.DataFrame:
         if col in official.columns
     ]
     out = official[cols].copy()
-    try:
-        numeric_ids = pd.to_numeric(out["player_id"], errors="raise")
-    except (TypeError, ValueError) as exc:
-        raise IdentityIntegrityError("official FPL identity contains non-numeric player IDs") from exc
-    if numeric_ids.isna().any():
-        raise IdentityIntegrityError("official FPL identity contains null player IDs")
-    out["player_id"] = numeric_ids.astype(int)
-    duplicates = sorted(out.loc[out["player_id"].duplicated(keep=False), "player_id"].unique().tolist())
+    parsed_ids: list[int] = []
+    for idx, value in out["player_id"].items():
+        try:
+            parsed_ids.append(parse_exact_player_id(value))
+        except IdentityIntegrityError as exc:
+            raise IdentityIntegrityError(
+                f"official FPL identity has invalid player ID at row {idx}: {exc}"
+            ) from exc
+    out["player_id"] = parsed_ids
+    duplicates = sorted(
+        out.loc[out["player_id"].duplicated(keep=False), "player_id"].unique().tolist()
+    )
     if duplicates:
         raise IdentityIntegrityError(
             f"official FPL identity contains duplicate player IDs: {duplicates[:20]}"
@@ -219,16 +258,24 @@ def validate_required_id_coverage(
             "source_ids": 0,
             "missing_ids": sorted(official_ids),
             "extra_ids": [],
+            "invalid_id_rows": [],
             "blockers": [f"{source} lacks required {id_col} for full-roster identity coverage"],
         }
-    parsed = pd.to_numeric(source_rows[id_col], errors="coerce")
-    invalid_rows = source_rows.index[parsed.isna()].tolist()
-    source_ids = set(parsed.dropna().astype(int).tolist())
+
+    parsed_ids: list[int] = []
+    invalid_id_rows: list[dict] = []
+    for idx, value in source_rows[id_col].items():
+        try:
+            parsed_ids.append(parse_exact_player_id(value, label=id_col))
+        except IdentityIntegrityError as exc:
+            invalid_id_rows.append({"row": idx, "value": value, "reason": str(exc)})
+    source_ids = set(parsed_ids)
     missing = sorted(official_ids - source_ids)
     extra = sorted(source_ids - official_ids)
     blockers: list[str] = []
-    if invalid_rows:
-        blockers.append(f"{source} has non-numeric/null player IDs at rows {invalid_rows[:20]}")
+    if invalid_id_rows:
+        bad_rows = [row["row"] for row in invalid_id_rows[:20]]
+        blockers.append(f"{source} has invalid/non-integral player IDs at rows {bad_rows}")
     if missing:
         blockers.append(f"{source} is missing {len(missing)} Official FPL player IDs: {missing[:20]}")
     if extra:
@@ -239,6 +286,7 @@ def validate_required_id_coverage(
         "source_ids": len(source_ids),
         "missing_ids": missing,
         "extra_ids": extra,
+        "invalid_id_rows": invalid_id_rows,
         "blockers": blockers,
     }
 
@@ -270,7 +318,9 @@ def resolve_source_identities(
 
     frame = source_rows.copy()
     if frame.empty:
-        result = IdentityResolution(source, True, 0, 0, 0, 0, 0, 0, 1.0, tuple(), tuple(), pd.DataFrame())
+        result = IdentityResolution(
+            source, True, 0, 0, 0, 0, 0, 0, 1.0, tuple(), tuple(), pd.DataFrame()
+        )
         return frame, result
 
     report_rows: list[dict] = []
@@ -282,18 +332,23 @@ def resolve_source_identities(
     for idx, row in frame.iterrows():
         raw_id = row.get(id_col) if id_col in frame.columns else None
         pid: int | None = None
-        if raw_id is not None and not pd.isna(raw_id):
+        invalid_id_reason: str | None = None
+        id_present = raw_id is not None and not pd.isna(raw_id)
+        if id_present:
             try:
-                pid = int(float(raw_id))
-            except (TypeError, ValueError):
-                pid = None
+                pid = parse_exact_player_id(raw_id, label=id_col)
+            except IdentityIntegrityError as exc:
+                invalid_id_reason = str(exc)
         source_name = _source_name(row, name_columns)
         witness = bool(_norm(source_name))
         status = "unresolved"
         reason = ""
         resolved_id: int | None = None
 
-        if pid is not None:
+        if invalid_id_reason is not None:
+            unresolved += 1
+            reason = f"invalid explicit {id_col}: {invalid_id_reason}"
+        elif pid is not None:
             if pid not in by_id.index:
                 unresolved += 1
                 reason = f"unknown official FPL player_id={pid}"
@@ -344,7 +399,10 @@ def resolve_source_identities(
                 else:
                     fallback += 1
                     status = "name_fallback"
-                    reason = f"resolved unique name {source_name!r} to official player_id={resolved_id}"
+                    reason = (
+                        f"resolved unique name {source_name!r} "
+                        f"to official player_id={resolved_id}"
+                    )
                     warnings.append(f"{source}: {reason}")
             elif len(matches) > 1:
                 ambiguous += 1
@@ -377,9 +435,11 @@ def resolve_source_identities(
             }
         )
 
-    resolved = pd.DataFrame(resolved_rows, columns=frame.columns if id_col == "player_id" else None)
+    resolved = pd.DataFrame(
+        resolved_rows, columns=frame.columns if id_col == "player_id" else None
+    )
     if not resolved.empty and "player_id" in resolved.columns:
-        resolved["player_id"] = pd.to_numeric(resolved["player_id"], errors="raise").astype(int)
+        resolved["player_id"] = resolved["player_id"].map(parse_exact_player_id).astype(int)
     rows = len(frame)
     coverage = (exact + fallback) / rows if rows else 1.0
     result = IdentityResolution(
