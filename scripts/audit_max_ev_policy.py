@@ -92,14 +92,21 @@ def _nonoptimal_payload(decision) -> dict:
 
 
 def _certified_infeasible(decision) -> bool:
-    """Distinguish a mathematical comparator result from timeout/solver failure."""
+    """Accept only an explicit HiGHS mathematical-infeasibility certificate.
+
+    A missing status code, timeout, iteration limit, unbounded termination or generic
+    solver failure does not prove infeasibility and must remain fail-closed.
+    """
     if decision.status != "Infeasible":
         return False
     solver = dict(decision.solution.solver or {})
-    # scipy.optimize.milp/HiGHS status 2 is mathematical infeasibility. A missing
-    # status is accepted only for legacy/mocked tests that have no solver metadata.
     code = solver.get("status_code")
-    return code is None or int(code) == 2
+    if code is None:
+        return False
+    try:
+        return int(code) == 2
+    except (TypeError, ValueError):
+        return False
 
 
 def _decision_parameters_from_settings(settings) -> dict:
@@ -285,10 +292,7 @@ def main() -> None:
         old_xi, new_xi_ids = set(old["first_gw_xi_ids"]), set(new["first_gw_xi_ids"])
         decision_delta = {
             "objective_delta": float(new["objective"] - old["objective"]),
-            "first_gw_expected_points_delta": float(
-                new["first_gw_expected_total_points"]
-                - old["first_gw_expected_total_points"]
-            ),
+            "first_gw_expected_points_delta": float(new["first_gw_expected_total_points"] - old["first_gw_expected_total_points"]),
             "squad_overlap": len(old_squad & new_squad),
             "first_gw_xi_overlap": len(old_xi & new_xi_ids),
             "players_in": [names[pid] for pid in sorted(new_squad - old_squad)],
@@ -327,9 +331,7 @@ def main() -> None:
         "eligibility": {
             "legacy": _eligibility_summary(players, legacy_xi, legacy_captain),
             "ev_first": _eligibility_summary(players, new_xi, new_captain),
-            "uncertainty_diagnostic_count": len(
-                eligibility.get("uncertainty_diagnostic_ids", [])
-            ),
+            "uncertainty_diagnostic_count": len(eligibility.get("uncertainty_diagnostic_ids", [])),
         },
         "legacy": old,
         "ev_first": new,
@@ -347,7 +349,7 @@ def main() -> None:
         )
     if not legacy_ok and not legacy_infeasible:
         raise SystemExit(
-            "legacy comparator ended non-optimally without a mathematical "
+            "legacy comparator ended non-optimally without an explicit mathematical "
             f"infeasibility certificate: solver={dict(legacy.solution.solver or {})}"
         )
 
