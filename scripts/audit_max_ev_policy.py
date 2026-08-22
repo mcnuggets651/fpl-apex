@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Compare legacy safety gating with the EV-first policy on one live surface.
+"""Compare legacy safety gating with the EV-first policy on one sealed surface.
 
-This is a diagnostic only. Both policies consume the same official snapshot,
-AIrsenal forecast, Understat fixture surface and ensemble xP. The only difference is
-pre-solve uncertainty handling. No canonical files are published.
+This is a diagnostic only. Both policies consume the same immutable player,
+projection and evidence surface. Production publication readiness is recorded but
+is not allowed to masquerade as an optimiser-policy failure.
 """
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ import pandas as pd
 
 from apex_fpl.config import load_settings
 from apex_fpl.optimisation.exact_decision import optimise_exact_horizon_decision
+from apex_fpl.services.audit_contracts import assess_diagnostic_surface
+from apex_fpl.services.decision_bundle import DecisionBundle
 from apex_fpl.services.decision_eligibility import (
     captain_eligible_ids,
     evidence_eligibility,
@@ -47,21 +49,20 @@ def _decision_payload(decision, players: pd.DataFrame) -> dict:
         .drop_duplicates("player_id")
         .itertuples(index=False)
     }
-    gw1 = decision.weeks[0]
+    first_week = decision.weeks[0]
     return {
         "status": decision.status,
         "objective": float(decision.objective),
         "squad_ids": sorted(_ids(decision.solution.squad)),
-        "squad_names": [
-            names[pid] for pid in sorted(_ids(decision.solution.squad))
-        ],
-        "gw1_xi_ids": sorted(int(pid) for pid in gw1.xi_ids),
-        "gw1_xi_names": [names[int(pid)] for pid in sorted(gw1.xi_ids)],
-        "gw1_captain_id": int(gw1.mechanics.captain_id),
-        "gw1_captain_name": names[int(gw1.mechanics.captain_id)],
-        "gw1_vice_captain_id": int(gw1.mechanics.vice_captain_id),
-        "gw1_vice_captain_name": names[int(gw1.mechanics.vice_captain_id)],
-        "gw1_expected_total_points": float(gw1.mechanics.expected_total_points),
+        "squad_names": [names[pid] for pid in sorted(_ids(decision.solution.squad))],
+        "first_gw": int(first_week.gw),
+        "first_gw_xi_ids": sorted(int(pid) for pid in first_week.xi_ids),
+        "first_gw_xi_names": [names[int(pid)] for pid in sorted(first_week.xi_ids)],
+        "first_gw_captain_id": int(first_week.mechanics.captain_id),
+        "first_gw_captain_name": names[int(first_week.mechanics.captain_id)],
+        "first_gw_vice_captain_id": int(first_week.mechanics.vice_captain_id),
+        "first_gw_vice_captain_name": names[int(first_week.mechanics.vice_captain_id)],
+        "first_gw_expected_total_points": float(first_week.mechanics.expected_total_points),
         "near_equivalent_candidate_count": len(decision.near_equivalent_candidates),
     }
 
@@ -84,25 +85,39 @@ def _solve(players, projections, gws, settings, *, captain_eligible, xi_eligible
     )
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--horizon", type=int, default=8)
-    parser.add_argument("--force", action="store_true")
-    parser.add_argument("--output", default="reports/max_ev_policy_audit.json")
-    args = parser.parse_args()
-
-    settings = load_settings()
-    out = run_pipeline(
+def _load_surface(settings, args):
+    if args.bundle_dir:
+        bundle = DecisionBundle.load(args.bundle_dir)
+        output = bundle.to_pipeline_output()
+        return output, {
+            "mode": "sealed_decision_bundle",
+            "bundle_id": bundle.bundle_id,
+            "bundle_created_at": bundle.created_at,
+        }
+    output = run_pipeline(
         settings,
         horizon=args.horizon,
         scenario="both",
         force=args.force,
         plan_transfers=False,
     )
-    if not out.safety.safe_to_act or not out.safety.full_apex_ready:
+    return output, {"mode": "live_pipeline", "bundle_id": None}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--horizon", type=int, default=8)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--bundle-dir", default="")
+    parser.add_argument("--output", default="reports/max_ev_policy_audit.json")
+    args = parser.parse_args()
+
+    settings = load_settings()
+    out, surface = _load_surface(settings, args)
+    readiness = assess_diagnostic_surface(out, projection_col="xp")
+    if not readiness.ready:
         raise SystemExit(
-            "max-EV audit blocked by base production safety gate: "
-            + "; ".join(out.safety.blockers)
+            "max-EV diagnostic surface invalid: " + "; ".join(readiness.blockers)
         )
 
     players, eligibility = evidence_eligibility(out.players, out.news_audit)
@@ -119,9 +134,6 @@ def main() -> None:
     )
     new_captain = captain_eligible_ids(players)
 
-    # Reconstruct the prior policy on the exact same inputs. Decision-grade role
-    # evidence previously rescued an uncertain player; unverified uncertainty did
-    # not. Adverse evidence remains an exclusion under both policies.
     confident = (
         _num(players, "minutes_confidence") >= LEGACY_MINUTES_CONFIDENCE
     ) & (_num(players, "role_confidence") >= LEGACY_ROLE_CONFIDENCE)
@@ -132,19 +144,13 @@ def main() -> None:
     )
     legacy_xi = set(players.loc[legacy_xi_mask, "player_id"].astype(int))
     legacy_captain_mask = legacy_xi_mask.copy()
+    legacy_captain_mask &= _num(players, "expected_minutes") >= LEGACY_CAPTAIN_EXPECTED_MINUTES
+    legacy_captain_mask &= _num(players, "start_probability") >= LEGACY_CAPTAIN_START_PROBABILITY
     legacy_captain_mask &= (
-        _num(players, "expected_minutes") >= LEGACY_CAPTAIN_EXPECTED_MINUTES
+        _num(players, "appearance_probability") >= LEGACY_CAPTAIN_APPEARANCE_PROBABILITY
     )
     legacy_captain_mask &= (
-        _num(players, "start_probability") >= LEGACY_CAPTAIN_START_PROBABILITY
-    )
-    legacy_captain_mask &= (
-        _num(players, "appearance_probability")
-        >= LEGACY_CAPTAIN_APPEARANCE_PROBABILITY
-    )
-    legacy_captain_mask &= (
-        _num(players, "projection_confidence")
-        >= LEGACY_CAPTAIN_PROJECTION_CONFIDENCE
+        _num(players, "projection_confidence") >= LEGACY_CAPTAIN_PROJECTION_CONFIDENCE
     )
     legacy_captain = set(players.loc[legacy_captain_mask, "player_id"].astype(int))
 
@@ -172,7 +178,7 @@ def main() -> None:
     old = _decision_payload(legacy, players)
     new = _decision_payload(ev_first, players)
     old_squad, new_squad = set(old["squad_ids"]), set(new["squad_ids"])
-    old_xi, new_xi_ids = set(old["gw1_xi_ids"]), set(new["gw1_xi_ids"])
+    old_xi, new_xi_ids = set(old["first_gw_xi_ids"]), set(new["first_gw_xi_ids"])
     names = {
         int(row.player_id): str(row.web_name)
         for row in players[["player_id", "web_name"]]
@@ -180,13 +186,16 @@ def main() -> None:
         .itertuples(index=False)
     }
     report = {
-        "contract": "apex-max-ev-policy-audit-v1",
+        "contract": "apex-max-ev-policy-audit-v2",
         "production_changed": False,
         "canonical_publish_attempted": False,
+        "surface": surface,
+        "diagnostic_readiness": readiness.to_dict(),
         "gameweeks": [int(gw) for gw in out.gameweeks],
         "official_snapshot": out.snapshot,
         "base_safe_to_act": bool(out.safety.safe_to_act),
         "base_full_apex_ready": bool(out.safety.full_apex_ready),
+        "base_publication_blockers": list(out.safety.blockers),
         "policy": {
             "legacy": "confidence floors plus adverse-evidence ceilings",
             "ev_first": "adverse-evidence ceilings only; uncertainty remains diagnostic",
@@ -205,16 +214,17 @@ def main() -> None:
         "ev_first": new,
         "decision_delta": {
             "objective_delta": float(new["objective"] - old["objective"]),
-            "gw1_expected_points_delta": float(
-                new["gw1_expected_total_points"] - old["gw1_expected_total_points"]
+            "first_gw_expected_points_delta": float(
+                new["first_gw_expected_total_points"]
+                - old["first_gw_expected_total_points"]
             ),
             "squad_overlap": len(old_squad & new_squad),
-            "gw1_xi_overlap": len(old_xi & new_xi_ids),
+            "first_gw_xi_overlap": len(old_xi & new_xi_ids),
             "players_in": [names[pid] for pid in sorted(new_squad - old_squad)],
             "players_out": [names[pid] for pid in sorted(old_squad - new_squad)],
-            "gw1_xi_in": [names[pid] for pid in sorted(new_xi_ids - old_xi)],
-            "gw1_xi_out": [names[pid] for pid in sorted(old_xi - new_xi_ids)],
-            "captain_changed": new["gw1_captain_id"] != old["gw1_captain_id"],
+            "first_gw_xi_in": [names[pid] for pid in sorted(new_xi_ids - old_xi)],
+            "first_gw_xi_out": [names[pid] for pid in sorted(old_xi - new_xi_ids)],
+            "captain_changed": new["first_gw_captain_id"] != old["first_gw_captain_id"],
         },
     }
     path = Path(args.output)
