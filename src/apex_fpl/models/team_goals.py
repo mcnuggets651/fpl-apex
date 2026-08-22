@@ -103,10 +103,25 @@ def build_team_goal_surface(
     *,
     config: TeamGoalConfig | None = None,
 ) -> pd.DataFrame:
+    """Build one team-side prior per immutable Official FPL fixture.
+
+    ``fixture_id`` is the primary identity. Opponent/home fields remain descriptive
+    attributes and must never be used as a substitute identity for double or
+    rescheduled fixtures.
+    """
     cfg = config or TeamGoalConfig()
+    required_fixture_columns = {"id", "event", "team_h", "team_a"}
+    missing = sorted(required_fixture_columns - set(fixtures.columns))
+    if missing:
+        raise ValueError("official fixtures missing columns: " + ", ".join(missing))
+    fixture_ids = pd.to_numeric(fixtures["id"], errors="coerce")
+    if fixture_ids.isna().any() or fixture_ids.astype(int).duplicated().any():
+        raise ValueError("official fixtures require unique numeric fixture IDs")
+
     by_team = ratings.set_index("team")
     rows: list[dict] = []
     for fixture in fixtures[fixtures["event"].isin(gameweeks)].itertuples(index=False):
+        fixture_id = int(fixture.id)
         home_id, away_id = int(fixture.team_h), int(fixture.team_a)
         gw = int(fixture.event)
         if home_id not in by_team.index or away_id not in by_team.index:
@@ -129,6 +144,7 @@ def build_team_goal_surface(
         rows.extend(
             [
                 {
+                    "fixture_id": fixture_id,
                     "gw": gw,
                     "team": home_id,
                     "opponent": away_id,
@@ -139,6 +155,7 @@ def build_team_goal_surface(
                     "team_goal_source": "understat_time_decay_v1",
                 },
                 {
+                    "fixture_id": fixture_id,
                     "gw": gw,
                     "team": away_id,
                     "opponent": home_id,
@@ -150,4 +167,7 @@ def build_team_goal_surface(
                 },
             ]
         )
-    return pd.DataFrame(rows)
+    surface = pd.DataFrame(rows)
+    if not surface.empty and surface.duplicated(["fixture_id", "team"]).any():
+        raise ValueError("duplicate team-goal fixture-side rows")
+    return surface
