@@ -8,6 +8,11 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
 from apex_fpl.constants import SQUAD_COUNTS, XI_MAX, XI_MIN
+from apex_fpl.optimisation.bench_policy import (
+    MINIMUM_PLAYABLE_OUTFIELD_BENCH,
+    credible_first_bench_ids,
+    playable_outfield_ids,
+)
 from apex_fpl.optimisation.solver_status import finite_float, scipy_milp_status
 from apex_fpl.rules import MAX_ROLLED_FREE_TRANSFERS, TRANSFER_HIT_COST
 
@@ -21,6 +26,11 @@ class TransferPlan:
     solver_message: str | None = None
     objective_upper_bound: float | None = None
     mip_gap: float | None = None
+
+    @property
+    def certified_infeasible(self) -> bool:
+        """Whether HiGHS explicitly proved this transfer model infeasible."""
+        return self.status == "Infeasible" and self.solver_status_code == 2
 
 
 def _next_ft(ft: int, transfers: int) -> int:
@@ -56,6 +66,7 @@ def optimise_transfer_plan(
     captain_eligible: set[int] | None = None,
     solver_time_limit: float = 120.0,
     solver_relative_gap: float = 0.002,
+    enforce_current_bench_resilience: bool = False,
 ) -> TransferPlan:
     """Multi-period FPL transfer MILP with exact rolled-FT state transitions.
 
@@ -64,8 +75,19 @@ def optimise_transfer_plan(
     branch-and-bound objective bound; callers can use that bound for safe pruning or
     retry the same model without falsely escalating to a larger universe. Pre-solver
     contract failures are ``InputError`` and never impersonate HiGHS infeasibility.
+
+    When ``enforce_current_bench_resilience`` is true, only the first/submitted
+    Gameweek is constrained by the current evidence-based bench floor. Later weeks
+    remain contingencies and must be rebuilt under fresh evidence at their deadline.
     """
-    locked, banned = locked or set(), banned or set()
+    locked, banned = set(locked or set()), set(banned or set())
+    if "squad_evidence_eligible" in players:
+        banned |= set(
+            players.loc[
+                ~players["squad_evidence_eligible"].fillna(False).astype(bool),
+                "player_id",
+            ].astype(int)
+        )
     captain_eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
@@ -164,10 +186,15 @@ def optimise_transfer_plan(
     lower: list[float] = []
     upper: list[float] = []
 
-    def add(coeffs: dict[int, float], lo: float, hi: float):
+    def add(coeffs: dict[int, float], lo: float, hi: float) -> None:
         rows.append(coeffs)
         lower.append(lo)
         upper.append(hi)
+
+    playable_ids = playable_outfield_ids(d) if enforce_current_bench_resilience else set()
+    first_bench_ids = (
+        credible_first_bench_ids(d) if enforce_current_bench_resilience else set()
+    )
 
     for t, gw in enumerate(gameweeks):
         add({q(S0, i, t): 1 for i in range(n)}, 15, 15)
@@ -212,6 +239,34 @@ def optimise_transfer_plan(
                     0,
                 )
 
+        if enforce_current_bench_resilience and t == 0:
+            playable_idx = [i for i, pid in enumerate(pids) if pid in playable_ids]
+            first_idx = [i for i, pid in enumerate(pids) if pid in first_bench_ids]
+            add(
+                {
+                    variable: coefficient
+                    for i in playable_idx
+                    for variable, coefficient in (
+                        (q(S0, i, t), 1.0),
+                        (q(X0, i, t), -1.0),
+                    )
+                },
+                float(MINIMUM_PLAYABLE_OUTFIELD_BENCH),
+                np.inf,
+            )
+            add(
+                {
+                    variable: coefficient
+                    for i in first_idx
+                    for variable, coefficient in (
+                        (q(S0, i, t), 1.0),
+                        (q(X0, i, t), -1.0),
+                    )
+                },
+                1.0,
+                np.inf,
+            )
+
         balance = {q(IN0, i, t): 1 for i in range(n)}
         balance.update({q(OUT0, i, t): -1 for i in range(n)})
         add(balance, 0, 0)
@@ -227,7 +282,11 @@ def optimise_transfer_plan(
         )
         add(coeff, 0, 0)
         if t == 0:
-            add({y(t, free_transfers, k): 1 for k in range(K)}, 1, 1)
+            if int(free_transfers) < 1 or int(free_transfers) > F:
+                return _input_error(
+                    f"free_transfers must be between 1 and {F}, got {free_transfers}"
+                )
+            add({y(t, int(free_transfers), k): 1 for k in range(K)}, 1, 1)
         else:
             for ft_now in range(1, F + 1):
                 lhs = {y(t, ft_now, k): 1 for k in range(K)}
