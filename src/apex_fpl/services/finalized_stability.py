@@ -4,8 +4,15 @@ import re
 from dataclasses import replace
 
 
-_CONVERGENCE_CERTIFICATE = re.compile(
-    r"convergence was checked between rank prefixes\s+(\d+)\s+and\s+(\d+)",
+# The joint optimiser's certificate is primarily semantic state on the result
+# (selected/full-prefix identity + stable flag). Older/current result objects encode
+# the evaluated rank-prefix breadth in the human-readable note, so keep a deliberately
+# narrow compatibility parser for both grammatical forms that have existed in
+# production. If/when a structured convergence_rank_prefixes field is present, it is
+# authoritative and malformed structured data fails closed rather than falling back
+# to prose.
+_LEGACY_CONVERGENCE_CERTIFICATE = re.compile(
+    r"convergence\s+(?:is|was)\s+checked between rank prefixes\s+(\d+)\s+and\s+(\d+)",
     re.IGNORECASE,
 )
 
@@ -32,6 +39,39 @@ def reconcile_finalized_stability(result):
     return result
 
 
+def _exact_prefix(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    try:
+        if float(value) != float(parsed):
+            return None
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return parsed if parsed >= 1 else None
+
+
+def _convergence_prefixes(result) -> tuple[int, int] | None:
+    """Read the evaluated-prefix breadth certificate without accepting corruption."""
+    structured = getattr(result, "convergence_rank_prefixes", None)
+    if structured is not None:
+        if not isinstance(structured, (tuple, list)) or len(structured) != 2:
+            return None
+        left = _exact_prefix(structured[0])
+        right = _exact_prefix(structured[1])
+        if left is None or right is None:
+            return None
+        return left, right
+
+    match = _LEGACY_CONVERGENCE_CERTIFICATE.search(str(getattr(result, "note", "")))
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
 def _in_solve_certificate_covers(result, required_prefix: int) -> bool:
     """Return True only for a stable result carrying the joint optimiser's breadth proof.
 
@@ -42,8 +82,9 @@ def _in_solve_certificate_covers(result, required_prefix: int) -> bool:
     transfer paths.
 
     The certificate is deliberately fail-closed. Legacy/mocked/foreign optimisers that
-    do not emit the canonical convergence statement still receive the historical
-    broader second solve.
+    do not emit a recognised certificate still receive the historical broader second
+    solve. A structured certificate, when supplied, is authoritative; malformed
+    structured data is never rescued by parsing a human-readable note.
     """
     if not bool(getattr(result, "candidate_pool_stable", False)):
         return False
@@ -53,10 +94,10 @@ def _in_solve_certificate_covers(result, required_prefix: int) -> bool:
     full_ids = getattr(result, "full_pool_selected_ids", None)
     if full_ids is None or tuple(full_ids) != tuple(selected.squad_ids):
         return False
-    match = _CONVERGENCE_CERTIFICATE.search(str(getattr(result, "note", "")))
-    if match is None:
+    prefixes = _convergence_prefixes(result)
+    if prefixes is None:
         return False
-    left, right = (int(match.group(1)), int(match.group(2)))
+    left, right = prefixes
     return left < right and right >= int(required_prefix)
 
 
