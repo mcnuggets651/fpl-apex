@@ -23,6 +23,14 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e '.[dev]'
+      # Temporary candidate probe: validate today's immutable FPL Core revision
+      # before the production lock is allowed to move. Remove after promotion.
+      - name: Validate candidate FPL Core revision before pin promotion
+        run: >-
+          python scripts/validate_core_candidate.py
+          --ref 0ec337a60cbeaa2eca3f8f98b288c46fa2f8fdba
+          --season 2026-2027
+          --cache-dir data/cache/core-candidate
       - run: pytest -q
       - run: ruff check src tests scripts
       - run: python scripts/check_upstreams.py
