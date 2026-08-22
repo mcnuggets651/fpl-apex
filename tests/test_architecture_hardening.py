@@ -10,7 +10,7 @@ import pytest
 
 from apex_fpl.data.airsenal import AIrsenalProjectionAdapter, validate_airsenal_forecast
 from apex_fpl.models.ensemble import blend_projection
-from apex_fpl.optimisation.initial_horizon import _solver_status
+from apex_fpl.optimisation.solver_status import scipy_milp_status
 from apex_fpl.optimisation.squad import SquadSolution
 from apex_fpl.services.audit_contracts import _projection_key_blockers
 
@@ -152,6 +152,7 @@ def test_diagnostic_projection_keys_accept_legitimate_double_gameweek_rows():
         {
             "player_id": [7, 7],
             "gw": [12, 12],
+            "fixture_id": [1001, 1002],
             "opponent": [3, 8],
             "is_home": [True, False],
             "xp": [4.0, 3.0],
@@ -167,6 +168,7 @@ def test_diagnostic_projection_keys_reject_true_duplicate_fixture_rows():
         {
             "player_id": [7, 7],
             "gw": [12, 12],
+            "fixture_id": [1001, 1001],
             "opponent": [3, 3],
             "is_home": [True, True],
             "xp": [4.0, 4.0],
@@ -175,7 +177,9 @@ def test_diagnostic_projection_keys_reject_true_duplicate_fixture_rows():
     pids = pd.to_numeric(projections["player_id"])
     gws = pd.to_numeric(projections["gw"])
     blockers = _projection_key_blockers(projections, pids, gws)
-    assert blockers == ["diagnostic projection surface has duplicate player/fixture rows"]
+    assert blockers == [
+        "diagnostic projection surface has duplicate player/Official-fixture rows"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -193,8 +197,12 @@ def test_initial_horizon_preserves_solver_termination_semantics(
     success: bool,
     expected: str,
 ):
-    result = SimpleNamespace(status=status_code, success=success, x=[1.0] if success else None)
-    assert _solver_status(result) == expected
+    result = SimpleNamespace(
+        status=status_code,
+        success=success,
+        x=[1.0] if success else None,
+    )
+    assert scipy_milp_status(result) == expected
 
 
 def test_exact_decision_preserves_inconclusive_generator_status(monkeypatch):
