@@ -7,7 +7,7 @@ import unicodedata
 import pandas as pd
 
 
-IDENTITY_CONTRACT = "apex-player-identity-integrity-v1"
+IDENTITY_CONTRACT = "apex-player-identity-integrity-v2"
 
 
 class IdentityIntegrityError(ValueError):
@@ -57,7 +57,19 @@ def _norm(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "", text)
 
 
+def _text(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
 def build_official_identity_registry(official: pd.DataFrame) -> pd.DataFrame:
+    """Build the current Official-FPL identity registry without hiding corruption.
+
+    Numeric Official FPL IDs are the authority. Provider/manual names are only
+    independent witnesses. Duplicate or null/non-numeric Official IDs are a hard
+    integrity failure; never de-duplicate them silently.
+    """
     required = {"player_id", "web_name"}
     if not required.issubset(official.columns):
         raise IdentityIntegrityError(
@@ -78,10 +90,24 @@ def build_official_identity_registry(official: pd.DataFrame) -> pd.DataFrame:
         )
         if col in official.columns
     ]
-    out = official[cols].drop_duplicates("player_id").copy()
-    out["player_id"] = pd.to_numeric(out["player_id"], errors="raise").astype(int)
-    if out["player_id"].duplicated().any():
-        raise IdentityIntegrityError("official FPL identity contains duplicate player IDs")
+    out = official[cols].copy()
+    try:
+        numeric_ids = pd.to_numeric(out["player_id"], errors="raise")
+    except (TypeError, ValueError) as exc:
+        raise IdentityIntegrityError("official FPL identity contains non-numeric player IDs") from exc
+    if numeric_ids.isna().any():
+        raise IdentityIntegrityError("official FPL identity contains null player IDs")
+    out["player_id"] = numeric_ids.astype(int)
+    duplicates = sorted(out.loc[out["player_id"].duplicated(keep=False), "player_id"].unique().tolist())
+    if duplicates:
+        raise IdentityIntegrityError(
+            f"official FPL identity contains duplicate player IDs: {duplicates[:20]}"
+        )
+    if out["web_name"].map(_text).eq("").any():
+        bad_ids = out.loc[out["web_name"].map(_text).eq(""), "player_id"].tolist()
+        raise IdentityIntegrityError(
+            f"official FPL identity contains blank web_name witnesses: {bad_ids[:20]}"
+        )
     out["identity_web_name"] = out["web_name"].map(_norm)
     first = out.get("first_name", pd.Series("", index=out.index)).fillna("").astype(str)
     second = out.get("second_name", pd.Series("", index=out.index)).fillna("").astype(str)
@@ -100,10 +126,12 @@ def active_official_identity_registry() -> pd.DataFrame | None:
 
 def _source_name(row: pd.Series, name_columns: tuple[str, ...]) -> str:
     for col in name_columns:
-        if col in row.index and str(row.get(col) or "").strip():
-            return str(row.get(col)).strip()
-    first = str(row.get("first_name") or "").strip() if "first_name" in row.index else ""
-    second = str(row.get("second_name") or "").strip() if "second_name" in row.index else ""
+        if col in row.index:
+            value = _text(row.get(col))
+            if value:
+                return value
+    first = _text(row.get("first_name")) if "first_name" in row.index else ""
+    second = _text(row.get("second_name")) if "second_name" in row.index else ""
     return " ".join(part for part in (first, second) if part).strip()
 
 
@@ -126,18 +154,25 @@ def _context_conflicts(
     for col in team_columns:
         if col not in source_row.index or pd.isna(source_row.get(col)):
             continue
-        source_value = str(source_row.get(col)).strip()
+        source_value = _text(source_row.get(col))
         if not source_value:
             continue
         if col.endswith("_id") or col == "team":
             official_value = official_row.get("team")
             try:
-                if int(float(source_value)) != int(official_value):
-                    conflicts.append(f"team conflict source={source_value} official={official_value}")
+                source_team = int(float(source_value))
+                official_team = int(official_value)
             except (TypeError, ValueError):
-                pass
+                # A non-numeric value in a numeric team-id field is itself a
+                # malformed independent witness; never silently ignore it.
+                conflicts.append(
+                    f"team identity is non-numeric source={source_value!r} official={official_value!r}"
+                )
+            else:
+                if source_team != official_team:
+                    conflicts.append(f"team conflict source={source_value} official={official_value}")
         else:
-            official_value = str(official_row.get("team_name") or "")
+            official_value = _text(official_row.get("team_name"))
             if _norm(source_value) and _norm(source_value) != _norm(official_value):
                 conflicts.append(
                     f"team conflict source={source_value!r} official={official_value!r}"
@@ -146,16 +181,66 @@ def _context_conflicts(
     for col in position_columns:
         if col not in source_row.index or pd.isna(source_row.get(col)):
             continue
-        source_value = str(source_row.get(col)).strip()
+        source_value = _text(source_row.get(col))
         if not source_value:
             continue
-        official_value = str(official_row.get("position") or "")
+        official_value = _text(official_row.get("position"))
+        if col == "element_type":
+            element_type_to_position = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
+            try:
+                source_value = element_type_to_position[int(float(source_value))]
+            except (TypeError, ValueError, KeyError):
+                conflicts.append(
+                    f"position identity has invalid element_type source={source_value!r}"
+                )
+                break
         if _norm(source_value) != _norm(official_value):
             conflicts.append(
                 f"position conflict source={source_value!r} official={official_value!r}"
             )
         break
     return conflicts
+
+
+def validate_required_id_coverage(
+    official: pd.DataFrame,
+    source_rows: pd.DataFrame,
+    *,
+    source: str,
+    id_col: str = "player_id",
+) -> dict:
+    """Fail closed when a source declared roster-complete is not roster-complete."""
+    registry = build_official_identity_registry(official)
+    official_ids = set(registry["player_id"].astype(int).tolist())
+    if id_col not in source_rows.columns:
+        return {
+            "ready": False,
+            "official_ids": len(official_ids),
+            "source_ids": 0,
+            "missing_ids": sorted(official_ids),
+            "extra_ids": [],
+            "blockers": [f"{source} lacks required {id_col} for full-roster identity coverage"],
+        }
+    parsed = pd.to_numeric(source_rows[id_col], errors="coerce")
+    invalid_rows = source_rows.index[parsed.isna()].tolist()
+    source_ids = set(parsed.dropna().astype(int).tolist())
+    missing = sorted(official_ids - source_ids)
+    extra = sorted(source_ids - official_ids)
+    blockers: list[str] = []
+    if invalid_rows:
+        blockers.append(f"{source} has non-numeric/null player IDs at rows {invalid_rows[:20]}")
+    if missing:
+        blockers.append(f"{source} is missing {len(missing)} Official FPL player IDs: {missing[:20]}")
+    if extra:
+        blockers.append(f"{source} contains {len(extra)} unknown Official FPL player IDs: {extra[:20]}")
+    return {
+        "ready": not blockers,
+        "official_ids": len(official_ids),
+        "source_ids": len(source_ids),
+        "missing_ids": missing,
+        "extra_ids": extra,
+        "blockers": blockers,
+    }
 
 
 def resolve_source_identities(
