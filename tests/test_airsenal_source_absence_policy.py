@@ -143,10 +143,20 @@ def test_truth_contract_reports_raw_presence_separately_when_source_is_present()
     assert audit["airsenal_source_absence_reconciled"] is True
 
 
-def test_adaptive_workflow_accepts_resolved_not_fabricated_airsenal_coverage():
-    workflow = Path(".github/workflows/joint-path-promotion-audit.yml").read_text(
+def test_adaptive_release_uses_certified_not_fabricated_airsenal_coverage():
+    adaptive = Path(".github/workflows/joint-path-promotion-audit.yml").read_text(
         encoding="utf-8"
     )
-    assert "airsenal_projection_pair_coverage'] == 1.0" not in workflow
-    assert "present_pairs + absent_pairs == expected_pairs" in workflow
-    assert 'assert not truth["blockers"]' in workflow
+    canonical = Path(".github/workflows/adaptive-canonical-diagnostic.yml").read_text(
+        encoding="utf-8"
+    )
+    certifier = Path("scripts/certify_release_generation.py").read_text(encoding="utf-8")
+
+    # Adaptive delegates to the exact Canonical transaction; the shared release
+    # certifier consumes certified coverage from player_truth. Raw AIrsenal presence
+    # remains a diagnostic field and is never required to be fabricated to 100%.
+    assert "uses: ./.github/workflows/adaptive-canonical-diagnostic.yml" in adaptive
+    assert "scripts/certify_release_generation.py" in canonical
+    assert '"airsenal_projection_pair_coverage"' in certifier
+    assert '"airsenal_raw_projection_pair_coverage"' not in certifier
+    assert "certified all-player truth coverage is incomplete" in certifier
