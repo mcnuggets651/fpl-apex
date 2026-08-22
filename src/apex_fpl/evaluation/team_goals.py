@@ -67,9 +67,15 @@ def _predict_fold(
         as_of=pd.to_datetime(test["date"], utc=True).min(),
         config=config,
     )
+    # These are synthetic holdout fixtures rather than live Official FPL rows, but
+    # the downstream model contract is intentionally identical: every fixture has
+    # one stable immutable identity. The fold-local IDs are deterministic because
+    # the test rows are chronologically ordered before this function is called.
+    fixture_ids = np.arange(1, len(test) + 1)
     fixtures = pd.DataFrame(
         {
-            "event": np.arange(1, len(test) + 1),
+            "id": fixture_ids,
+            "event": fixture_ids,
             "team_h": test["team_home"].map(team_ids),
             "team_a": test["team_away"].map(team_ids),
         }
