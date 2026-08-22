@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -94,6 +95,21 @@ def _required_gate(command: list[str], output_dir: Path, label: str) -> None:
         raise SystemExit(status)
 
 
+def _identity_airsenal_path(explicit_path: str | None) -> str:
+    """Resolve the exact AIrsenal witness used by this sealed generation.
+
+    Certified workflows provide AIRSENAL_PROJECTIONS_CSV as a run-scoped artifact.
+    Prefer an explicit CLI value, then that generation-scoped environment value.
+    The legacy global alias is retained only for non-certified local invocations.
+    """
+    if explicit_path:
+        return explicit_path
+    run_scoped = os.environ.get("AIRSENAL_PROJECTIONS_CSV")
+    if run_scoped:
+        return run_scoped
+    return "data/generated/airsenal.csv"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--horizon", type=int, default=8)
@@ -103,6 +119,14 @@ def main() -> None:
     parser.add_argument("--cvar-weight", type=float, default=0.20)
     parser.add_argument("--output-dir", default="data/generated")
     parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
+    parser.add_argument(
+        "--airsenal",
+        default=None,
+        help=(
+            "Exact AIrsenal CSV identity witness for this generation. Defaults to "
+            "AIRSENAL_PROJECTIONS_CSV when set."
+        ),
+    )
     parser.add_argument(
         "--reuse-bundle",
         action="store_true",
@@ -120,6 +144,7 @@ def main() -> None:
     pinnacle_path = output_dir / "pinnacle_latest.json"
     elite_path = output_dir / "elite_latest.json"
     truth_path = Path("reports/player_truth_audit.json")
+    airsenal_identity_path = _identity_airsenal_path(args.airsenal)
 
     if not args.reuse_bundle and not args.reuse_pinnacle:
         bundle_cmd = [
@@ -201,6 +226,8 @@ def main() -> None:
             "scripts/audit_player_identity.py",
             "--bundle-dir",
             str(bundle_dir),
+            "--airsenal",
+            str(airsenal_identity_path),
         ],
         output_dir,
         "player identity audit",
