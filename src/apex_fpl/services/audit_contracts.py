@@ -30,6 +30,56 @@ class DiagnosticReadiness:
         return asdict(self)
 
 
+def _projection_key_blockers(
+    projections: pd.DataFrame,
+    pids: pd.Series,
+    gws: pd.Series,
+) -> list[str]:
+    """Validate fixture-granular projection identity without rejecting DGWs.
+
+    The canonical projection surface is one row per player/fixture, not necessarily
+    one row per player/Gameweek. A Double Gameweek therefore contains legitimate
+    repeated ``(player_id, gw)`` pairs. Those repeats are valid only when every row
+    carries a complete fixture witness and the full
+    ``(player_id, gw, opponent, is_home)`` key remains unique.
+    """
+    blockers: list[str] = []
+    base = pd.DataFrame({"player_id": pids.astype(int), "gw": gws.astype(int)})
+    repeated = base.duplicated(["player_id", "gw"], keep=False)
+    if not repeated.any():
+        return blockers
+
+    fixture_columns = {"opponent", "is_home"}
+    missing = sorted(fixture_columns - set(projections.columns))
+    if missing:
+        blockers.append(
+            "diagnostic projection surface has repeated player/Gameweek rows "
+            "without fixture identity columns: " + ", ".join(missing)
+        )
+        return blockers
+
+    opponents = pd.to_numeric(projections["opponent"], errors="coerce")
+    home = projections["is_home"]
+    repeated_missing_identity = repeated & (opponents.isna() | home.isna())
+    if repeated_missing_identity.any():
+        blockers.append(
+            "diagnostic projection surface has repeated player/Gameweek rows with "
+            "missing opponent/is_home fixture identity"
+        )
+        return blockers
+
+    fixture_keys = base.copy()
+    fixture_keys["opponent"] = opponents
+    fixture_keys["is_home"] = home.astype("boolean")
+    if fixture_keys.duplicated(
+        ["player_id", "gw", "opponent", "is_home"]
+    ).any():
+        blockers.append(
+            "diagnostic projection surface has duplicate player/fixture rows"
+        )
+    return blockers
+
+
 def assess_diagnostic_surface(
     output: PipelineOutput,
     *,
@@ -74,8 +124,7 @@ def assess_diagnostic_surface(
             blockers.append("diagnostic projection surface has invalid player_id/gw keys")
         else:
             keys = pd.DataFrame({"player_id": pids.astype(int), "gw": gws.astype(int)})
-            if keys.duplicated().any():
-                blockers.append("diagnostic projection surface has duplicate player_id/gw rows")
+            blockers.extend(_projection_key_blockers(projections, pids, gws))
             if "player_id" in players.columns:
                 valid_player_ids = set(
                     pd.to_numeric(players["player_id"], errors="coerce")
