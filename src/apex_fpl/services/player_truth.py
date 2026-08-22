@@ -60,10 +60,11 @@ def audit_player_truth(players: pd.DataFrame, projections: pd.DataFrame, expecte
     """Audit factual completeness and provenance for the entire FPL player pool.
 
     Hard current facts and canonical player/Gameweek projections must be complete.
-    AIrsenal coverage is audited separately: a genuine upstream omission is allowed
-    only when the canonical surface explicitly records source absence and the
-    transparent-Apex fallback contribution used in place of the missing configured
-    AIrsenal weight. No fabricated AIrsenal value is accepted.
+    AIrsenal is governed by a certified-coverage contract: every expected pair must
+    either contain a genuine AIrsenal projection or be explicitly marked source-
+    absent with the configured AIrsenal weight transparently delegated to the Apex
+    fallback. Raw upstream presence remains separately reported and is never
+    fabricated. Any unreconciled source absence is a hard blocker.
     """
     blockers: list[str] = []
     warnings: list[str] = []
@@ -97,8 +98,15 @@ def audit_player_truth(players: pd.DataFrame, projections: pd.DataFrame, expecte
     if projection_coverage < 1.0:
         blockers.append(f"canonical projection pair coverage is {projection_coverage:.2%}, required 100%; missing={missing_projection_pairs[:20]}")
 
-    airsenal_coverage, airsenal_counts, missing_airsenal_pairs = _pair_coverage(projections, valid_ids, gameweeks, presence_column="source_present_airsenal")
+    airsenal_raw_coverage, airsenal_counts, missing_airsenal_pairs = _pair_coverage(
+        projections,
+        valid_ids,
+        gameweeks,
+        presence_column="source_present_airsenal",
+    )
     absent_pairs = set(missing_airsenal_pairs)
+    reconciled_absent_pairs: set[tuple[int, int]] = set()
+    unreconciled_absent_pairs: set[tuple[int, int]] = set(absent_pairs)
     if absent_pairs:
         required_cols = {"airsenal_source_absent", "effective_weight_airsenal_fallback_apex", "xp_expert_airsenal_fallback_apex"}
         missing_absence_cols = sorted(required_cols - set(projections.columns))
@@ -118,10 +126,22 @@ def audit_player_truth(players: pd.DataFrame, projections: pd.DataFrame, expecte
             )
             reconciliation = {(int(r.player_id), int(r.gw)): (bool(r.source_absent), float(r.fallback_weight), float(r.fallback_xp)) for r in grouped.itertuples(index=False)}
             unreconciled = [pair for pair in sorted(absent_pairs) if pair not in reconciliation or not reconciliation[pair][0] or reconciliation[pair][1] <= 0]
+            unreconciled_absent_pairs = set(unreconciled)
+            reconciled_absent_pairs = absent_pairs - unreconciled_absent_pairs
             if unreconciled:
                 blockers.append(f"AIrsenal source-absent pairs lack explicit fixed-weight Apex fallback: {unreconciled[:20]}")
             else:
-                warnings.append(f"AIrsenal genuinely omitted {len(absent_pairs)} player/Gameweek pairs ({airsenal_coverage:.2%} raw coverage); each is explicitly source-absent with fixed-weight Apex fallback")
+                warnings.append(f"AIrsenal genuinely omitted {len(absent_pairs)} player/Gameweek pairs ({airsenal_raw_coverage:.2%} raw coverage); each is explicitly source-absent with fixed-weight Apex fallback")
+
+    expected_airsenal_pairs = len(valid_ids) * len(gameweeks)
+    raw_airsenal_pairs = expected_airsenal_pairs - len(absent_pairs)
+    certified_airsenal_pairs = raw_airsenal_pairs + len(reconciled_absent_pairs)
+    airsenal_certified_coverage = (
+        certified_airsenal_pairs / expected_airsenal_pairs
+        if expected_airsenal_pairs
+        else 0.0
+    )
+    airsenal_source_absence_reconciled = not unreconciled_absent_pairs
 
     projection_set_piece = pd.DataFrame()
     if not projections.empty and {"player_id", "xp_set_piece_prior"}.issubset(projections.columns):
@@ -195,8 +215,11 @@ def audit_player_truth(players: pd.DataFrame, projections: pd.DataFrame, expecte
         "gameweeks": gameweeks,
         "hard_fact_coverage": hard_coverage,
         "canonical_projection_pair_coverage": projection_coverage,
-        "airsenal_projection_pair_coverage": airsenal_coverage,
+        "airsenal_projection_pair_coverage": airsenal_certified_coverage,
+        "airsenal_raw_projection_pair_coverage": airsenal_raw_coverage,
+        "airsenal_source_absence_reconciled": airsenal_source_absence_reconciled,
         "airsenal_source_absent_pair_count": len(absent_pairs),
+        "airsenal_unreconciled_source_absent_pair_count": len(unreconciled_absent_pairs),
         "hard_fact_fields": list(HARD_FACT_FIELDS),
         "ordinal_set_piece_fields": list(ORDER_FIELDS),
         "explicit_share_fields": list(SHARE_FIELDS),
