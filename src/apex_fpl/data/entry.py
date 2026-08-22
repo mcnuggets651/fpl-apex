@@ -26,6 +26,7 @@ class PublicEntryState:
     vice_captain_id: int | None
     active_chip: str | None
     transfers: list[dict[str, Any]]
+    transfers_complete: bool
     chips_used: list[dict[str, Any]]
 
 
@@ -132,11 +133,14 @@ class OfficialEntryClient:
         )
 
     def history(self, force: bool = False) -> dict[str, Any]:
-        return self.http.get_json(
+        payload = self.http.get_json(
             f"{BASE}/entry/{self.entry_id}/history/",
             f"entry_{self.entry_id}_history",
             force,
         )
+        if not isinstance(payload, dict):
+            raise ValueError("public FPL entry history payload is not an object")
+        return payload
 
     def transfers(self, force: bool = False) -> list[dict[str, Any]]:
         payload = self.http.get_json(
@@ -144,7 +148,11 @@ class OfficialEntryClient:
             f"entry_{self.entry_id}_transfers",
             force,
         )
-        return payload if isinstance(payload, list) else []
+        if not isinstance(payload, list):
+            raise ValueError("public FPL transfer history payload is not a list")
+        if any(not isinstance(row, dict) for row in payload):
+            raise ValueError("public FPL transfer history contains a non-object row")
+        return [dict(row) for row in payload]
 
     def picks(self, event: int, force: bool = False) -> dict[str, Any]:
         return self.http.get_json(
@@ -188,15 +196,18 @@ class OfficialEntryClient:
         if payload is None or published_gw is None:
             return None
 
-        # History/transfer calls are only needed once a public deadline squad
-        # actually exists. This keeps the pre-GW1 sync minimal and robust.
+        # History is decision-critical for FT state and therefore fails the entry
+        # sync if unavailable. Transfer history is separately marked incomplete so
+        # the public 15 can still be diagnosed, while the pricing/readiness layer
+        # blocks any transfer recommendation whose realised selling values are not
+        # provably exact.
         history = self.history(force=force)
+        transfers_complete = True
         try:
             transfers = self.transfers(force=force)
         except Exception:
-            # Transfer history improves selling-price reconstruction but is not
-            # necessary to identify the manager's published 15-player squad.
             transfers = []
+            transfers_complete = False
 
         picks = payload.get("picks", [])
         squad = {int(row["element"]) for row in picks if row.get("element") is not None}
@@ -244,5 +255,6 @@ class OfficialEntryClient:
             vice_captain_id=vice,
             active_chip=str(active_chip) if active_chip else None,
             transfers=transfers,
+            transfers_complete=transfers_complete,
             chips_used=chip_rows,
         )
