@@ -15,10 +15,50 @@ from apex_fpl.services.player_identity import (
 def _official() -> pd.DataFrame:
     return pd.DataFrame(
         [
-            {"player_id": 10, "web_name": "Alpha", "first_name": "A", "second_name": "Alpha", "team": 1, "team_name": "Arsenal", "position": "DEF", "price": 4.5, "status": "a"},
-            {"player_id": 20, "web_name": "Beta", "first_name": "B", "second_name": "Beta", "team": 2, "team_name": "Chelsea", "position": "MID", "price": 5.0, "status": "a"},
-            {"player_id": 30, "web_name": "Smith", "first_name": "Alex", "second_name": "Smith", "team": 3, "team_name": "Liverpool", "position": "FWD", "price": 6.0, "status": "a"},
-            {"player_id": 40, "web_name": "Smith", "first_name": "Jamie", "second_name": "Smith", "team": 4, "team_name": "Everton", "position": "FWD", "price": 6.0, "status": "a"},
+            {
+                "player_id": 10,
+                "web_name": "Alpha",
+                "first_name": "A",
+                "second_name": "Alpha",
+                "team": 1,
+                "team_name": "Arsenal",
+                "position": "DEF",
+                "price": 4.5,
+                "status": "a",
+            },
+            {
+                "player_id": 20,
+                "web_name": "Beta",
+                "first_name": "B",
+                "second_name": "Beta",
+                "team": 2,
+                "team_name": "Chelsea",
+                "position": "MID",
+                "price": 5.0,
+                "status": "a",
+            },
+            {
+                "player_id": 30,
+                "web_name": "Smith",
+                "first_name": "Alex",
+                "second_name": "Smith",
+                "team": 3,
+                "team_name": "Liverpool",
+                "position": "FWD",
+                "price": 6.0,
+                "status": "a",
+            },
+            {
+                "player_id": 40,
+                "web_name": "Smith",
+                "first_name": "Jamie",
+                "second_name": "Smith",
+                "team": 4,
+                "team_name": "Everton",
+                "position": "FWD",
+                "price": 6.0,
+                "status": "a",
+            },
         ]
     )
 
@@ -31,6 +71,13 @@ def test_registry_is_unique_and_canonical() -> None:
 def test_registry_duplicate_ids_fail_instead_of_being_silently_deduplicated() -> None:
     corrupted = pd.concat([_official(), _official().iloc[[0]]], ignore_index=True)
     with pytest.raises(IdentityIntegrityError, match="duplicate player IDs"):
+        build_official_identity_registry(corrupted)
+
+
+def test_registry_fractional_official_id_fails_closed_instead_of_truncating() -> None:
+    corrupted = _official()
+    corrupted.loc[0, "player_id"] = 10.5
+    with pytest.raises(IdentityIntegrityError, match="non-integral"):
         build_official_identity_registry(corrupted)
 
 
@@ -51,11 +98,31 @@ def test_correct_id_and_name_resolves_exactly() -> None:
     assert safe.iloc[0]["player_id"] == 10
 
 
+def test_fractional_explicit_id_cannot_fall_back_to_matching_name() -> None:
+    rows = pd.DataFrame([{"player_id": 10.5, "source_player_name": "Alpha"}])
+    with pytest.raises(IdentityIntegrityError, match="non-integral"):
+        resolve_source_identities(
+            _official(), rows, source="fractional", name_columns=("source_player_name",)
+        )
+
+
 def test_unicode_name_witnesses_normalize_without_alias_remapping() -> None:
     official = pd.DataFrame(
         [
-            {"player_id": 1, "web_name": "João Pedro", "team": 1, "team_name": "Chelsea", "position": "FWD"},
-            {"player_id": 2, "web_name": "Guéhi", "team": 2, "team_name": "Man City", "position": "DEF"},
+            {
+                "player_id": 1,
+                "web_name": "João Pedro",
+                "team": 1,
+                "team_name": "Chelsea",
+                "position": "FWD",
+            },
+            {
+                "player_id": 2,
+                "web_name": "Guéhi",
+                "team": 2,
+                "team_name": "Man City",
+                "position": "DEF",
+            },
         ]
     )
     rows = pd.DataFrame(
@@ -143,7 +210,15 @@ def test_valid_official_id_without_independent_witness_fails() -> None:
 
 def test_roster_complete_source_coverage_passes_only_for_exact_official_id_set() -> None:
     rows = pd.DataFrame(
-        [{"player_id": pid, "source_player_name": name} for pid, name in [(10, "Alpha"), (20, "Beta"), (30, "Smith"), (40, "Smith")]]
+        [
+            {"player_id": pid, "source_player_name": name}
+            for pid, name in [
+                (10, "Alpha"),
+                (20, "Beta"),
+                (30, "Smith"),
+                (40, "Smith"),
+            ]
+        ]
     )
     coverage = validate_required_id_coverage(_official(), rows, source="airsenal")
     assert coverage["ready"]
@@ -151,6 +226,7 @@ def test_roster_complete_source_coverage_passes_only_for_exact_official_id_set()
     assert coverage["source_ids"] == 4
     assert coverage["missing_ids"] == []
     assert coverage["extra_ids"] == []
+    assert coverage["invalid_id_rows"] == []
 
 
 def test_roster_complete_source_missing_id_fails_closed() -> None:
@@ -162,10 +238,34 @@ def test_roster_complete_source_missing_id_fails_closed() -> None:
 
 
 def test_roster_complete_source_extra_unknown_id_fails_closed() -> None:
-    rows = pd.DataFrame([{"player_id": 10}, {"player_id": 20}, {"player_id": 30}, {"player_id": 40}, {"player_id": 999}])
+    rows = pd.DataFrame(
+        [
+            {"player_id": 10},
+            {"player_id": 20},
+            {"player_id": 30},
+            {"player_id": 40},
+            {"player_id": 999},
+        ]
+    )
     coverage = validate_required_id_coverage(_official(), rows, source="airsenal")
     assert not coverage["ready"]
     assert coverage["extra_ids"] == [999]
+
+
+def test_roster_complete_source_fractional_id_is_invalid_not_truncated() -> None:
+    rows = pd.DataFrame(
+        [
+            {"player_id": 10.5},
+            {"player_id": 20},
+            {"player_id": 30},
+            {"player_id": 40},
+        ]
+    )
+    coverage = validate_required_id_coverage(_official(), rows, source="airsenal")
+    assert not coverage["ready"]
+    assert coverage["missing_ids"] == [10]
+    assert len(coverage["invalid_id_rows"]) == 1
+    assert "non-integral" in coverage["invalid_id_rows"][0]["reason"]
 
 
 def test_audit_reports_source_blockers_machine_readably() -> None:
@@ -183,8 +283,20 @@ def test_audit_reports_source_blockers_machine_readably() -> None:
 def test_coyle_gabriel_mismatch_shape_is_rejected() -> None:
     official = pd.DataFrame(
         [
-            {"player_id": 1, "web_name": "Coyle", "team": 5, "team_name": "Hull", "position": "DEF"},
-            {"player_id": 2, "web_name": "Gabriel", "team": 1, "team_name": "Arsenal", "position": "DEF"},
+            {
+                "player_id": 1,
+                "web_name": "Coyle",
+                "team": 5,
+                "team_name": "Hull",
+                "position": "DEF",
+            },
+            {
+                "player_id": 2,
+                "web_name": "Gabriel",
+                "team": 1,
+                "team_name": "Arsenal",
+                "position": "DEF",
+            },
         ]
     )
     rows = pd.DataFrame([{"player_id": 1, "source_player_name": "Gabriel"}])
@@ -197,8 +309,20 @@ def test_coyle_gabriel_mismatch_shape_is_rejected() -> None:
 def test_neave_thiaw_mismatch_shape_is_rejected() -> None:
     official = pd.DataFrame(
         [
-            {"player_id": 11, "web_name": "Neave", "team": 14, "team_name": "Newcastle", "position": "FWD"},
-            {"player_id": 12, "web_name": "Thiaw", "team": 14, "team_name": "Newcastle", "position": "DEF"},
+            {
+                "player_id": 11,
+                "web_name": "Neave",
+                "team": 14,
+                "team_name": "Newcastle",
+                "position": "FWD",
+            },
+            {
+                "player_id": 12,
+                "web_name": "Thiaw",
+                "team": 14,
+                "team_name": "Newcastle",
+                "position": "DEF",
+            },
         ]
     )
     rows = pd.DataFrame([{"player_id": 11, "source_player_name": "Thiaw"}])
