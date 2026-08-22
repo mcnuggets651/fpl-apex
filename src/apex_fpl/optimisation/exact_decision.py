@@ -98,8 +98,12 @@ def _legal_lineups(squad: pd.DataFrame):
                 if not XI_MIN["FWD"] <= forwards <= XI_MAX["FWD"]:
                     continue
                 for chosen_defenders in combinations(by_position["DEF"], defenders):
-                    for chosen_midfielders in combinations(by_position["MID"], midfielders):
-                        for chosen_forwards in combinations(by_position["FWD"], forwards):
+                    for chosen_midfielders in combinations(
+                        by_position["MID"], midfielders
+                    ):
+                        for chosen_forwards in combinations(
+                            by_position["FWD"], forwards
+                        ):
                             yield (
                                 int(goalkeeper),
                                 *chosen_defenders,
@@ -117,7 +121,9 @@ def optimise_fixed_squad_gameweek(
     xi_eligible: set[int] | None = None,
 ) -> tuple[pd.DataFrame, GameweekMechanics]:
     """Exhaustively choose the legal XI and exact deadline mechanics for a squad."""
-    eligible = None if captain_eligible is None else {int(pid) for pid in captain_eligible}
+    eligible = (
+        None if captain_eligible is None else {int(pid) for pid in captain_eligible}
+    )
     squad_ids = tuple(sorted(squad["player_id"].astype(int).tolist()))
     positions = {
         int(row.player_id): str(row.position)
@@ -125,7 +131,9 @@ def optimise_fixed_squad_gameweek(
     }
     best: tuple[float, tuple, GameweekMechanics] | None = None
     for lineup_ids in _legal_lineups(squad):
-        if xi_eligible is not None and not set(lineup_ids).issubset({int(x) for x in xi_eligible}):
+        if xi_eligible is not None and not set(lineup_ids).issubset(
+            {int(x) for x in xi_eligible}
+        ):
             continue
         if eligible is not None and len(set(lineup_ids) & eligible) < 2:
             continue
@@ -175,8 +183,12 @@ def _rescore_candidate(
         int(gw): _projection_map(projections, int(gw), projection_col)
         for gw in gameweeks
     }
-    eligible = None if captain_eligible is None else {int(pid) for pid in captain_eligible}
-    best_by_gw: dict[int, tuple[float, tuple, GameweekMechanics, tuple[int, ...]]] = {}
+    eligible = (
+        None if captain_eligible is None else {int(pid) for pid in captain_eligible}
+    )
+    best_by_gw: dict[
+        int, tuple[float, tuple, GameweekMechanics, tuple[int, ...]]
+    ] = {}
 
     for lineup_ids in _legal_lineups(solution.squad):
         lineup_ids = tuple(sorted(int(pid) for pid in lineup_ids))
@@ -219,7 +231,9 @@ def _rescore_candidate(
                 )
                 for order, weights in order_weights
             )[::2]
-            xi_points = sum(max(float(xp.get(pid, 0.0)), 0.0) for pid in lineup_ids)
+            xi_points = sum(
+                max(float(xp.get(pid, 0.0)), 0.0) for pid in lineup_ids
+            )
             mechanics = GameweekMechanics(
                 expected_xi_points=float(xi_points),
                 expected_autosub_points=float(autosub),
@@ -237,7 +251,12 @@ def _rescore_candidate(
                 tuple(int(pid) for pid in bench_order),
             )
             previous = best_by_gw.get(int(gw))
-            row = (float(mechanics.expected_total_points), tie_key, mechanics, lineup_ids)
+            row = (
+                float(mechanics.expected_total_points),
+                tie_key,
+                mechanics,
+                lineup_ids,
+            )
             if previous is None or row[0] > previous[0] + 1e-12 or (
                 abs(row[0] - previous[0]) <= 1e-12 and row[1] < previous[1]
             ):
@@ -347,6 +366,7 @@ def optimise_exact_horizon_decision(
     best_approximate: float | None = None
     shortlist_floor = -math.inf
     shortlist_complete = False
+    terminal_solution: SquadSolution | None = None
     for rank in range(1, int(candidate_limit) + 1):
         solution = optimise_initial_horizon(
             players,
@@ -366,7 +386,11 @@ def optimise_exact_horizon_decision(
             solver_time_limit=120,
         )
         if solution.status != "Optimal":
-            shortlist_complete = True
+            terminal_solution = solution
+            # Only a mathematical infeasibility proves that the candidate universe
+            # has been exhausted. A time/iteration limit or solver error leaves the
+            # shortlist incomplete and must propagate as inconclusive.
+            shortlist_complete = solution.status == "Infeasible"
             break
         if best_approximate is None:
             best_approximate = float(solution.objective)
@@ -388,14 +412,22 @@ def optimise_exact_horizon_decision(
         excluded.append(set(candidate.squad_ids))
 
     if not generated:
-        empty = players.iloc[0:0].copy()
-        infeasible = SquadSolution(
-            "Infeasible", float("nan"), empty, empty, empty, empty, empty
-        )
+        if terminal_solution is None:
+            empty = players.iloc[0:0].copy()
+            terminal_solution = SquadSolution(
+                "SolverError",
+                float("nan"),
+                empty,
+                empty,
+                empty,
+                empty,
+                empty,
+                {"termination_reason": "candidate generation ended without result"},
+            )
         return ExactHorizonDecision(
-            "Infeasible",
+            terminal_solution.status,
             float("nan"),
-            infeasible,
+            terminal_solution,
             tuple(),
             tuple(),
             shortlist_complete,
@@ -404,11 +436,27 @@ def optimise_exact_horizon_decision(
             near_equivalent_points,
         )
 
+    # If at least one valid candidate exists but the next generator call is
+    # inconclusive, the best observed candidate is useful diagnostically but cannot
+    # be certified as a complete shortlist. Keep the solution and surface the
+    # incompleteness via ``shortlist_complete=False`` and preserved solver metadata
+    # on the candidates. Production convergence gates must not promote that result as
+    # globally certified merely because exact mechanics were evaluated inside it.
     selected_solution, selected = min(
         generated,
         key=lambda row: (-row[1].exact_objective, row[1].squad_ids),
     )
     authoritative = _authoritative_solution(selected_solution, selected)
+    if terminal_solution is not None and terminal_solution.status not in {
+        "Infeasible",
+        "Optimal",
+    }:
+        authoritative.solver.update(
+            {
+                "shortlist_terminal_status": terminal_solution.status,
+                "shortlist_terminal_solver": dict(terminal_solution.solver or {}),
+            }
+        )
     candidates = tuple(
         sorted(
             (candidate for _, candidate in generated),
