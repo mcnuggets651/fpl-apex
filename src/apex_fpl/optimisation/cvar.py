@@ -11,9 +11,11 @@ from scipy.sparse import lil_matrix
 from apex_fpl.constants import SQUAD_COUNTS, XI_MAX, XI_MIN
 from apex_fpl.models.scenarios import ProjectionScenarios
 from apex_fpl.optimisation.bench_policy import (
+    CURRENT_BENCH_POLICY_COLUMN,
     MINIMUM_PLAYABLE_OUTFIELD_BENCH,
     credible_first_bench_ids,
     playable_outfield_ids,
+    resolve_current_bench_resilience,
 )
 from apex_fpl.optimisation.solver_status import scipy_milp_metadata, scipy_milp_status
 
@@ -49,7 +51,7 @@ def optimise_initial_cvar(
     banned: set[int] | None = None,
     captain_eligible: set[int] | None = None,
     xi_eligible: set[int] | None = None,
-    enforce_current_bench_resilience: bool = False,
+    enforce_current_bench_resilience: bool | None = None,
 ) -> RobustSquadSolution:
     """Solve a legal initial FPL squad against correlated forecast scenarios.
 
@@ -58,10 +60,15 @@ def optimise_initial_cvar(
     mathematical infeasibility; only HiGHS status code 2 is surfaced as
     ``Infeasible``.
 
-    The current-deadline bench policy is explicit and optional. Production
-    comparison runs enable it so robust and maximum-EV squads share the same
-    feasibility set; generic scenario/replay callers are unaffected by default.
+    Current-deadline bench resilience follows the governed decision-surface marker
+    unless a caller explicitly overrides it. This keeps robust and deterministic
+    production comparisons on one feasibility set without contaminating generic
+    replay surfaces or future-only contingency solves.
     """
+    enforce_current_bench_resilience = resolve_current_bench_resilience(
+        players,
+        enforce_current_bench_resilience,
+    )
     locked, banned = set(locked or set()), set(banned or set())
     if "squad_evidence_eligible" in players:
         banned |= set(
@@ -105,7 +112,13 @@ def optimise_initial_cvar(
             empty,
             empty,
             np.asarray([], dtype=float),
-            {"status_code": None, "termination_reason": "no eligible players"},
+            {
+                "status_code": None,
+                "termination_reason": "no eligible players",
+                "current_bench_resilience_enforced": bool(
+                    enforce_current_bench_resilience
+                ),
+            },
         )
 
     scenario_pid_index = {int(pid): i for i, pid in enumerate(scenarios.player_ids)}
@@ -134,6 +147,9 @@ def optimise_initial_cvar(
             {
                 "status_code": None,
                 "termination_reason": "scenario surface has no gameweeks or scenarios",
+                "current_bench_resilience_enforced": bool(
+                    enforce_current_bench_resilience
+                ),
             },
         )
     values = np.zeros((s_count, n, t_count), dtype=float)
@@ -157,8 +173,8 @@ def optimise_initial_cvar(
     def cv(i: int, t: int) -> int:
         return C0 + t * n + i
 
-    def uv(s: int) -> int:
-        return U0 + s
+    def uv(scenario_idx: int) -> int:
+        return U0 + scenario_idx
 
     bw = float(np.clip(bench_weight, 0.0, 0.35))
     discounts = np.asarray([float(decay) ** t for t in range(t_count)], dtype=float)
@@ -363,6 +379,7 @@ def optimise_initial_cvar(
         "tactical_role",
         "tactical_role_source",
         "role_confidence",
+        CURRENT_BENCH_POLICY_COLUMN,
         "gw1_xp",
         "xpts_3",
         "xpts_5",
