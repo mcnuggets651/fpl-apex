@@ -2,8 +2,10 @@
 """Compare legacy safety gating with the EV-first policy on one sealed surface.
 
 This is a diagnostic only. Both policies consume the same immutable player,
-projection and evidence surface. Production publication readiness is recorded but
-is not allowed to masquerade as an optimiser-policy failure.
+projection, evidence *and decision-parameter* surface. Production publication
+readiness is recorded but is not allowed to masquerade as an optimiser-policy
+failure. Likewise, mathematical infeasibility created by the deliberately stricter
+legacy comparator is a diagnostic result, not an infrastructure crash.
 """
 from __future__ import annotations
 
@@ -30,6 +32,15 @@ LEGACY_CAPTAIN_EXPECTED_MINUTES = 60.0
 LEGACY_CAPTAIN_START_PROBABILITY = 0.50
 LEGACY_CAPTAIN_APPEARANCE_PROBABILITY = 0.75
 LEGACY_CAPTAIN_PROJECTION_CONFIDENCE = 0.40
+DECISION_PARAMETER_FIELDS = (
+    "budget",
+    "max_per_team",
+    "fixture_decay",
+    "approximate_bench_weight",
+    "exact_candidate_limit",
+    "exact_candidate_regret_fraction",
+    "exact_near_equivalent_points",
+)
 
 
 def _num(frame: pd.DataFrame, column: str, default: float = 0.0) -> pd.Series:
@@ -64,21 +75,60 @@ def _decision_payload(decision, players: pd.DataFrame) -> dict:
         "first_gw_vice_captain_name": names[int(first_week.mechanics.vice_captain_id)],
         "first_gw_expected_total_points": float(first_week.mechanics.expected_total_points),
         "near_equivalent_candidate_count": len(decision.near_equivalent_candidates),
+        "shortlist_complete": bool(decision.shortlist_complete),
+        "candidate_count": len(decision.candidates),
+        "solver": dict(decision.solution.solver or {}),
     }
 
 
-def _solve(players, projections, gws, settings, *, captain_eligible, xi_eligible):
+def _nonoptimal_payload(decision) -> dict:
+    return {
+        "status": str(decision.status),
+        "objective": None,
+        "shortlist_complete": bool(decision.shortlist_complete),
+        "candidate_count": len(decision.candidates),
+        "solver": dict(decision.solution.solver or {}),
+    }
+
+
+def _certified_infeasible(decision) -> bool:
+    """Distinguish a mathematical comparator result from timeout/solver failure."""
+    if decision.status != "Infeasible":
+        return False
+    solver = dict(decision.solution.solver or {})
+    # scipy.optimize.milp/HiGHS status 2 is mathematical infeasibility. A missing
+    # status is accepted only for legacy/mocked tests that have no solver metadata.
+    code = solver.get("status_code")
+    return code is None or int(code) == 2
+
+
+def _decision_parameters_from_settings(settings) -> dict:
+    return {field: getattr(settings, field) for field in DECISION_PARAMETER_FIELDS}
+
+
+def _decision_parameters_from_bundle(bundle: DecisionBundle) -> dict:
+    sealed = bundle.settings
+    missing = [field for field in DECISION_PARAMETER_FIELDS if field not in sealed]
+    if missing:
+        raise ValueError(
+            "sealed DecisionBundle is missing optimiser decision parameters: "
+            + ", ".join(missing)
+        )
+    return {field: sealed[field] for field in DECISION_PARAMETER_FIELDS}
+
+
+def _solve(players, projections, gws, parameters, *, captain_eligible, xi_eligible):
     return optimise_exact_horizon_decision(
         players,
         projections,
         gws,
-        budget=settings.budget,
-        max_per_team=settings.max_per_team,
-        decay=settings.fixture_decay,
-        shortlist_bench_weight=settings.approximate_bench_weight,
-        candidate_limit=settings.exact_candidate_limit,
-        candidate_regret_fraction=settings.exact_candidate_regret_fraction,
-        near_equivalent_points=settings.exact_near_equivalent_points,
+        budget=float(parameters["budget"]),
+        max_per_team=int(parameters["max_per_team"]),
+        decay=float(parameters["fixture_decay"]),
+        shortlist_bench_weight=float(parameters["approximate_bench_weight"]),
+        candidate_limit=int(parameters["exact_candidate_limit"]),
+        candidate_regret_fraction=float(parameters["exact_candidate_regret_fraction"]),
+        near_equivalent_points=float(parameters["exact_near_equivalent_points"]),
         captain_eligible=captain_eligible,
         xi_eligible=xi_eligible,
         projection_col="xp",
@@ -93,7 +143,16 @@ def _load_surface(settings, args):
             "mode": "sealed_decision_bundle",
             "bundle_id": bundle.bundle_id,
             "bundle_created_at": bundle.created_at,
-        }
+            "decision_settings_sha256": (
+                (bundle.manifest.get("identity") or {}).get("settings_sha256")
+            ),
+            "source_tree_sha256": (
+                (bundle.manifest.get("code") or {}).get("source_tree_sha256")
+            ),
+            "configuration_sha256": (
+                (bundle.manifest.get("code") or {}).get("configuration_sha256")
+            ),
+        }, _decision_parameters_from_bundle(bundle)
     output = run_pipeline(
         settings,
         horizon=args.horizon,
@@ -101,7 +160,44 @@ def _load_surface(settings, args):
         force=args.force,
         plan_transfers=False,
     )
-    return output, {"mode": "live_pipeline", "bundle_id": None}
+    return output, {
+        "mode": "live_pipeline",
+        "bundle_id": None,
+        "decision_settings_sha256": None,
+    }, _decision_parameters_from_settings(settings)
+
+
+def _eligibility_summary(
+    players: pd.DataFrame,
+    xi_ids: set[int],
+    captain_ids: set[int],
+) -> dict:
+    unique = players.drop_duplicates("player_id")
+    positions = {}
+    for position in ("GK", "DEF", "MID", "FWD"):
+        positions[position] = int(
+            unique.loc[
+                unique["position"].astype(str).eq(position)
+                & unique["player_id"].astype(int).isin(xi_ids),
+                "player_id",
+            ].nunique()
+        )
+    captain_in_xi = len(set(captain_ids) & set(xi_ids))
+    minimum_shape_possible = (
+        positions["GK"] >= 1
+        and positions["DEF"] >= 3
+        and positions["MID"] >= 2
+        and positions["FWD"] >= 1
+        and sum(positions.values()) >= 11
+        and captain_in_xi >= 2
+    )
+    return {
+        "xi_eligible_count": len(xi_ids),
+        "captain_eligible_count": len(captain_ids),
+        "captain_eligible_within_xi_count": captain_in_xi,
+        "xi_eligible_by_position": positions,
+        "minimum_legal_xi_shape_possible": bool(minimum_shape_possible),
+    }
 
 
 def main() -> None:
@@ -113,7 +209,7 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = load_settings()
-    out, surface = _load_surface(settings, args)
+    out, surface, decision_parameters = _load_surface(settings, args)
     readiness = assess_diagnostic_surface(out, projection_col="xp")
     if not readiness.ready:
         raise SystemExit(
@@ -158,7 +254,7 @@ def main() -> None:
         players,
         out.projections,
         out.gameweeks,
-        settings,
+        decision_parameters,
         captain_eligible=legacy_captain,
         xi_eligible=legacy_xi,
     )
@@ -166,53 +262,28 @@ def main() -> None:
         players,
         out.projections,
         out.gameweeks,
-        settings,
+        decision_parameters,
         captain_eligible=new_captain,
         xi_eligible=new_xi,
     )
-    if legacy.status != "Optimal" or ev_first.status != "Optimal":
-        raise SystemExit(
-            f"policy audit solve failed: legacy={legacy.status}, ev_first={ev_first.status}"
-        )
 
-    old = _decision_payload(legacy, players)
-    new = _decision_payload(ev_first, players)
-    old_squad, new_squad = set(old["squad_ids"]), set(new["squad_ids"])
-    old_xi, new_xi_ids = set(old["first_gw_xi_ids"]), set(new["first_gw_xi_ids"])
+    ev_ok = ev_first.status == "Optimal"
+    legacy_ok = legacy.status == "Optimal"
+    legacy_infeasible = _certified_infeasible(legacy)
+    audit_passed = bool(ev_ok and (legacy_ok or legacy_infeasible))
+
+    old = _decision_payload(legacy, players) if legacy_ok else _nonoptimal_payload(legacy)
+    new = _decision_payload(ev_first, players) if ev_ok else _nonoptimal_payload(ev_first)
     names = {
         int(row.player_id): str(row.web_name)
         for row in players[["player_id", "web_name"]]
         .drop_duplicates("player_id")
         .itertuples(index=False)
     }
-    report = {
-        "contract": "apex-max-ev-policy-audit-v2",
-        "production_changed": False,
-        "canonical_publish_attempted": False,
-        "surface": surface,
-        "diagnostic_readiness": readiness.to_dict(),
-        "gameweeks": [int(gw) for gw in out.gameweeks],
-        "official_snapshot": out.snapshot,
-        "base_safe_to_act": bool(out.safety.safe_to_act),
-        "base_full_apex_ready": bool(out.safety.full_apex_ready),
-        "base_publication_blockers": list(out.safety.blockers),
-        "policy": {
-            "legacy": "confidence floors plus adverse-evidence ceilings",
-            "ev_first": "adverse-evidence ceilings only; uncertainty remains diagnostic",
-            "projection_surface": "canonical ensemble mean xp for both policies",
-        },
-        "eligibility": {
-            "legacy_xi_eligible_count": len(legacy_xi),
-            "ev_first_xi_eligible_count": len(new_xi),
-            "legacy_captain_eligible_count": len(legacy_captain),
-            "ev_first_captain_eligible_count": len(new_captain),
-            "uncertainty_diagnostic_count": len(
-                eligibility.get("uncertainty_diagnostic_ids", [])
-            ),
-        },
-        "legacy": old,
-        "ev_first": new,
-        "decision_delta": {
+    if legacy_ok and ev_ok:
+        old_squad, new_squad = set(old["squad_ids"]), set(new["squad_ids"])
+        old_xi, new_xi_ids = set(old["first_gw_xi_ids"]), set(new["first_gw_xi_ids"])
+        decision_delta = {
             "objective_delta": float(new["objective"] - old["objective"]),
             "first_gw_expected_points_delta": float(
                 new["first_gw_expected_total_points"]
@@ -225,12 +296,60 @@ def main() -> None:
             "first_gw_xi_in": [names[pid] for pid in sorted(new_xi_ids - old_xi)],
             "first_gw_xi_out": [names[pid] for pid in sorted(old_xi - new_xi_ids)],
             "captain_changed": new["first_gw_captain_id"] != old["first_gw_captain_id"],
+        }
+        comparison_status = "both_policies_optimal"
+    elif legacy_infeasible and ev_ok:
+        decision_delta = None
+        comparison_status = "legacy_confidence_policy_infeasible_ev_first_optimal"
+    else:
+        decision_delta = None
+        comparison_status = "policy_solve_error"
+
+    report = {
+        "contract": "apex-max-ev-policy-audit-v3",
+        "audit_passed": audit_passed,
+        "comparison_status": comparison_status,
+        "production_changed": False,
+        "canonical_publish_attempted": False,
+        "surface": surface,
+        "sealed_decision_parameters": decision_parameters,
+        "diagnostic_readiness": readiness.to_dict(),
+        "gameweeks": [int(gw) for gw in out.gameweeks],
+        "official_snapshot": out.snapshot,
+        "base_safe_to_act": bool(out.safety.safe_to_act),
+        "base_full_apex_ready": bool(out.safety.full_apex_ready),
+        "base_publication_blockers": list(out.safety.blockers),
+        "policy": {
+            "legacy": "confidence floors plus adverse-evidence ceilings",
+            "ev_first": "adverse-evidence ceilings only; uncertainty remains diagnostic",
+            "projection_surface": "canonical ensemble mean xp for both policies",
         },
+        "eligibility": {
+            "legacy": _eligibility_summary(players, legacy_xi, legacy_captain),
+            "ev_first": _eligibility_summary(players, new_xi, new_captain),
+            "uncertainty_diagnostic_count": len(
+                eligibility.get("uncertainty_diagnostic_ids", [])
+            ),
+        },
+        "legacy": old,
+        "ev_first": new,
+        "decision_delta": decision_delta,
     }
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
     print(path)
+
+    if not ev_ok:
+        raise SystemExit(
+            "EV-first production-policy diagnostic solve failed: "
+            f"status={ev_first.status}; solver={dict(ev_first.solution.solver or {})}"
+        )
+    if not legacy_ok and not legacy_infeasible:
+        raise SystemExit(
+            "legacy comparator ended non-optimally without a mathematical "
+            f"infeasibility certificate: solver={dict(legacy.solution.solver or {})}"
+        )
 
 
 if __name__ == "__main__":
