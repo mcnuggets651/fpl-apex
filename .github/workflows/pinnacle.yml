@@ -232,17 +232,36 @@ jobs:
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
+      - name: Certify adversarial, bench-stress, mechanics and dry-run promotion
+        id: release
+        if: steps.canonical.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          python scripts/certify_release_generation.py \
+            --run-dir "$RUN_DIR" --bundle-dir "$BUNDLE_DIR" \
+            --promotion-dir "$RUNNER_TEMP/apex-unified-release-candidate" \
+            --run-id "${{ github.run_id }}"
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
       - name: Finalize current-generation fail-closed status
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           extra=""
-          if [ "${{ steps.canonical.outputs.exit_code }}" = "0" ]; then extra="--canonical-step-succeeded"; fi
+          reason="Apex Unified production run did not complete a certified canonical assembly and release certificate"
+          if [ "${{ steps.canonical.outputs.exit_code }}" = "0" ] && [ "${{ steps.release.outputs.exit_code }}" = "0" ]; then
+            extra="--canonical-step-succeeded"
+            reason="Apex Unified canonical assembly and release certificate completed"
+          fi
           python scripts/finalize_production_status.py \
             --output-dir "$RUN_DIR" --bundle-dir "$BUNDLE_DIR" --reports-dir "$APEX_REPORT_DIR" \
             --archive-dir "$RUN_DIR/production_runs" --run-id "${{ github.run_id }}" \
-            --reason "Apex Unified production run did not complete a certified canonical assembly" $extra
+            --reason "$reason" $extra
 
       - name: Promote exactly one coherent generation to latest aliases
         if: always()
@@ -252,7 +271,7 @@ jobs:
             --target-dir data/generated --run-id "${{ github.run_id }}"
 
       - name: Update no-hindsight learning archive from promoted state
-        if: steps.canonical.outputs.exit_code == '0'
+        if: steps.release.outputs.exit_code == '0'
         run: python scripts/update_learning_archive.py
 
       - name: Seal current-generation workflow artifact
