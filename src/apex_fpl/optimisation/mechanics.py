@@ -11,6 +11,7 @@ from apex_fpl.optimisation.bench_policy import (
     credible_first_bench_ids,
     playable_outfield_ids,
     require_bench_resilience,
+    resolve_current_bench_resilience,
 )
 
 
@@ -47,8 +48,6 @@ def _probability(bits: tuple[int, ...], probs: list[float]) -> float:
 
 
 def _legal_counts(counts: dict[str, int]) -> bool:
-    # Goalkeeper substitution is handled separately. For outfield autosubs FPL's
-    # formation test is 3+ DEF, 2+ MID and 1+ FWD (with the normal maxima).
     return all(
         XI_MIN[pos] <= int(counts.get(pos, 0)) <= XI_MAX[pos]
         for pos in ("DEF", "MID", "FWD")
@@ -60,7 +59,6 @@ def _can_replace_slot(
     missing_slots: set[int],
     bench_position: str,
 ) -> int | None:
-    """Return a missing XI slot that can legally be replaced by the bench player."""
     for slot in sorted(missing_slots):
         trial = list(slot_positions)
         trial[slot] = bench_position
@@ -78,14 +76,6 @@ def best_captain_vice(
     captain_multiplier: int = 2,
     captain_eligible: set[int] | None = None,
 ) -> tuple[int, int, float]:
-    """Choose captain/vice using the exact FPL no-show fallback expectation.
-
-    ``xp`` is unconditional expected FPL points, so it already includes the vice
-    player's own appearance probability. The additional captain value for pair
-    (c, v) is therefore
-
-      (multiplier-1) * [xP(c) + P(c no-show) * xP(v)].
-    """
     ids = sorted(
         int(x) for x in pd.to_numeric(xi["player_id"], errors="coerce").dropna()
     )
@@ -240,22 +230,12 @@ def expected_autosub_points(
     *,
     outfield_order: tuple[int, ...],
 ) -> float:
-    """Exact expected autosub value for a submitted XI and outfield bench order.
-
-    The calculation enumerates binary appearance states for the ten starting
-    outfielders and three outfield substitutes (8,192 states). This is small enough
-    to be exact and avoids the constant bench-weight approximation when the final
-    recommendation is presented.
-    """
-    xi_rows = xi.copy()
-    bench_rows = bench.copy()
     positions = {
         int(row.player_id): str(row.position)
-        for row in pd.concat([xi_rows, bench_rows], ignore_index=True).itertuples(index=False)
+        for row in pd.concat([xi, bench], ignore_index=True).itertuples(index=False)
     }
-
-    xi_ids = tuple(sorted(int(pid) for pid in xi_rows["player_id"]))
-    bench_ids = tuple(sorted(int(pid) for pid in bench_rows["player_id"]))
+    xi_ids = tuple(sorted(int(pid) for pid in xi["player_id"]))
+    bench_ids = tuple(sorted(int(pid) for pid in bench["player_id"]))
     return _expected_autosub_ids(
         xi_ids,
         bench_ids,
@@ -278,12 +258,6 @@ def evaluate_gameweek_mechanics_ids(
     playable_bench_ids: set[int] | None = None,
     first_bench_eligible_ids: set[int] | None = None,
 ) -> GameweekMechanics:
-    """Evaluate exact FPL mechanics for one submitted XI.
-
-    Bench resilience is an explicit current-deadline policy, not a hidden mechanics
-    rule. Callers that supply one resilience set must supply both; future/replay
-    callers may omit both and receive unconstrained legal FPL mechanics.
-    """
     if (playable_bench_ids is None) != (first_bench_eligible_ids is None):
         raise ValueError(
             "playable_bench_ids and first_bench_eligible_ids must be supplied together"
@@ -363,9 +337,13 @@ def optimise_gameweek_mechanics(
     *,
     captain_multiplier: int = 2,
     captain_eligible: set[int] | None = None,
-    enforce_current_bench_resilience: bool = False,
+    enforce_current_bench_resilience: bool | None = None,
 ) -> GameweekMechanics:
-    """Optimise captain/vice and bench order for a fixed legal XI/squad."""
+    """Optimise exact current Gameweek mechanics for a fixed legal XI/squad."""
+    enforce = resolve_current_bench_resilience(
+        squad,
+        enforce_current_bench_resilience,
+    )
     squad_ids = tuple(
         sorted(pd.to_numeric(squad["player_id"], errors="coerce").dropna().astype(int))
     )
@@ -376,12 +354,8 @@ def optimise_gameweek_mechanics(
         int(row.player_id): str(row.position)
         for row in squad[["player_id", "position"]].itertuples(index=False)
     }
-    playable = playable_outfield_ids(squad) if enforce_current_bench_resilience else None
-    first = (
-        credible_first_bench_ids(squad)
-        if enforce_current_bench_resilience
-        else None
-    )
+    playable = playable_outfield_ids(squad) if enforce else None
+    first = credible_first_bench_ids(squad) if enforce else None
     return evaluate_gameweek_mechanics_ids(
         squad_ids,
         xi_ids,
