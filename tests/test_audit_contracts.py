@@ -52,7 +52,10 @@ def test_duplicate_projection_key_blocks_diagnostic_surface():
     readiness = assess_diagnostic_surface(output)
 
     assert readiness.ready is False
-    assert "diagnostic projection surface has duplicate player_id/gw rows" in readiness.blockers
+    assert (
+        "diagnostic projection surface has repeated player/Gameweek rows without "
+        "fixture identity columns: is_home, opponent"
+    ) in readiness.blockers
 
 
 def test_non_finite_projection_blocks_diagnostic_surface():
