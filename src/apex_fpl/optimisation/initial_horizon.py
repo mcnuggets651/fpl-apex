@@ -18,11 +18,35 @@ def _solver_metadata(result, *, relative_gap: float, time_limit: int) -> dict:
         "termination_reason": str(getattr(result, "message", "unknown")),
         "incumbent": None if fun is None or not np.isfinite(fun) else float(-fun),
         "bound": None if dual is None or not np.isfinite(dual) else float(-dual),
-        "relative_gap": None if getattr(result, "mip_gap", None) is None else float(result.mip_gap),
-        "node_count": None if getattr(result, "mip_node_count", None) is None else int(result.mip_node_count),
+        "relative_gap": None
+        if getattr(result, "mip_gap", None) is None
+        else float(result.mip_gap),
+        "node_count": None
+        if getattr(result, "mip_node_count", None) is None
+        else int(result.mip_node_count),
         "configured_relative_gap": float(relative_gap),
         "time_limit_seconds": int(time_limit),
     }
+
+
+def _solver_status(result) -> str:
+    """Map HiGHS/Scipy MILP termination to a non-lossy Apex status.
+
+    Scipy ``milp`` uses status 0=optimal, 1=iteration/time limit,
+    2=infeasible, 3=unbounded and 4=other. Historically Apex collapsed every
+    non-success into ``Infeasible``. That is unsafe: a timeout proves nothing about
+    mathematical feasibility and must remain visibly inconclusive.
+    """
+    if bool(getattr(result, "success", False)) and getattr(result, "x", None) is not None:
+        return "Optimal"
+    code = int(getattr(result, "status", -1))
+    if code == 2:
+        return "Infeasible"
+    if code == 1:
+        return "SolverLimit"
+    if code == 3:
+        return "Unbounded"
+    return "SolverError"
 
 
 def optimise_initial_horizon(
@@ -55,27 +79,45 @@ def optimise_initial_horizon(
             ].astype(int)
         )
     excluded_squads = excluded_squads or []
-    captain_eligible = None if captain_eligible is None else {int(pid) for pid in captain_eligible}
+    captain_eligible = (
+        None
+        if captain_eligible is None
+        else {int(pid) for pid in captain_eligible}
+    )
     if xi_eligible is None and "xi_evidence_eligible" in players:
-        xi_eligible = set(players.loc[players["xi_evidence_eligible"].fillna(False), "player_id"].astype(int))
+        xi_eligible = set(
+            players.loc[
+                players["xi_evidence_eligible"].fillna(False), "player_id"
+            ].astype(int)
+        )
     xi_eligible = None if xi_eligible is None else {int(pid) for pid in xi_eligible}
     gws = [int(gw) for gw in gameweeks]
     if not gws:
         empty = players.iloc[0:0].copy()
-        return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
+        return SquadSolution(
+            "Infeasible", float("nan"), empty, empty, empty, empty, empty,
+            {"status_code": 2, "termination_reason": "no gameweeks supplied"},
+        )
 
     d = players.drop_duplicates("player_id").copy()
     d = d[d["position"].isin(SQUAD_COUNTS)].reset_index(drop=True)
     if d.empty:
         empty = d.iloc[0:0]
-        return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
+        return SquadSolution(
+            "Infeasible", float("nan"), empty, empty, empty, empty, empty,
+            {"status_code": 2, "termination_reason": "no eligible players"},
+        )
 
     club_col = "team" if "team" in d.columns else "team_name"
     if club_col not in d.columns:
         raise ValueError("players require team or team_name for club constraints")
-    value_col = projection_col if projection_col in projections.columns else "risk_adjusted_xp"
+    value_col = (
+        projection_col if projection_col in projections.columns else "risk_adjusted_xp"
+    )
     if value_col not in projections.columns:
-        raise ValueError(f"projection table requires {projection_col!r} or 'risk_adjusted_xp'")
+        raise ValueError(
+            f"projection table requires {projection_col!r} or 'risk_adjusted_xp'"
+        )
 
     n, t_count = len(d), len(gws)
     pids = d["player_id"].astype(int).tolist()
@@ -83,8 +125,16 @@ def optimise_initial_horizon(
     def values_for(column: str) -> np.ndarray:
         if column not in projections.columns:
             raise ValueError(f"projection table requires {column!r}")
-        px = projections[projections["gw"].isin(gws)][["player_id", "gw", column]].copy()
-        matrix = px.pivot_table(index="player_id", columns="gw", values=column, aggfunc="sum", fill_value=0.0)
+        px = projections[projections["gw"].isin(gws)][
+            ["player_id", "gw", column]
+        ].copy()
+        matrix = px.pivot_table(
+            index="player_id",
+            columns="gw",
+            values=column,
+            aggfunc="sum",
+            fill_value=0.0,
+        )
         for gw in gws:
             if gw not in matrix.columns:
                 matrix[gw] = 0.0
@@ -133,7 +183,11 @@ def optimise_initial_horizon(
         upper.append(hi)
 
     add({s(i): 1.0 for i in range(n)}, 15, 15)
-    add({s(i): float(d.loc[i, "price"]) for i in range(n)}, -np.inf, float(budget))
+    add(
+        {s(i): float(d.loc[i, "price"]) for i in range(n)},
+        -np.inf,
+        float(budget),
+    )
     for pos, count in SQUAD_COUNTS.items():
         idx = [i for i in range(n) if d.loc[i, "position"] == pos]
         add({s(i): 1.0 for i in idx}, count, count)
@@ -141,14 +195,18 @@ def optimise_initial_horizon(
         idx = [i for i in range(n) if d.loc[i, club_col] == team]
         add({s(i): 1.0 for i in idx}, -np.inf, max_per_team)
     for excluded in excluded_squads:
-        idx = [i for i, pid in enumerate(pids) if pid in {int(x) for x in excluded}]
+        idx = [
+            i for i, pid in enumerate(pids) if pid in {int(x) for x in excluded}
+        ]
         if len(idx) == 15:
             add({s(i): 1.0 for i in idx}, -np.inf, 14)
     for t in range(t_count):
         add({x(i, t): 1.0 for i in range(n)}, 11, 11)
         add({c(i, t): 1.0 for i in range(n)}, 1, 1)
         if captain_eligible is not None:
-            eligible_idx = [i for i, pid in enumerate(pids) if pid in captain_eligible]
+            eligible_idx = [
+                i for i, pid in enumerate(pids) if pid in captain_eligible
+            ]
             add({x(i, t): 1.0 for i in eligible_idx}, 2, np.inf)
         for pos in SQUAD_COUNTS:
             idx = [i for i in range(n) if d.loc[i, "position"] == pos]
@@ -160,7 +218,15 @@ def optimise_initial_horizon(
         ref_col = reference_projection_col or "xp"
         reference_values = values_for(ref_col)
         reference_objective = build_objective(reference_values)
-        add({idx: float(value) for idx, value in enumerate(reference_objective) if abs(float(value)) > 1e-12}, float(min_reference_objective), np.inf)
+        add(
+            {
+                idx: float(value)
+                for idx, value in enumerate(reference_objective)
+                if abs(float(value)) > 1e-12
+            },
+            float(min_reference_objective),
+            np.inf,
+        )
 
     A = lil_matrix((len(rows), total_vars), dtype=float)
     for r, coeffs in enumerate(rows):
@@ -188,11 +254,24 @@ def optimise_initial_horizon(
 
     configured_gap = float(max(solver_relative_gap, 0.0))
     time_limit = int(max(solver_time_limit, 1))
-    result = milp(c=-objective, integrality=np.ones(total_vars, dtype=int), bounds=Bounds(lb, ub), constraints=LinearConstraint(A.tocsr(), np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)), options={"time_limit": time_limit, "mip_rel_gap": configured_gap})
-    solver = _solver_metadata(result, relative_gap=configured_gap, time_limit=time_limit)
-    if not result.success or result.x is None:
+    result = milp(
+        c=-objective,
+        integrality=np.ones(total_vars, dtype=int),
+        bounds=Bounds(lb, ub),
+        constraints=LinearConstraint(
+            A.tocsr(), np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
+        ),
+        options={"time_limit": time_limit, "mip_rel_gap": configured_gap},
+    )
+    solver = _solver_metadata(
+        result, relative_gap=configured_gap, time_limit=time_limit
+    )
+    status = _solver_status(result)
+    if status != "Optimal":
         empty = d.iloc[0:0]
-        return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty, solver)
+        return SquadSolution(
+            status, float("nan"), empty, empty, empty, empty, empty, solver
+        )
 
     sol = result.x
     chosen = [i for i in range(n) if sol[s(i)] > 0.5]
@@ -205,18 +284,64 @@ def optimise_initial_horizon(
     d["gw1_xp"] = d["player_id"].map(gw1_map).fillna(0.0)
     d["decision_projection_col"] = value_col
     d["display_projection_col"] = display_col
-    detail_columns = ["player_id", "web_name", "team_name", "position", "price", "expected_minutes", "start_probability", "appearance_probability", "tactical_role", "tactical_role_source", "role_confidence", "gw1_xp", "xpts_3", "xpts_5", "xpts_8", "raw_horizon_xp", "discounted_horizon_utility", "horizon_xp", "fixture_decay", "projection_confidence", "decision_projection_col", "display_projection_col"]
+    detail_columns = [
+        "player_id",
+        "web_name",
+        "team_name",
+        "position",
+        "price",
+        "expected_minutes",
+        "start_probability",
+        "appearance_probability",
+        "tactical_role",
+        "tactical_role_source",
+        "role_confidence",
+        "gw1_xp",
+        "xpts_3",
+        "xpts_5",
+        "xpts_8",
+        "raw_horizon_xp",
+        "discounted_horizon_utility",
+        "horizon_xp",
+        "fixture_decay",
+        "projection_confidence",
+        "decision_projection_col",
+        "display_projection_col",
+    ]
     cols = [col for col in detail_columns if col in d.columns]
-    squad_df = d.loc[chosen, cols].sort_values(["position", "horizon_xp" if "horizon_xp" in cols else "gw1_xp"], ascending=[True, False])
+    sort_col = "horizon_xp" if "horizon_xp" in cols else "gw1_xp"
+    squad_df = d.loc[chosen, cols].sort_values(
+        ["position", sort_col], ascending=[True, False]
+    )
     xi_df = d.loc[lineup, cols].sort_values("gw1_xp", ascending=False)
     cap_df = d.loc[capt, cols]
     captain_idx = capt[0] if capt else None
-    vice_pool = [i for i in lineup if i != captain_idx and (captain_eligible is None or pids[i] in captain_eligible)]
+    vice_pool = [
+        i
+        for i in lineup
+        if i != captain_idx
+        and (captain_eligible is None or pids[i] in captain_eligible)
+    ]
     if vice_pool:
-        appearance = pd.to_numeric(d.get("appearance_probability", pd.Series(1.0, index=d.index)), errors="coerce").fillna(1.0)
-        vice_idx = max(vice_pool, key=lambda i: float(display_values[i, 0]) * float(appearance.iloc[i]))
+        appearance = pd.to_numeric(
+            d.get("appearance_probability", pd.Series(1.0, index=d.index)),
+            errors="coerce",
+        ).fillna(1.0)
+        vice_idx = max(
+            vice_pool,
+            key=lambda i: float(display_values[i, 0]) * float(appearance.iloc[i]),
+        )
         vice_df = d.loc[[vice_idx], cols]
     else:
         vice_df = d.iloc[0:0][cols]
     bench_df = d.loc[benched, cols].sort_values("gw1_xp", ascending=False)
-    return SquadSolution("Optimal", float(-result.fun), squad_df, xi_df, cap_df, vice_df, bench_df, solver)
+    return SquadSolution(
+        "Optimal",
+        float(-result.fun),
+        squad_df,
+        xi_df,
+        cap_df,
+        vice_df,
+        bench_df,
+        solver,
+    )
