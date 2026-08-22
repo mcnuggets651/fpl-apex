@@ -1,5 +1,10 @@
 import pandas as pd
 
+from apex_fpl.optimisation.bench_policy import (
+    bench_resilience_ok,
+    credible_first_bench_ids,
+    playable_outfield_ids,
+)
 from apex_fpl.optimisation.transfers import TransferPlan
 from apex_fpl.services.strategy import analyse_receding_horizon
 from apex_fpl.services.team_state import TeamState
@@ -20,6 +25,7 @@ def _pool():
                         "position": pos,
                         "price": 4.5,
                         "appearance_probability": 1.0,
+                        "expected_minutes": 75.0,
                     }
                 )
                 pid += 1
@@ -33,41 +39,84 @@ def _current(players):
     return ids
 
 
-def test_receding_horizon_recomputes_and_exact_rescores_first_action():
-    players = _pool()
-    current = _current(players)
-    projections = pd.DataFrame(
+def _projections(players: pd.DataFrame, gw: int) -> pd.DataFrame:
+    return pd.DataFrame(
         [
             {
                 "player_id": int(pid),
-                "gw": 1,
+                "gw": gw,
                 "xp": 3.0 + int(pid) / 100,
                 "risk_adjusted_xp": 2.0,
             }
             for pid in players.player_id
         ]
     )
+
+
+def test_receding_horizon_recomputes_and_exact_rescores_first_action():
+    players = _pool()
+    current = _current(players)
+    projections = _projections(players, 2)
     stale_plan = TransferPlan(
         status="Optimal",
         objective=1.0,
-        weeks=[{"gw": 1, "transfers": 0, "hit_cost": 0}],
+        weeks=[{"gw": 2, "transfers": 0, "hit_cost": 0}],
     )
     state = TeamState(squad=current, bank=5.0, free_transfers=1)
-    out = analyse_receding_horizon(players, projections, [1], state, stale_plan)
+    out = analyse_receding_horizon(players, projections, [2], state, stale_plan)
     assert out.status == "optimal"
-    assert out.action_now["gw"] == 1
+    assert out.action_now["gw"] == 2
     assert out.projection_col == "xp"
     assert out.optimal_objective != stale_plan.objective
     assert out.roll_objective is not None
     assert out.roll_regret is not None
     assert out.contingent_future == []
     assert out.state_transition_reconciled is True
+    assert out.current_bench_resilience_enforced is True
     assert len(out.canonical_squad or []) == 15
     assert len(out.canonical_xi or []) == 11
     assert out.canonical_captain
     assert out.canonical_vice_captain
-    assert out.canonical_captain != out.canonical_vice_captain
+    assert out.canonical_captain_id is not None
+    assert out.canonical_vice_captain_id is not None
+    assert out.canonical_captain_id != out.canonical_vice_captain_id
+    assert out.canonical_bench_gk_id is not None
+    assert len(out.canonical_outfield_bench_order_ids or []) == 3
     assert out.canonical_expected_points is not None
+
+
+def test_unsafe_roll_is_inadmissible_and_model_self_heals_with_current_transfer():
+    players = _pool()
+    current = _current(players)
+    # Make every player non-playable except current DEF 2 and external DEF 15.
+    players.loc[:, "appearance_probability"] = 0.10
+    players.loc[:, "expected_minutes"] = 5.0
+    players.loc[
+        players.player_id.isin([2, 15]),
+        ["appearance_probability", "expected_minutes"],
+    ] = [0.90, 75.0]
+    projections = _projections(players, 2)
+    state = TeamState(squad=current, bank=5.0, free_transfers=1)
+
+    out = analyse_receding_horizon(players, projections, [2], state)
+
+    assert out.status == "optimal"
+    assert out.roll_admissible is False
+    assert out.roll_objective is None
+    assert out.roll_regret is None
+    assert out.recommended_transfers >= 1
+    assert out.recommended_action != "roll"
+    assert out.state_transition_reconciled is True
+    final_ids = {int(row["player_id"]) for row in out.canonical_squad or []}
+    assert 2 in final_ids
+    assert 15 in final_ids
+    bench_ids = out.canonical_outfield_bench_order_ids or []
+    assert bench_resilience_ok(
+        bench_ids,
+        playable_ids=playable_outfield_ids(players),
+        first_bench_ids=credible_first_bench_ids(players),
+    )
+    assert bench_ids[0] in credible_first_bench_ids(players)
 
 
 def test_receding_horizon_handles_empty_gameweek_list_without_projection_table():
