@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 
 import pandas as pd
 
+from apex_fpl.optimisation.bench_policy import BenchResilienceError
 from apex_fpl.optimisation.exact_decision import (
     ExactHorizonDecision,
     optimise_exact_horizon_decision,
@@ -243,14 +244,18 @@ def _evaluate_starting_squad(
         )
     )
 
-    gw1 = int(gameweeks[0])
-    _, mechanics = optimise_fixed_squad_gameweek(
-        squad,
-        _projection_map(projections, gw1, projection_col),
-        _appearance_map(players),
-        captain_eligible=captain_eligible,
-        xi_eligible=xi_eligible,
-    )
+    current_gw = int(gameweeks[0])
+    try:
+        _, mechanics = optimise_fixed_squad_gameweek(
+            squad,
+            _projection_map(projections, current_gw, projection_col),
+            _appearance_map(players),
+            captain_eligible=captain_eligible,
+            xi_eligible=xi_eligible,
+            enforce_current_bench_resilience=True,
+        )
+    except BenchResilienceError:
+        return None
     gw1_points = float(mechanics.expected_total_points)
     gw1_regret = max(float(best_gw1_points) - gw1_points, 0.0)
     within_band = gw1_regret <= float(gw1_regret_tolerance) + 1e-9
@@ -458,20 +463,13 @@ def optimise_joint_initial_path(
     transfer_scan_time_limit: float = 15.0,
     transfer_retry_time_limit: float = 60.0,
 ) -> JointInitialPathResult:
-    """Choose a GW1 launch squad before valuing future transfer options.
+    """Choose the current launch squad before valuing future transfer options.
 
-    GW1 exact expected points remain the primary launch objective. Future legal
-    transfer option value can only distinguish squads inside the existing GW1
-    near-equivalent band.
-
-    Convergence is adaptive and cached. The canonical launch pool is evaluated
-    through rank 32, then ranks 33..48 are solved unless the exact shortlist has
-    already completed. The 32->48 winner must be identical; only another identity
-    change extends once to rank 64. Transfer MILPs use a short scan and a bounded
-    retry. A solver-limit candidate may be pruned only when its branch-and-bound
-    upper bound is strictly below an already proven in-band incumbent; otherwise
-    unresolved limits fail closed. No legality, budget, GW1 floor or promotion gate
-    is weakened.
+    Current-Gameweek exact expected points remain the primary launch objective.
+    Future legal transfer option value can only distinguish squads inside the
+    existing near-equivalent point band. The submitted XI/bench is additionally
+    constrained by the governed current-deadline resilience policy; that policy is
+    deliberately not projected onto later transfer-plan Gameweeks.
     """
     gws = [int(gw) for gw in gameweeks]
     tolerance = max(float(gw1_regret_tolerance), 0.0)
@@ -493,6 +491,7 @@ def optimise_joint_initial_path(
         captain_eligible=captain_eligible,
         xi_eligible=xi_eligible,
         projection_col=projection_col,
+        enforce_current_bench_resilience=True,
     )
     if static.status != "Optimal":
         return JointInitialPathResult(
@@ -516,12 +515,13 @@ def optimise_joint_initial_path(
         captain_eligible=captain_eligible,
         xi_eligible=xi_eligible,
         projection_col=projection_col,
+        enforce_current_bench_resilience=True,
     )
     if launch.status != "Optimal":
         return JointInitialPathResult(
             "infeasible", None, None, tuple(), None, tolerance, None,
             None, None, False, None, None, None, projection_col,
-            "The GW1-first launch solve is not optimal.",
+            "The current-Gameweek-first launch solve is not optimal.",
         )
 
     evaluated: list[JointPathCandidate] = []
@@ -612,10 +612,11 @@ def optimise_joint_initial_path(
                 captain_eligible=captain_eligible,
                 xi_eligible=xi_eligible,
                 projection_col=projection_col,
+                enforce_current_bench_resilience=True,
             )
             if extended.status != "Optimal":
                 raise _TransferPlanInconclusive(
-                    "extended GW1 launch shortlist did not solve optimally"
+                    "extended current-Gameweek launch shortlist did not solve optimally"
                 )
             launch = extended
             evaluated = _rebase_gw1_band(evaluated, float(launch.objective), tolerance)
@@ -691,7 +692,7 @@ def optimise_joint_initial_path(
             best_gw1, tolerance, floor,
             previous_winner.squad_ids if previous_winner else None,
             None, False, None, None, None, projection_col,
-            "No launch candidate survives the GW1 expected-points floor.",
+            "No launch candidate survives the current-Gameweek expected-points floor.",
         )
 
     baseline_ids = tuple(sorted(static.solution.squad["player_id"].astype(int).tolist()))
@@ -760,15 +761,16 @@ def optimise_joint_initial_path(
         future_delta,
         projection_col,
         (
-            "GW1 exact expected points are the primary launch objective. The existing "
-            "near-equivalent point band is a hard floor; only then may the legal "
-            "future transfer path choose between launch-equivalent squads. Candidate "
-            f"convergence was checked between rank prefixes {comparison_left} and "
-            f"{comparison_right}; rank 64 is solved only after another identity "
-            "change. Solver-limit candidates are pruned only by certified objective "
-            "bounds against an in-band incumbent, otherwise the selector fails closed. "
-            "Execute only the current decision and rebuild projections before every "
-            "later deadline."
+            "Current-Gameweek exact expected points are the primary launch objective. "
+            "The governed submitted-bench resilience policy is enforced in both the "
+            "candidate MILP and exhaustive mechanics. The existing near-equivalent "
+            "point band is a hard floor; only then may the legal future transfer path "
+            "choose between launch-equivalent squads. Candidate convergence is checked "
+            f"between rank prefixes {comparison_left} and {comparison_right}; rank 64 "
+            "is solved only after another identity change. Solver-limit candidates are "
+            "pruned only by certified objective bounds against an in-band incumbent, "
+            "otherwise the selector fails closed. Execute only the current decision "
+            "and rebuild projections before every later deadline."
             f"{baseline_note}"
         ),
     )
