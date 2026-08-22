@@ -1,23 +1,15 @@
-from types import SimpleNamespace
-
+from apex_fpl.optimisation.solver_status import certified_infeasible
 from apex_fpl.services.pinnacle_readiness import evaluate_pinnacle_payload
-from scripts.audit_max_ev_policy import _certified_infeasible
 
 
 def test_missing_solver_metadata_is_not_an_infeasibility_certificate():
-    decision = SimpleNamespace(status="Infeasible", solution=SimpleNamespace(solver={}))
-    assert _certified_infeasible(decision) is False
+    assert certified_infeasible("Infeasible", {}) is False
 
 
 def test_only_highs_status_two_certifies_infeasibility():
-    certified = SimpleNamespace(
-        status="Infeasible", solution=SimpleNamespace(solver={"status_code": 2})
-    )
-    limited = SimpleNamespace(
-        status="Infeasible", solution=SimpleNamespace(solver={"status_code": 1})
-    )
-    assert _certified_infeasible(certified) is True
-    assert _certified_infeasible(limited) is False
+    assert certified_infeasible("Infeasible", {"status_code": 2}) is True
+    assert certified_infeasible("Infeasible", {"status_code": 1}) is False
+    assert certified_infeasible("SolverLimit", {"status_code": 2}) is False
 
 
 def test_incomplete_exact_shortlist_blocks_release():
