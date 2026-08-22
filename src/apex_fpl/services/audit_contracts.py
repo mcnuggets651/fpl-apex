@@ -37,11 +37,12 @@ def _projection_key_blockers(
 ) -> list[str]:
     """Validate fixture-granular projection identity without rejecting DGWs.
 
-    The canonical projection surface is one row per player/fixture, not necessarily
-    one row per player/Gameweek. A Double Gameweek therefore contains legitimate
-    repeated ``(player_id, gw)`` pairs. Those repeats are valid only when every row
-    carries a complete fixture witness and the full
-    ``(player_id, gw, opponent, is_home)`` key remains unique.
+    The canonical projection surface is one row per player/Official fixture, not
+    necessarily one row per player/Gameweek. A Double Gameweek therefore contains
+    legitimate repeated ``(player_id, gw)`` pairs. Those repeats are valid only when
+    every row carries the immutable Official FPL ``fixture_id`` and the full
+    ``(player_id, gw, fixture_id)`` key remains unique. Opponent/home are descriptive
+    witnesses only and cannot substitute for fixture identity.
     """
     blockers: list[str] = []
     base = pd.DataFrame({"player_id": pids.astype(int), "gw": gws.astype(int)})
@@ -49,33 +50,43 @@ def _projection_key_blockers(
     if not repeated.any():
         return blockers
 
-    fixture_columns = {"opponent", "is_home"}
-    missing = sorted(fixture_columns - set(projections.columns))
-    if missing:
+    if "fixture_id" not in projections.columns:
         blockers.append(
             "diagnostic projection surface has repeated player/Gameweek rows "
-            "without fixture identity columns: " + ", ".join(missing)
+            "without Official fixture_id"
         )
         return blockers
 
-    opponents = pd.to_numeric(projections["opponent"], errors="coerce")
-    home = projections["is_home"]
-    repeated_missing_identity = repeated & (opponents.isna() | home.isna())
-    if repeated_missing_identity.any():
+    fixture_ids = pd.to_numeric(projections["fixture_id"], errors="coerce")
+    if (repeated & fixture_ids.isna()).any():
         blockers.append(
             "diagnostic projection surface has repeated player/Gameweek rows with "
-            "missing opponent/is_home fixture identity"
+            "missing Official fixture_id"
+        )
+        return blockers
+
+    descriptive_columns = {"opponent", "is_home"}
+    missing_descriptive = sorted(descriptive_columns - set(projections.columns))
+    if missing_descriptive:
+        blockers.append(
+            "diagnostic projection surface has repeated player/Gameweek rows "
+            "without fixture witness columns: " + ", ".join(missing_descriptive)
+        )
+        return blockers
+    opponents = pd.to_numeric(projections["opponent"], errors="coerce")
+    home = projections["is_home"]
+    if (repeated & (opponents.isna() | home.isna())).any():
+        blockers.append(
+            "diagnostic projection surface has repeated player/Gameweek rows with "
+            "missing opponent/is_home fixture witness"
         )
         return blockers
 
     fixture_keys = base.copy()
-    fixture_keys["opponent"] = opponents
-    fixture_keys["is_home"] = home.astype("boolean")
-    if fixture_keys.duplicated(
-        ["player_id", "gw", "opponent", "is_home"]
-    ).any():
+    fixture_keys["fixture_id"] = fixture_ids
+    if fixture_keys.duplicated(["player_id", "gw", "fixture_id"]).any():
         blockers.append(
-            "diagnostic projection surface has duplicate player/fixture rows"
+            "diagnostic projection surface has duplicate player/Official-fixture rows"
         )
     return blockers
 
