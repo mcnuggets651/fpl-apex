@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Fail closed when a production run stops before canonical assembly."""
+"""Fail closed when a production run stops before canonical assembly.
+
+The fallback status is constructed only from this run's generation namespace.
+Repository-level ``latest`` diagnostics are never consulted, so an interrupted run
+cannot inherit blockers or evidence from an older generation.
+"""
 from __future__ import annotations
 
 import argparse
@@ -33,6 +38,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", default="data/generated")
     parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
+    parser.add_argument("--reports-dir", default="reports")
     parser.add_argument("--archive-dir", default="data/history/production_runs")
     parser.add_argument("--run-id", default="local")
     parser.add_argument("--reason", default="production workflow stopped before canonical assembly")
@@ -40,6 +46,7 @@ def main() -> None:
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
+    reports_dir = Path(args.reports_dir)
     manifest_path = Path(args.bundle_dir) / "manifest.json"
     manifest = _load(manifest_path)
     bundle_id = str(manifest.get("bundle_id") or "")
@@ -47,8 +54,6 @@ def main() -> None:
     canonical_path = output_dir / "apex_recommendation_latest.json"
     canonical = _load(canonical_path)
 
-    # A current, fully assembled contract needs no fallback. Everything else must
-    # replace any previously committed actionable recommendation.
     if (
         args.canonical_step_succeeded
         and bundle_id
@@ -65,7 +70,9 @@ def main() -> None:
             str(row)
             for row in ((pinnacle.get("pinnacle_gate") or {}).get("blockers") or [])
         )
-    latest = _load(Path("reports/latest.json"))
+    # Only current-run reports may enrich a fallback status. Missing current-run
+    # reports are acceptable; stale repository reports are deliberately ignored.
+    latest = _load(reports_dir / "latest.json")
     for row in (latest.get("data_quality") or {}).get("failures") or []:
         blockers.append(str(row))
     blockers = list(dict.fromkeys(blockers))
@@ -91,7 +98,7 @@ def main() -> None:
             "bundle_id": bundle_id or None,
             "material_inputs": identity.get("material_inputs", {}),
         },
-        "gameweeks": [],
+        "gameweeks": [int(gw) for gw in manifest.get("gameweeks") or []],
         "recommendation": None,
         "failure_stage": "pre_canonical_assembly",
     }
@@ -118,7 +125,6 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    # Stale diagnostics are never allowed to travel beside a current bundle.
     rejected: dict[str, str | None] = {}
     for name in ("pinnacle_latest.json", "solver_parity.json", "elite_latest.json"):
         path = output_dir / name
