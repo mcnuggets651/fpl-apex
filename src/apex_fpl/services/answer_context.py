@@ -19,6 +19,7 @@ FINAL_SELECTORS = {
     "adaptive_gw1_launch_with_transfer_option_value",
     "receding_horizon_current_team_maximum_ev",
 }
+EXACT_ACTION_MECHANICS_AUTHORITY = "independent_exact_current_gameweek_rescore"
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -155,6 +156,102 @@ def _captain_surfaces(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> di
     }
 
 
+def _record_ids(records: Any) -> list[int]:
+    if not isinstance(records, list):
+        return []
+    ids: list[int] = []
+    for row in records:
+        if not isinstance(row, dict) or row.get("player_id") is None:
+            return []
+        try:
+            ids.append(int(row["player_id"]))
+        except (TypeError, ValueError):
+            return []
+    return ids
+
+
+def _singleton_record_id(records: Any) -> int | None:
+    ids = _record_ids(records)
+    return ids[0] if len(ids) == 1 else None
+
+
+def _validate_receding_action_mechanics(recommendation: dict[str, Any]) -> list[str]:
+    """Require one self-consistent executable current-Gameweek mechanics surface.
+
+    The transfer optimiser may use provisional XI/captain values internally, but an
+    actionable receding-horizon recommendation must expose only the independent exact
+    rescore. This is deliberately checked again at the final answer boundary so a
+    future upstream refactor cannot silently publish two contradictory instructions.
+    """
+    blockers: list[str] = []
+    action = recommendation.get("action_now")
+    if not isinstance(action, dict):
+        return ["receding-horizon recommendation is missing executable action_now"]
+    if action.get("mechanics_reconciled") is not True:
+        blockers.append("executable action_now mechanics are not independently reconciled")
+    if action.get("mechanics_authority") != EXACT_ACTION_MECHANICS_AUTHORITY:
+        blockers.append("executable action_now mechanics authority is missing or invalid")
+
+    final_squad = _record_ids(recommendation.get("squad"))
+    action_squad = _record_ids(action.get("squad"))
+    final_xi = _record_ids(recommendation.get("xi"))
+    action_xi = _record_ids(action.get("xi"))
+    if len(final_squad) != 15 or len(set(final_squad)) != 15:
+        blockers.append("canonical receding-horizon squad is not an exact unique 15")
+    if len(action_squad) != 15 or set(action_squad) != set(final_squad):
+        blockers.append("executable action_now squad does not match canonical 15")
+    if len(final_xi) != 11 or len(set(final_xi)) != 11:
+        blockers.append("canonical receding-horizon XI is not an exact unique 11")
+    if action_xi != final_xi:
+        blockers.append("executable action_now XI does not match canonical exact-rescored XI")
+
+    action_captain = _singleton_record_id(action.get("captain"))
+    action_vice = _singleton_record_id(action.get("vice_captain"))
+    try:
+        final_captain = int(recommendation.get("captain_id"))
+    except (TypeError, ValueError):
+        final_captain = None
+    try:
+        final_vice = int(recommendation.get("vice_captain_id"))
+    except (TypeError, ValueError):
+        final_vice = None
+    if action_captain != final_captain:
+        blockers.append("executable action_now captain does not match canonical exact-rescored captain")
+    if action_vice != final_vice:
+        blockers.append("executable action_now vice-captain does not match canonical exact-rescored vice-captain")
+
+    action_bench_gk = action.get("bench_gk")
+    try:
+        action_bench_gk_id = (
+            int(action_bench_gk.get("player_id")) if isinstance(action_bench_gk, dict) else None
+        )
+    except (TypeError, ValueError):
+        action_bench_gk_id = None
+    try:
+        final_bench_gk_id = int(recommendation.get("bench_gk_id"))
+    except (TypeError, ValueError):
+        final_bench_gk_id = None
+    if action_bench_gk_id != final_bench_gk_id:
+        blockers.append("executable action_now bench goalkeeper does not match canonical mechanics")
+
+    action_bench = _record_ids(action.get("outfield_bench_order"))
+    try:
+        final_bench = [int(value) for value in recommendation.get("outfield_bench_order_ids") or []]
+    except (TypeError, ValueError):
+        final_bench = []
+    if action_bench != final_bench or len(action_bench) != 3:
+        blockers.append("executable action_now outfield bench order does not match canonical mechanics")
+
+    action_points = action.get("exact_expected_total_points")
+    final_points = recommendation.get("gw1_expected_total_with_mechanics")
+    try:
+        if abs(float(action_points) - float(final_points)) > 1e-9:
+            blockers.append("executable action_now exact expected points do not match canonical mechanics")
+    except (TypeError, ValueError):
+        blockers.append("executable action_now exact expected points are missing or invalid")
+    return blockers
+
+
 def build_answer_context(
     canonical: dict[str, Any],
     pinnacle: dict[str, Any],
@@ -177,6 +274,8 @@ def build_answer_context(
         blockers.append("canonical strategy has not completed final validation")
     if selector not in FINAL_SELECTORS:
         blockers.append("canonical recommendation does not use an allowed final strategy selector")
+    if selector == "receding_horizon_current_team_maximum_ev":
+        blockers.extend(_validate_receding_action_mechanics(recommendation))
 
     canonical_snapshot = canonical.get("official_snapshot") or {}
     pinnacle_snapshot = pinnacle.get("official_snapshot") or {}
