@@ -124,4 +124,4 @@ def test_adaptive_workflow_accepts_resolved_not_fabricated_airsenal_coverage():
     )
     assert "airsenal_projection_pair_coverage'] == 1.0" not in workflow
     assert "present_pairs + absent_pairs == expected_pairs" in workflow
-    assert "assert not truth['blockers']" in workflow
+    assert 'assert not truth["blockers"]' in workflow
