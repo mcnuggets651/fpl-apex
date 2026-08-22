@@ -13,6 +13,7 @@ from apex_fpl.optimisation.bench_policy import (
     bench_resilience_ok,
     credible_first_bench_ids,
     playable_outfield_ids,
+    resolve_current_bench_resilience,
 )
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.mechanics import (
@@ -127,9 +128,13 @@ def optimise_fixed_squad_gameweek(
     *,
     captain_eligible: set[int] | None = None,
     xi_eligible: set[int] | None = None,
-    enforce_current_bench_resilience: bool = False,
+    enforce_current_bench_resilience: bool | None = None,
 ) -> tuple[pd.DataFrame, GameweekMechanics]:
-    """Exhaustively choose the legal XI and exact deadline mechanics for a squad."""
+    """Exhaustively choose the legal XI and exact current-deadline mechanics."""
+    enforce = resolve_current_bench_resilience(
+        squad,
+        enforce_current_bench_resilience,
+    )
     eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
@@ -139,14 +144,8 @@ def optimise_fixed_squad_gameweek(
         int(row.player_id): str(row.position)
         for row in squad[["player_id", "position"]].itertuples(index=False)
     }
-    playable = (
-        playable_outfield_ids(squad) if enforce_current_bench_resilience else None
-    )
-    first = (
-        credible_first_bench_ids(squad)
-        if enforce_current_bench_resilience
-        else None
-    )
+    playable = playable_outfield_ids(squad) if enforce else None
+    first = credible_first_bench_ids(squad) if enforce else None
     best: tuple[float, tuple, GameweekMechanics] | None = None
     captain_legal_lineup_seen = False
     for lineup_ids in _legal_lineups(squad):
@@ -181,7 +180,7 @@ def optimise_fixed_squad_gameweek(
         ):
             best = row
     if best is None:
-        if enforce_current_bench_resilience and captain_legal_lineup_seen:
+        if enforce and captain_legal_lineup_seen:
             raise BenchResilienceError(
                 "fixed squad has no submitted XI satisfying governed bench resilience"
             )
@@ -439,16 +438,9 @@ def optimise_exact_horizon_decision(
     locked: set[int] | None = None,
     banned: set[int] | None = None,
     projection_col: str = "xp",
-    enforce_current_bench_resilience: bool = False,
+    enforce_current_bench_resilience: bool | None = None,
 ) -> ExactHorizonDecision:
-    """Select one authoritative squad using exact mechanics across the horizon.
-
-    The MILP is deliberately a candidate generator. Distinct squads inside a
-    transparent approximate-xP band are rescored with exhaustive legal XI choice,
-    captain/vice fallback and autosub order for every Gameweek. When current-deadline
-    resilience is enabled, both the MILP and exhaustive current-Gameweek mechanics
-    independently enforce the same governed bench policy.
-    """
+    """Select one authoritative squad using exact mechanics across the horizon."""
     if not gameweeks:
         raise ValueError("exact horizon decision requires at least one Gameweek")
     if candidate_limit < 1:
@@ -457,6 +449,10 @@ def optimise_exact_horizon_decision(
         raise ValueError("candidate_regret_fraction must be between 0 and 5%")
     if near_equivalent_points < 0.0:
         raise ValueError("near_equivalent_points cannot be negative")
+    enforce = resolve_current_bench_resilience(
+        players,
+        enforce_current_bench_resilience,
+    )
 
     excluded: list[set[int]] = []
     generated: list[tuple[SquadSolution, ExactCandidate]] = []
@@ -481,12 +477,10 @@ def optimise_exact_horizon_decision(
             excluded_squads=excluded,
             solver_relative_gap=0.00001,
             solver_time_limit=120,
-            enforce_current_bench_resilience=enforce_current_bench_resilience,
+            enforce_current_bench_resilience=enforce,
         )
         if solution.status != "Optimal":
             terminal_solution = solution
-            # Only an explicit HiGHS status-code-2 certificate proves that the
-            # candidate universe has been exhausted. Strings alone are insufficient.
             shortlist_complete = certified_infeasible(
                 solution.status,
                 solution.solver,
@@ -508,12 +502,9 @@ def optimise_exact_horizon_decision(
                 xi_eligible=xi_eligible,
                 projection_col=projection_col,
                 generation_rank=rank,
-                enforce_current_bench_resilience=enforce_current_bench_resilience,
+                enforce_current_bench_resilience=enforce,
             )
         except BenchResilienceError:
-            # Defence in depth. The generator MILP should already guarantee this
-            # invariant when enabled; if exact mechanics disagrees, exclude the
-            # candidate and continue rather than publishing inconsistent mechanics.
             excluded.append(set(solution.squad["player_id"].astype(int)))
             continue
         generated.append((solution, candidate))
@@ -535,9 +526,7 @@ def optimise_exact_horizon_decision(
                     "termination_reason": (
                         "candidate generation ended without an exact mechanics result"
                     ),
-                    "current_bench_resilience_enforced": bool(
-                        enforce_current_bench_resilience
-                    ),
+                    "current_bench_resilience_enforced": bool(enforce),
                 },
             )
         return ExactHorizonDecision(
@@ -552,10 +541,6 @@ def optimise_exact_horizon_decision(
             near_equivalent_points,
         )
 
-    # If at least one valid candidate exists but the next generator call is
-    # inconclusive, the best observed candidate is useful diagnostically but cannot
-    # be certified as a complete shortlist. Keep the solution and surface the
-    # incompleteness via ``shortlist_complete=False`` and preserved solver metadata.
     selected_solution, selected = min(
         generated,
         key=lambda row: (-row[1].exact_objective, row[1].squad_ids),
