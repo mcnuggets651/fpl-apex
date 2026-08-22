@@ -37,7 +37,13 @@ def _elo_lookup(core_elos: pd.DataFrame | None) -> dict[tuple[int, int, int, boo
         return {}
     lookup: dict[tuple[int, int, int, bool], tuple[float, float]] = {}
     for _, row in core_elos.iterrows():
-        values = [row.get("gw"), row.get("team"), row.get("opponent"), row.get("team_elo"), row.get("opponent_elo")]
+        values = [
+            row.get("gw"),
+            row.get("team"),
+            row.get("opponent"),
+            row.get("team_elo"),
+            row.get("opponent_elo"),
+        ]
         if any(pd.isna(value) for value in values):
             continue
         lookup[
@@ -59,16 +65,17 @@ def fixture_multipliers(
     use_official_strength: bool | None = None,
     team_goal_surface: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Create per-team/per-fixture attack, defence and clean-sheet priors.
+    """Create per-team/per-Official-fixture attack, defence and clean-sheet priors.
 
-    Official FPL home/away attack/defence ratings remain the base when they are
-    usable. Reconciled FPL Core Elo is a deliberately modest fallback adjustment
-    to that native/neutral goal surface. A validated external team-goal surface is
-    already a complete expected-goals model, so Elo is not multiplied into it;
-    any Understat/Elo hybrid must be explicitly calibrated and constructed as its
-    own surface rather than created accidentally by double-counting evidence.
+    Official fixture ``id`` is the immutable identity. ``gw/opponent/is_home`` are
+    descriptive and may legitimately repeat after rescheduling or in unusual double
+    fixtures. Official FPL home/away attack/defence ratings remain the base when
+    usable. Reconciled FPL Core Elo is a deliberately modest fallback adjustment.
+    A validated external team-goal surface is already a complete expected-goals
+    model, so Elo is not multiplied into it.
     """
     cols = [
+        "fixture_id",
         "team",
         "gw",
         "opponent",
@@ -85,6 +92,15 @@ def fixture_multipliers(
     ]
     if fixtures.empty or teams.empty:
         return pd.DataFrame(columns=cols)
+    required_fixture_columns = {"id", "event", "team_h", "team_a"}
+    missing_fixture_columns = sorted(required_fixture_columns - set(fixtures.columns))
+    if missing_fixture_columns:
+        raise ValueError(
+            "official fixtures missing columns: " + ", ".join(missing_fixture_columns)
+        )
+    fixture_ids = pd.to_numeric(fixtures["id"], errors="coerce")
+    if fixture_ids.isna().any() or fixture_ids.astype(int).duplicated().any():
+        raise ValueError("official fixtures require unique numeric fixture IDs")
 
     strength = teams.set_index("id")
     strength_columns = [
@@ -108,9 +124,11 @@ def fixture_multipliers(
     med_aa = _median(teams, "strength_attack_away")
     med_da = _median(teams, "strength_defence_away")
     elo = _elo_lookup(core_elos)
-    team_goals: dict[tuple[int, int, int, bool], dict] = {}
+
+    team_goals: dict[tuple[int, int], dict] = {}
     if team_goal_surface is not None and not team_goal_surface.empty:
         required = {
+            "fixture_id",
             "gw",
             "team",
             "opponent",
@@ -125,12 +143,7 @@ def fixture_multipliers(
                 f"{sorted(required - set(team_goal_surface.columns))}"
             )
         for prior in team_goal_surface.to_dict("records"):
-            key = (
-                int(prior["gw"]),
-                int(prior["team"]),
-                int(prior["opponent"]),
-                bool(prior["is_home"]),
-            )
+            key = (int(prior["fixture_id"]), int(prior["team"]))
             if key in team_goals:
                 raise ValueError(f"duplicate team-goal prior: {key}")
             team_goals[key] = prior
@@ -138,6 +151,7 @@ def fixture_multipliers(
     rows = []
     relevant = fixtures[fixtures["event"].isin(gameweeks)]
     for _, fixture in relevant.iterrows():
+        fixture_id = int(fixture["id"])
         home, away = int(fixture["team_h"]), int(fixture["team_a"])
         gw = int(fixture["event"])
         hrow, arow = strength.loc[home], strength.loc[away]
@@ -155,17 +169,25 @@ def fixture_multipliers(
                 arow.get("strength_defence_away", arow.get("strength", med_da))
             ) / med_da
         else:
-            # Official FPL commonly publishes zeroed/non-informative strength
-            # fields before GW1. Treating those zeroes as genuine ratings pushes
-            # every expected-goals value into its lower clip and manufactures
-            # inflated clean-sheet probabilities. Neutral league baselines are an
-            # explicit fallback; reconciled Elo can still differentiate teams.
             h_att = h_def = a_att = a_def = 1.0
 
-        home_prior = team_goals.get((gw, home, away, True))
-        away_prior = team_goals.get((gw, away, home, False))
+        home_prior = team_goals.get((fixture_id, home))
+        away_prior = team_goals.get((fixture_id, away))
         external_surface = home_prior is not None and away_prior is not None
         if external_surface:
+            for prior, team, opponent, is_home in (
+                (home_prior, home, away, True),
+                (away_prior, away, home, False),
+            ):
+                if (
+                    int(prior["gw"]) != gw
+                    or int(prior["opponent"]) != opponent
+                    or bool(prior["is_home"]) is not is_home
+                    or int(prior["team"]) != team
+                ):
+                    raise ValueError(
+                        f"team-goal prior disagrees with Official fixture {fixture_id}"
+                    )
             home_lambda = float(home_prior["expected_team_goals"])
             away_lambda = float(away_prior["expected_team_goals"])
             team_goal_source = str(
@@ -179,7 +201,9 @@ def fixture_multipliers(
                 np.clip(AWAY_GOALS_BASELINE * a_att / max(h_def, 0.35), 0.35, 2.85)
             )
             team_goal_source = (
-                "official_fpl_strength" if use_official_strength else "league_average_fallback"
+                "official_fpl_strength"
+                if use_official_strength
+                else "league_average_fallback"
             )
 
         home_elo, away_elo = np.nan, np.nan
@@ -187,8 +211,6 @@ def fixture_multipliers(
         found = elo.get((gw, home, away, True))
         if found and not external_surface:
             home_elo, away_elo = found
-            # Elo is useful independent evidence, but should not dominate the
-            # native/neutral fixture prior. The 0.45 exponent shrinks the factor.
             raw = float(np.clip(math.exp((home_elo - away_elo) / 1200.0), 0.72, 1.38))
             home_elo_mult = raw**0.45
             away_elo_mult = (1.0 / raw) ** 0.45
@@ -205,6 +227,7 @@ def fixture_multipliers(
         rows.extend(
             [
                 {
+                    "fixture_id": fixture_id,
                     "team": home,
                     "gw": gw,
                     "opponent": away,
@@ -222,6 +245,7 @@ def fixture_multipliers(
                     "team_goal_source": team_goal_source,
                 },
                 {
+                    "fixture_id": fixture_id,
                     "team": away,
                     "gw": gw,
                     "opponent": home,
@@ -240,4 +264,7 @@ def fixture_multipliers(
                 },
             ]
         )
-    return pd.DataFrame(rows, columns=cols)
+    out = pd.DataFrame(rows, columns=cols)
+    if not out.empty and out.duplicated(["fixture_id", "team"]).any():
+        raise ValueError("fixture model produced duplicate Official fixture-side rows")
+    return out
