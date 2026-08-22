@@ -1,31 +1,31 @@
 {
   "contract": "apex-strategy-recommendation-v2",
-  "generated_at": "2026-08-22T13:56:24.807945+00:00",
+  "generated_at": "2026-08-22T19:44:02.408238+00:00",
   "canonical": true,
   "user_facing_source_of_truth": true,
   "ready_to_act": false,
   "blockers": [
     "Apex Unified production run did not complete canonical assembly",
     "data quality failed: fpl_core_playerstats: official-player coverage=0.0%; missing_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; missing IDs are not an append-only trailing registration block; gap exceeds bounded lag policy (max 5 players and minimum 99.0% coverage)",
-    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (101.9h old; max 18.0h)"
+    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (107.7h old; max 18.0h)"
   ],
   "official_snapshot": {
-    "snapshot_id": "20260822T135613Z-e2134057",
-    "bootstrap_sha256": "b055ca0be2df6d51779338d9e5ea63d21383f76291d2d32cc73f61347287d9c5",
-    "fixtures_sha256": "a2e551877de61e5e5dc27a553656ee3fa9ef0631dda5c6d652a1532244c9d073"
+    "snapshot_id": "20260822T194351Z-906ce910",
+    "bootstrap_sha256": "718980eb0ef202e4421f3f269d2c12367ba7896b4fd9fb3dca65f863b838bd96",
+    "fixtures_sha256": "e778af8b4151bcfd6149e5924675f0764ec4ed01014631d8e24dc237a9e6e26f"
   },
-  "decision_bundle_id": "bea5123e10a14810c54e4bfe264dc3eab3de41298da6b264b99978ea7d943e2c",
+  "decision_bundle_id": "e9351f38eec965b5c775fd3bead0863e380d43002bffd9350e7a224dd29df67e",
   "decision_bundle": {
     "contract": "apex-decision-bundle-v1",
-    "bundle_id": "bea5123e10a14810c54e4bfe264dc3eab3de41298da6b264b99978ea7d943e2c",
+    "bundle_id": "e9351f38eec965b5c775fd3bead0863e380d43002bffd9350e7a224dd29df67e",
     "material_inputs": {
       "official_players": {
-        "rows": 600,
-        "sha256": "b6d479417cae7def3fce5f6560b55dffcea650a8024a37cde58f981807bae778"
+        "rows": 604,
+        "sha256": "f0ea5dad1de974e455c1772b71af936a635feb0bd78c1fe735a4b852d29d37f3"
       },
       "official_fixtures": {
         "rows": 380,
-        "sha256": "f2be8c898c1e801093921551ed729c645ce206f5e7a7d943434400f87d46dea7"
+        "sha256": "2d1ff24bc0ed67f654ad4a586c569e1c2053740ac880040f15ce42fdd6db5cb5"
       },
       "fpl_core_playerstats": {
         "rows": 0,
@@ -52,32 +52,32 @@
         "sha256": "94ca4a30bca367c8517380ed27a123c98ebbdcef1ef9eaa487feff0b79104f7f"
       },
       "news_evidence": {
-        "rows": 37,
-        "sha256": "d71dcc9099d86be40e7c6ac4a0b9b87187b15d4eafd8119f1b20ec08a2a69376"
+        "rows": 39,
+        "sha256": "97c8fcc5145474ce67502756e36a40032822eeefbe06427c68e8a5e187fba4a4"
       },
       "understat_team_ratings": {
         "rows": 20,
-        "sha256": "8d0b0361a8362af3df29cdd7de7c2f88d20e18593acada81d7edf9191c167fbe"
+        "sha256": "35faf9729cb7d097f9c7764734298c66fc8e57fa6511f32372268caae2a2a668"
       },
       "understat_team_goal_surface": {
         "rows": 160,
-        "sha256": "d01d36eef5c0a6dabfa7f9295f95701a709b869040292ae143b0eb9d2349e38f"
+        "sha256": "105c70bed821fd4240864ae53fcf46c8609a3a00c48a89027dfc8f33e534d133"
       },
       "fixture_projection_surface": {
         "rows": 160,
-        "sha256": "333166e9e98043856b1d421c5afea4861574ebe19e5ba5218f5b1a363bcd37fe"
+        "sha256": "00e13126d86a5fc41916162e5c290c1ee42a33ab87a72c9e742d65e2aba2991a"
       },
       "airsenal_projection_surface": {
-        "rows": 4800,
-        "sha256": "900d111079ef440c8bea276f4b93768df5606be338bc78a6aade5f9411a64c1b"
+        "rows": 4832,
+        "sha256": "9c8a82b0c13c1e4d820f12e7e1cae60f9ef8c1bae11cc176941e70172842fe4c"
       },
       "market_odds_surface": {
         "rows": 0,
         "sha256": "1f45160f5549e0c827b3b2d9ff22f5c6d645dd0f003527cdcbc6a4e0c9872530"
       },
       "final_projection_matrix": {
-        "rows": 4800,
-        "sha256": "c677a6129104c6931771b66abdb1253f6f0fed01fc0919bd4f1c59257a280169"
+        "rows": 4832,
+        "sha256": "51165dbac80561b67e85ef0da1905947a3e0230a71972c5257b50bf21aebbd19"
       }
     }
   },
