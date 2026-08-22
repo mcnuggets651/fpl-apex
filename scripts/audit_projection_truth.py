@@ -5,6 +5,10 @@ This is a diagnostic-only shadow audit. It exposes configured versus effective
 expert authority, player-level source contributions, Apex component decomposition,
 selected-player exact-shortlist regret, high-disagreement rows and same-mechanics
 source ablations. It never mutates canonical weights or recommendations.
+
+Presence, usability and fallback are intentionally different concepts. A raw source
+row may exist for provenance while the source explicitly abstains from supplying an
+expert opinion. Diagnostics must never turn that abstention back into a factual zero.
 """
 from __future__ import annotations
 
@@ -28,8 +32,16 @@ def _numeric(frame: pd.DataFrame, column: str) -> pd.Series:
     return pd.to_numeric(frame[column], errors="coerce")
 
 
+def _usable(frame: pd.DataFrame, key: str, values: pd.Series | None = None) -> pd.Series:
+    values = values if values is not None else _numeric(frame, EXPERT_COLUMNS[key])
+    column = f"source_usable_{key}"
+    if column not in frame.columns:
+        return values.notna()
+    return frame[column].fillna(False).astype(bool) & values.notna()
+
+
 def build_source_authority(projections: pd.DataFrame, weights: dict[str, float]) -> pd.DataFrame:
-    """Return configured and realised expert authority for each Gameweek."""
+    """Return configured, raw-present and realised expert authority per Gameweek."""
     rows: list[dict] = []
     for gw, group in projections.groupby("gw", sort=True):
         total_rows = int(len(group))
@@ -37,7 +49,9 @@ def build_source_authority(projections: pd.DataFrame, weights: dict[str, float])
             configured = max(float(weights.get(key, 0.0)), 0.0)
             effective_col = f"effective_weight_{key}"
             contribution_col = f"xp_expert_{key}"
-            present = _numeric(group, column).notna()
+            values = _numeric(group, column)
+            present = values.notna()
+            usable = _usable(group, key, values)
             effective = _numeric(group, effective_col).fillna(0.0)
             contribution = _numeric(group, contribution_col).fillna(0.0)
             rows.append(
@@ -46,13 +60,16 @@ def build_source_authority(projections: pd.DataFrame, weights: dict[str, float])
                     "expert": key,
                     "column": column,
                     "configured_weight": configured,
-                    "active_rows": int(present.sum()),
+                    "raw_present_rows": int(present.sum()),
+                    "raw_row_coverage": float(present.mean()) if total_rows else 0.0,
+                    "active_rows": int(usable.sum()),
                     "total_rows": total_rows,
-                    "row_coverage": float(present.mean()) if total_rows else 0.0,
+                    "row_coverage": float(usable.mean()) if total_rows else 0.0,
+                    "abstained_or_unusable_rows": int((present & ~usable).sum()),
                     "mean_effective_weight": float(effective.mean()) if total_rows else 0.0,
                     "max_effective_weight": float(effective.max()) if total_rows else 0.0,
                     "mean_xp_contribution": float(contribution.mean()) if total_rows else 0.0,
-                    "configured_but_inactive": bool(configured > 0 and not present.any()),
+                    "configured_but_inactive": bool(configured > 0 and not usable.any()),
                 }
             )
     return pd.DataFrame(rows)
@@ -63,8 +80,9 @@ def _explicit_blend(frame: pd.DataFrame, keys: tuple[str, ...], weights: dict[st
     denominator = np.zeros(len(frame), dtype=float)
     for key in keys:
         column = EXPERT_COLUMNS[key]
-        values = _numeric(frame, column).to_numpy(float)
-        mask = np.isfinite(values)
+        values_series = _numeric(frame, column)
+        values = values_series.to_numpy(float)
+        mask = _usable(frame, key, values_series).to_numpy(bool) & np.isfinite(values)
         weight = max(float(weights.get(key, 0.0)), 0.0)
         numerator[mask] += values[mask] * weight
         denominator[mask] += weight
@@ -79,7 +97,11 @@ def build_ablation_surfaces(projections: pd.DataFrame, weights: dict[str, float]
     """Build diagnostic xP surfaces from the same sealed projection inputs."""
     current = _numeric(projections, "xp").fillna(0.0)
     apex = _numeric(projections, "apex_xp").fillna(0.0)
-    airsenal = _numeric(projections, "airsenal_xp").fillna(0.0)
+    air_raw = _numeric(projections, "airsenal_xp")
+    air_usable = _usable(projections, "airsenal", air_raw)
+    # A pure upstream-only solve is undefined where that upstream abstains. Preserve
+    # the production fallback semantics explicitly rather than inventing zero points.
+    air_with_fallback = air_raw.where(air_usable, apex).fillna(apex)
     apex_airsenal = _explicit_blend(projections, ("apex_model", "airsenal"), weights)
     explicit_available = _explicit_blend(
         projections,
@@ -89,7 +111,7 @@ def build_ablation_surfaces(projections: pd.DataFrame, weights: dict[str, float]
     return {
         "current_effective_blend": current,
         "apex_only": apex,
-        "airsenal_only": airsenal,
+        "airsenal_with_governed_apex_fallback": air_with_fallback,
         "apex_plus_airsenal": apex_airsenal,
         "explicit_available_sources": explicit_available,
     }
@@ -180,7 +202,9 @@ def build_disagreement_report(
     weights = {int(gw): float(decay) ** idx for idx, gw in enumerate(gameweeks)}
     frame["_discount"] = frame["gw"].map(weights).fillna(0.0)
     frame["_apex_raw"] = _numeric(frame, "apex_xp").fillna(0.0)
-    frame["_airsenal_raw"] = _numeric(frame, "airsenal_xp").fillna(0.0)
+    air_values = _numeric(frame, "airsenal_xp")
+    frame["_airsenal_usable"] = _usable(frame, "airsenal", air_values)
+    frame["_airsenal_raw"] = air_values.where(frame["_airsenal_usable"], np.nan)
     frame["_apex_discounted_utility"] = frame["_apex_raw"] * frame["_discount"]
     frame["_airsenal_discounted_utility"] = frame["_airsenal_raw"] * frame["_discount"]
 
@@ -200,11 +224,26 @@ def build_disagreement_report(
 
     summary = frame.groupby("player_id", as_index=False).agg(
         apex_raw_horizon_xp=("_apex_raw", "sum"),
-        airsenal_raw_horizon_xp=("_airsenal_raw", "sum"),
         apex_discounted_horizon_utility=("_apex_discounted_utility", "sum"),
-        airsenal_discounted_horizon_utility=("_airsenal_discounted_utility", "sum"),
+        projection_rows=("gw", "size"),
+        airsenal_usable_rows=("_airsenal_raw", "count"),
         **rate_aggregations,
     )
+    grouped = frame.groupby("player_id", sort=False)
+    air_raw = grouped["_airsenal_raw"].sum(min_count=1).rename("airsenal_raw_horizon_xp")
+    air_discounted = grouped["_airsenal_discounted_utility"].sum(min_count=1).rename(
+        "airsenal_discounted_horizon_utility"
+    )
+    summary = summary.merge(air_raw, on="player_id", how="left").merge(
+        air_discounted, on="player_id", how="left"
+    )
+    summary["airsenal_fully_comparable"] = (
+        summary["airsenal_usable_rows"] == summary["projection_rows"]
+    )
+    summary.loc[
+        ~summary["airsenal_fully_comparable"],
+        ["airsenal_raw_horizon_xp", "airsenal_discounted_horizon_utility"],
+    ] = np.nan
     summary["raw_apex_minus_airsenal_xp"] = (
         summary["apex_raw_horizon_xp"] - summary["airsenal_raw_horizon_xp"]
     )
@@ -225,10 +264,6 @@ def build_disagreement_report(
     summary = summary.merge(players[keep].drop_duplicates("player_id"), on="player_id", how="left")
 
     # Never convert unavailable evidence metadata into a factual zero-minute sample.
-    # The report-facing player table intentionally omits some raw modelling inputs.
-    # When those inputs are present, expose their numeric sum. When they are absent,
-    # keep the sample unknown and use the projection layer's own credibility-adjusted
-    # flags as the authoritative signal that a <270-minute extreme was identified.
     current = _numeric(summary, "minutes")
     previous = _numeric(summary, "previous_minutes")
     evidence_known = current.notna() | previous.notna()
@@ -242,12 +277,12 @@ def build_disagreement_report(
         summary["xg90_position_percentile"] = np.nan
         summary["xa90_position_percentile"] = np.nan
 
-    # Source-model disagreement and low-sample rate credibility are separate risks.
-    # Projection-layer credibility flags are exact: they are set only when the rate
-    # estimator found a materially extreme rate with <270 minutes of supporting
-    # competitive sample. Raw sample minutes are an optional explanatory field, not
-    # a prerequisite for this diagnostic.
-    summary["high_disagreement"] = summary["raw_absolute_disagreement_xp"].ge(3.0)
+    # Disagreement exists only where both independent surfaces actually supplied an
+    # opinion. Abstention is reported separately and never scored as a zero forecast.
+    summary["high_disagreement"] = (
+        summary["airsenal_fully_comparable"]
+        & summary["raw_absolute_disagreement_xp"].ge(3.0)
+    )
     projection_low_sample = pd.Series(False, index=summary.index, dtype=bool)
     for column in ["xg_rate_credibility_adjusted", "xa_rate_credibility_adjusted"]:
         if column in summary.columns:
@@ -263,10 +298,11 @@ def build_disagreement_report(
     summary["low_sample_extreme_rate"] = projection_low_sample | explicit_low_sample
     summary["low_sample_extreme_rate_with_disagreement"] = (
         summary["low_sample_extreme_rate"]
+        & summary["airsenal_fully_comparable"]
         & summary["raw_absolute_disagreement_xp"].ge(2.0)
     )
     return summary.sort_values(
-        "raw_absolute_disagreement_xp", ascending=False
+        "raw_absolute_disagreement_xp", ascending=False, na_position="last"
     ).reset_index(drop=True)
 
 
@@ -327,7 +363,10 @@ def main() -> None:
     disagreement.to_csv(output_dir / "player_source_disagreement.csv", index=False)
 
     component_cols = [
-        "player_id", "gw", "xp", "official_xp", "apex_xp", "airsenal_xp", "market_xp",
+        "player_id", "gw", "xp", "official_xp", "apex_xp", "airsenal_xp",
+        "airsenal_raw_xp", "airsenal_source_supported", "airsenal_support_reason", "market_xp",
+        "source_present_airsenal", "source_usable_airsenal",
+        "effective_weight_airsenal_fallback_apex", "xp_expert_airsenal_fallback_apex",
         "xp_expert_official_ep", "xp_expert_apex_model", "xp_expert_airsenal", "xp_expert_market",
         "effective_weight_official_ep", "effective_weight_apex_model",
         "effective_weight_airsenal", "effective_weight_market",
@@ -368,7 +407,7 @@ def main() -> None:
         authority["configured_but_inactive"].eq(True)  # noqa: E712
     ][["gw", "expert", "configured_weight"]].to_dict("records")
     report = {
-        "contract": "apex-projection-truth-audit-v1",
+        "contract": "apex-projection-truth-audit-v2",
         "diagnostic_only": True,
         "production_selection_changed": False,
         "gameweeks": [int(gw) for gw in out.gameweeks],
@@ -376,6 +415,7 @@ def main() -> None:
         "configured_but_inactive": inactive,
         "baseline_exact_decision": _decision_payload(baseline),
         "eligibility_contract": eligibility,
+        "airsenal_noncomparable_player_count": int((~disagreement["airsenal_fully_comparable"]).sum()),
         "high_disagreement_count": int(disagreement["high_disagreement"].sum()),
         "low_sample_extreme_rate_count": int(disagreement["low_sample_extreme_rate"].sum()),
         "low_sample_extreme_rate_with_disagreement_count": int(
@@ -387,6 +427,7 @@ def main() -> None:
         "notes": [
             "Ablations reuse the same players, prices, fixture surface, availability, evidence eligibility and exact XI/captain/vice/autosub mechanics.",
             "No source weight or projection component is promoted by this audit.",
+            "Source presence, source usability and governed fallback are separate states; upstream abstentions are never converted to zero forecasts.",
             "Low-sample extreme-rate flags use the projection layer's credibility decision and never coerce unavailable sample metadata to zero.",
             "Selected-player regret is exact within the authoritative exact-horizon candidate shortlist; absence of an alternative is reported rather than extrapolated.",
         ],
