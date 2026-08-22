@@ -8,6 +8,7 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
 from apex_fpl.constants import SQUAD_COUNTS, XI_MAX, XI_MIN
+from apex_fpl.optimisation.solver_status import scipy_milp_metadata, scipy_milp_status
 
 
 @dataclass
@@ -29,10 +30,10 @@ def optimise_squad(
     locked: set[int] | None = None,
     banned: set[int] | None = None,
 ) -> SquadSolution:
-    """Solve the legal FPL 15-player squad, GW1 XI, captain and bench as a MILP.
+    """Solve the legal FPL 15-player squad, XI, captain and bench as a MILP.
 
-    Variables per player are [squad, xi, captain]. Bench is inferred as squad-xi.
-    SciPy/HiGHS keeps the project self-contained and avoids a separate solver binary.
+    Solver termination is non-lossy. Only a real HiGHS status code 2 is reported
+    as mathematical infeasibility; input errors and solver limits remain distinct.
     """
     locked, banned = locked or set(), banned or set()
     d = players.drop_duplicates("player_id").copy()
@@ -40,9 +41,17 @@ def optimise_squad(
     n = len(d)
     if n == 0:
         empty = d.iloc[0:0]
-        return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
+        return SquadSolution(
+            "InputError",
+            float("nan"),
+            empty,
+            empty,
+            empty,
+            empty,
+            empty,
+            {"status_code": None, "termination_reason": "no eligible players"},
+        )
 
-    # Variable indices: squad [0:n], xi [n:2n], captain [2n:3n]
     def s(i: int) -> int:
         return i
 
@@ -58,13 +67,16 @@ def optimise_squad(
         else "horizon_xp"
     )
     horizon = pd.to_numeric(d[utility_col], errors="coerce").fillna(0).to_numpy(float)
-    gw1 = pd.to_numeric(d.get("gw1_xp", d["horizon_xp"]), errors="coerce").fillna(0).to_numpy(float)
+    gw1 = (
+        pd.to_numeric(d.get("gw1_xp", d["horizon_xp"]), errors="coerce")
+        .fillna(0)
+        .to_numpy(float)
+    )
     objective = np.zeros(3 * n)
-    # Maximise horizon squad value + decisive weight on starting XI and captain.
     objective[:n] = 0.18 * horizon
     objective[n : 2 * n] = gw1
     objective[2 * n : 3 * n] = gw1
-    cvec = -objective  # scipy.milp minimises
+    cvec = -objective
 
     rows: list[dict[int, float]] = []
     lower: list[float] = []
@@ -89,7 +101,6 @@ def optimise_squad(
         idx = [i for i in range(n) if d.loc[i, "team"] == team]
         add({s(i): 1 for i in idx}, -np.inf, max_per_team)
 
-    # xi <= squad and captain <= xi
     for i in range(n):
         add({x(i): 1, s(i): -1}, -np.inf, 0)
         add({c(i): 1, x(i): -1}, -np.inf, 0)
@@ -109,16 +120,28 @@ def optimise_squad(
         if pid in by_id:
             ub[s(by_id[pid])] = 0
 
+    time_limit = 60
     res = milp(
         c=cvec,
         integrality=np.ones(3 * n),
         bounds=Bounds(lb, ub),
         constraints=LinearConstraint(A.tocsr(), np.array(lower), np.array(upper)),
-        options={"time_limit": 60},
+        options={"time_limit": time_limit},
     )
-    if not res.success or res.x is None:
+    solver = scipy_milp_metadata(res, time_limit=time_limit)
+    status = scipy_milp_status(res)
+    if status != "Optimal":
         empty = d.iloc[0:0]
-        return SquadSolution("Infeasible", float("nan"), empty, empty, empty, empty, empty)
+        return SquadSolution(
+            status,
+            float("nan"),
+            empty,
+            empty,
+            empty,
+            empty,
+            empty,
+            solver,
+        )
 
     sol = res.x
     chosen = [i for i in range(n) if sol[s(i)] > 0.5]
@@ -156,8 +179,6 @@ def optimise_squad(
     captain_idx = capt[0] if capt else None
     vice_pool = [i for i in lineup if i != captain_idx]
     if vice_pool:
-        # Vice-captain is a fallback decision: favour expected return and the chance
-        # of actually appearing rather than ownership or reputation.
         appearance_prob = pd.to_numeric(
             d.get("appearance_probability", pd.Series(1.0, index=d.index)),
             errors="coerce",
@@ -178,4 +199,5 @@ def optimise_squad(
         cap_df,
         vice_df,
         bench_df,
+        solver,
     )
