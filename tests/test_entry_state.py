@@ -128,6 +128,32 @@ def test_latest_public_state_reads_published_picks():
     assert state.transfers_complete is True
 
 
+def test_public_transfer_ledger_is_normalised_oldest_to_newest():
+    rows = [
+        {
+            "event": 3,
+            "time": "2026-09-05T12:00:00Z",
+            "element_in": 11,
+            "element_in_cost": 75,
+        },
+        {
+            "event": 2,
+            "time": "2026-08-29T12:00:00Z",
+            "element_in": 11,
+            "element_in_cost": 70,
+        },
+        {
+            "event": 3,
+            "time": "2026-09-05T08:00:00Z",
+            "element_in": 11,
+            "element_in_cost": 73,
+        },
+    ]
+    client = OfficialEntryClient(FakeHttp({"/entry/63984/transfers/": rows}), 63984)
+    ordered = client.transfers()
+    assert [row["element_in_cost"] for row in ordered] == [70, 73, 75]
+
+
 def test_public_state_marks_transfer_ledger_incomplete_without_hiding_the_15():
     payloads = _published_payloads()
     payloads["/entry/63984/transfers/"] = RuntimeError("temporary transfer endpoint failure")
@@ -209,7 +235,20 @@ def test_later_transferred_in_player_uses_latest_public_purchase_cost():
     selling, exact = _public_selling_prices(
         _public_state(
             published_gw=2,
-            transfers=[{"event": 2, "element_in": 1, "element_in_cost": 72}],
+            transfers=[
+                {
+                    "event": 2,
+                    "time": "2026-08-29T08:00:00Z",
+                    "element_in": 1,
+                    "element_in_cost": 70,
+                },
+                {
+                    "event": 2,
+                    "time": "2026-08-29T12:00:00Z",
+                    "element_in": 1,
+                    "element_in_cost": 72,
+                },
+            ],
             transfers_complete=True,
         ),
         players,
