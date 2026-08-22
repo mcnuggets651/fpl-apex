@@ -14,10 +14,7 @@ on:
       - "scripts/embed_solver_parity.py"
       - "scripts/apply_joint_path_promotion.py"
       - "scripts/apply_joint_path_promotion_rebased.py"
-      - "scripts/run_adversarial_launch_ban.py"
-      - "scripts/certify_adversarial_launch_ban.py"
-      - "scripts/audit_bench_stress.py"
-      - "scripts/promote_certified_generation.py"
+      - "scripts/certify_release_generation.py"
       - "src/apex_fpl/services/finalized_stability.py"
       - "src/apex_fpl/services/cached_launch.py"
       - "src/apex_fpl/services/selection_reality.py"
@@ -25,9 +22,7 @@ on:
       - "src/apex_fpl/services/answer_context.py"
       - "tests/test_strategy.py"
       - "tests/test_inseason_answer_contract.py"
-      - "tests/test_answer_context.py"
-      - "tests/test_canonical_recommendation.py"
-      - "tests/test_adversarial_certification.py"
+      - "tests/test_release_generation_certificate.py"
       - "data/manual/specialist_predictions.csv"
       - "data/manual/squad_hierarchy.csv"
       - "data/manual/transfer_checks.csv"
@@ -68,15 +63,12 @@ jobs:
       - name: Install Apex + pinned AIrsenal worker
         run: bash scripts/install_pinned_airsenal.sh
 
-      - name: Release mechanics and fail-closed contract tests
+      - name: Release certifier contract tests
         run: |
           pytest -q \
             tests/test_strategy.py \
             tests/test_inseason_answer_contract.py \
-            tests/test_answer_context.py \
-            tests/test_canonical_recommendation.py \
-            tests/test_adversarial_certification.py \
-            tests/test_release_fail_closed_contracts.py
+            tests/test_release_generation_certificate.py
 
       - name: Cache AIrsenal database
         uses: actions/cache@v4
@@ -216,122 +208,14 @@ jobs:
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Run mandatory adversarial selection sensitivity
+      - name: Certify adversarial, bench-stress, mechanics and promotion gates
         if: steps.canonical.outputs.exit_code == '0'
-        shell: bash
         run: |
-          set -euo pipefail
-          python scripts/run_adversarial_launch_ban.py \
-            --bundle-dir "$BUNDLE_DIR" \
-            --canonical "$RUN_DIR/apex_recommendation_latest.json" \
-            --output "$RUN_DIR/adversarial_launch_bans.json" \
-            --csv "$RUN_DIR/adversarial_launch_bans.csv"
-          BUNDLE_ID="$(python - <<'PY'
-          import json, os
-          from pathlib import Path
-          print(json.loads((Path(os.environ['BUNDLE_DIR']) / 'manifest.json').read_text())['bundle_id'])
-          PY
-          )"
-          python scripts/certify_adversarial_launch_ban.py \
-            "$RUN_DIR/adversarial_launch_bans.json" \
-            --decision-bundle-id "$BUNDLE_ID"
-
-      - name: Run mandatory submitted-XI bench stress
-        if: steps.canonical.outputs.exit_code == '0'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/audit_bench_stress.py \
-            --bundle-dir "$BUNDLE_DIR" \
-            --canonical "$RUN_DIR/apex_recommendation_latest.json" \
-            --output "$RUN_DIR/bench_stress.json" \
-            --csv "$RUN_DIR/bench_stress.csv"
-
-      - name: Verify complete release certificate
-        if: steps.canonical.outputs.exit_code == '0'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-
-          run_dir = Path(os.environ["RUN_DIR"])
-          bundle_dir = Path(os.environ["BUNDLE_DIR"])
-          payload = json.loads((run_dir / "apex_recommendation_latest.json").read_text())
-          context = json.loads((run_dir / "apex_answer_context.json").read_text())
-          pinnacle = json.loads((run_dir / "pinnacle_latest.json").read_text())
-          parity = json.loads((run_dir / "solver_parity.json").read_text())
-          bans = json.loads((run_dir / "adversarial_launch_bans.json").read_text())
-          bench = json.loads((run_dir / "bench_stress.json").read_text())
-          manifest = json.loads((bundle_dir / "manifest.json").read_text())
-
-          bundle_id = payload["decision_bundle_id"]
-          assert bundle_id
-          assert manifest["bundle_id"] == bundle_id
-          assert context["decision_bundle_id"] == bundle_id
-          assert pinnacle["decision_bundle_id"] == bundle_id
-          assert parity["decision_bundle_id"] == bundle_id
-          assert bans["decision_bundle_id"] == bundle_id
-          assert bench["decision_bundle_id"] == bundle_id
-          assert payload["strategy_stage"] == "final_validated"
-          assert payload["strategy_base_ready"] is True
-          assert payload["ready_to_act"] is True
-          assert context["safe_to_act"] is True
-          assert context["ready_to_act"] is True
-          assert not context["blockers"]
-          assert pinnacle["pinnacle_ready"] is True
-          assert bans["summary"]["audit_complete"] is True
-          assert not bans["summary"]["search_surface_defect_signals"]
-          assert not bans["summary"]["ban_solve_errors"]
-          assert bench["fixed_submission"] is True
-          assert bench["bench_reordered_with_hindsight"] is False
-
-          rec = payload["recommendation"]
-          assert rec["selector"] in {
-              "adaptive_gw1_launch_with_transfer_option_value",
-              "receding_horizon_current_team_maximum_ev",
-          }
-          assert rec["selector"] != "exact_horizon_maximum_ev"
-          assert len(rec["squad"]) == 15
-          assert len({int(row["player_id"]) for row in rec["squad"]}) == 15
-          assert len(rec["xi"]) == 11
-          assert rec["captain_id"] != rec["vice_captain_id"]
-
-          if rec["selector"] == "receding_horizon_current_team_maximum_ev":
-              action = rec["action_now"]
-              assert action["mechanics_reconciled"] is True
-              assert action["mechanics_authority"] == "independent_exact_current_gameweek_rescore"
-              assert {int(row["player_id"]) for row in action["squad"]} == {
-                  int(row["player_id"]) for row in rec["squad"]
-              }
-              assert [int(row["player_id"]) for row in action["xi"]] == [
-                  int(row["player_id"]) for row in rec["xi"]
-              ]
-              assert int(action["captain"][0]["player_id"]) == int(rec["captain_id"])
-              assert int(action["vice_captain"][0]["player_id"]) == int(rec["vice_captain_id"])
-              assert int(action["bench_gk"]["player_id"]) == int(rec["bench_gk_id"])
-              assert [int(row["player_id"]) for row in action["outfield_bench_order"]] == [
-                  int(pid) for pid in rec["outfield_bench_order_ids"]
-              ]
-              assert abs(
-                  float(action["exact_expected_total_points"])
-                  - float(rec["gw1_expected_total_with_mechanics"])
-              ) <= 1e-9
-          PY
-
-      - name: Validate production promotion transaction without publishing
-        if: steps.canonical.outputs.exit_code == '0'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/promote_certified_generation.py \
+          python scripts/certify_release_generation.py \
             --run-dir "$RUN_DIR" \
             --bundle-dir "$BUNDLE_DIR" \
-            --target-dir "$PROMOTION_DIR" \
+            --promotion-dir "$PROMOTION_DIR" \
             --run-id "${{ github.run_id }}"
-          test -s "$PROMOTION_DIR/certified_generation.json"
-          cp "$PROMOTION_DIR/certified_generation.json" "$RUN_DIR/dry_run_certified_generation.json"
 
       - name: Summarize canonical diagnostics
         if: always()
@@ -350,6 +234,8 @@ jobs:
           payload = json.loads(path.read_text(encoding="utf-8"))
           context_path = run_dir / "apex_answer_context.json"
           context = json.loads(context_path.read_text()) if context_path.exists() else {}
+          release_path = run_dir / "release_generation_certificate.json"
+          release = json.loads(release_path.read_text()) if release_path.exists() else {}
           diag = (payload.get("internal_diagnostics") or {}).get("joint_initial_path") or {}
           selected = diag.get("selected") or {}
           reality = (payload.get("internal_diagnostics") or {}).get("selection_reality") or {}
@@ -375,9 +261,10 @@ jobs:
               "reality_ready": reality.get("ready"),
               "reality_blockers": reality.get("blockers") or [],
               "reality_warnings": reality.get("warnings") or [],
-              "adversarial_certificate": (run_dir / "adversarial_launch_bans.json").exists(),
-              "bench_stress_certificate": (run_dir / "bench_stress.json").exists(),
-              "dry_run_promotion_certificate": (run_dir / "dry_run_certified_generation.json").exists(),
+              "release_certificate": release.get("contract"),
+              "adversarial_certificate": release.get("adversarial_audit_complete"),
+              "bench_stress_certificate": release.get("bench_stress_fixed_submission"),
+              "dry_run_promotion_certificate": release.get("dry_run_promotion_validated"),
           }
           print(json.dumps(summary, indent=2))
           (run_dir / "canonical_diagnostic_summary.json").write_text(
