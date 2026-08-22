@@ -1,3 +1,4 @@
+import pytest
 import pandas as pd
 
 from apex_fpl.optimisation.bench_policy import (
@@ -6,7 +7,10 @@ from apex_fpl.optimisation.bench_policy import (
     playable_outfield_ids,
 )
 from apex_fpl.optimisation.transfers import TransferPlan
-from apex_fpl.services.strategy import analyse_receding_horizon
+from apex_fpl.services.strategy import (
+    _reconcile_executable_action,
+    analyse_receding_horizon,
+)
 from apex_fpl.services.team_state import TeamState
 
 
@@ -53,6 +57,10 @@ def _projections(players: pd.DataFrame, gw: int) -> pd.DataFrame:
     )
 
 
+def _ids(rows):
+    return [int(row["player_id"]) for row in rows]
+
+
 def test_receding_horizon_recomputes_and_exact_rescores_first_action():
     players = _pool()
     current = _current(players)
@@ -84,11 +92,68 @@ def test_receding_horizon_recomputes_and_exact_rescores_first_action():
     assert len(out.canonical_outfield_bench_order_ids or []) == 3
     assert out.canonical_expected_points is not None
 
+    action = out.action_now or {}
+    assert action["mechanics_authority"] == "independent_exact_current_gameweek_rescore"
+    assert action["mechanics_reconciled"] is True
+    assert _ids(action["xi"]) == _ids(out.canonical_xi or [])
+    assert _ids(action["captain"]) == [out.canonical_captain_id]
+    assert _ids(action["vice_captain"]) == [out.canonical_vice_captain_id]
+    assert int(action["bench_gk"]["player_id"]) == out.canonical_bench_gk_id
+    assert _ids(action["outfield_bench_order"]) == out.canonical_outfield_bench_order_ids
+    assert action["exact_expected_total_points"] == pytest.approx(out.canonical_expected_points)
+
+
+def test_executable_action_overwrites_provisional_optimizer_mechanics():
+    squad = [
+        {"player_id": pid, "web_name": f"P{pid}", "xp": 3.0 + pid / 10}
+        for pid in range(1, 16)
+    ]
+    first = {
+        "gw": 2,
+        "squad": squad,
+        "xi": squad[:11],
+        "captain": [squad[0]],
+        "vice_captain": [squad[1]],
+    }
+    canonical_xi = squad[2:13]
+    action = _reconcile_executable_action(
+        first,
+        canonical_squad=squad,
+        canonical_xi=canonical_xi,
+        captain_id=12,
+        vice_id=11,
+        bench_gk_id=1,
+        bench_order_ids=[2, 14, 15],
+        expected_points=55.25,
+    )
+
+    assert _ids(action["xi"]) == list(range(3, 14))
+    assert _ids(action["captain"]) == [12]
+    assert _ids(action["vice_captain"]) == [11]
+    assert action["mechanics_reconciled"] is True
+    assert action["mechanics_authority"] == "independent_exact_current_gameweek_rescore"
+    assert action["exact_expected_total_points"] == pytest.approx(55.25)
+
+
+def test_executable_action_fails_closed_on_squad_identity_disagreement():
+    squad = [{"player_id": pid, "web_name": f"P{pid}"} for pid in range(1, 16)]
+    malformed = {"gw": 2, "squad": squad[:-1]}
+    with pytest.raises(ValueError, match="does not reconcile"):
+        _reconcile_executable_action(
+            malformed,
+            canonical_squad=squad,
+            canonical_xi=squad[:11],
+            captain_id=1,
+            vice_id=2,
+            bench_gk_id=12,
+            bench_order_ids=[13, 14, 15],
+            expected_points=50.0,
+        )
+
 
 def test_unsafe_roll_is_inadmissible_and_model_self_heals_with_current_transfer():
     players = _pool()
     current = _current(players)
-    # Make every player non-playable except current DEF 2 and external DEF 15.
     players.loc[:, "appearance_probability"] = 0.10
     players.loc[:, "expected_minutes"] = 5.0
     players.loc[
