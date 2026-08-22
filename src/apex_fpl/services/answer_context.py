@@ -53,7 +53,13 @@ def _selector_reason(selector: str) -> str:
 
 
 def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> list[dict]:
-    """Explain the actual final selector, never a superseded diagnostic squad."""
+    """Explain the actual final selector, never a superseded diagnostic squad.
+
+    In-season strategy records are intentionally compact. Forecast and role fields
+    therefore fall back to the sealed final-selected-player dossier built from the
+    same DecisionBundle. A missing value in both surfaces remains missing and is
+    rejected later by the answer gate.
+    """
     recommendation = canonical.get("recommendation") or {}
     selector = str(recommendation.get("selector") or "")
     final_evidence = canonical.get("final_selected_player_evidence") or {}
@@ -68,16 +74,21 @@ def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any])
             continue
         player_id = int(player.get("player_id") or 0)
         dossier = dossier_by_player.get(player_id, {})
+
+        def _forecast(player_key: str, dossier_key: str | None = None) -> Any:
+            value = player.get(player_key)
+            return value if value is not None else dossier.get(dossier_key or player_key)
+
         reasons.append(
             {
                 "player_id": player_id,
-                "web_name": player.get("web_name"),
+                "web_name": player.get("web_name") or dossier.get("web_name"),
                 "horizon_xp": player.get("horizon_xp"),
-                "expected_minutes": player.get("expected_minutes"),
-                "start_probability": player.get("start_probability"),
-                "projection_confidence": player.get("projection_confidence"),
-                "tactical_role": player.get("tactical_role"),
-                "role_source": player.get("tactical_role_source"),
+                "expected_minutes": _forecast("expected_minutes"),
+                "start_probability": _forecast("start_probability"),
+                "projection_confidence": _forecast("projection_confidence"),
+                "tactical_role": _forecast("tactical_role"),
+                "role_source": _forecast("tactical_role_source", "role_source"),
                 "has_current_decision_evidence": dossier.get(
                     "has_current_decision_evidence"
                 ),
