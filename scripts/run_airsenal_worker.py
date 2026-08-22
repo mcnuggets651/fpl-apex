@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -27,12 +26,29 @@ ROOT = Path(__file__).resolve().parents[1]
 ZERO_TOLERANCE = 1e-12
 
 
-@dataclass(frozen=True)
 class OfficialHorizon:
-    gameweeks: list[int]
-    official_ids: set[int]
-    player_teams: dict[int, int]
-    team_names: dict[int, str]
+    """Rich official horizon context with backwards-compatible two-value unpacking.
+
+    This deliberately remains a plain class rather than a dataclass. The worker is
+    imported by regression tests through ``importlib.util.module_from_spec`` without
+    registering the temporary module in ``sys.modules``; Python 3.12 dataclasses with
+    postponed annotations inspect that registry during class creation. A data holder
+    should not make the production script dependent on a loader implementation detail.
+    """
+
+    __slots__ = ("gameweeks", "official_ids", "player_teams", "team_names")
+
+    def __init__(
+        self,
+        gameweeks: list[int],
+        official_ids: set[int],
+        player_teams: dict[int, int],
+        team_names: dict[int, str],
+    ) -> None:
+        self.gameweeks = gameweeks
+        self.official_ids = official_ids
+        self.player_teams = player_teams
+        self.team_names = team_names
 
     # Preserve the historical two-value helper contract for tests/consumers while
     # exposing richer official context to the production worker.
