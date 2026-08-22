@@ -1,13 +1,29 @@
 # Joint-path production promotion
 
-The transfer-aware GW1-GW8 selector is allowed to replace the static exact-horizon starting squad only when all of the following hold on the same sealed decision bundle:
+The adaptive launch selector may become canonical only on the same sealed DecisionBundle used by every downstream truth, mechanics and evidence gate. In season, Apex instead starts from the manager's sealed real squad and publishes only the newly solved first action; future moves remain contingencies that must be rebuilt before their own deadlines.
 
-- joint-path solve status is `optimal`;
-- the small candidate pool and expanded candidate pool select the same starting 15;
-- the joint-path objective improves on the static-path objective by at least 0.25 expected points;
-- the existing canonical fallback is already `ready_to_act=true`;
-- the post-promotion answer context remains `safe_to_act=true`.
+## Pre-GW1 launch certificate
 
-The pathway objective uses exact GW1 mechanics plus the existing legal GW2-GW8 transfer MILP, including rolled free transfers, cash/bank constraints, current selling prices and explicit transfer-hit costs. Future transfers remain contingencies and must be re-solved before every deadline. Current official prices are held fixed across the planning horizon; speculative future price rises are not forecast.
+The launch optimiser keeps current-Gameweek exact expected points primary. Future legal transfer option value may choose only between squads inside the configured near-equivalent current-GW point band. The submitted-deadline bench-resilience policy is part of the feasible set, not a publication-time repair.
 
-If any promotion condition fails, the existing exact static-horizon canonical selector remains authoritative.
+Candidate breadth is certified adaptively. The joint optimiser evaluates rank prefixes (normally 32 then 48, extending to 64 after another winner identity change), reuses already-computed future-transfer paths, and records the compared prefix breadth. Production accepts that in-solve breadth proof only when all of these are simultaneously true:
+
+- solve status is `optimal`;
+- the selected squad remains inside the current-GW floor;
+- `candidate_pool_stable=true`;
+- the full-prefix selected IDs exactly equal the published selected squad IDs;
+- the recorded right-hand comparison prefix covers at least the historical broader-retry requirement.
+
+If any part of that certificate is absent, malformed, too narrow or identity-inconsistent, Apex runs the historical broader solve and treats that broader result as authoritative. It never marks a narrow result stable merely to avoid computation.
+
+### Certificate compatibility invariant
+
+Current `joint_initial_path` generations describe the breadth proof as `Candidate convergence is checked between rank prefixes X and Y`. Older generations used `was checked`. The bounded-stability verifier recognises both exact canonical forms. A structured `convergence_rank_prefixes` field, when present on a result, is authoritative; malformed structured data fails closed and is not rescued by parsing prose.
+
+This compatibility rule exists because production previously emitted `is checked` while the verifier only recognised `was checked`. That mismatch discarded a valid in-solve breadth proof and unnecessarily launched the duplicate legacy optimisation. Regression tests now use the real production wording as well as the legacy form.
+
+## Publication remains one-way
+
+Passing convergence does not itself publish a squad. The canonical chain still requires the sealed player-identity audit, statistical-truth audit, all-player truth coverage, exact XI/captain/vice/bench mechanics reconciliation, football-reality audit and final selected-player evidence coverage. Any required downstream failure removes the recommendation and leaves `ready_to_act=false` / `safe_to_act=false` as applicable.
+
+No threshold, identity rule, solver-parity requirement, FPL mechanic or football-reality gate is weakened by this optimisation-runtime repair.
