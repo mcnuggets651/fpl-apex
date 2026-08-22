@@ -10,10 +10,13 @@ Apex must never implement player identity as `int(float(value))` or an equivalen
 
 The same exact parser is used for:
 
+- AIrsenal `player.fpl_api_id` at export time, before an output CSV is opened;
 - the Official FPL identity registry;
 - declared roster-complete source coverage;
 - external source identity resolution;
 - player-scoped IDs found in the canonical recommendation audit.
+
+Source-level validation matters because downstream checks cannot recover corruption that has already been truncated into a different valid integer. The AIrsenal exporter therefore validates every returned `fpl_api_id` before serialization and aborts without creating the output file if any ID is malformed.
 
 Roster coverage reports malformed rows separately from missing and unknown IDs so one artifact can expose all identity defects at once.
 
@@ -31,6 +34,7 @@ Only explicitly player-scoped fields are scanned (`player_id`, captain/vice IDs 
 
 CI must prove at least these cases:
 
+- the AIrsenal exporter rejects fractional/non-numeric `fpl_api_id` values before writing output;
 - fractional Official FPL IDs fail before registry construction;
 - a fractional explicit source ID cannot fall back to a matching name;
 - roster-complete coverage reports a fractional ID as invalid and the displaced Official ID as missing;
