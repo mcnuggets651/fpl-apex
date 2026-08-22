@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from apex_fpl.config import load_settings
+from apex_fpl.optimisation import exact_decision as exact_decision_module
 from apex_fpl.optimisation.exact_decision import optimise_exact_horizon_decision
 
 
@@ -79,12 +80,32 @@ def test_exact_horizon_decision_reconciles_and_is_deterministic() -> None:
     )
 
 
+def test_subsequent_shortlist_solves_receive_governed_floor(monkeypatch) -> None:
+    calls: list[float | None] = []
+    original = exact_decision_module.optimise_initial_horizon
+
+    def wrapped(*args, **kwargs):
+        calls.append(kwargs.get("min_reference_objective"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(exact_decision_module, "optimise_initial_horizon", wrapped)
+    optimise_exact_horizon_decision(
+        _players(),
+        _projections(),
+        [1],
+        candidate_limit=2,
+        candidate_regret_fraction=0.05,
+        captain_eligible=set(range(1, 17)),
+    )
+    assert calls[0] is None
+    assert calls[1] is not None
+
+
 def test_production_exact_search_budget_exceeds_live_failed_ceiling() -> None:
     settings = load_settings("config/apex.yaml")
-    # The 2026-08-22 GW2-GW9 production surface still had admissible candidates
-    # after rank 16. Preserve enough headroom while retaining fail-closed semantics
-    # if the larger resource ceiling is ever reached.
-    assert settings.exact_candidate_limit >= 64
+    # The production cap is only a fail-closed resource ceiling; the live band is
+    # now constrained directly in every post-rank-one solve for fast exhaustion.
+    assert settings.exact_candidate_limit >= 256
 
 
 def test_exact_horizon_rejects_invalid_candidate_controls() -> None:

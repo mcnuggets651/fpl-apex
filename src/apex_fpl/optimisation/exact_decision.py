@@ -460,7 +460,19 @@ def optimise_exact_horizon_decision(
     shortlist_floor = -math.inf
     shortlist_complete = False
     terminal_solution: SquadSolution | None = None
+    generator_projection_col = (
+        projection_col if projection_col in projections.columns else "risk_adjusted_xp"
+    )
     for rank in range(1, int(candidate_limit) + 1):
+        # Once rank one establishes the governed regret band, constrain every later
+        # solve to that exact same band. This is semantically identical to solving
+        # the next global optimum and rejecting it below the floor, but lets HiGHS
+        # prune sub-floor branches and prove exhaustion directly as infeasibility.
+        governed_floor = (
+            float(shortlist_floor)
+            if best_approximate is not None and math.isfinite(shortlist_floor)
+            else None
+        )
         solution = optimise_initial_horizon(
             players,
             projections,
@@ -474,6 +486,8 @@ def optimise_exact_horizon_decision(
             captain_eligible=captain_eligible,
             xi_eligible=xi_eligible,
             projection_col=projection_col,
+            reference_projection_col=generator_projection_col,
+            min_reference_objective=governed_floor,
             excluded_squads=excluded,
             solver_relative_gap=0.00001,
             solver_time_limit=120,
