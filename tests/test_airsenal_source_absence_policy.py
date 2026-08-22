@@ -55,21 +55,23 @@ def test_present_airsenal_keeps_normal_configured_weight():
     assert math.isclose(float(out["effective_weight_airsenal_fallback_apex"]), 0.0, abs_tol=1e-12)
 
 
+def _player() -> dict:
+    return {
+        "player_id": 1,
+        "web_name": "New Player",
+        "team": 1,
+        "team_name": "Club",
+        "position": "MID",
+        "price": 5.0,
+        "status": "a",
+        "expected_minutes": 60.0,
+        "minutes_confidence": 0.5,
+        "role_confidence": 0.5,
+    }
+
+
 def test_truth_contract_accepts_only_explicitly_reconciled_airsenal_absence():
-    players = pd.DataFrame([
-        {
-            "player_id": 1,
-            "web_name": "New Player",
-            "team": 1,
-            "team_name": "Club",
-            "position": "MID",
-            "price": 5.0,
-            "status": "a",
-            "expected_minutes": 60.0,
-            "minutes_confidence": 0.5,
-            "role_confidence": 0.5,
-        }
-    ])
+    players = pd.DataFrame([_player()])
     projections = pd.DataFrame([
         {
             "player_id": 1,
@@ -83,24 +85,20 @@ def test_truth_contract_accepts_only_explicitly_reconciled_airsenal_absence():
         }
     ])
     audit = audit_player_truth(players, projections, expected_players=1)
+
     assert audit["ready"]
-    assert audit["airsenal_projection_pair_coverage"] == 0.0
+    # Production consumes certified pair coverage. Raw upstream presence stays
+    # separately visible and is never fabricated.
+    assert audit["airsenal_projection_pair_coverage"] == 1.0
+    assert audit["airsenal_raw_projection_pair_coverage"] == 0.0
+    assert audit["airsenal_source_absence_reconciled"] is True
     assert audit["airsenal_source_absent_pair_count"] == 1
+    assert audit["airsenal_unreconciled_source_absent_pair_count"] == 0
     assert not audit["blockers"]
 
 
 def test_truth_contract_rejects_unreconciled_airsenal_absence():
-    players = pd.DataFrame([
-        {
-            "player_id": 1,
-            "web_name": "New Player",
-            "team": 1,
-            "team_name": "Club",
-            "position": "MID",
-            "price": 5.0,
-            "status": "a",
-        }
-    ])
+    players = pd.DataFrame([_player()])
     projections = pd.DataFrame([
         {
             "player_id": 1,
@@ -114,8 +112,35 @@ def test_truth_contract_rejects_unreconciled_airsenal_absence():
         }
     ])
     audit = audit_player_truth(players, projections, expected_players=1)
+
     assert not audit["ready"]
+    assert audit["airsenal_projection_pair_coverage"] == 0.0
+    assert audit["airsenal_raw_projection_pair_coverage"] == 0.0
+    assert audit["airsenal_source_absence_reconciled"] is False
+    assert audit["airsenal_unreconciled_source_absent_pair_count"] == 1
     assert any("lack explicit fixed-weight Apex fallback" in item for item in audit["blockers"])
+
+
+def test_truth_contract_reports_raw_presence_separately_when_source_is_present():
+    players = pd.DataFrame([_player()])
+    projections = pd.DataFrame([
+        {
+            "player_id": 1,
+            "gw": 1,
+            "canonical_ev_xp": 3.0,
+            "source_present_airsenal": True,
+            "airsenal_source_absent": False,
+            "effective_weight_airsenal_fallback_apex": 0.0,
+            "xp_expert_airsenal_fallback_apex": 0.0,
+            "xp_set_piece_prior": 0.0,
+        }
+    ])
+    audit = audit_player_truth(players, projections, expected_players=1)
+
+    assert audit["ready"]
+    assert audit["airsenal_projection_pair_coverage"] == 1.0
+    assert audit["airsenal_raw_projection_pair_coverage"] == 1.0
+    assert audit["airsenal_source_absence_reconciled"] is True
 
 
 def test_adaptive_workflow_accepts_resolved_not_fabricated_airsenal_coverage():
