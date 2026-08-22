@@ -29,6 +29,7 @@ class TeamState:
     chips_used: list[dict] = field(default_factory=list)
     selling_prices: dict[int, float] = field(default_factory=dict)
     selling_prices_exact: bool = False
+    transfer_history_complete: bool = False
     public_deadline_snapshot: bool = False
 
     def to_dict(self) -> dict:
@@ -80,8 +81,13 @@ def load_team_state(
             int(pid): float(price)
             for pid, price in (raw.get("selling_prices", {}) or {}).items()
         }
-        chips_used = [dict(row) for row in (raw.get("chips_used", []) or []) if isinstance(row, dict)]
+        chips_used = [
+            dict(row)
+            for row in (raw.get("chips_used", []) or [])
+            if isinstance(row, dict)
+        ]
     free = min(5, max(1, free))
+    exact_prices = set(selling_prices) == squad and len(selling_prices) == 15
     return TeamState(
         squad=squad,
         bank=bank,
@@ -89,7 +95,11 @@ def load_team_state(
         source="manual_override",
         chips_used=chips_used,
         selling_prices=selling_prices,
-        selling_prices_exact=bool(selling_prices),
+        selling_prices_exact=exact_prices,
+        # A manual override is an explicit user-supplied current state rather than
+        # a claim about the public transfer endpoint. Complete selling prices are
+        # sufficient for exact affordability in that mode.
+        transfer_history_complete=exact_prices,
     )
 
 
@@ -105,9 +115,9 @@ def persist_initial_prices(
 ) -> Path | None:
     """Persist pre-GW1 prices so public-entry selling values can be reconstructed.
 
-    FPL does not expose the purchase price of a manager's original GW1 players in
-    the public picks endpoint. Capturing the official pre-deadline price universe
-    closes that gap for later weekly transfer calculations.
+    The cache is useful replay evidence, but weekly correctness no longer depends on
+    it: Official FPL's ``cost_change_start`` field also lets Apex reconstruct the
+    exact season-start price from a current bootstrap snapshot.
     """
     path = _initial_price_path(cache_dir)
     if path.exists():
@@ -132,11 +142,53 @@ def persist_initial_prices(
 
 
 def _selling_price(purchase: float, current: float) -> float:
+    """Return the FPL realised selling value using the half-profit rule in tenths."""
     purchase_t = int(round(float(purchase) * 10))
     current_t = int(round(float(current) * 10))
     if current_t <= purchase_t:
         return current_t / 10.0
     return (purchase_t + (current_t - purchase_t) // 2) / 10.0
+
+
+def _season_start_prices(players: pd.DataFrame) -> dict[int, float]:
+    """Reconstruct exact opening prices from the live Official bootstrap.
+
+    ``cost_change_start`` is expressed in FPL tenths and is preserved on the raw
+    Official player surface. Subtracting it from ``now_cost``/normalised ``price``
+    is therefore an exact fallback when no pre-GW1 cache exists.
+    """
+    required = {"player_id", "price", "cost_change_start"}
+    if not required.issubset(players.columns):
+        return {}
+    out: dict[int, float] = {}
+    for row in players[list(required)].itertuples(index=False):
+        pid = int(row.player_id)
+        current = pd.to_numeric(pd.Series([row.price]), errors="coerce").iloc[0]
+        delta = pd.to_numeric(
+            pd.Series([row.cost_change_start]), errors="coerce"
+        ).iloc[0]
+        if pd.isna(current) or pd.isna(delta):
+            continue
+        current_t = int(round(float(current) * 10))
+        start_t = current_t - int(round(float(delta)))
+        if start_t > 0:
+            out[pid] = start_t / 10.0
+    return out
+
+
+def _cached_initial_prices(path: Path | None) -> dict[int, float]:
+    if path is None or not path.exists():
+        return {}
+    initial = pd.read_csv(path)
+    if not {"player_id", "price"}.issubset(initial.columns):
+        return {}
+    initial["player_id"] = pd.to_numeric(initial["player_id"], errors="coerce")
+    initial["price"] = pd.to_numeric(initial["price"], errors="coerce")
+    initial = initial.dropna(subset=["player_id", "price"])
+    return {
+        int(row.player_id): float(row.price)
+        for row in initial[["player_id", "price"]].itertuples(index=False)
+    }
 
 
 def _public_selling_prices(
@@ -149,41 +201,46 @@ def _public_selling_prices(
         for row in players[["player_id", "price"]].itertuples(index=False)
         if pd.notna(row.price)
     }
-    initial_price: dict[int, float] = {}
-    if initial_prices_path and initial_prices_path.exists():
-        initial = pd.read_csv(initial_prices_path)
-        if {"player_id", "price"}.issubset(initial.columns):
-            initial_price = {
-                int(row.player_id): float(row.price)
-                for row in initial[["player_id", "price"]].itertuples(index=False)
-            }
+    # Prefer a historically captured opening snapshot when available, then fill any
+    # gaps from Official cost_change_start. Both are exact season-start values.
+    initial_price = _season_start_prices(players)
+    initial_price.update(_cached_initial_prices(initial_prices_path))
 
     latest_buy: dict[int, float] = {}
     latest_event: dict[int, int] = {}
-    for tx in state.transfers:
-        event = int(tx.get("event", 0) or 0)
-        if event > state.published_gw:
-            continue
-        pid = tx.get("element_in")
-        cost = tx.get("element_in_cost")
-        if pid is None or cost is None:
-            continue
-        pid = int(pid)
-        if event >= latest_event.get(pid, -1):
-            latest_event[pid] = event
-            latest_buy[pid] = float(cost) / 10.0
+    if state.transfers_complete:
+        for tx in state.transfers:
+            event = int(tx.get("event", 0) or 0)
+            if event > state.published_gw:
+                continue
+            pid = tx.get("element_in")
+            cost = tx.get("element_in_cost")
+            if pid is None or cost is None:
+                continue
+            pid = int(pid)
+            if event >= latest_event.get(pid, -1):
+                latest_event[pid] = event
+                latest_buy[pid] = float(cost) / 10.0
 
     selling: dict[int, float] = {}
     exact = True
+    ledger_required = int(state.published_gw) >= 2
+    if ledger_required and not state.transfers_complete:
+        exact = False
+
     for pid in state.squad:
         current = current_price.get(pid)
         if current is None:
             exact = False
             continue
-        purchase = latest_buy.get(pid, initial_price.get(pid))
+        # At the GW1 deadline every member of the public 15 is necessarily an
+        # original squad selection, so a failed transfer endpoint cannot make its
+        # purchase price ambiguous. From GW2 onward, a complete transfer ledger is
+        # required to distinguish original players from later buys/re-buys.
+        purchase = latest_buy.get(pid)
+        if purchase is None and (state.transfers_complete or state.published_gw == 1):
+            purchase = initial_price.get(pid)
         if purchase is None:
-            # Safe public fallback: current price is exact for a player whose price
-            # has not risen, but can overstate realised cash for a risen player.
             selling[pid] = current
             exact = False
         else:
@@ -202,9 +259,9 @@ def resolve_team_state(
     force: bool = False,
     season: str = "2026-2027",
 ) -> TeamStateResolution:
-    # Capture the complete official GW1 price universe *before* the first deadline,
-    # even though public entry picks do not exist yet. This is required later to
-    # reconstruct exact selling prices for players owned from the original squad.
+    # Capture the complete official GW1 price universe *before* the first deadline
+    # when possible. This remains useful provenance/replay evidence, while live
+    # cost_change_start makes post-deadline reconstruction self-sufficient.
     initial_prices = persist_initial_prices(players, events, cache_dir)
 
     manual = load_team_state(current_squad_path, team_state_path)
@@ -255,7 +312,6 @@ def resolve_team_state(
             metadata={"entry_id": int(entry_id), "entry_name": entry_name},
         )
 
-    # If the first deadline has passed, use the previously cached pre-GW1 file.
     if initial_prices is None:
         cached = _initial_price_path(cache_dir)
         initial_prices = cached if cached.exists() else None
@@ -276,17 +332,25 @@ def resolve_team_state(
         chips_used=public.chips_used,
         selling_prices=selling,
         selling_prices_exact=exact,
+        transfer_history_complete=public.transfers_complete,
         public_deadline_snapshot=True,
     )
     pricing = (
         "exact reconstructed selling prices"
         if exact
-        else "partly approximate selling prices"
+        else "UNVERIFIED selling prices (actionable transfer optimisation blocked)"
+    )
+    ledger = (
+        "complete public transfer ledger"
+        if public.transfers_complete
+        else "public transfer ledger unavailable"
     )
     detail = (
         f"FPL entry {public.entry_id} ({public.entry_name}) synced from published GW"
         f"{public.published_gw} picks; {public.free_transfers} FT; £{public.bank:.1f}m bank; "
-        f"{pricing}. Public mode cannot see transfers made after the latest deadline."
+        f"{pricing}; {ledger}. Public mode cannot see transfers made after the latest "
+        "deadline, so an explicit manual override remains authoritative if the manager "
+        "has already changed the squad during the current Gameweek."
     )
     return TeamStateResolution(
         state=state,
