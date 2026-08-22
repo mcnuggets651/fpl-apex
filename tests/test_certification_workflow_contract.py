@@ -4,10 +4,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 PR_CERTIFICATION_WORKFLOWS = (
+    ".github/workflows/apex.yml",
     ".github/workflows/projection-policy-audit.yml",
     ".github/workflows/projection-shadow-audit.yml",
     ".github/workflows/adaptive-canonical-diagnostic.yml",
     ".github/workflows/joint-path-promotion-audit.yml",
+    ".github/workflows/team-strength-validation.yml",
+    ".github/workflows/understat-player-production-ab.yml",
 )
 
 
