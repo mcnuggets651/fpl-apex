@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pandas as pd
+import pytest
 
 from apex_fpl.models.team_goals import build_team_goal_surface, build_team_ratings
 
@@ -59,13 +60,38 @@ def test_team_goal_surface_covers_every_official_fixture_side():
     )
     fixtures = pd.DataFrame(
         [
-            {"event": 1, "team_h": 1, "team_a": 2},
-            {"event": 1, "team_h": 3, "team_a": 1},
+            {"id": 101, "event": 1, "team_h": 1, "team_a": 2},
+            {"id": 102, "event": 1, "team_h": 3, "team_a": 1},
         ]
     )
     surface = build_team_goal_surface(fixtures, ratings, [1])
     assert len(surface) == 4
+    assert set(surface["fixture_id"]) == {101, 102}
+    assert not surface.duplicated(["fixture_id", "team"]).any()
     assert surface[["expected_team_goals", "clean_sheet_prob"]].notna().all().all()
     arsenal_home = surface[(surface.team == 1) & (surface.is_home)].iloc[0]
     everton_away = surface[(surface.team == 2) & (~surface.is_home)].iloc[0]
     assert arsenal_home["expected_team_goals"] > everton_away["expected_team_goals"]
+
+
+def test_team_goal_surface_rejects_missing_or_duplicate_official_fixture_ids():
+    ratings = build_team_ratings(
+        _history(),
+        _teams(),
+        as_of=pd.Timestamp("2026-01-01", tz="UTC"),
+    )
+    with pytest.raises(ValueError, match="official fixtures missing columns: id"):
+        build_team_goal_surface(
+            pd.DataFrame([{"event": 1, "team_h": 1, "team_a": 2}]), ratings, [1]
+        )
+    with pytest.raises(ValueError, match="unique numeric fixture IDs"):
+        build_team_goal_surface(
+            pd.DataFrame(
+                [
+                    {"id": 7, "event": 1, "team_h": 1, "team_a": 2},
+                    {"id": 7, "event": 1, "team_h": 3, "team_a": 1},
+                ]
+            ),
+            ratings,
+            [1],
+        )
