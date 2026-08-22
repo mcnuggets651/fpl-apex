@@ -10,6 +10,11 @@ from scipy.sparse import lil_matrix
 
 from apex_fpl.constants import SQUAD_COUNTS, XI_MAX, XI_MIN
 from apex_fpl.models.scenarios import ProjectionScenarios
+from apex_fpl.optimisation.bench_policy import (
+    MINIMUM_PLAYABLE_OUTFIELD_BENCH,
+    credible_first_bench_ids,
+    playable_outfield_ids,
+)
 from apex_fpl.optimisation.solver_status import scipy_milp_metadata, scipy_milp_status
 
 
@@ -44,6 +49,7 @@ def optimise_initial_cvar(
     banned: set[int] | None = None,
     captain_eligible: set[int] | None = None,
     xi_eligible: set[int] | None = None,
+    enforce_current_bench_resilience: bool = False,
 ) -> RobustSquadSolution:
     """Solve a legal initial FPL squad against correlated forecast scenarios.
 
@@ -51,8 +57,19 @@ def optimise_initial_cvar(
     Conditional Value at Risk (CVaR). Solver limits/errors remain distinct from
     mathematical infeasibility; only HiGHS status code 2 is surfaced as
     ``Infeasible``.
+
+    The current-deadline bench policy is explicit and optional. Production
+    comparison runs enable it so robust and maximum-EV squads share the same
+    feasibility set; generic scenario/replay callers are unaffected by default.
     """
     locked, banned = set(locked or set()), set(banned or set())
+    if "squad_evidence_eligible" in players:
+        banned |= set(
+            players.loc[
+                ~players["squad_evidence_eligible"].fillna(False).astype(bool),
+                "player_id",
+            ].astype(int)
+        )
     captain_eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
@@ -99,6 +116,26 @@ def optimise_initial_cvar(
     n = len(d)
     t_count = len(scenarios.gameweeks)
     s_count = scenarios.n_scenarios
+    if t_count < 1 or s_count < 1:
+        empty = d.iloc[0:0]
+        return RobustSquadSolution(
+            "InputError",
+            math.nan,
+            math.nan,
+            math.nan,
+            alpha,
+            risk_weight,
+            empty,
+            empty,
+            empty,
+            empty,
+            empty,
+            np.asarray([], dtype=float),
+            {
+                "status_code": None,
+                "termination_reason": "scenario surface has no gameweeks or scenarios",
+            },
+        )
     values = np.zeros((s_count, n, t_count), dtype=float)
     for i, pid in enumerate(pids):
         values[:, i, :] = scenarios.values[:, scenario_pid_index[pid], :]
@@ -138,8 +175,8 @@ def optimise_initial_cvar(
             maximise[cv(i, t)] += mean_scale * value
     maximise[ETA] += risk_weight
     shortfall_weight = risk_weight / (alpha * s_count)
-    for s in range(s_count):
-        maximise[uv(s)] -= shortfall_weight
+    for scenario_idx in range(s_count):
+        maximise[uv(scenario_idx)] -= shortfall_weight
 
     rows: list[dict[int, float]] = []
     lower: list[float] = []
@@ -176,6 +213,30 @@ def optimise_initial_cvar(
             add({xv(i, t): 1.0, sv(i): -1.0}, -np.inf, 0)
             add({cv(i, t): 1.0, xv(i, t): -1.0}, -np.inf, 0)
 
+    if enforce_current_bench_resilience:
+        playable_ids = playable_outfield_ids(d)
+        first_bench_ids = credible_first_bench_ids(d)
+        playable_idx = [i for i, pid in enumerate(pids) if pid in playable_ids]
+        first_idx = [i for i, pid in enumerate(pids) if pid in first_bench_ids]
+        add(
+            {
+                variable: coefficient
+                for i in playable_idx
+                for variable, coefficient in ((sv(i), 1.0), (xv(i, 0), -1.0))
+            },
+            float(MINIMUM_PLAYABLE_OUTFIELD_BENCH),
+            np.inf,
+        )
+        add(
+            {
+                variable: coefficient
+                for i in first_idx
+                for variable, coefficient in ((sv(i), 1.0), (xv(i, 0), -1.0))
+            },
+            1.0,
+            np.inf,
+        )
+
     for scenario_idx in range(s_count):
         coeffs: dict[int, float] = {ETA: 1.0, uv(scenario_idx): -1.0}
         for t in range(t_count):
@@ -198,8 +259,12 @@ def optimise_initial_cvar(
     ub = np.ones(total_vars, dtype=float)
     integrality = np.ones(total_vars, dtype=int)
     lb[ETA], ub[ETA], integrality[ETA] = -1000.0, 3000.0, 0
-    for s in range(s_count):
-        lb[uv(s)], ub[uv(s)], integrality[uv(s)] = 0.0, 5000.0, 0
+    for scenario_idx in range(s_count):
+        lb[uv(scenario_idx)], ub[uv(scenario_idx)], integrality[uv(scenario_idx)] = (
+            0.0,
+            5000.0,
+            0,
+        )
 
     by_id = {pid: i for i, pid in enumerate(pids)}
     for pid in locked:
@@ -235,6 +300,9 @@ def optimise_initial_cvar(
     solver = scipy_milp_metadata(
         result, relative_gap=configured_gap, time_limit=time_limit
     )
+    solver["current_bench_resilience_enforced"] = bool(
+        enforce_current_bench_resilience
+    )
     status = scipy_milp_status(result)
     if status != "Optimal":
         empty = d.iloc[0:0]
@@ -261,26 +329,26 @@ def optimise_initial_cvar(
     benched = [i for i in chosen if i not in lineup]
 
     scenario_scores = np.zeros(s_count, dtype=float)
-    for s in range(s_count):
+    for scenario_idx in range(s_count):
         score = 0.0
         for t in range(t_count):
             disc = discounts[t]
             for i in chosen:
-                score += bw * values[s, i, t] * disc
+                score += bw * values[scenario_idx, i, t] * disc
             for i in range(n):
                 if sol[xv(i, t)] > 0.5:
-                    score += (1.0 - bw) * values[s, i, t] * disc
+                    score += (1.0 - bw) * values[scenario_idx, i, t] * disc
                 if sol[cv(i, t)] > 0.5:
-                    score += values[s, i, t] * disc
-        scenario_scores[s] = score
+                    score += values[scenario_idx, i, t] * disc
+        scenario_scores[scenario_idx] = score
 
     mean_points = float(np.mean(scenario_scores))
     tail_count = max(1, int(math.ceil(alpha * s_count)))
     lower_cvar = float(np.mean(np.sort(scenario_scores)[:tail_count]))
     blended = (1.0 - risk_weight) * mean_points + risk_weight * lower_cvar
 
-    gw1_mean = np.mean(values[:, :, 0], axis=0)
-    d["_robust_gw1_xp"] = gw1_mean
+    current_mean = np.mean(values[:, :, 0], axis=0)
+    d["_robust_gw1_xp"] = current_mean
     if "gw1_xp" not in d.columns:
         d["gw1_xp"] = d["_robust_gw1_xp"]
     details = [
@@ -324,7 +392,7 @@ def optimise_initial_cvar(
         ).fillna(1.0)
         vice_idx = max(
             vice_pool,
-            key=lambda i: float(gw1_mean[i]) * float(appearance.iloc[i]),
+            key=lambda i: float(current_mean[i]) * float(appearance.iloc[i]),
         )
         vice_df = d.loc[[vice_idx], cols]
     else:
