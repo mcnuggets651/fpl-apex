@@ -6,6 +6,12 @@ on:
     paths:
       - ".github/workflows/adaptive-canonical-diagnostic.yml"
       - "scripts/run_apex.py"
+      - "scripts/run_pinnacle.py"
+      - "scripts/export_open_solver.py"
+      - "scripts/build_open_solver_parity_input.py"
+      - "scripts/run_open_solver_parity.py"
+      - "scripts/compare_solver_parity.py"
+      - "scripts/embed_solver_parity.py"
       - "scripts/apply_joint_path_promotion.py"
       - "scripts/apply_joint_path_promotion_rebased.py"
       - "src/apex_fpl/services/finalized_stability.py"
@@ -22,12 +28,27 @@ jobs:
   diagnostic:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      RUN_DIR: data/generated/runs/${{ github.run_id }}
+      BUNDLE_DIR: data/generated/runs/${{ github.run_id }}/decision_bundle
+      PARITY_DIR: data/generated/runs/${{ github.run_id }}/open_solver_parity_input
+      AIRSENAL_CSV: data/generated/runs/${{ github.run_id }}/airsenal.csv
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Create empty generation namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUN_DIR"
+          mkdir -p "$RUN_DIR"
+          test ! -e "$RUN_DIR/pinnacle_latest.json"
+          test ! -e "$RUN_DIR/solver_parity.json"
+          test ! -e "$RUN_DIR/apex_recommendation_latest.json"
 
       - name: Install Apex + pinned AIrsenal worker
         run: bash scripts/install_pinned_airsenal.sh
@@ -52,7 +73,7 @@ jobs:
         run: |
           if [ ! -s "$AIRSENAL_DB_FILE" ]; then airsenal_setup_initial_db --fpl_team_id 1; fi
           python scripts/update_airsenal_worker.py
-          python scripts/run_airsenal_worker.py --db "$AIRSENAL_DB_FILE" --horizon 8 --output data/generated/airsenal.csv
+          python scripts/run_airsenal_worker.py --db "$AIRSENAL_DB_FILE" --horizon 8 --output "$AIRSENAL_CSV"
 
       - name: Warm official FPL cache
         run: |
@@ -60,27 +81,26 @@ jobs:
           from pathlib import Path
           from apex_fpl.data.http import CachedHttp
           from apex_fpl.data.official import OfficialFPLClient
-
           snapshot = OfficialFPLClient(CachedHttp(Path("data/cache"))).snapshot(force=True)
           print("official_bootstrap_sha256", snapshot.bootstrap_sha256)
           print("official_fixtures_sha256", snapshot.fixtures_sha256)
           PY
 
-      - name: Build sealed GW1-GW8 decision bundle
+      - name: Build sealed actionable-horizon decision bundle
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
           FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
-        run: python scripts/build_decision_bundle.py --horizon 8 --force
+        run: python scripts/build_decision_bundle.py --horizon 8 --force --bundle-dir "$BUNDLE_DIR"
 
       - name: Generate Pinnacle surface for independent parity
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
           FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         shell: bash
         run: |
@@ -90,22 +110,22 @@ jobs:
             --stochastic-scenarios 256 \
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
-            --bundle-dir data/generated/decision_bundle
+            --bundle-dir "$BUNDLE_DIR" \
+            --output-dir "$RUN_DIR"
           status=$?
           set -e
-          test -s data/generated/pinnacle_latest.json
+          test -s "$RUN_DIR/pinnacle_latest.json"
           if [ "$status" -ne 0 ]; then
             python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
-          payload = json.loads(Path("data/generated/pinnacle_latest.json").read_text())
+          path = Path(os.environ["RUN_DIR"]) / "pinnacle_latest.json"
+          payload = json.loads(path.read_text())
           blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
           assert blockers == ["required independent solver parity snapshot is not embedded"], blockers
           PY
           fi
-          python scripts/export_open_solver.py \
-            reports/players.csv reports/projections.csv /tmp/apex.csv \
-            --projection-col xp
+          python scripts/export_open_solver.py "$BUNDLE_DIR" /tmp/apex.csv --projection-col xp
 
       - name: Read pinned independent solver revision
         id: parity-pin
@@ -118,6 +138,16 @@ jobs:
           print(f"sha={source['commit']}")
           PY
 
+      - name: Build sealed independent parity input
+        run: |
+          python scripts/build_open_solver_parity_input.py \
+            --bundle-dir "$BUNDLE_DIR" \
+            --apex-csv /tmp/apex.csv \
+            --base-config config/open_solver_parity.json \
+            --output-dir "$PARITY_DIR" \
+            --external-repository "${{ steps.parity-pin.outputs.repository }}" \
+            --external-sha "${{ steps.parity-pin.outputs.sha }}"
+
       - name: Run and embed same-surface independent parity
         shell: bash
         run: |
@@ -128,20 +158,18 @@ jobs:
             "$RUNNER_TEMP/open-fpl-solver"
           git -C "$RUNNER_TEMP/open-fpl-solver" checkout --detach \
             "${{ steps.parity-pin.outputs.sha }}"
-          cp /tmp/apex.csv "$RUNNER_TEMP/open-fpl-solver/data/apex.csv"
           cd "$RUNNER_TEMP/open-fpl-solver"
           uv sync
-          uv run python run/solve.py \
-            --config "$GITHUB_WORKSPACE/config/open_solver_parity.json" \
-            --datasource apex \
-            --horizon 8
           cd "$GITHUB_WORKSPACE"
-          RESULT="$(ls -t "$RUNNER_TEMP"/open-fpl-solver/data/results/apex_*.csv | head -1)"
+          uv run --project "$RUNNER_TEMP/open-fpl-solver" python scripts/run_open_solver_parity.py \
+            --solver-root "$RUNNER_TEMP/open-fpl-solver" \
+            --input-dir "$PARITY_DIR" \
+            --result "$RUN_DIR/open_solver_result.csv" \
+            --execution-manifest "$RUN_DIR/open_solver_execution.json"
           python scripts/compare_solver_parity.py \
-            data/generated/pinnacle_latest.json "$RESULT"
+            "$RUN_DIR/pinnacle_latest.json" "$RUN_DIR/open_solver_result.csv"
           python scripts/embed_solver_parity.py \
-            data/generated/pinnacle_latest.json \
-            data/generated/solver_parity.json
+            "$RUN_DIR/pinnacle_latest.json" "$RUN_DIR/solver_parity.json"
 
       - name: Run canonical Apex and retain failure state
         id: canonical
@@ -149,7 +177,7 @@ jobs:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
           FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         shell: bash
         run: |
@@ -157,8 +185,8 @@ jobs:
           python scripts/run_apex.py \
             --horizon 8 \
             --reuse-pinnacle \
-            --output-dir data/generated \
-            --bundle-dir data/generated/decision_bundle
+            --output-dir "$RUN_DIR" \
+            --bundle-dir "$BUNDLE_DIR"
           status=$?
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
@@ -169,11 +197,10 @@ jobs:
           CANONICAL_EXIT_CODE: ${{ steps.canonical.outputs.exit_code }}
         run: |
           python - <<'PY'
-          import json
-          import os
+          import json, os
           from pathlib import Path
-
-          path = Path("data/generated/apex_recommendation_latest.json")
+          run_dir = Path(os.environ["RUN_DIR"])
+          path = run_dir / "apex_recommendation_latest.json"
           print("canonical_exit_code", os.environ.get("CANONICAL_EXIT_CODE"))
           if not path.exists():
               print("canonical_output_missing=true")
@@ -183,6 +210,8 @@ jobs:
           selected = diag.get("selected") or {}
           reality = (payload.get("internal_diagnostics") or {}).get("selection_reality") or {}
           summary = {
+              "decision_bundle_id": payload.get("decision_bundle_id"),
+              "gameweeks": payload.get("gameweeks") or [],
               "ready_to_act": payload.get("ready_to_act"),
               "safe_to_act": payload.get("safe_to_act"),
               "blockers": payload.get("blockers") or [],
@@ -194,7 +223,7 @@ jobs:
               "joint_note": diag.get("note"),
               "selected_squad_ids": selected.get("squad_ids") or [],
               "selected_squad_names": selected.get("squad_names") or [],
-              "gw1_expected_points": selected.get("gw1_expected_points"),
+              "first_gw_expected_points": selected.get("gw1_expected_points"),
               "future_objective": selected.get("future_objective"),
               "starting_bank": selected.get("starting_bank"),
               "reality_ready": reality.get("ready"),
@@ -202,31 +231,18 @@ jobs:
               "reality_warnings": reality.get("warnings") or [],
           }
           print(json.dumps(summary, indent=2))
-          Path("reports").mkdir(exist_ok=True)
-          Path("reports/canonical_diagnostic_summary.json").write_text(
+          (run_dir / "canonical_diagnostic_summary.json").write_text(
               json.dumps(summary, indent=2) + "\n", encoding="utf-8"
           )
           PY
 
-      - name: Upload canonical diagnostic artifact
+      - name: Upload canonical diagnostic generation
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: canonical-diagnostic-${{ github.run_id }}
-          path: |
-            data/generated/apex_recommendation_latest.json
-            data/generated/apex_recommendation_latest.md
-            data/generated/apex_answer_context.json
-            data/generated/pinnacle_latest.json
-            data/generated/solver_parity.json
-            data/generated/specialist_disagreement.csv
-            data/generated/transfer_intelligence.csv
-            reports/canonical_diagnostic_summary.json
-            reports/player_identity_audit.json
-            reports/player_identity_audit.csv
-            reports/statistical_truth_audit.json
-            reports/player_truth_audit.json
-            reports/player_truth_audit.csv
+          path: ${{ env.RUN_DIR }}/
+          if-no-files-found: error
           retention-days: 30
 
       - name: Fail diagnostic if canonical was nonzero
