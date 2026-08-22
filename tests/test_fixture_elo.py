@@ -84,8 +84,8 @@ def test_core_elo_excludes_cup_rows_from_gameweek_files(monkeypatch):
     assert out.empty
 
 
-def test_elo_strengthens_fixture_prior_without_overpowering_official_strength():
-    teams = pd.DataFrame(
+def _teams() -> pd.DataFrame:
+    return pd.DataFrame(
         [
             {
                 "id": 1,
@@ -105,7 +105,15 @@ def test_elo_strengthens_fixture_prior_without_overpowering_official_strength():
             },
         ]
     )
-    fixtures = pd.DataFrame([{"event": 1, "team_h": 1, "team_a": 2}])
+
+
+def _fixture() -> pd.DataFrame:
+    return pd.DataFrame([{"id": 101, "event": 1, "team_h": 1, "team_a": 2}])
+
+
+def test_elo_strengthens_fixture_prior_without_overpowering_official_strength():
+    teams = _teams()
+    fixtures = _fixture()
     base = fixture_multipliers(fixtures, teams, [1])
     elos = pd.DataFrame(
         [
@@ -130,6 +138,7 @@ def test_elo_strengthens_fixture_prior_without_overpowering_official_strength():
     adjusted = fixture_multipliers(fixtures, teams, [1], core_elos=elos)
     base_home = base[base.team == 1].iloc[0]
     elo_home = adjusted[adjusted.team == 1].iloc[0]
+    assert elo_home["fixture_id"] == 101
     assert elo_home["expected_team_goals"] > base_home["expected_team_goals"]
     assert 1.0 < elo_home["elo_multiplier"] < 1.25
     assert elo_home["team_elo"] == 2050
@@ -142,10 +151,11 @@ def test_external_team_goal_surface_is_not_multiplied_by_elo():
             {"id": 2, "strength": 0},
         ]
     )
-    fixtures = pd.DataFrame([{"event": 1, "team_h": 1, "team_a": 2}])
+    fixtures = _fixture()
     surface = pd.DataFrame(
         [
             {
+                "fixture_id": 101,
                 "gw": 1,
                 "team": 1,
                 "opponent": 2,
@@ -156,6 +166,7 @@ def test_external_team_goal_surface_is_not_multiplied_by_elo():
                 "team_goal_source": "validated_understat",
             },
             {
+                "fixture_id": 101,
                 "gw": 1,
                 "team": 2,
                 "opponent": 1,
@@ -197,6 +208,7 @@ def test_external_team_goal_surface_is_not_multiplied_by_elo():
     )
     home = out[out.team == 1].iloc[0]
     away = out[out.team == 2].iloc[0]
+    assert home["fixture_id"] == 101
     assert home["expected_team_goals"] == 2.0
     assert away["expected_team_goals"] == 0.8
     assert home["elo_multiplier"] == 1.0
@@ -217,11 +229,24 @@ def test_zeroed_official_strength_uses_neutral_goal_baseline_not_lower_clip():
             for team_id in (1, 2)
         ]
     )
-    fixtures = pd.DataFrame([{"event": 1, "team_h": 1, "team_a": 2}])
-    out = fixture_multipliers(fixtures, teams, [1])
+    out = fixture_multipliers(_fixture(), teams, [1])
     home = out[out.team == 1].iloc[0]
     away = out[out.team == 2].iloc[0]
     assert home["expected_team_goals"] == 1.55
     assert away["expected_team_goals"] == 1.25
     assert home["clean_sheet_prob"] < 0.40
     assert away["clean_sheet_prob"] < 0.30
+
+
+def test_same_matchup_can_repeat_in_gameweek_when_official_fixture_ids_differ():
+    teams = _teams()
+    fixtures = pd.DataFrame(
+        [
+            {"id": 101, "event": 1, "team_h": 1, "team_a": 2},
+            {"id": 102, "event": 1, "team_h": 1, "team_a": 2},
+        ]
+    )
+    out = fixture_multipliers(fixtures, teams, [1])
+    home = out[out.team == 1]
+    assert len(home) == 2
+    assert set(home["fixture_id"]) == {101, 102}
