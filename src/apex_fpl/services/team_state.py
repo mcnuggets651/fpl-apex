@@ -248,6 +248,16 @@ def _public_selling_prices(
     return selling, exact and len(selling) == len(state.squad)
 
 
+def _actionable_state_ok(state: TeamState) -> bool:
+    """Return whether a current 15 has exact cash semantics for transfer optimisation."""
+    if len(state.squad) != 15:
+        return False
+    if state.bank < 0 or not 1 <= int(state.free_transfers) <= 5:
+        return False
+    price_ids = {int(pid) for pid in state.selling_prices}
+    return bool(state.selling_prices_exact and price_ids == set(state.squad))
+
+
 def resolve_team_state(
     http: CachedHttp,
     players: pd.DataFrame,
@@ -266,11 +276,20 @@ def resolve_team_state(
 
     manual = load_team_state(current_squad_path, team_state_path)
     if manual is not None:
+        ready = _actionable_state_ok(manual)
+        detail = (
+            "manual override loaded with exact 15-player selling-price state; it takes "
+            "priority over public entry state"
+            if ready
+            else "manual override is incomplete for actionable transfer optimisation: "
+            "provide the exact 15, bank/free-transfer state and realised selling price "
+            "for every player"
+        )
         return TeamStateResolution(
             state=manual,
             configured=True,
-            ok=True,
-            detail="manual override loaded; it takes priority over public entry state",
+            ok=ready,
+            detail=detail,
             metadata=manual.to_dict(),
         )
 
@@ -335,6 +354,7 @@ def resolve_team_state(
         transfer_history_complete=public.transfers_complete,
         public_deadline_snapshot=True,
     )
+    ready = _actionable_state_ok(state)
     pricing = (
         "exact reconstructed selling prices"
         if exact
@@ -355,7 +375,7 @@ def resolve_team_state(
     return TeamStateResolution(
         state=state,
         configured=True,
-        ok=True,
+        ok=ready,
         detail=detail,
         metadata=state.to_dict(),
     )
