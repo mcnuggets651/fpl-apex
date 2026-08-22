@@ -109,14 +109,20 @@ def _large_pool_fixture():
     return players, px, current
 
 
-def test_transfer_view_retries_full_universe_after_bounded_nonoptimal(monkeypatch):
+def test_transfer_view_retries_full_universe_after_certified_bounded_infeasibility(monkeypatch):
     players, px, current = _large_pool_fixture()
     calls: list[tuple[int, int]] = []
 
     def fake_optimise(players_arg, projections_arg, gameweeks, current_squad, **kwargs):
         calls.append((len(players_arg), int(kwargs["candidate_limit"])))
         if len(calls) == 1:
-            return TransferPlan("Infeasible", float("nan"), [])
+            return TransferPlan(
+                "Infeasible",
+                float("nan"),
+                [],
+                solver_status_code=2,
+                solver_message="The problem is infeasible",
+            )
         return TransferPlan("Optimal", 123.0, [{"gw": 2}])
 
     monkeypatch.setattr(transfer_views, "optimise_transfer_plan", fake_optimise)
@@ -134,6 +140,28 @@ def test_transfer_view_retries_full_universe_after_bounded_nonoptimal(monkeypatc
     assert calls[0][0] < len(players)
     assert calls[1][0] == len(players)
     assert calls[1][1] >= players.player_id.nunique()
+
+
+def test_transfer_view_does_not_expand_on_uncertified_infeasible_label(monkeypatch):
+    players, px, current = _large_pool_fixture()
+    calls: list[int] = []
+
+    def fake_optimise(players_arg, projections_arg, gameweeks, current_squad, **kwargs):
+        calls.append(len(players_arg))
+        return TransferPlan("Infeasible", float("nan"), [])
+
+    monkeypatch.setattr(transfer_views, "optimise_transfer_plan", fake_optimise)
+
+    plan = transfer_views.optimise_transfer_plan_view(
+        players,
+        px,
+        [2],
+        current,
+        candidate_limit=40,
+    )
+
+    assert plan.status == "Infeasible"
+    assert len(calls) == 1
 
 
 def test_transfer_view_does_not_escalate_solver_limit_to_full_universe(monkeypatch):
