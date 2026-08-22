@@ -132,7 +132,7 @@ jobs:
             echo "FPL Core pin is already current"
             exit 0
           fi
-          python scripts/invalidate_published_decision.py \
+          PYTHONPATH=src python scripts/invalidate_published_decision.py \
             --source fpl_core_insights \
             --reason "validated pinned FPL Core snapshot changed"
           git add \
