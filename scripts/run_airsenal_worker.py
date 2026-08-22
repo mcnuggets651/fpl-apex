@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Run pinned AIrsenal predictions and export the official-FPL-ID contract."""
+"""Run pinned AIrsenal predictions and export the official-FPL-ID contract.
+
+A row existing in an upstream file is not the same thing as the upstream supplying
+an opinion. In particular, an all-zero surface for an entire current Premier League
+club is treated as a structural abstention rather than 100% expert coverage. The raw
+rows remain present for provenance, while explicit support metadata lets Apex apply
+its governed fallback without fabricating an AIrsenal forecast.
+"""
 from __future__ import annotations
 
 import argparse
@@ -16,6 +23,7 @@ from datetime import datetime, timezone
 
 BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
 ROOT = Path(__file__).resolve().parents[1]
+ZERO_TOLERANCE = 1e-12
 
 
 def _actionable_gameweeks(
@@ -43,7 +51,9 @@ def _actionable_gameweeks(
     return unfinished[:horizon]
 
 
-def _official_horizon(horizon: int) -> tuple[list[int], set[int]]:
+def _official_horizon(
+    horizon: int,
+) -> tuple[list[int], set[int], dict[int, int], dict[int, str]]:
     request = urllib.request.Request(
         BOOTSTRAP_URL,
         headers={"User-Agent": "apex-fpl-airsenal-worker/1.0"},
@@ -57,7 +67,16 @@ def _official_horizon(horizon: int) -> tuple[list[int], set[int]]:
     if gameweeks != list(range(gameweeks[0], gameweeks[-1] + 1)):
         raise SystemExit(f"Official FPL returned a non-contiguous horizon: {gameweeks}")
     official_ids = {int(player["id"]) for player in payload["elements"]}
-    return gameweeks, official_ids
+    player_teams = {
+        int(player["id"]): int(player["team"])
+        for player in payload["elements"]
+        if player.get("team") is not None
+    }
+    team_names = {
+        int(team["id"]): str(team.get("name") or team["id"])
+        for team in payload.get("teams", [])
+    }
+    return gameweeks, official_ids, player_teams, team_names
 
 
 def _airsenal_pin() -> str:
@@ -65,21 +84,107 @@ def _airsenal_pin() -> str:
     return str(lock["sources"]["airsenal"]["commit"])
 
 
+def _read_export(output: Path) -> tuple[list[dict[str, str]], list[str]]:
+    with output.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        fields = list(reader.fieldnames or [])
+    return rows, fields
+
+
 def _assert_export_contract(
     output: Path, official_ids: set[int], requested_gameweeks: list[int]
 ) -> None:
-    with output.open(newline="", encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
+    rows, _ = _read_export(output)
     if not rows:
         raise SystemExit("AIrsenal export is empty")
     exported = {int(row["player_id"]) for row in rows}
     unknown = sorted(exported - official_ids)
     if unknown:
         raise SystemExit(f"AIrsenal export contains unknown official FPL IDs: {unknown[:10]}")
+
+    requested = {int(gw) for gw in requested_gameweeks}
     covered = {int(row["gw"]) for row in rows}
-    missing = sorted(set(requested_gameweeks) - covered)
+    missing = sorted(requested - covered)
     if missing:
         raise SystemExit(f"AIrsenal export is missing requested Gameweeks: {missing}")
+
+    # The production worker promises a complete raw official-player/GW matrix.
+    # Semantic abstentions are represented explicitly later; missing rows are never
+    # allowed to masquerade as abstentions or as zero forecasts.
+    pairs = {
+        (int(row["player_id"]), int(row["gw"]))
+        for row in rows
+        if int(row["gw"]) in requested
+    }
+    expected = {(int(pid), int(gw)) for pid in official_ids for gw in requested}
+    missing_pairs = sorted(expected - pairs)
+    duplicate_pairs = len(pairs) != sum(
+        1 for row in rows if int(row["gw"]) in requested
+    )
+    if missing_pairs:
+        raise SystemExit(
+            "AIrsenal export is not a complete official player/Gameweek matrix; "
+            f"missing pairs include {missing_pairs[:10]}"
+        )
+    if duplicate_pairs:
+        raise SystemExit("AIrsenal export contains duplicate official player/Gameweek rows")
+
+
+def _annotate_semantic_support(
+    output: Path,
+    player_teams: dict[int, int],
+    team_names: dict[int, str],
+    requested_gameweeks: list[int],
+) -> dict[int, str]:
+    """Mark impossible whole-club zero surfaces as explicit upstream abstentions.
+
+    A real FPL forecast may legitimately be zero for a bench player. It is not a
+    credible independent forecast for every registered player at one club to be zero
+    across the complete multi-week horizon. That shape means the upstream lacks a
+    usable model surface for the club (for example, a newly promoted team not yet
+    represented by the model). We preserve raw xP but declare those rows unsupported.
+    """
+    rows, fields = _read_export(output)
+    requested = {int(gw) for gw in requested_gameweeks}
+    by_team: dict[int, list[float]] = {}
+    for row in rows:
+        if int(row["gw"]) not in requested:
+            continue
+        pid = int(row["player_id"])
+        team = player_teams.get(pid)
+        if team is None:
+            raise SystemExit(f"Official team mapping missing for AIrsenal player {pid}")
+        try:
+            value = float(row["xp"])
+        except (TypeError, ValueError) as exc:
+            raise SystemExit(f"AIrsenal export contains invalid xP for player {pid}") from exc
+        by_team.setdefault(team, []).append(value)
+
+    abstentions: dict[int, str] = {}
+    for team, values in by_team.items():
+        if values and all(abs(float(value)) <= ZERO_TOLERANCE for value in values):
+            abstentions[team] = team_names.get(team, str(team))
+
+    support_field = "source_supported"
+    reason_field = "support_reason"
+    out_fields = [field for field in fields if field not in {support_field, reason_field}]
+    out_fields.extend([support_field, reason_field])
+    for row in rows:
+        team = player_teams.get(int(row["player_id"]))
+        supported = team not in abstentions
+        row[support_field] = "true" if supported else "false"
+        row[reason_field] = (
+            "" if supported else f"structural_all_zero_team_surface:{abstentions[team]}"
+        )
+
+    tmp = output.with_suffix(output.suffix + ".tmp")
+    with tmp.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=out_fields, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    tmp.replace(output)
+    return abstentions
 
 
 def main() -> None:
@@ -95,7 +200,7 @@ def main() -> None:
     if not args.db.is_file() or args.db.stat().st_size == 0:
         raise SystemExit(f"AIrsenal database is missing or empty: {args.db}")
 
-    gameweeks, official_ids = _official_horizon(args.horizon)
+    gameweeks, official_ids, player_teams, team_names = _official_horizon(args.horizon)
     start = gameweeks[0]
     # Pinned AIrsenal's gameweek_end is exclusive (Python range semantics).
     end_exclusive = gameweeks[-1] + 1
@@ -127,6 +232,18 @@ def main() -> None:
         env=env,
     )
     _assert_export_contract(args.output, official_ids, gameweeks)
+    abstentions = _annotate_semantic_support(
+        args.output,
+        player_teams,
+        team_names,
+        gameweeks,
+    )
+    if abstentions:
+        names = ", ".join(abstentions[team] for team in sorted(abstentions))
+        print(
+            "AIrsenal semantic abstention detected for structurally all-zero club "
+            f"surface(s): {names}. Raw rows retained; Apex fallback will be explicit."
+        )
     print(
         f"Generated genuine AIrsenal forecast for GW{start}-GW{gameweeks[-1]} "
         f"with pinned source {_airsenal_pin()}"
