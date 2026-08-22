@@ -116,6 +116,69 @@ def _named_records(frame: pd.DataFrame, xp: dict[int, float]) -> list[dict]:
     return out.to_dict("records")
 
 
+def _reconcile_executable_action(
+    first: dict,
+    *,
+    canonical_squad: list[dict],
+    canonical_xi: list[dict],
+    captain_id: int,
+    vice_id: int,
+    bench_gk_id: int,
+    bench_order_ids: list[int],
+    expected_points: float,
+) -> dict:
+    """Replace optimiser-local mechanics with the independent exact rescore.
+
+    Transfer-plan rows are allowed to carry provisional XI/captain/vice choices because
+    their purpose is transfer-path optimisation. ``action_now`` is executable, so its
+    mechanics must be the same independent exact-rescore mechanics published at the
+    canonical top level. This function fails closed on any identity disagreement.
+    """
+    action = dict(first)
+    action_squad = [dict(row) for row in (first.get("squad") or [])]
+    by_id = {
+        int(row["player_id"]): row
+        for row in action_squad
+        if isinstance(row, dict) and row.get("player_id") is not None
+    }
+    canonical_squad_ids = {
+        int(row["player_id"])
+        for row in canonical_squad
+        if isinstance(row, dict) and row.get("player_id") is not None
+    }
+    canonical_xi_ids = [
+        int(row["player_id"])
+        for row in canonical_xi
+        if isinstance(row, dict) and row.get("player_id") is not None
+    ]
+    if len(action_squad) != 15 or len(by_id) != 15 or set(by_id) != canonical_squad_ids:
+        raise ValueError(
+            "executable action squad does not reconcile to the independently rescored canonical 15"
+        )
+    if len(canonical_xi_ids) != 11 or len(set(canonical_xi_ids)) != 11:
+        raise ValueError("independently rescored canonical XI is not an exact unique 11")
+    required = {int(captain_id), int(vice_id), int(bench_gk_id), *map(int, bench_order_ids)}
+    if not required.issubset(by_id):
+        raise ValueError(
+            "independently rescored executable mechanics reference players outside action_now squad"
+        )
+    if captain_id == vice_id or captain_id not in canonical_xi_ids or vice_id not in canonical_xi_ids:
+        raise ValueError("independently rescored captain/vice do not reconcile to canonical XI")
+    if len(bench_order_ids) != 3 or len(set(map(int, bench_order_ids))) != 3:
+        raise ValueError("independently rescored outfield bench order is not an exact unique three")
+
+    action["squad"] = [dict(row) for row in action_squad]
+    action["xi"] = [dict(by_id[pid]) for pid in canonical_xi_ids]
+    action["captain"] = [dict(by_id[int(captain_id)])]
+    action["vice_captain"] = [dict(by_id[int(vice_id)])]
+    action["bench_gk"] = dict(by_id[int(bench_gk_id)])
+    action["outfield_bench_order"] = [dict(by_id[int(pid)]) for pid in bench_order_ids]
+    action["exact_expected_total_points"] = float(expected_points)
+    action["mechanics_authority"] = "independent_exact_current_gameweek_rescore"
+    action["mechanics_reconciled"] = True
+    return action
+
+
 def _unavailable(
     *,
     status: str,
@@ -257,8 +320,6 @@ def analyse_receding_horizon(
                 selling_prices=team_state.selling_prices,
                 candidate_limit=candidate_limit,
                 captain_eligible=captain_eligible,
-                # This starts next deadline, so today's bench evidence is not frozen
-                # into that future contingency.
                 enforce_current_bench_resilience=False,
             )
             if future.status == "Optimal":
@@ -318,7 +379,8 @@ def analyse_receding_horizon(
     }
     expected_ids = (set(map(int, team_state.squad)) - out_ids) | in_ids
     transition_ok = bool(
-        len(action_ids) == 15
+        len(first.get("squad") or []) == 15
+        and len(action_ids) == 15
         and action_ids == expected_ids
         and len(in_ids) == len(out_ids) == transfers
         and int(first.get("free_transfers_before", -1)) == int(team_state.free_transfers)
@@ -336,6 +398,7 @@ def analyse_receding_horizon(
     bench_order_names = None
     bench_order_ids = None
     exact_points = None
+    executable_action = first
     if transition_ok:
         squad = players[players["player_id"].astype(int).isin(action_ids)].copy()
         xp = _projection_map(projections, first_gw, projection_col)
@@ -388,6 +451,28 @@ def analyse_receding_horizon(
         bench_gk_name = names.get(bench_gk_id, str(bench_gk_id))
         bench_order_names = [names.get(pid, str(pid)) for pid in bench_order_ids]
         exact_points = float(mechanics.expected_total_points)
+        try:
+            executable_action = _reconcile_executable_action(
+                first,
+                canonical_squad=canonical_squad,
+                canonical_xi=canonical_xi,
+                captain_id=captain_id,
+                vice_id=vice_id,
+                bench_gk_id=bench_gk_id,
+                bench_order_ids=bench_order_ids,
+                expected_points=exact_points,
+            )
+        except ValueError as exc:
+            return _unavailable(
+                status="error",
+                next_gw=first_gw,
+                projection_col=projection_col,
+                note=f"Executable action/exact-mechanics reconciliation failed: {exc}",
+                optimal_objective=float(plan.objective),
+                action_now=first,
+                contingent_future=plan.weeks[1:],
+                roll_admissible=roll_admissible,
+            )
 
     optimal_objective = float(plan.objective)
     regret = (
@@ -404,14 +489,15 @@ def analyse_receding_horizon(
         optimal_objective=optimal_objective,
         roll_objective=roll_objective,
         roll_regret=regret,
-        action_now=first,
+        action_now=executable_action,
         contingent_future=plan.weeks[1:],
         projection_col=projection_col,
         note=(
-            "Execute only action_now. The submitted squad/bench was constrained in the "
-            "transfer MILP and independently verified by exact FPL mechanics. Later "
-            "moves are mathematical contingencies: refresh prices, minutes, injuries, "
-            "transfers, roles and news before every subsequent deadline and solve again."
+            "Execute only action_now. Its squad, XI, captain, vice-captain and bench are "
+            "the independent exact current-Gameweek rescore; transfer-MILP mechanics are "
+            "never published as executable authority. Later moves are mathematical "
+            "contingencies: refresh prices, minutes, injuries, transfers, roles and news "
+            "before every subsequent deadline and solve again."
         ),
         canonical_squad=canonical_squad,
         canonical_xi=canonical_xi,
