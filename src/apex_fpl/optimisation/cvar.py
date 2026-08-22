@@ -10,6 +10,7 @@ from scipy.sparse import lil_matrix
 
 from apex_fpl.constants import SQUAD_COUNTS, XI_MAX, XI_MIN
 from apex_fpl.models.scenarios import ProjectionScenarios
+from apex_fpl.optimisation.solver_status import scipy_milp_metadata, scipy_milp_status
 
 
 @dataclass
@@ -27,30 +28,6 @@ class RobustSquadSolution:
     bench: pd.DataFrame
     scenario_scores: np.ndarray
     solver: dict = field(default_factory=dict)
-
-
-def _solver_metadata(result, *, relative_gap: float, time_limit: int) -> dict:
-    fun = getattr(result, "fun", None)
-    dual = getattr(result, "mip_dual_bound", None)
-    return {
-        "success": bool(getattr(result, "success", False)),
-        "status_code": int(getattr(result, "status", -1)),
-        "termination_reason": str(getattr(result, "message", "unknown")),
-        "incumbent": None if fun is None or not np.isfinite(fun) else float(-fun),
-        "bound": None if dual is None or not np.isfinite(dual) else float(-dual),
-        "relative_gap": (
-            None
-            if getattr(result, "mip_gap", None) is None
-            else float(result.mip_gap)
-        ),
-        "node_count": (
-            None
-            if getattr(result, "mip_node_count", None) is None
-            else int(result.mip_node_count)
-        ),
-        "configured_relative_gap": float(relative_gap),
-        "time_limit_seconds": int(time_limit),
-    }
 
 
 def optimise_initial_cvar(
@@ -71,20 +48,20 @@ def optimise_initial_cvar(
     """Solve a legal initial FPL squad against correlated forecast scenarios.
 
     The objective is a convex blend of expected horizon points and lower-tail
-    Conditional Value at Risk (CVaR):
-
-        (1-lambda) E[V] + lambda CVaR_alpha(V)
-
-    where ``V`` is total discounted squad/lineup/captain value across the horizon.
-    One squad, XI and captain decision is used across all scenarios for each GW,
-    so the optimiser does not receive impossible perfect foresight.
+    Conditional Value at Risk (CVaR). Solver limits/errors remain distinct from
+    mathematical infeasibility; only HiGHS status code 2 is surfaced as
+    ``Infeasible``.
     """
     locked, banned = set(locked or set()), set(banned or set())
     captain_eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
     if xi_eligible is None and "xi_evidence_eligible" in players:
-        xi_eligible = set(players.loc[players["xi_evidence_eligible"].fillna(False), "player_id"].astype(int))
+        xi_eligible = set(
+            players.loc[
+                players["xi_evidence_eligible"].fillna(False), "player_id"
+            ].astype(int)
+        )
     xi_eligible = None if xi_eligible is None else {int(pid) for pid in xi_eligible}
     alpha = float(cvar_alpha)
     risk_weight = float(cvar_weight)
@@ -99,8 +76,19 @@ def optimise_initial_cvar(
     if not pids:
         empty = d.iloc[0:0]
         return RobustSquadSolution(
-            "Infeasible", math.nan, math.nan, math.nan, alpha, risk_weight,
-            empty, empty, empty, empty, empty, np.asarray([], dtype=float),
+            "InputError",
+            math.nan,
+            math.nan,
+            math.nan,
+            alpha,
+            risk_weight,
+            empty,
+            empty,
+            empty,
+            empty,
+            empty,
+            np.asarray([], dtype=float),
+            {"status_code": None, "termination_reason": "no eligible players"},
         )
 
     scenario_pid_index = {int(pid): i for i, pid in enumerate(scenarios.player_ids)}
@@ -115,12 +103,10 @@ def optimise_initial_cvar(
     for i, pid in enumerate(pids):
         values[:, i, :] = scenarios.values[:, scenario_pid_index[pid], :]
 
-    # Binary variables: squad, XI by GW, captain by GW.
     S0 = 0
     X0 = n
     C0 = n + n * t_count
     binary_count = n + 2 * n * t_count
-    # Continuous CVaR variables: eta and shortfall u_s.
     ETA = binary_count
     U0 = ETA + 1
     total_vars = binary_count + 1 + s_count
@@ -141,7 +127,6 @@ def optimise_initial_cvar(
     discounts = np.asarray([float(decay) ** t for t in range(t_count)], dtype=float)
     mean_values = np.mean(values, axis=0)
 
-    # Maximise objective, while scipy.milp minimises.
     maximise = np.zeros(total_vars, dtype=float)
     mean_scale = 1.0 - risk_weight
     for t in range(t_count):
@@ -191,7 +176,6 @@ def optimise_initial_cvar(
             add({xv(i, t): 1.0, sv(i): -1.0}, -np.inf, 0)
             add({cv(i, t): 1.0, xv(i, t): -1.0}, -np.inf, 0)
 
-    # u_s >= eta - V_s  =>  eta - V_s - u_s <= 0.
     for scenario_idx in range(s_count):
         coeffs: dict[int, float] = {ETA: 1.0, uv(scenario_idx): -1.0}
         for t in range(t_count):
@@ -213,8 +197,6 @@ def optimise_initial_cvar(
     lb = np.zeros(total_vars, dtype=float)
     ub = np.ones(total_vars, dtype=float)
     integrality = np.ones(total_vars, dtype=int)
-    # CVaR eta can be negative in principle; FPL projected totals normally are not,
-    # but a broad lower bound keeps the formulation mathematically complete.
     lb[ETA], ub[ETA], integrality[ETA] = -1000.0, 3000.0, 0
     for s in range(s_count):
         lb[uv(s)], ub[uv(s)], integrality[uv(s)] = 0.0, 5000.0, 0
@@ -250,14 +232,26 @@ def optimise_initial_cvar(
         ),
         options={"time_limit": time_limit, "mip_rel_gap": configured_gap},
     )
-    solver = _solver_metadata(
+    solver = scipy_milp_metadata(
         result, relative_gap=configured_gap, time_limit=time_limit
     )
-    if not result.success or result.x is None:
+    status = scipy_milp_status(result)
+    if status != "Optimal":
         empty = d.iloc[0:0]
         return RobustSquadSolution(
-            "Infeasible", math.nan, math.nan, math.nan, alpha, risk_weight,
-            empty, empty, empty, empty, empty, np.asarray([], dtype=float), solver,
+            status,
+            math.nan,
+            math.nan,
+            math.nan,
+            alpha,
+            risk_weight,
+            empty,
+            empty,
+            empty,
+            empty,
+            empty,
+            np.asarray([], dtype=float),
+            solver,
         )
 
     sol = result.x
@@ -290,10 +284,22 @@ def optimise_initial_cvar(
     if "gw1_xp" not in d.columns:
         d["gw1_xp"] = d["_robust_gw1_xp"]
     details = [
-        "player_id", "web_name", "team_name", "position", "price",
-        "expected_minutes", "start_probability", "appearance_probability",
-        "tactical_role", "tactical_role_source", "role_confidence",
-        "gw1_xp", "xpts_3", "xpts_5", "xpts_8", "horizon_xp",
+        "player_id",
+        "web_name",
+        "team_name",
+        "position",
+        "price",
+        "expected_minutes",
+        "start_probability",
+        "appearance_probability",
+        "tactical_role",
+        "tactical_role_source",
+        "role_confidence",
+        "gw1_xp",
+        "xpts_3",
+        "xpts_5",
+        "xpts_8",
+        "horizon_xp",
         "projection_confidence",
     ]
     cols = [col for col in details if col in d.columns]
