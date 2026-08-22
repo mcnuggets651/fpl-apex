@@ -375,7 +375,7 @@ def evidence_eligibility(
                 )
                 if material_contradiction:
                     xi_ok.loc[mask] = False
-                    out.loc[idx if False else mask, "evidence_state"] = (
+                    out.loc[mask, "evidence_state"] = (
                         "specialist_nonstart_material_xi_constraint"
                     )
                     reasons.setdefault(pid, []).append(
