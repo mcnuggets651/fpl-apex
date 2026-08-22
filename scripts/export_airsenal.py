@@ -11,6 +11,11 @@ primary key, *not* the official FPL element ID. The exporter joins the ``player`
 table and emits ``player.fpl_api_id`` plus AIrsenal's independent player name when
 that schema field is available. The witness type is explicit so downstream audits
 can fail closed rather than mistaking a compatibility placeholder for evidence.
+
+Official FPL IDs are identifiers, not quantities. They are validated with the same
+exact parser used by the downstream identity audit before any output file is opened,
+so a malformed upstream value such as ``10.5`` can never be truncated into player 10
+and then appear valid downstream.
 """
 from __future__ import annotations
 
@@ -20,6 +25,8 @@ import os
 from pathlib import Path
 import sqlite3
 import sys
+
+from apex_fpl.services.player_identity import IdentityIntegrityError, parse_exact_player_id
 
 
 def _latest_tag(db: sqlite3.Connection) -> str:
@@ -47,6 +54,22 @@ def _player_name_expression(db: sqlite3.Connection) -> tuple[str, str]:
     # witness type remains non-authoritative and the governed identity audit rejects
     # it for production attachment.
     return "CAST(p.fpl_api_id AS TEXT)", "missing_name_witness"
+
+
+def _validated_rows(rows: list[tuple]) -> list[tuple[int, object, object, object]]:
+    """Validate exact official IDs before serialization can erase corruption."""
+    validated: list[tuple[int, object, object, object]] = []
+    for row_number, (player_id, source_player_name, gameweek, xp) in enumerate(rows, start=1):
+        try:
+            exact_id = parse_exact_player_id(
+                player_id, label=f"AIrsenal fpl_api_id row {row_number}"
+            )
+        except IdentityIntegrityError as exc:
+            raise SystemExit(
+                f"Invalid official FPL player ID in AIrsenal export: {exc}"
+            ) from exc
+        validated.append((exact_id, source_player_name, gameweek, xp))
+    return validated
 
 
 def main() -> None:
@@ -80,6 +103,7 @@ def main() -> None:
     if not rows:
         raise SystemExit(f"No official-ID AIrsenal predictions found for tag {tag!r}")
 
+    rows = _validated_rows(rows)
     generated_at = datetime.now(timezone.utc).isoformat()
     source_version = os.getenv("AIRSENAL_SOURCE_VERSION", "")
     path = Path(output)
@@ -100,7 +124,7 @@ def main() -> None:
         )
         writer.writerows(
             (
-                int(player_id),
+                player_id,
                 str(source_player_name),
                 witness_type,
                 int(gameweek),
@@ -112,7 +136,7 @@ def main() -> None:
             for player_id, source_player_name, gameweek, xp in rows
         )
 
-    unique_players = len({int(row[0]) for row in rows})
+    unique_players = len({row[0] for row in rows})
     gameweeks = sorted({int(row[2]) for row in rows})
     print(
         f"Exported {len(rows)} player-gameweek rows for {unique_players} official FPL "
