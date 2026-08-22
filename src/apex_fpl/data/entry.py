@@ -42,6 +42,21 @@ def _parse_deadline(value: Any) -> datetime | None:
         return None
 
 
+def _transfer_order_key(row: dict[str, Any]) -> tuple[int, int, str]:
+    """Return a deterministic chronological key for one public transfer row.
+
+    FPL normally exposes ISO timestamps. Event is kept first because it is the
+    semantic Gameweek boundary; parsed timestamp is authoritative inside an event.
+    The raw time string is a deterministic final witness if a future payload uses a
+    timestamp representation pandas cannot parse.
+    """
+    event = int(row.get("event", 0) or 0)
+    raw_time = str(row.get("time") or "")
+    parsed = pd.to_datetime(raw_time, utc=True, errors="coerce")
+    timestamp_ns = int(parsed.value) if not pd.isna(parsed) else -1
+    return event, timestamp_ns, raw_time
+
+
 def _next_free_transfers(ft: int, transfers: int, rules: SeasonRules) -> int:
     return min(
         rules.max_rolled_free_transfers,
@@ -152,7 +167,11 @@ class OfficialEntryClient:
             raise ValueError("public FPL transfer history payload is not a list")
         if any(not isinstance(row, dict) for row in payload):
             raise ValueError("public FPL transfer history contains a non-object row")
-        return [dict(row) for row in payload]
+        # Never trust endpoint array ordering for purchase-price provenance. The
+        # pricing layer consumes this list oldest->newest so a later re-buy replaces
+        # an earlier purchase deterministically.
+        rows = [dict(row) for row in payload]
+        return sorted(rows, key=_transfer_order_key)
 
     def picks(self, event: int, force: bool = False) -> dict[str, Any]:
         return self.http.get_json(
