@@ -16,9 +16,10 @@ weights:
 fixture_decay: 0.90
 # Used only to generate the internal near-optimal diagnostic shortlist. The final
 # production team is chosen later by the GW1-first/receding-horizon strategy gate.
-# This is a resource ceiling, never a completeness certificate: production still
-# fails closed unless enumeration actually exhausts the governed regret band. The
-# previous ceiling of 16 was too small for the live GW2-GW9 surface on 2026-08-22.
+approximate_bench_weight: 0.08
+# Resource ceiling only: production remains fail-closed unless enumeration actually
+# exhausts the governed regret band. The previous ceiling of 16 was too small for
+# the live GW2-GW9 surface on 2026-08-22.
 exact_candidate_limit: 64
 exact_candidate_regret_fraction: 0.005
 exact_near_equivalent_points: 0.25
