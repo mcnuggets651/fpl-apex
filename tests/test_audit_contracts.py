@@ -43,10 +43,14 @@ def test_publication_blocker_does_not_masquerade_as_diagnostic_failure():
     assert any("production publication is blocked" in row for row in readiness.warnings)
 
 
-def test_duplicate_projection_key_blocks_diagnostic_surface():
+def test_repeated_projection_rows_without_official_fixture_id_are_rejected():
     output = _output()
-    output.projections = pd.concat(
-        [output.projections, output.projections.iloc[[0]]], ignore_index=True
+    output.projections = pd.DataFrame(
+        [
+            {"player_id": 1, "gw": 2, "xp": 4.0, "opponent": 2, "is_home": True},
+            {"player_id": 1, "gw": 2, "xp": 3.5, "opponent": 3, "is_home": False},
+            {"player_id": 2, "gw": 2, "xp": 3.0},
+        ]
     )
 
     readiness = assess_diagnostic_surface(output)
@@ -54,8 +58,71 @@ def test_duplicate_projection_key_blocks_diagnostic_surface():
     assert readiness.ready is False
     assert (
         "diagnostic projection surface has repeated player/Gameweek rows without "
-        "fixture identity columns: is_home, opponent"
+        "Official fixture_id"
     ) in readiness.blockers
+
+
+def test_two_official_fixtures_in_one_gameweek_are_valid_even_same_opponent_home_witness():
+    output = _output()
+    output.projections = pd.DataFrame(
+        [
+            {
+                "player_id": 1,
+                "gw": 2,
+                "fixture_id": 201,
+                "opponent": 2,
+                "is_home": True,
+                "xp": 4.0,
+            },
+            {
+                "player_id": 1,
+                "gw": 2,
+                "fixture_id": 202,
+                "opponent": 2,
+                "is_home": True,
+                "xp": 3.5,
+            },
+            {"player_id": 2, "gw": 2, "xp": 3.0},
+        ]
+    )
+
+    readiness = assess_diagnostic_surface(output)
+
+    assert readiness.ready is True
+    assert readiness.blockers == ()
+
+
+def test_duplicate_player_official_fixture_key_blocks_diagnostic_surface():
+    output = _output()
+    output.projections = pd.DataFrame(
+        [
+            {
+                "player_id": 1,
+                "gw": 2,
+                "fixture_id": 201,
+                "opponent": 2,
+                "is_home": True,
+                "xp": 4.0,
+            },
+            {
+                "player_id": 1,
+                "gw": 2,
+                "fixture_id": 201,
+                "opponent": 2,
+                "is_home": True,
+                "xp": 4.0,
+            },
+            {"player_id": 2, "gw": 2, "xp": 3.0},
+        ]
+    )
+
+    readiness = assess_diagnostic_surface(output)
+
+    assert readiness.ready is False
+    assert (
+        "diagnostic projection surface has duplicate player/Official-fixture rows"
+        in readiness.blockers
+    )
 
 
 def test_non_finite_projection_blocks_diagnostic_surface():
