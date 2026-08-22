@@ -60,6 +60,18 @@ def _number(row: dict[str, Any], field: str) -> float | None:
     return value
 
 
+def _squad_ids(row: dict[str, Any]) -> tuple[int, ...]:
+    values: list[int] = []
+    for player in row.get("squad") or []:
+        if not isinstance(player, dict):
+            continue
+        try:
+            values.append(int(player["player_id"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return tuple(sorted(values))
+
+
 def _check_captain_evidence(
     deterministic: dict[str, Any],
     mechanics: dict[str, Any],
@@ -235,12 +247,61 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     if objective is None or reconciled is None or abs(objective - reconciled) > 1e-6:
         blockers.append("authoritative exact-horizon objective does not reconcile")
     shortlist = authority.get("shortlist") or {}
-    if int(shortlist.get("candidate_count", 0) or 0) < 1:
+    shortlist_count = int(shortlist.get("candidate_count", 0) or 0)
+    authoritative_solver = (
+        authoritative_solution.get("solver")
+        if isinstance(authoritative_solution, dict)
+        else {}
+    )
+    authoritative_solver = authoritative_solver if isinstance(authoritative_solver, dict) else {}
+    selector_mode = authoritative_solver.get("selector_mode")
+    if shortlist_count < 1:
         blockers.append("authoritative exact-mechanics shortlist is empty")
     elif shortlist.get("complete_within_configured_band") is not True:
+        if selector_mode != "maximum_ev_fallback":
+            blockers.append(
+                "exact secondary shortlist is incomplete and the certified maximum-EV "
+                "fallback is not active"
+            )
+        elif authoritative_solver.get("selection_contract") != (
+            "global_max_ev_then_bounded_exact_secondary"
+        ):
+            blockers.append("maximum-EV fallback selection contract is missing")
+        elif authoritative_solver.get("global_max_ev_certified") is not True:
+            blockers.append("maximum-EV fallback lacks a certified primary optimum")
+        elif authoritative_solver.get("secondary_exact_selector_certified") is not False:
+            blockers.append("incomplete secondary selector is incorrectly marked certified")
+        else:
+            primary = deterministic.get("unrestricted")
+            if not isinstance(primary, dict):
+                blockers.append("maximum-EV fallback has no unrestricted primary solution")
+            else:
+                if _squad_ids(authoritative_solution) != _squad_ids(primary):
+                    blockers.append(
+                        "maximum-EV fallback squad does not match the globally optimal "
+                        "unrestricted primary squad"
+                    )
+                primary_objective = _number(primary, "objective")
+                certified_objective = _number(
+                    authoritative_solver, "global_max_ev_objective"
+                )
+                if (
+                    primary_objective is None
+                    or certified_objective is None
+                    or abs(primary_objective - certified_objective) > 1e-6
+                ):
+                    blockers.append(
+                        "maximum-EV fallback objective does not reconcile with the "
+                        "unrestricted primary optimum"
+                    )
+            if not any("maximum-EV fallback" in blocker for blocker in blockers):
+                warnings.append(
+                    "exact secondary selector did not exhaust the configured near-optimal "
+                    "band; certified global maximum-EV fallback is active"
+                )
+    elif selector_mode == "maximum_ev_fallback":
         blockers.append(
-            "authoritative exact-mechanics shortlist is incomplete within the configured "
-            "near-optimal band; global decision certification is not proven"
+            "exact secondary shortlist is certified complete but maximum-EV fallback remains active"
         )
     equivalence = authority.get("equivalence") or {}
     if equivalence.get("unique_optimum_proven") is not False:
