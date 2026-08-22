@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
+from apex_fpl.services.evidence_time import current_evidence_rows
 from apex_fpl.services.player_identity import resolve_source_identities
 from apex_fpl.services.specialist_disagreement import build_specialist_disagreement_report
 from apex_fpl.services.transfer_intelligence import assess_transfer_signal
@@ -43,20 +44,15 @@ def _load(path: Path, columns: list[str]) -> pd.DataFrame:
 
 
 def _fresh(frame: pd.DataFrame, *, now: datetime | None = None) -> pd.DataFrame:
-    if frame.empty:
-        return frame
-    current = pd.Timestamp(now or datetime.now(timezone.utc))
-    current = current.tz_localize("UTC") if current.tzinfo is None else current.tz_convert("UTC")
-    published = pd.to_datetime(frame["published_at"], utc=True, errors="coerce")
-    retrieved = pd.to_datetime(frame["retrieved_at"], utc=True, errors="coerce")
-    expires = pd.to_datetime(frame["expires_at"], utc=True, errors="coerce")
-    invalid = published.isna() | retrieved.isna() | expires.isna() | (expires <= published)
-    if invalid.any():
-        raise ValueError(
-            "governed selection-reality evidence has invalid publication/retrieval/expiry timestamps"
-        )
-    # Stale evidence is excluded rather than silently carried into a later deadline.
-    return frame.loc[current <= expires].copy().reset_index(drop=True)
+    return current_evidence_rows(
+        frame,
+        observed_col="published_at",
+        retrieved_col="retrieved_at",
+        expires_col="expires_at",
+        now=now,
+        label="governed selection-reality evidence",
+        strict=True,
+    )
 
 
 def materialize_selection_reality_evidence(
@@ -92,17 +88,33 @@ def materialize_selection_reality_evidence(
             raise_on_error=False,
         )
         if not result.ready:
-            raise ValueError("specialist evidence identity failed: " + "; ".join(result.blockers[:10]))
+            raise ValueError(
+                "specialist evidence identity failed: "
+                + "; ".join(result.blockers[:10])
+            )
         specialist["source"] = specialist["source"].astype(str).str.strip().str.casefold()
         specialist["predicted_start"] = (
             specialist["predicted_start"]
             .astype(str)
             .str.strip()
             .str.casefold()
-            .map({"true": True, "1": True, "yes": True, "start": True, "false": False, "0": False, "no": False, "bench": False})
+            .map(
+                {
+                    "true": True,
+                    "1": True,
+                    "yes": True,
+                    "start": True,
+                    "false": False,
+                    "0": False,
+                    "no": False,
+                    "bench": False,
+                }
+            )
         )
         if specialist["predicted_start"].isna().any():
-            raise ValueError("specialist predicted_start must be a boolean/start/bench value")
+            raise ValueError(
+                "specialist predicted_start must be a boolean/start/bench value"
+            )
 
     specialist_report = build_specialist_disagreement_report(
         players,
@@ -123,7 +135,9 @@ def materialize_selection_reality_evidence(
             raise_on_error=False,
         )
         if not result.ready:
-            raise ValueError("transfer evidence identity failed: " + "; ".join(result.blockers[:10]))
+            raise ValueError(
+                "transfer evidence identity failed: " + "; ".join(result.blockers[:10])
+            )
         for row in transfer.itertuples(index=False):
             pid = int(row.player_id)
             assessment = assess_transfer_signal(
@@ -138,6 +152,7 @@ def materialize_selection_reality_evidence(
                     "signal": str(row.signal),
                     "source_url": str(row.source_url),
                     "published_at": row.published_at,
+                    "retrieved_at": row.retrieved_at,
                     "expires_at": row.expires_at,
                     "review_priority": assessment.review_priority,
                     "transfer_state": assessment.transfer_state,
@@ -153,6 +168,7 @@ def materialize_selection_reality_evidence(
             "signal",
             "source_url",
             "published_at",
+            "retrieved_at",
             "expires_at",
             "review_priority",
             "transfer_state",
