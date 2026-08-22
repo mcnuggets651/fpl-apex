@@ -8,6 +8,7 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
 from apex_fpl.constants import SQUAD_COUNTS, XI_MAX, XI_MIN
+from apex_fpl.optimisation.solver_status import finite_float, scipy_milp_status
 from apex_fpl.rules import MAX_ROLLED_FREE_TRANSFERS, TRANSFER_HIT_COST
 
 
@@ -22,16 +23,18 @@ class TransferPlan:
     mip_gap: float | None = None
 
 
-def _finite_float(value) -> float | None:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if np.isfinite(number) else None
-
-
 def _next_ft(ft: int, transfers: int) -> int:
     return min(MAX_ROLLED_FREE_TRANSFERS, max(1, ft - transfers + 1))
+
+
+def _input_error(message: str) -> TransferPlan:
+    return TransferPlan(
+        "InputError",
+        float("nan"),
+        [],
+        solver_status_code=None,
+        solver_message=message,
+    )
 
 
 def optimise_transfer_plan(
@@ -56,20 +59,11 @@ def optimise_transfer_plan(
 ) -> TransferPlan:
     """Multi-period FPL transfer MILP with exact rolled-FT state transitions.
 
-    The model plans squad, XI, captain, transfers, bank and transfer hits over a
-    horizon. Purchase prices are held at the current official snapshot. For the
-    manager's existing squad, ``selling_prices`` can provide the actual FPL cash
-    realised on a sale rather than incorrectly assuming every player sells at the
-    current market price.
-
-    Supported fixed chips: Wildcard, Bench Boost and Triple Captain. Free Hit is
-    intentionally evaluated as a separate one-week scenario because its squad
-    reversion semantics are different from permanent transfer planning.
-
     Solver-limit termination is deliberately distinct from mathematical
     infeasibility. A time/iteration limit may still have a feasible incumbent and a
     branch-and-bound objective bound; callers can use that bound for safe pruning or
-    retry the same model without falsely escalating to a larger universe.
+    retry the same model without falsely escalating to a larger universe. Pre-solver
+    contract failures are ``InputError`` and never impersonate HiGHS infeasibility.
     """
     locked, banned = locked or set(), banned or set()
     captain_eligible = (
@@ -86,7 +80,7 @@ def optimise_transfer_plan(
     )
     selling_prices = selling_prices or {}
     if not gameweeks:
-        return TransferPlan("Infeasible", float("nan"), [])
+        return _input_error("no gameweeks supplied")
 
     base = players.drop_duplicates("player_id").copy()
     base = base[base["position"].isin(SQUAD_COUNTS)].copy()
@@ -106,25 +100,15 @@ def optimise_transfer_plan(
     base = base[base["player_id"].isin(matrix.index)].copy()
     base["plan_xp"] = base["player_id"].map(matrix[gameweeks].sum(axis=1)).fillna(0)
 
-    # Keep all existing/locked players plus the best candidates. This preserves
-    # exact legality while preventing a needlessly huge branch-and-bound model.
     must_keep = set(map(int, current_squad)) | set(map(int, locked))
     if captain_eligible is not None:
         must_keep |= captain_eligible
     top = set(base.nlargest(candidate_limit, "plan_xp")["player_id"].astype(int))
     d = base[base["player_id"].astype(int).isin(top | must_keep)].reset_index(drop=True)
     if not current_squad.issubset(set(d["player_id"].astype(int))):
-        return TransferPlan(
-            "Infeasible: current squad IDs missing from player pool",
-            float("nan"),
-            [],
-        )
+        return _input_error("current squad IDs missing from player pool")
     if len(current_squad) != 15:
-        return TransferPlan(
-            "Infeasible: current squad must contain 15 players",
-            float("nan"),
-            [],
-        )
+        return _input_error("current squad must contain 15 players")
 
     n, T = len(d), len(gameweeks)
     pids = d["player_id"].astype(int).tolist()
@@ -144,13 +128,9 @@ def optimise_transfer_plan(
         if pid in matrix.index:
             xpv[i, :] = [float(matrix.loc[pid, gw]) for gw in gameweeks]
 
-    # Per player/week variables: squad, XI, captain, transfer-in, transfer-out.
     block = n * T
     S0, X0, C0, IN0, OUT0 = 0, block, 2 * block, 3 * block, 4 * block
-    # Continuous bank per week.
     BANK0 = 5 * block
-    # FT state/action one-hot y[t, ft=1..5, k=0..15]. Exact transition also
-    # gives transfer-hit costs without max()/min() nonlinearities.
     Y0 = BANK0 + T
     F = MAX_ROLLED_FREE_TRANSFERS
     K = 16
@@ -167,7 +147,6 @@ def optimise_transfer_plan(
     for t, gw in enumerate(gameweeks):
         disc = decay**t
         for i in range(n):
-            # Small squad value rewards playable bench; XI and captain dominate.
             objective[q(S0, i, t)] += 0.08 * xpv[i, t] * disc
             if bench_boost_gw == gw:
                 objective[q(S0, i, t)] += 0.92 * xpv[i, t] * disc
@@ -208,12 +187,10 @@ def optimise_transfer_plan(
         for i in range(n):
             add({q(X0, i, t): 1, q(S0, i, t): -1}, -np.inf, 0)
             add({q(C0, i, t): 1, q(X0, i, t): -1}, -np.inf, 0)
-            # No player can be transferred both ways in same GW.
             add({q(IN0, i, t): 1, q(OUT0, i, t): 1}, -np.inf, 1)
 
             prev = 1.0 if pids[i] in current_squad else 0.0
             if t == 0:
-                # s_t = s_initial + in - out
                 add(
                     {
                         q(S0, i, t): 1,
@@ -235,18 +212,15 @@ def optimise_transfer_plan(
                     0,
                 )
 
-        # Every permanent transfer is one in + one out.
         balance = {q(IN0, i, t): 1 for i in range(n)}
         balance.update({q(OUT0, i, t): -1 for i in range(n)})
         add(balance, 0, 0)
 
-        # Exactly one (FT state, transfer-count) action pair per GW.
         add(
             {y(t, ft, k): 1 for ft in range(1, F + 1) for k in range(K)},
             1,
             1,
         )
-        # Transfer count links to transfer-ins.
         coeff = {q(IN0, i, t): 1 for i in range(n)}
         coeff.update(
             {y(t, ft, k): -k for ft in range(1, F + 1) for k in range(K)}
@@ -255,7 +229,6 @@ def optimise_transfer_plan(
         if t == 0:
             add({y(t, free_transfers, k): 1 for k in range(K)}, 1, 1)
         else:
-            # The FT state at t must equal the deterministic transition from t-1.
             for ft_now in range(1, F + 1):
                 lhs = {y(t, ft_now, k): 1 for k in range(K)}
                 for ft_prev in range(1, F + 1):
@@ -272,8 +245,6 @@ def optimise_transfer_plan(
                             )
                 add(lhs, 0, 0)
 
-        # Bank cash flow. Existing players use their manager-specific selling
-        # prices; new purchases use the live official market price.
         cash = {BANK0 + t: 1}
         for i in range(n):
             cash[q(IN0, i, t)] = cash.get(q(IN0, i, t), 0) + buy_prices[i]
@@ -287,7 +258,6 @@ def optimise_transfer_plan(
     lb = np.zeros(m, dtype=float)
     ub = np.ones(m, dtype=float)
     integrality = np.ones(m, dtype=int)
-    # Bank is continuous and nonnegative, with a generous upper bound.
     for t in range(T):
         lb[BANK0 + t] = 0
         ub[BANK0 + t] = 100
@@ -331,21 +301,16 @@ def optimise_transfer_plan(
     status_code = int(status_code_raw) if status_code_raw is not None else None
     message_raw = getattr(res, "message", None)
     message = str(message_raw) if message_raw is not None else None
-    incumbent_fun = _finite_float(getattr(res, "fun", None))
+    incumbent_fun = finite_float(getattr(res, "fun", None))
     incumbent_objective = (
         -float(incumbent_fun) if incumbent_fun is not None else float("nan")
     )
-    dual_bound = _finite_float(getattr(res, "mip_dual_bound", None))
+    dual_bound = finite_float(getattr(res, "mip_dual_bound", None))
     objective_upper_bound = -float(dual_bound) if dual_bound is not None else None
-    mip_gap = _finite_float(getattr(res, "mip_gap", None))
+    mip_gap = finite_float(getattr(res, "mip_gap", None))
+    status = scipy_milp_status(res)
 
-    if not bool(getattr(res, "success", False)) or getattr(res, "x", None) is None:
-        status = {
-            1: "SolverLimit",
-            2: "Infeasible",
-            3: "Unbounded",
-            4: "SolverError",
-        }.get(status_code, "SolverError")
+    if status != "Optimal":
         return TransferPlan(
             status,
             incumbent_objective,
