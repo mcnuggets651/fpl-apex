@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-import subprocess
-import sys
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
+from scripts.export_open_solver import export_bundle
 
-def test_open_solver_export_uses_official_ids_and_gw_columns(tmp_path: Path):
+
+def test_open_solver_export_uses_sealed_official_ids_and_gw_columns(tmp_path: Path):
     players = pd.DataFrame(
         [
             {
@@ -17,6 +18,7 @@ def test_open_solver_export_uses_official_ids_and_gw_columns(tmp_path: Path):
                 "position": "GK",
                 "price": 4.5,
                 "expected_minutes": 90.0,
+                "team": 1,
             },
             {
                 "player_id": 202,
@@ -24,6 +26,7 @@ def test_open_solver_export_uses_official_ids_and_gw_columns(tmp_path: Path):
                 "position": "FWD",
                 "price": 8.0,
                 "expected_minutes": 80.0,
+                "team": 2,
             },
         ]
     )
@@ -37,20 +40,21 @@ def test_open_solver_export_uses_official_ids_and_gw_columns(tmp_path: Path):
             {"player_id": 101, "gw": 2, "risk_adjusted_xp": 3.8},
         ]
     )
-    players_path = tmp_path / "players.csv"
-    projections_path = tmp_path / "projections.csv"
-    output = tmp_path / "apex.csv"
-    players.to_csv(players_path, index=False)
-    projections.to_csv(projections_path, index=False)
-
-    script = Path(__file__).parents[1] / "scripts" / "export_open_solver.py"
-    subprocess.run(
-        [sys.executable, str(script), str(players_path), str(projections_path), str(output)],
-        check=True,
+    bundle = SimpleNamespace(
+        players=players,
+        projections=projections,
+        manifest={"gameweeks": [1, 2]},
+        bundle_id="test-sealed-bundle",
     )
+    output = tmp_path / "apex.csv"
+
+    export_bundle(bundle, output, projection_col="risk_adjusted_xp")
+
     out = pd.read_csv(output).set_index("ID")
     assert set(out.index) == {101, 202}
     assert out.loc[101, "Pos"] == "G"
     assert out.loc[202, "Pos"] == "F"
+    assert out.loc[101, "TeamId"] == 1
+    assert out.loc[202, "TeamId"] == 2
     assert out.loc[202, "2_Pts"] == pytest.approx(7.0)
     assert out.loc[202, "2_xMins"] == pytest.approx(160.0)
