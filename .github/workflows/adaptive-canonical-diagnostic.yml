@@ -39,7 +39,7 @@ jobs:
       BUNDLE_DIR: data/generated/runs/${{ github.run_id }}/decision_bundle
       PARITY_DIR: data/generated/runs/${{ github.run_id }}/open_solver_parity_input
       AIRSENAL_CSV: data/generated/runs/${{ github.run_id }}/airsenal.csv
-      PROMOTION_DIR: ${{ runner.temp }}/canonical-certified-generation
+      PROMOTION_DIR: /tmp/canonical-certified-generation
     steps:
       - uses: actions/checkout@v4
         with:
