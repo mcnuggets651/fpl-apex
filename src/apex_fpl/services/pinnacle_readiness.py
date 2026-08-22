@@ -88,16 +88,8 @@ def _check_captain_evidence(
     floors = (
         ("expected_minutes", MIN_CAPTAIN_EXPECTED_MINUTES, "expected minutes"),
         ("start_probability", MIN_CAPTAIN_START_PROBABILITY, "start probability"),
-        (
-            "appearance_probability",
-            MIN_CAPTAIN_APPEARANCE_PROBABILITY,
-            "appearance probability",
-        ),
-        (
-            "projection_confidence",
-            MIN_CAPTAIN_PROJECTION_CONFIDENCE,
-            "projection confidence",
-        ),
+        ("appearance_probability", MIN_CAPTAIN_APPEARANCE_PROBABILITY, "appearance probability"),
+        ("projection_confidence", MIN_CAPTAIN_PROJECTION_CONFIDENCE, "projection confidence"),
     )
     for field, minimum, label in floors:
         value = _number(row, field)
@@ -105,11 +97,9 @@ def _check_captain_evidence(
             blockers.append(f"captain {name_label} missing {label}: {name}")
         elif value < minimum:
             blockers.append(
-                f"captain {name_label} {label} {value:.1%} below production floor "
-                f"{minimum:.1%}: {name}"
+                f"captain {name_label} {label} {value:.1%} below production floor {minimum:.1%}: {name}"
                 if "probability" in field or "confidence" in field
-                else f"captain {name_label} {label} {value:.1f} below production floor "
-                f"{minimum:.1f}: {name}"
+                else f"captain {name_label} {label} {value:.1f} below production floor {minimum:.1f}: {name}"
             )
 
 
@@ -192,12 +182,7 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         authority = {}
     authoritative_solution = authority.get("solution")
     if isinstance(authoritative_solution, dict):
-        _check_solution(
-            {"authoritative": authoritative_solution},
-            "authoritative",
-            "exact-horizon",
-            blockers,
-        )
+        _check_solution({"authoritative": authoritative_solution}, "authoritative", "exact-horizon", blockers)
     else:
         blockers.append("authoritative exact-horizon solution is missing")
         authoritative_solution = {}
@@ -236,10 +221,7 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
             blockers.append("published captain is evidence-ineligible")
         selected_ineligible = coverage.get("selected_xi_ineligible_ids") or []
         if selected_ineligible:
-            blockers.append(
-                "published XI contains evidence-ineligible players: "
-                + ", ".join(str(pid) for pid in selected_ineligible)
-            )
+            blockers.append("published XI contains evidence-ineligible players: " + ", ".join(str(pid) for pid in selected_ineligible))
         if coverage.get("ready") is not True:
             blockers.append("selected-player evidence coverage gate is not ready")
     source_health = payload.get("evidence_source_health") or {}
@@ -256,9 +238,9 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     if int(shortlist.get("candidate_count", 0) or 0) < 1:
         blockers.append("authoritative exact-mechanics shortlist is empty")
     elif shortlist.get("complete_within_configured_band") is not True:
-        warnings.append(
-            "exact-mechanics shortlist hit its configured candidate limit before "
-            "exhausting the disclosed near-optimal band"
+        blockers.append(
+            "authoritative exact-mechanics shortlist is incomplete within the configured "
+            "near-optimal band; global decision certification is not proven"
         )
     equivalence = authority.get("equivalence") or {}
     if equivalence.get("unique_optimum_proven") is not False:
@@ -272,19 +254,8 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     if not frequencies:
         blockers.append("decision-frequency audit is empty")
     else:
-        chosen_captain = (
-            authoritative_weeks[0].get("captain_id")
-            if authoritative_weeks and isinstance(authoritative_weeks[0], dict)
-            else None
-        )
-        captain_row = next(
-            (
-                row
-                for row in frequencies
-                if isinstance(row, dict) and str(row.get("player_id")) == str(chosen_captain)
-            ),
-            None,
-        )
+        chosen_captain = authoritative_weeks[0].get("captain_id") if authoritative_weeks and isinstance(authoritative_weeks[0], dict) else None
+        captain_row = next((row for row in frequencies if isinstance(row, dict) and str(row.get("player_id")) == str(chosen_captain)), None)
         if captain_row is None:
             blockers.append("published unrestricted captain absent from decision frequencies")
         else:
@@ -298,9 +269,7 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
                 conditional_frequency = min(captain_frequency / xi_frequency, 1.0)
                 if conditional_frequency < MIN_PUBLISHED_CAPTAIN_FREQUENCY:
                     warnings.append(
-                        f"published captain is chosen in only {conditional_frequency:.0%} of "
-                        "uncertainty re-solves where he remains in the XI; the provisional "
-                        f"diagnostic reference is {MIN_PUBLISHED_CAPTAIN_FREQUENCY:.0%}"
+                        f"published captain is chosen in only {conditional_frequency:.0%} of uncertainty re-solves where he remains in the XI; the provisional diagnostic reference is {MIN_PUBLISHED_CAPTAIN_FREQUENCY:.0%}"
                     )
 
     robust_compare = payload.get("robustness_comparison") or {}
@@ -309,26 +278,17 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
     if overlap is None:
         blockers.append("deterministic/CVaR unrestricted squad comparison is missing")
     elif int(overlap) < MIN_ROBUST_SQUAD_OVERLAP:
-        blockers.append(
-            f"deterministic/CVaR unrestricted squads overlap only {overlap}/15; "
-            f"production floor is {MIN_ROBUST_SQUAD_OVERLAP}/15"
-        )
+        blockers.append(f"deterministic/CVaR unrestricted squads overlap only {overlap}/15; production floor is {MIN_ROBUST_SQUAD_OVERLAP}/15")
     xi_overlap = unrestricted.get("xi_overlap")
     if xi_overlap is None:
         blockers.append("deterministic/CVaR unrestricted XI comparison is missing")
     elif int(xi_overlap) < MIN_ROBUST_XI_OVERLAP:
-        blockers.append(
-            f"deterministic/CVaR unrestricted XIs overlap only {xi_overlap}/11; "
-            f"production floor is {MIN_ROBUST_XI_OVERLAP}/11"
-        )
+        blockers.append(f"deterministic/CVaR unrestricted XIs overlap only {xi_overlap}/11; production floor is {MIN_ROBUST_XI_OVERLAP}/11")
     if unrestricted.get("captain_agrees") is not True:
         warnings.append("deterministic/CVaR unrestricted captains disagree")
 
-    decision_calibrated = decision.get("covariance_coefficients_walk_forward_calibrated")
-    if decision_calibrated is not True:
-        warnings.append(
-            "covariance coefficients are transparent priors until enough 2026/27 deadline outcomes exist"
-        )
+    if decision.get("covariance_coefficients_walk_forward_calibrated") is not True:
+        warnings.append("covariance coefficients are transparent priors until enough 2026/27 deadline outcomes exist")
 
     personal = payload.get("personal_team") or {}
     state = personal.get("team_state") if isinstance(personal, dict) else None
@@ -367,8 +327,4 @@ def evaluate_pinnacle_payload(payload: dict[str, Any]) -> PinnacleReadiness:
         if parity.get("captain_agrees") is not True:
             warnings.append("independent solver selected a different maximum-EV captain")
 
-    return PinnacleReadiness(
-        ready=not blockers,
-        blockers=tuple(blockers),
-        warnings=tuple(warnings),
-    )
+    return PinnacleReadiness(ready=not blockers, blockers=tuple(blockers), warnings=tuple(warnings))
