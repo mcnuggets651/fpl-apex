@@ -263,12 +263,13 @@ def project_players(
     fixture_mult: pd.DataFrame,
     gameweeks: list[int],
 ) -> pd.DataFrame:
-    """Generate one transparent projection row per player/fixture."""
+    """Generate one transparent projection row per player/Official fixture."""
     rows = []
     for gw in gameweeks:
         fx_cols = [
             col
             for col in [
+                "fixture_id",
                 "team",
                 "opponent",
                 "is_home",
@@ -475,6 +476,9 @@ def project_players(
                 {
                     "player_id": int(row["player_id"]),
                     "gw": gw,
+                    "fixture_id": int(row["fixture_id"])
+                    if "fixture_id" in row and pd.notna(row["fixture_id"])
+                    else None,
                     "opponent": int(row["opponent"])
                     if "opponent" in row and pd.notna(row["opponent"])
                     else None,
