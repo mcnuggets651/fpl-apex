@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
-"""Fetch and project once, then seal the complete Apex decision surface."""
+"""Fetch and project once, then seal the complete Apex decision surface.
+
+Production publication uses a validated staging directory. An interrupted rebuild
+can therefore leave either the previous complete bundle or no bundle at all; it can
+never leave a stale manifest next to partially replaced frame bytes and appear
+usable. The final same-filesystem directory rename happens only after a full
+DecisionBundle.load validation succeeds.
+"""
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
+import shutil
 
 import pandas as pd
 
@@ -52,6 +61,52 @@ def _with_official_identity_aliases(
     return sealed
 
 
+def _remove_path(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+
+
+def _capture_validated_bundle(
+    output,
+    settings,
+    target: Path,
+    *,
+    repo_root: Path,
+) -> DecisionBundle:
+    """Capture to a sibling staging directory and publish only validated bytes."""
+    target = target.resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = target.parent / f".{target.name}.staging-{os.getpid()}"
+    _remove_path(staging)
+    try:
+        DecisionBundle.capture(
+            output,
+            settings,
+            staging,
+            repo_root=repo_root,
+        )
+        # Re-open from persisted bytes. Validation here covers hashes, metadata,
+        # settings, official lineage and the complete frame set before publication.
+        staged = DecisionBundle.load(staging)
+        expected_id = staged.bundle_id
+
+        # Removing the old target before the same-filesystem rename is deliberately
+        # fail-closed. A crash in this tiny window yields a missing bundle, never a
+        # stale-but-apparently-valid mixture of old manifest and new frames.
+        _remove_path(target)
+        staging.replace(target)
+        published = DecisionBundle.load(target)
+        if published.bundle_id != expected_id:
+            raise RuntimeError(
+                "published DecisionBundle identity changed during validated promotion"
+            )
+        return published
+    finally:
+        _remove_path(staging)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--horizon", type=int, default=8)
@@ -81,7 +136,7 @@ def main() -> None:
         )
     output.players = _with_official_identity_aliases(output.players, official.players)
 
-    bundle = DecisionBundle.capture(
+    bundle = _capture_validated_bundle(
         output,
         settings,
         Path(args.bundle_dir),
