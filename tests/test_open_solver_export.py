@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from scripts.export_open_solver import export_bundle
+from apex_fpl.services.open_solver_export import export_bundle
 
 
 def test_open_solver_export_uses_sealed_official_ids_and_gw_columns(tmp_path: Path):
