@@ -9,11 +9,14 @@ on:
       - "src/apex_fpl/models/minute_states.py"
       - "src/apex_fpl/models/minutes.py"
       - "src/apex_fpl/models/projection.py"
+      - "src/apex_fpl/services/audit_contracts.py"
       - "src/apex_fpl/services/decision_eligibility.py"
       - "src/apex_fpl/services/projection_audit.py"
+      - "scripts/build_decision_bundle.py"
       - "scripts/run_projection_audit.py"
       - "scripts/audit_projection_truth.py"
       - "scripts/audit_max_ev_policy.py"
+      - "tests/test_audit_contracts.py"
       - "tests/test_http_cache.py"
       - "tests/test_projection_audit.py"
       - "tests/test_projection_truth_audit.py"
@@ -42,6 +45,7 @@ jobs:
       - name: Unit tests
         run: |
           pytest -q \
+            tests/test_audit_contracts.py \
             tests/test_http_cache.py \
             tests/test_projection_audit.py \
             tests/test_projection_truth_audit.py \
@@ -107,6 +111,17 @@ jobs:
             --horizon 8 \
             --force \
             --output-dir reports/projection_truth
+      - name: Seal immutable max-EV diagnostic surface
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/build_decision_bundle.py \
+            --horizon 8 \
+            --force \
+            --bundle-dir data/generated/shadow_decision_bundle
       - name: Run same-surface max-EV policy audit
         env:
           APEX_SEASON: "2026-2027"
@@ -116,7 +131,7 @@ jobs:
         run: |
           python scripts/audit_max_ev_policy.py \
             --horizon 8 \
-            --force \
+            --bundle-dir data/generated/shadow_decision_bundle \
             --output reports/max_ev_policy_audit.json
       - uses: actions/upload-artifact@v4
         if: always()
@@ -128,5 +143,6 @@ jobs:
             reports/max_ev_policy_audit.json
             reports/team_goal_ratings.csv
             reports/team_goal_surface.csv
+            data/generated/shadow_decision_bundle/manifest.json
             data/generated/airsenal.csv
           retention-days: 30
