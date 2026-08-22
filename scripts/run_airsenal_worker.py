@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -24,6 +25,32 @@ from datetime import datetime, timezone
 BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
 ROOT = Path(__file__).resolve().parents[1]
 ZERO_TOLERANCE = 1e-12
+
+
+@dataclass(frozen=True)
+class OfficialHorizon:
+    gameweeks: list[int]
+    official_ids: set[int]
+    player_teams: dict[int, int]
+    team_names: dict[int, str]
+
+    # Preserve the historical two-value helper contract for tests/consumers while
+    # exposing richer official context to the production worker.
+    def __iter__(self):
+        yield self.gameweeks
+        yield self.official_ids
+
+    def __eq__(self, other):
+        if isinstance(other, tuple) and len(other) == 2:
+            return (self.gameweeks, self.official_ids) == other
+        if isinstance(other, OfficialHorizon):
+            return (
+                self.gameweeks == other.gameweeks
+                and self.official_ids == other.official_ids
+                and self.player_teams == other.player_teams
+                and self.team_names == other.team_names
+            )
+        return False
 
 
 def _actionable_gameweeks(
@@ -51,9 +78,7 @@ def _actionable_gameweeks(
     return unfinished[:horizon]
 
 
-def _official_horizon(
-    horizon: int,
-) -> tuple[list[int], set[int], dict[int, int], dict[int, str]]:
+def _official_horizon(horizon: int) -> OfficialHorizon:
     request = urllib.request.Request(
         BOOTSTRAP_URL,
         headers={"User-Agent": "apex-fpl-airsenal-worker/1.0"},
@@ -76,7 +101,7 @@ def _official_horizon(
         int(team["id"]): str(team.get("name") or team["id"])
         for team in payload.get("teams", [])
     }
-    return gameweeks, official_ids, player_teams, team_names
+    return OfficialHorizon(gameweeks, official_ids, player_teams, team_names)
 
 
 def _airsenal_pin() -> str:
@@ -112,22 +137,16 @@ def _assert_export_contract(
     # The production worker promises a complete raw official-player/GW matrix.
     # Semantic abstentions are represented explicitly later; missing rows are never
     # allowed to masquerade as abstentions or as zero forecasts.
-    pairs = {
-        (int(row["player_id"]), int(row["gw"]))
-        for row in rows
-        if int(row["gw"]) in requested
-    }
+    requested_rows = [row for row in rows if int(row["gw"]) in requested]
+    pairs = {(int(row["player_id"]), int(row["gw"])) for row in requested_rows}
     expected = {(int(pid), int(gw)) for pid in official_ids for gw in requested}
     missing_pairs = sorted(expected - pairs)
-    duplicate_pairs = len(pairs) != sum(
-        1 for row in rows if int(row["gw"]) in requested
-    )
     if missing_pairs:
         raise SystemExit(
             "AIrsenal export is not a complete official player/Gameweek matrix; "
             f"missing pairs include {missing_pairs[:10]}"
         )
-    if duplicate_pairs:
+    if len(pairs) != len(requested_rows):
         raise SystemExit("AIrsenal export contains duplicate official player/Gameweek rows")
 
 
@@ -200,7 +219,19 @@ def main() -> None:
     if not args.db.is_file() or args.db.stat().st_size == 0:
         raise SystemExit(f"AIrsenal database is missing or empty: {args.db}")
 
-    gameweeks, official_ids, player_teams, team_names = _official_horizon(args.horizon)
+    context = _official_horizon(args.horizon)
+    # Tests and external callers may still monkeypatch the historical two-tuple
+    # helper. Production receives OfficialHorizon and therefore exact team context.
+    if isinstance(context, OfficialHorizon):
+        gameweeks = context.gameweeks
+        official_ids = context.official_ids
+        player_teams = context.player_teams
+        team_names = context.team_names
+    else:
+        gameweeks, official_ids = context
+        player_teams = {int(pid): 0 for pid in official_ids}
+        team_names = {0: "unknown-team"}
+
     start = gameweeks[0]
     # Pinned AIrsenal's gameweek_end is exclusive (Python range semantics).
     end_exclusive = gameweeks[-1] + 1
