@@ -34,6 +34,7 @@ max_core_age_hours: 18
 min_airsenal_player_coverage: 1.0
 required_sources:
   - official_fpl
+  - team_state
   - fpl_core_playerstats
   - fixture_model
   - airsenal
