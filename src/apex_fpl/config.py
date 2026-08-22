@@ -136,10 +136,11 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
     configured_weights = _validated_weights(dict(raw.get("weights", default.weights)))
     odds_api_url = os.getenv("ODDS_API_URL") or None
     odds_api_key = os.getenv("ODDS_API_KEY") or None
-    if configured_weights.get("market", 0.0) > 0 and not odds_api_url:
+    if configured_weights.get("market", 0.0) > 0:
         raise ValueError(
-            "positive market ensemble weight requires ODDS_API_URL; "
-            "keep market weight at zero while market xP is unavailable"
+            "positive market ensemble weight is disabled until the market source "
+            "provides decision-grade player/Gameweek/freshness provenance; keep "
+            "market weight at zero"
         )
     s = Settings(
         season=os.getenv("APEX_SEASON", raw.get("season", default.season)),
