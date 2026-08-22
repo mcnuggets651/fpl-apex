@@ -88,10 +88,33 @@ def _fail_close_strategy_output(output_dir: Path, reason: str) -> None:
     )
 
 
-def _required_gate(command: list[str], output_dir: Path, label: str) -> None:
+def _gate_blocker_details(report_path: Path | None) -> str:
+    if report_path is None or not report_path.exists():
+        return ""
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    blockers = report.get("blockers") if isinstance(report, dict) else None
+    if not isinstance(blockers, list) or not blockers:
+        return ""
+    return "; blockers: " + " | ".join(str(item) for item in blockers[:5])
+
+
+def _required_gate(
+    command: list[str],
+    output_dir: Path,
+    label: str,
+    *,
+    report_path: Path | None = None,
+) -> None:
     status = _run(command)
     if status != 0:
-        _fail_close_strategy_output(output_dir, f"{label} failed with exit status {status}")
+        detail = _gate_blocker_details(report_path)
+        _fail_close_strategy_output(
+            output_dir,
+            f"{label} failed with exit status {status}{detail}",
+        )
         raise SystemExit(status)
 
 
@@ -145,6 +168,8 @@ def main() -> None:
     elite_path = output_dir / "elite_latest.json"
     truth_path = Path("reports/player_truth_audit.json")
     airsenal_identity_path = _identity_airsenal_path(args.airsenal)
+    identity_report_path = output_dir / "player_identity_audit.json"
+    identity_csv_path = output_dir / "player_identity_audit.csv"
 
     if not args.reuse_bundle and not args.reuse_pinnacle:
         bundle_cmd = [
@@ -228,9 +253,16 @@ def main() -> None:
             str(bundle_dir),
             "--airsenal",
             str(airsenal_identity_path),
+            "--recommendation",
+            str(output_dir / "apex_recommendation_latest.json"),
+            "--output",
+            str(identity_report_path),
+            "--csv",
+            str(identity_csv_path),
         ],
         output_dir,
         "player identity audit",
+        report_path=identity_report_path,
     )
     _required_gate(
         [
