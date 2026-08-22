@@ -18,6 +18,15 @@ jobs:
   apex:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      RUN_DIR: data/generated/runs/${{ github.run_id }}
+      BUNDLE_DIR: data/generated/runs/${{ github.run_id }}/decision_bundle
+      PARITY_DIR: data/generated/runs/${{ github.run_id }}/open_solver_parity_input
+      AIRSENAL_CSV: data/generated/runs/${{ github.run_id }}/airsenal.csv
+      APEX_REPORT_DIR: data/generated/runs/${{ github.run_id }}/reports
+      APEX_SEASON: "2026-2027"
+      APEX_HORIZON: "8"
+      FPL_ENTRY_ID: "63984"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,19 +37,34 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Create empty production generation namespace
+        run: |
+          set -euo pipefail
+          rm -rf "$RUN_DIR"
+          mkdir -p "$RUN_DIR" "$APEX_REPORT_DIR"
+          test ! -e "$RUN_DIR/apex_recommendation_latest.json"
+          test ! -e "$RUN_DIR/pinnacle_latest.json"
+          test ! -e "$RUN_DIR/solver_parity.json"
+
       - name: Install Apex + pinned AIrsenal worker
         run: bash scripts/install_pinned_airsenal.sh
 
       - name: Run deterministic and adversarial stress tests
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+        id: tests
+        shell: bash
         run: |
-          pytest -q
-          ruff check src tests scripts
-          python scripts/check_upstreams.py
+          set +e
+          pytest -q && \
+          ruff check src tests scripts && \
+          GITHUB_TOKEN="${{ github.token }}" python scripts/check_upstreams.py && \
           python scripts/check_governance_consistency.py
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Restore runtime cache
+        if: steps.tests.outputs.exit_code == '0'
         uses: actions/cache@v4
         with:
           path: data/cache
@@ -51,89 +75,97 @@ jobs:
             apex-runtime-2627-
 
       - name: Cache AIrsenal database
+        if: steps.tests.outputs.exit_code == '0'
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/airsenal.db
           key: airsenal-2627-${{ runner.os }}-v3
 
       - name: Refresh genuine AIrsenal forecasts
+        id: airsenal
+        if: steps.tests.outputs.exit_code == '0'
         env:
           AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
+        shell: bash
         run: |
-          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
-            airsenal_setup_initial_db --fpl_team_id 1
-          fi
-          python scripts/update_airsenal_worker.py
-          python scripts/run_airsenal_worker.py \
-            --db "$AIRSENAL_DB_FILE" \
-            --horizon 8 \
-            --output data/generated/airsenal.csv
+          set +e
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then airsenal_setup_initial_db --fpl_team_id 1; fi
+          python scripts/update_airsenal_worker.py && \
+          python scripts/run_airsenal_worker.py --db "$AIRSENAL_DB_FILE" --horizon 8 --output "$AIRSENAL_CSV"
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
-      - name: Generate Pinnacle surface for independent parity
-        id: pinnacle
+      - name: Refresh Official FPL immediately before sealing
+        id: official
+        if: steps.airsenal.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          from pathlib import Path
+          from apex_fpl.data.http import CachedHttp
+          from apex_fpl.data.official import OfficialFPLClient
+          snapshot = OfficialFPLClient(CachedHttp(Path("data/cache"))).snapshot(force=True)
+          print("official_bootstrap_sha256", snapshot.bootstrap_sha256)
+          print("official_fixtures_sha256", snapshot.fixtures_sha256)
+          PY
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sealed actionable-horizon DecisionBundle
+        id: bundle
+        if: steps.official.outputs.exit_code == '0'
         env:
-          APEX_SEASON: "2026-2027"
-          APEX_HORIZON: "8"
-          FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         shell: bash
         run: |
-          python scripts/build_decision_bundle.py \
-            --horizon 8 \
-            --bundle-dir data/generated/decision_bundle \
-            --force
           set +e
-          python scripts/run_pinnacle.py \
-            --horizon 8 \
-            --stochastic-scenarios 256 \
-            --cvar-alpha 0.10 \
-            --cvar-weight 0.20 \
-            --bundle-dir data/generated/decision_bundle
+          python scripts/build_decision_bundle.py --horizon 8 --bundle-dir "$BUNDLE_DIR" --force
           status=$?
           set -e
-          test -s data/generated/pinnacle_latest.json
-          if [ "$status" -ne 0 ]; then
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Generate current-generation Pinnacle surface
+        id: pinnacle
+        if: steps.bundle.outputs.exit_code == '0'
+        env:
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/run_pinnacle.py \
+            --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 \
+            --bundle-dir "$BUNDLE_DIR" --output-dir "$RUN_DIR"
+          status=$?
+          set -e
+          classification=1
+          if [ -s "$RUN_DIR/pinnacle_latest.json" ]; then
             set +e
             python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
-
-          payload = json.loads(Path("data/generated/pinnacle_latest.json").read_text())
+          payload = json.loads((Path(os.environ["RUN_DIR"]) / "pinnacle_latest.json").read_text())
           blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
-          if payload.get("pinnacle_ready") is not False or not blockers:
-              raise SystemExit("Pinnacle exited non-zero without an explicit readiness block")
-          parity_bootstrap = [
-              "required independent solver parity snapshot is not embedded"
-          ]
-          if blockers == parity_bootstrap:
-              print(
-                  "Pinnacle surface is complete and requires the next workflow "
-                  "stage to compute independent parity."
-              )
-              raise SystemExit(2)
-          print("Pinnacle explicitly withheld the production decision:")
-          for blocker in blockers:
-              print(f"- {blocker}")
+          if blockers == ["required independent solver parity snapshot is not embedded"]:
+              raise SystemExit(0)
+          raise SystemExit(1)
           PY
             classification=$?
             set -e
-            if [ "$classification" -eq 2 ]; then
-              echo "ready_for_parity=true" >> "$GITHUB_OUTPUT"
-              python scripts/export_open_solver.py \
-                reports/players.csv reports/projections.csv /tmp/apex.csv \
-                --projection-col xp
-              exit 0
-            fi
-            echo "ready_for_parity=false" >> "$GITHUB_OUTPUT"
-            exit 0
           fi
-          echo "ready_for_parity=true" >> "$GITHUB_OUTPUT"
-          python scripts/export_open_solver.py \
-            reports/players.csv reports/projections.csv /tmp/apex.csv \
-            --projection-col xp
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          echo "ready_for_parity=$([ "$classification" -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          if [ "$classification" -eq 0 ]; then
+            python scripts/export_open_solver.py "$BUNDLE_DIR" /tmp/apex.csv --projection-col xp
+          fi
+          exit 0
 
       - name: Read pinned independent solver revision
         id: parity-pin
@@ -147,139 +179,103 @@ jobs:
           print(f"sha={source['commit']}")
           PY
 
-      - name: Run and embed same-surface independent parity
+      - name: Build sealed independent parity input
+        id: parity-input
         if: steps.pinnacle.outputs.ready_for_parity == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          python -m pip install uv
-          git clone --filter=blob:none \
-            "https://github.com/${{ steps.parity-pin.outputs.repository }}.git" \
-            "$RUNNER_TEMP/open-fpl-solver"
-          git -C "$RUNNER_TEMP/open-fpl-solver" checkout --detach \
-            "${{ steps.parity-pin.outputs.sha }}"
-          cp /tmp/apex.csv "$RUNNER_TEMP/open-fpl-solver/data/apex.csv"
-          cd "$RUNNER_TEMP/open-fpl-solver"
-          uv sync
-          uv run python run/solve.py \
-            --config "$GITHUB_WORKSPACE/config/open_solver_parity.json" \
-            --datasource apex \
-            --horizon 8
-          cd "$GITHUB_WORKSPACE"
-          RESULT="$(ls -t "$RUNNER_TEMP"/open-fpl-solver/data/results/apex_*.csv | head -1)"
-          python scripts/compare_solver_parity.py \
-            data/generated/pinnacle_latest.json "$RESULT"
-          python scripts/embed_solver_parity.py \
-            data/generated/pinnacle_latest.json \
-            data/generated/solver_parity.json
+          set +e
+          python scripts/build_open_solver_parity_input.py \
+            --bundle-dir "$BUNDLE_DIR" --apex-csv /tmp/apex.csv \
+            --base-config config/open_solver_parity.json --output-dir "$PARITY_DIR" \
+            --external-repository "${{ steps.parity-pin.outputs.repository }}" \
+            --external-sha "${{ steps.parity-pin.outputs.sha }}"
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run same-world independent solver parity
+        id: parity
+        if: steps.parity-input.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          python -m pip install uv && \
+          git clone --filter=blob:none "https://github.com/${{ steps.parity-pin.outputs.repository }}.git" "$RUNNER_TEMP/open-fpl-solver" && \
+          git -C "$RUNNER_TEMP/open-fpl-solver" checkout --detach "${{ steps.parity-pin.outputs.sha }}" && \
+          uv sync --project "$RUNNER_TEMP/open-fpl-solver" && \
+          uv run --project "$RUNNER_TEMP/open-fpl-solver" python scripts/run_open_solver_parity.py \
+            --solver-root "$RUNNER_TEMP/open-fpl-solver" --input-dir "$PARITY_DIR" \
+            --result "$RUN_DIR/open_solver_result.csv" --execution-manifest "$RUN_DIR/open_solver_execution.json" && \
+          python scripts/compare_solver_parity.py "$RUN_DIR/pinnacle_latest.json" "$RUN_DIR/open_solver_result.csv" && \
+          python scripts/embed_solver_parity.py "$RUN_DIR/pinnacle_latest.json" "$RUN_DIR/solver_parity.json"
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Generate single canonical Apex recommendation
         id: canonical
-        if: steps.pinnacle.outputs.ready_for_parity == 'true'
+        if: steps.parity.outputs.exit_code == '0'
         env:
-          APEX_SEASON: "2026-2027"
-          APEX_HORIZON: "8"
-          FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         shell: bash
         run: |
           set +e
           python scripts/run_apex.py \
-            --horizon 8 \
-            --stochastic-scenarios 256 \
-            --cvar-alpha 0.10 \
-            --cvar-weight 0.20 \
-            --reuse-pinnacle \
-            --force
+            --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 \
+            --reuse-pinnacle --bundle-dir "$BUNDLE_DIR" --output-dir "$RUN_DIR"
           status=$?
           set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
-          if [ "$status" -eq 0 ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          import sys
-
-          path = Path("data/generated/apex_recommendation_latest.json")
-          if not path.exists():
-              print("Unified Apex runner failed before producing the canonical contract", file=sys.stderr)
-              raise SystemExit(1)
-          payload = json.loads(path.read_text(encoding="utf-8"))
-          blockers = payload.get("blockers") or []
-          if payload.get("ready_to_act") is False and blockers:
-              print("Unified Apex completed but withheld a recommendation:")
-              for blocker in blockers:
-                  print(f"- {blocker}")
-              raise SystemExit(0)
-          print("Unified Apex exited non-zero without an explicit canonical readiness block", file=sys.stderr)
-          raise SystemExit(1)
-          PY
-          echo "ready=false" >> "$GITHUB_OUTPUT"
-
-      - name: Finalize fail-closed production status
-        if: always()
-        shell: bash
-        run: |
-          python scripts/finalize_production_status.py \
-            --run-id "${{ github.run_id }}" \
-            --reason "Apex Unified production run did not complete canonical assembly" \
-            ${{ steps.canonical.outcome == 'success' && '--canonical-step-succeeded' || '' }}
-
-      - name: Report withheld canonical decision
-        if: steps.canonical.outputs.ready != 'true'
-        run: echo "::warning title=Apex Unified not decision-ready::The system is healthy, but the canonical decision contract withheld a team. Inspect the artifact blockers."
-
-      - name: Update no-hindsight learning archive
-        if: steps.pinnacle.outputs.ready_for_parity == 'true'
-        env:
-          APEX_SEASON: "2026-2027"
-          FPL_ENTRY_ID: "63984"
-        run: python scripts/update_learning_archive.py
-
-      - name: Seal atomic workflow artifact before publication cleanup
+      - name: Finalize current-generation fail-closed status
         if: always()
         shell: bash
         run: |
           set -euo pipefail
+          extra=""
+          if [ "${{ steps.canonical.outputs.exit_code }}" = "0" ]; then extra="--canonical-step-succeeded"; fi
+          python scripts/finalize_production_status.py \
+            --output-dir "$RUN_DIR" --bundle-dir "$BUNDLE_DIR" --reports-dir "$APEX_REPORT_DIR" \
+            --archive-dir "$RUN_DIR/production_runs" --run-id "${{ github.run_id }}" \
+            --reason "Apex Unified production run did not complete a certified canonical assembly" $extra
+
+      - name: Promote exactly one coherent generation to latest aliases
+        if: always()
+        run: |
+          python scripts/promote_certified_generation.py \
+            --run-dir "$RUN_DIR" --bundle-dir "$BUNDLE_DIR" \
+            --target-dir data/generated --run-id "${{ github.run_id }}"
+
+      - name: Update no-hindsight learning archive from promoted state
+        if: steps.canonical.outputs.exit_code == '0'
+        run: python scripts/update_learning_archive.py
+
+      - name: Seal current-generation workflow artifact
+        if: always()
+        run: |
+          set -euo pipefail
           packet="$RUNNER_TEMP/apex-unified-packet"
-          mkdir -p "$packet"
-          for path in \
-            reports \
-            data/generated/apex_recommendation_latest.json \
-            data/generated/apex_recommendation_latest.md \
-            data/generated/apex_answer_context.json \
-            data/generated/pinnacle_latest.json \
-            data/generated/pinnacle_latest.md \
-            data/generated/solver_parity.json \
-            data/generated/elite_latest.json \
-            data/generated/elite_latest.md \
-            data/generated/decision_bundle \
-            data/generated/calibration_report.json \
-            data/generated/airsenal.csv \
-            data/history/deadlines \
-            data/history/production_runs
-          do
-            if [ -e "$path" ]; then
-              mkdir -p "$packet/$(dirname "$path")"
-              cp -a "$path" "$packet/$path"
-            fi
+          rm -rf "$packet"
+          mkdir -p "$packet/data/generated"
+          cp -a "$RUN_DIR" "$packet/data/generated/run"
+          cp -a data/generated/certified_generation.json "$packet/data/generated/"
+          for path in apex_recommendation_latest.json apex_recommendation_latest.md apex_answer_context.json pinnacle_latest.json pinnacle_latest.md solver_parity.json decision_bundle_manifest.json; do
+            if [ -e "data/generated/$path" ]; then cp -a "data/generated/$path" "$packet/data/generated/$path"; fi
           done
 
-      - name: Publish latest canonical status and durable forecast archive
+      - name: Publish current canonical status with compare-and-swap
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
           if [ "$(git rev-parse origin/main)" != "${{ github.sha }}" ]; then
-            echo "Material repository state changed during solve; aborting publication so Apex can rerun on the new head."
+            echo "Main changed during solve; refusing stale-writer publication."
             exit 1
           fi
           git config user.name "github-actions[bot]"
@@ -287,43 +283,36 @@ jobs:
           git add -f \
             data/generated/apex_recommendation_latest.json \
             data/generated/apex_recommendation_latest.md \
-            data/generated/apex_answer_context.json
-          for path in \
-            data/generated/solver_parity.json \
-            data/generated/calibration_report.json
-          do
-            if [ -e "$path" ]; then
-              git add -f "$path"
-            fi
+            data/generated/apex_answer_context.json \
+            data/generated/certified_generation.json
+          for path in data/generated/pinnacle_latest.json data/generated/pinnacle_latest.md data/generated/solver_parity.json data/generated/decision_bundle_manifest.json; do
+            if [ -e "$path" ]; then git add -f "$path"; else git rm -f --ignore-unmatch "$path"; fi
           done
-          if [ -d data/history/production_runs ]; then
-            git add -f data/history/production_runs
-          fi
-          if [ -d data/history/deadlines ]; then
-            git add -f data/history/deadlines
-          fi
+          if [ -d data/history/deadlines ]; then git add -f data/history/deadlines; fi
+          if [ -d data/history/production_runs ]; then git add -f data/history/production_runs; fi
           if git diff --cached --quiet; then
-            echo "Canonical Apex recommendation unchanged"
+            echo "Certified generation unchanged"
             exit 0
           fi
-          git commit -m "data: publish canonical Apex recommendation [skip ci]"
-
-          # The live model also refreshes internal diagnostic files. Revert only
-          # uncommitted tracked diagnostics after the canonical files are safely
-          # recorded in HEAD.
-          echo "Discarding uncommitted runtime diagnostics:"
-          git status --short
+          git commit -m "data: publish certified Apex generation [skip ci]"
           git restore --worktree .
-
           git push origin HEAD:main
-
-      - name: Confirm team was withheld while current NOT READY status was published
-        if: steps.canonical.outputs.ready != 'true'
-        run: echo "The current teamless NOT READY contract and healthy forecast archive were published; blocked candidates remain artifact-only."
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: apex-unified-${{ github.run_id }}
           path: ${{ runner.temp }}/apex-unified-packet/
+          if-no-files-found: error
           retention-days: 30
+
+      - name: Enforce production readiness as workflow outcome
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("data/generated/apex_recommendation_latest.json").read_text())
+          if payload.get("ready_to_act") is not True:
+              raise SystemExit("current certified generation is NOT READY: " + "; ".join(payload.get("blockers") or []))
+          PY
