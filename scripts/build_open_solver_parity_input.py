@@ -2,9 +2,9 @@
 """Build a content-addressed, replayable input for the independent solver.
 
 The independent implementation is deliberately separate from Apex, but it must solve
-exactly the same mutable FPL world. This script therefore seals the Official FPL
-bootstrap/fixtures that match the DecisionBundle and derives the external-solver
-configuration from the bundle's decision settings and actionable Gameweeks.
+exactly the same mutable FPL world. This script seals the Official FPL
+bootstrap/fixtures that match the DecisionBundle, the exact exported projection CSV,
+and a solver configuration derived from the bundle's decision settings/Gameweeks.
 """
 from __future__ import annotations
 
@@ -68,9 +68,6 @@ def _config(bundle: DecisionBundle, base: dict[str, Any]) -> dict[str, Any]:
             "ft_value": 0.0,
             "ft_value_list": {},
             "ft_use_penalty": 0.0,
-            # The first actionable week is the initial squad selection. Prevent
-            # transfers in every subsequent week so parity is against Apex's
-            # initial-horizon squad optimiser rather than a transfer strategy.
             "no_transfer_gws": gws[1:],
             "override_next_gw": gws[0],
             "horizon": len(gws),
@@ -78,10 +75,7 @@ def _config(bundle: DecisionBundle, base: dict[str, Any]) -> dict[str, Any]:
             "ev_per_price_cutoff": 0,
             "keep_top_ev_percent": 100,
             "chip_limits": {"bb": 0, "wc": 0, "fh": 0, "tc": 0},
-            "use_bb": [],
-            "use_wc": [],
-            "use_fh": [],
-            "use_tc": [],
+            "use_bb": [], "use_wc": [], "use_fh": [], "use_tc": [],
             "gap": 0,
             "single_solve": True,
         }
@@ -109,6 +103,7 @@ def _validate_manifest(root: Path) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle-dir", type=Path, required=True)
+    parser.add_argument("--apex-csv", type=Path, required=True)
     parser.add_argument("--base-config", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--external-repository", required=True)
@@ -116,22 +111,19 @@ def main() -> None:
     args = parser.parse_args()
 
     bundle = DecisionBundle.load(args.bundle_dir)
+    if not args.apex_csv.is_file() or args.apex_csv.stat().st_size == 0:
+        raise ValueError("sealed open-solver CSV is missing or empty")
     settings = load_settings()
     official = OfficialFPLClient(CachedHttp(settings.cache_dir)).snapshot(force=False)
     sealed_snapshot = bundle.manifest.get("official_snapshot") or {}
-    for field, actual in (
-        ("bootstrap_sha256", official.bootstrap_sha256),
-        ("fixtures_sha256", official.fixtures_sha256),
-    ):
+    for field, actual in (("bootstrap_sha256", official.bootstrap_sha256), ("fixtures_sha256", official.fixtures_sha256)):
         expected = str(sealed_snapshot.get(field) or "")
         if actual != expected:
             raise RuntimeError(
-                f"Official FPL changed after DecisionBundle seal: {field} "
-                f"bundle={expected} parity={actual}"
+                f"Official FPL changed after DecisionBundle seal: {field} bundle={expected} parity={actual}"
             )
 
-    base = json.loads(args.base_config.read_text(encoding="utf-8"))
-    cfg = _config(bundle, base)
+    cfg = _config(bundle, json.loads(args.base_config.read_text(encoding="utf-8")))
     target = args.output_dir.resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     staging = target.parent / f".{target.name}.staging-{os.getpid()}"
@@ -146,25 +138,18 @@ def main() -> None:
         artifacts: dict[str, dict[str, str]] = {}
         for name, (filename, payload) in files.items():
             path = staging / filename
-            path.write_text(
-                json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
-                encoding="utf-8",
-            )
+            path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
             artifacts[name] = {"file": filename, "sha256": _sha(path)}
+        shutil.copy2(args.apex_csv, staging / "apex.csv")
+        artifacts["projection_csv"] = {"file": "apex.csv", "sha256": _sha(staging / "apex.csv")}
 
         identity = {
             "contract": CONTRACT,
             "decision_bundle_id": bundle.bundle_id,
             "gameweeks": [int(gw) for gw in bundle.manifest.get("gameweeks") or []],
             "settings_sha256": (bundle.manifest.get("identity") or {}).get("settings_sha256"),
-            "official_snapshot": {
-                "bootstrap_sha256": official.bootstrap_sha256,
-                "fixtures_sha256": official.fixtures_sha256,
-            },
-            "external_solver": {
-                "repository": args.external_repository,
-                "commit": args.external_sha,
-            },
+            "official_snapshot": {"bootstrap_sha256": official.bootstrap_sha256, "fixtures_sha256": official.fixtures_sha256},
+            "external_solver": {"repository": args.external_repository, "commit": args.external_sha},
             "artifacts": artifacts,
         }
         manifest = {
@@ -174,14 +159,11 @@ def main() -> None:
             "identity": identity,
             "artifacts": artifacts,
         }
-        (staging / "manifest.json").write_text(
-            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-        )
+        (staging / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         _validate_manifest(staging)
         _remove(target)
         staging.replace(target)
-        published = _validate_manifest(target)
-        print(json.dumps(published, indent=2))
+        print(json.dumps(_validate_manifest(target), indent=2))
     finally:
         _remove(staging)
 
