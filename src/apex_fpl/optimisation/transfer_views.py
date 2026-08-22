@@ -49,10 +49,6 @@ def _pinnacle_candidate_ids(
         18, int(math.ceil(target_size / max(len(SQUAD_COUNTS), 1)))
     )
     for pos in SQUAD_COUNTS:
-        # The MILP can only use players represented on the requested projection
-        # horizon. Preserve required IDs separately above, but fill the bounded
-        # discretionary pool from candidates that will survive that downstream
-        # projection-matrix filter.
         part = d[
             (d["position"] == pos)
             & d["player_id"].astype(int).isin(projected_ids)
@@ -108,10 +104,9 @@ def optimise_transfer_plan_view(
 
     A bounded-pool solver-proven infeasibility is not proof that the complete player
     universe is infeasible, so that one case retries once on the full usable universe.
-    Solver limits, unbounded results and solver errors are *inconclusive*, not
-    infeasible; they are returned to the caller without launching a larger and even
-    more expensive model. This prevents a timeout from being amplified into a second
-    full-universe timeout while preserving the fail-closed decision contract.
+    Solver limits, unbounded results, input errors and solver errors are inconclusive
+    and never trigger an infeasibility retry. The proof is typed: ``status`` text
+    alone is insufficient without HiGHS status code 2.
     """
     if projection_col not in projections.columns:
         if projection_col == "xp" and "risk_adjusted_xp" in projections.columns:
@@ -142,9 +137,6 @@ def optimise_transfer_plan_view(
             players["player_id"].astype(int).isin(ids)
         ].copy()
         view = full_view[full_view["player_id"].astype(int).isin(ids)].copy()
-        # The candidate IDs above are already the canonical loss-resistant pool.
-        # Prevent the lower-level solver's compatibility top-xP limit from pruning
-        # that prefiltered universe a second time.
         effective_limit = max(len(player_view), effective_limit)
 
     bounded = optimise_transfer_plan(
@@ -158,16 +150,9 @@ def optimise_transfer_plan_view(
     if bounded.status == "Optimal" or not pinnacle_pool:
         return bounded
 
-    # Only a solver-proven infeasible bounded model justifies retrying a larger
-    # universe. A solver limit/error must remain inconclusive; otherwise a 120-second
-    # bounded timeout is automatically followed by a harder full-universe timeout.
-    if bounded.status != "Infeasible":
+    if not bounded.certified_infeasible:
         return bounded
 
-    # A lossy bounded universe can make an otherwise feasible transfer path appear
-    # infeasible. Retry once with every player and every projection row. Setting the
-    # lower-level limit to the full distinct-player count makes its legacy top-xP
-    # compatibility cut a no-op, while all exact FPL legality constraints remain.
     full_limit = max(
         int(candidate_limit),
         int(players.drop_duplicates("player_id").shape[0]),
