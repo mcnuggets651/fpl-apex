@@ -12,6 +12,10 @@ PLAYABLE_BENCH_MIN_EXPECTED_MINUTES = 20.0
 MINIMUM_PLAYABLE_OUTFIELD_BENCH = 2
 
 
+class BenchResilienceError(ValueError):
+    """The submitted XI/bench cannot satisfy the governed autosub policy."""
+
+
 def _numeric(players: pd.DataFrame, column: str) -> pd.Series:
     if column not in players.columns:
         return pd.Series(0.0, index=players.index, dtype=float)
@@ -56,18 +60,41 @@ def bench_resilience_ok(
     )
 
 
+def require_bench_resilience(
+    bench_outfield_ids: set[int] | tuple[int, ...] | list[int],
+    *,
+    playable_ids: set[int],
+    first_bench_ids: set[int],
+) -> None:
+    if not bench_resilience_ok(
+        bench_outfield_ids,
+        playable_ids=playable_ids,
+        first_bench_ids=first_bench_ids,
+    ):
+        raise BenchResilienceError(
+            "submitted outfield bench must contain at least "
+            f"{MINIMUM_PLAYABLE_OUTFIELD_BENCH} playable players and at least one "
+            "first-autosub-credible player"
+        )
+
+
 def admissible_outfield_orders(
     bench_outfield_ids: set[int] | tuple[int, ...] | list[int],
     *,
     first_bench_ids: set[int],
 ) -> tuple[tuple[int, ...], ...]:
-    """All legal submitted orders whose first autosub clears the governed floor."""
+    """All submitted orders whose first autosub clears the governed floor."""
     outfield = tuple(sorted(int(pid) for pid in bench_outfield_ids))
     if len(outfield) != 3:
         raise ValueError("outfield bench must contain exactly three players")
     eligible = {int(pid) for pid in first_bench_ids}
-    return tuple(
+    orders = tuple(
         tuple(int(pid) for pid in order)
         for order in permutations(outfield)
         if int(order[0]) in eligible
     )
+    if not orders:
+        raise BenchResilienceError(
+            "submitted outfield bench has no first-autosub-credible ordering"
+        )
+    return orders
