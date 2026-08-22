@@ -440,7 +440,7 @@ def optimise_exact_horizon_decision(
     projection_col: str = "xp",
     enforce_current_bench_resilience: bool | None = None,
 ) -> ExactHorizonDecision:
-    """Select one authoritative squad using exact mechanics across the horizon."""
+    """Apply exact mechanics as a governed secondary selector over global max-EV."""
     if not gameweeks:
         raise ValueError("exact horizon decision requires at least one Gameweek")
     if candidate_limit < 1:
@@ -464,10 +464,10 @@ def optimise_exact_horizon_decision(
         projection_col if projection_col in projections.columns else "risk_adjusted_xp"
     )
     for rank in range(1, int(candidate_limit) + 1):
-        # Once rank one establishes the governed regret band, constrain every later
-        # solve to that exact same band. This is semantically identical to solving
-        # the next global optimum and rejecting it below the floor, but lets HiGHS
-        # prune sub-floor branches and prove exhaustion directly as infeasibility.
+        # Rank one is the globally optimal canonical maximum-EV solution. Every
+        # later solve is a bounded secondary audit inside the configured epsilon
+        # band; it is never allowed to displace rank one unless that band itself is
+        # certified complete.
         governed_floor = (
             float(shortlist_floor)
             if best_approximate is not None and math.isfinite(shortlist_floor)
@@ -555,11 +555,41 @@ def optimise_exact_horizon_decision(
             near_equivalent_points,
         )
 
-    selected_solution, selected = min(
-        generated,
-        key=lambda row: (-row[1].exact_objective, row[1].squad_ids),
-    )
+    primary_solution, primary_candidate = generated[0]
+    if shortlist_complete:
+        selected_solution, selected = min(
+            generated,
+            key=lambda row: (-row[1].exact_objective, row[1].squad_ids),
+        )
+        selector_mode = "exact_secondary"
+    else:
+        # A resource ceiling is not proof that the secondary band is exhausted.
+        # Fail closed on the secondary selector, not on the already-certified
+        # primary objective: publish the globally optimal max-EV squad and exact-
+        # rescore only its XI/captain/vice/bench mechanics.
+        selected_solution, selected = primary_solution, primary_candidate
+        selector_mode = "maximum_ev_fallback"
+
     authoritative = _authoritative_solution(selected_solution, selected)
+    authoritative.solver.update(
+        {
+            "selection_contract": "global_max_ev_then_bounded_exact_secondary",
+            "selector_mode": selector_mode,
+            "global_max_ev_certified": True,
+            "global_max_ev_objective": float(primary_solution.objective),
+            "global_max_ev_squad_ids": list(primary_candidate.squad_ids),
+            "secondary_exact_selector_certified": bool(shortlist_complete),
+            "secondary_candidate_count": len(generated),
+            "secondary_candidate_limit": int(candidate_limit),
+            "secondary_regret_fraction": float(candidate_regret_fraction),
+            "secondary_shortlist_floor": float(shortlist_floor),
+            "authoritative_objective": (
+                "exact_horizon_fpl_mechanics_within_certified_max_ev_band"
+                if shortlist_complete
+                else "global_max_ev_with_exact_horizon_mechanics"
+            ),
+        }
+    )
     if terminal_solution is not None and not certified_infeasible(
         terminal_solution.status,
         terminal_solution.solver,
