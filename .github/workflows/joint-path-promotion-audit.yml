@@ -25,6 +25,7 @@ on:
       - "scripts/audit_statistical_truth.py"
       - "scripts/materialize_selection_reality_evidence.py"
       - "scripts/run_adversarial_launch_ban.py"
+      - "scripts/certify_adversarial_launch_ban.py"
       - "scripts/audit_bench_stress.py"
       - "scripts/export_airsenal.py"
       - "scripts/run_airsenal_worker.py"
@@ -103,7 +104,8 @@ jobs:
             tests/test_low_sample_attack_reliability.py \
             tests/test_weight_contract.py \
             tests/test_audit_contracts.py \
-            tests/test_release_fail_closed_contracts.py
+            tests/test_release_fail_closed_contracts.py \
+            tests/test_adversarial_certification.py
 
       - name: Cache AIrsenal database
         uses: actions/cache@v4
@@ -253,9 +255,18 @@ jobs:
           set -euo pipefail
           python scripts/run_adversarial_launch_ban.py \
             --bundle-dir "$BUNDLE_DIR" \
-            --recommendation "$RUN_DIR/apex_recommendation_latest.json" \
+            --canonical "$RUN_DIR/apex_recommendation_latest.json" \
             --output "$RUN_DIR/adversarial_launch_bans.json" \
             --csv "$RUN_DIR/adversarial_launch_bans.csv"
+          BUNDLE_ID="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          print(json.loads((Path(os.environ['BUNDLE_DIR']) / 'manifest.json').read_text())['bundle_id'])
+          PY
+          )"
+          python scripts/certify_adversarial_launch_ban.py \
+            "$RUN_DIR/adversarial_launch_bans.json" \
+            --decision-bundle-id "$BUNDLE_ID"
 
       - name: Run mandatory submitted-XI bench stress
         shell: bash
@@ -263,7 +274,7 @@ jobs:
           set -euo pipefail
           python scripts/audit_bench_stress.py \
             --bundle-dir "$BUNDLE_DIR" \
-            --recommendation "$RUN_DIR/apex_recommendation_latest.json" \
+            --canonical "$RUN_DIR/apex_recommendation_latest.json" \
             --output "$RUN_DIR/bench_stress.json" \
             --csv "$RUN_DIR/bench_stress.csv"
 
@@ -289,6 +300,8 @@ jobs:
           assert context["decision_bundle_id"] == bundle_id
           assert pinnacle["decision_bundle_id"] == bundle_id
           assert parity["decision_bundle_id"] == bundle_id
+          assert bans["decision_bundle_id"] == bundle_id
+          assert bench["decision_bundle_id"] == bundle_id
           assert payload["strategy_stage"] == "final_validated"
           assert payload["strategy_base_ready"] is True
           assert payload["ready_to_act"] is True
@@ -326,11 +339,11 @@ jobs:
           assert len(squad_ids) == 15
           assert dossier_ids == squad_ids
 
-          # Both stress tools are mandatory current-generation outputs. Their own
-          # scripts fail non-zero on a failed contract; here we also bind them to
-          # the exact submitted recommendation where their payload exposes IDs.
-          assert isinstance(bans, dict) and bans
-          assert isinstance(bench, dict) and bench
+          assert bans["summary"]["audit_complete"] is True
+          assert not bans["summary"]["search_surface_defect_signals"]
+          assert not bans["summary"]["ban_solve_errors"]
+          assert bench["fixed_submission"] is True
+          assert bench["bench_reordered_with_hindsight"] is False
 
           if rec["selector"] == "adaptive_gw1_launch_with_transfer_option_value":
               diag = payload["internal_diagnostics"]["joint_initial_path"]
