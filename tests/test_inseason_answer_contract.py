@@ -41,6 +41,18 @@ def _payloads():
         }
         for player_id in range(1, 16)
     ]
+    action_now = {
+        "gw": 2,
+        "squad": [dict(row) for row in squad],
+        "xi": [dict(row) for row in squad[:11]],
+        "captain": [dict(squad[0])],
+        "vice_captain": [dict(squad[1])],
+        "bench_gk": dict(squad[11]),
+        "outfield_bench_order": [dict(row) for row in squad[12:15]],
+        "exact_expected_total_points": 50.0,
+        "mechanics_authority": "independent_exact_current_gameweek_rescore",
+        "mechanics_reconciled": True,
+    }
     canonical = {
         "contract": "apex-strategy-recommendation-v3",
         "strategy_stage": "final_validated",
@@ -82,6 +94,12 @@ def _payloads():
             "captain_id": 1,
             "vice_captain": "P2",
             "vice_captain_id": 2,
+            "bench_gk": "P12",
+            "bench_gk_id": 12,
+            "outfield_bench_order": ["P13", "P14", "P15"],
+            "outfield_bench_order_ids": [13, 14, 15],
+            "gw1_expected_total_with_mechanics": 50.0,
+            "action_now": action_now,
         },
     }
     pinnacle = {
@@ -154,3 +172,44 @@ def test_compact_inseason_squad_still_fails_closed_when_dossier_role_provenance_
     assert context["safe_to_act"] is False
     assert context["production_result"] is None
     assert any("selected player lacks role provenance: P1" == row for row in context["blockers"])
+
+
+def test_receding_action_must_match_exact_rescored_captain():
+    canonical, pinnacle = _payloads()
+    canonical["recommendation"]["action_now"]["captain"] = [
+        canonical["recommendation"]["squad"][1]
+    ]
+
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+
+    assert context["safe_to_act"] is False
+    assert context["production_result"] is None
+    assert any("action_now captain" in row for row in context["blockers"])
+
+
+def test_receding_action_requires_exact_mechanics_authority_marker():
+    canonical, pinnacle = _payloads()
+    canonical["recommendation"]["action_now"]["mechanics_reconciled"] = False
+    canonical["recommendation"]["action_now"].pop("mechanics_authority")
+
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+
+    assert context["safe_to_act"] is False
+    assert context["production_result"] is None
+    assert any("not independently reconciled" in row for row in context["blockers"])
+    assert any("mechanics authority" in row for row in context["blockers"])
+
+
+def test_receding_action_must_match_exact_bench_order_and_points():
+    canonical, pinnacle = _payloads()
+    canonical["recommendation"]["action_now"]["outfield_bench_order"] = list(
+        reversed(canonical["recommendation"]["action_now"]["outfield_bench_order"])
+    )
+    canonical["recommendation"]["action_now"]["exact_expected_total_points"] = 49.0
+
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+
+    assert context["safe_to_act"] is False
+    assert context["production_result"] is None
+    assert any("outfield bench order" in row for row in context["blockers"])
+    assert any("exact expected points" in row for row in context["blockers"])
