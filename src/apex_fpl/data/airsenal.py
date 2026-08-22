@@ -14,6 +14,8 @@ ALIASES = {
     "confidence": ("confidence",),
 }
 METADATA_COLUMNS = ("generated_at", "source_version", "prediction_tag")
+SUPPORT_COLUMN = "source_supported"
+SUPPORT_REASON_COLUMN = "support_reason"
 
 
 def _find(columns, field: str) -> str | None:
@@ -30,12 +32,51 @@ def _metadata(df: pd.DataFrame, index: pd.Index) -> pd.DataFrame:
     return result
 
 
+def _support_flags(df: pd.DataFrame, index: pd.Index) -> tuple[pd.Series, pd.Series]:
+    """Return explicit source-support metadata with strict boolean parsing.
+
+    Older/manual exports without this metadata remain supported for compatibility.
+    The production worker emits it on every row, allowing structural upstream
+    abstentions to remain distinguishable from a genuine zero-point opinion.
+    """
+    if SUPPORT_COLUMN not in df.columns:
+        return (
+            pd.Series(True, index=index, dtype=bool),
+            pd.Series("", index=index, dtype="string"),
+        )
+    raw = df[SUPPORT_COLUMN]
+    if raw.dtype == bool:
+        supported = raw.astype(bool)
+    else:
+        normalised = raw.astype(str).str.strip().str.casefold()
+        valid = normalised.isin({"true", "false", "1", "0", "yes", "no"})
+        if not bool(valid.all()):
+            bad = sorted(set(raw.loc[~valid].astype(str)))[:10]
+            raise ValueError(f"AIrsenal export has invalid source_supported values: {bad}")
+        supported = normalised.isin({"true", "1", "yes"})
+    reason = (
+        df[SUPPORT_REASON_COLUMN].fillna("").astype("string")
+        if SUPPORT_REASON_COLUMN in df.columns
+        else pd.Series("", index=index, dtype="string")
+    )
+    missing_reason = ~supported.to_numpy(bool) & reason.astype(str).str.strip().eq("").to_numpy(bool)
+    if bool(np.any(missing_reason)):
+        raise ValueError("AIrsenal unsupported rows require support_reason provenance")
+    return pd.Series(supported.to_numpy(bool), index=index), pd.Series(reason.values, index=index)
+
+
 class AIrsenalProjectionAdapter:
     """Read a genuine AIrsenal export without coupling Apex to its DB schema.
 
     The canonical contract is one row per official FPL ``player_id`` / Gameweek.
     AIrsenal's own internal ``player.player_id`` must never enter this adapter; the
     exporter joins to ``player.fpl_api_id`` first.
+
+    Raw xP and usable xP are deliberately separate. A production worker may mark an
+    upstream row unsupported when the row exists only as structural filler. Such raw
+    values remain auditable in ``airsenal_raw_xp`` while ``airsenal_xp`` becomes
+    missing so the ensemble uses its explicit governed fallback instead of treating
+    filler zero as an independent expert opinion.
     """
 
     def __init__(self, path: str | None):
@@ -49,6 +90,9 @@ class AIrsenalProjectionAdapter:
             "player_id",
             "gw",
             "airsenal_xp",
+            "airsenal_raw_xp",
+            "airsenal_source_supported",
+            "airsenal_support_reason",
             "airsenal_xmins",
             "airsenal_confidence",
             *METADATA_COLUMNS,
@@ -59,13 +103,18 @@ class AIrsenalProjectionAdapter:
         df = pd.read_csv(self.path)
         pid_col, gw_col, xp_col = (_find(df.columns, x) for x in ("player_id", "gw", "xp"))
         if pid_col and gw_col and xp_col:
+            raw_xp = pd.to_numeric(df[xp_col], errors="raise").astype(float)
+            supported, reason = _support_flags(df, df.index)
             out = pd.DataFrame(
                 {
                     "player_id": pd.to_numeric(df[pid_col], errors="raise").astype(int),
                     "gw": pd.to_numeric(df[gw_col], errors="raise").astype(int),
-                    "airsenal_xp": pd.to_numeric(df[xp_col], errors="raise").astype(float),
+                    "airsenal_raw_xp": raw_xp,
+                    "airsenal_source_supported": supported.astype(bool),
+                    "airsenal_support_reason": reason.astype("string"),
                 }
             )
+            out["airsenal_xp"] = raw_xp.where(out["airsenal_source_supported"], np.nan)
             xm = _find(df.columns, "xmins")
             conf = _find(df.columns, "confidence")
             out["airsenal_xmins"] = (
@@ -89,18 +138,24 @@ class AIrsenalProjectionAdapter:
                 id_vars=id_vars,
                 value_vars=gw_cols,
                 var_name="gw",
-                value_name="airsenal_xp",
+                value_name="airsenal_raw_xp",
             )
             long["player_id"] = pd.to_numeric(long[pid_col], errors="raise").astype(int)
             long["gw"] = (
                 long["gw"].astype(str).str.upper().str.replace("GW", "", regex=False).astype(int)
             )
-            out = long[["player_id", "gw", "airsenal_xp"]].copy()
+            long["airsenal_raw_xp"] = pd.to_numeric(long["airsenal_raw_xp"], errors="raise")
+            out = long[["player_id", "gw", "airsenal_raw_xp"]].copy()
+            out["airsenal_source_supported"] = True
+            out["airsenal_support_reason"] = ""
+            out["airsenal_xp"] = out["airsenal_raw_xp"]
             out["airsenal_xmins"] = pd.NA
             out["airsenal_confidence"] = pd.NA
             for col in METADATA_COLUMNS:
                 out[col] = long[col] if col in long.columns else pd.NA
 
+        out["airsenal_raw_xp"] = pd.to_numeric(out["airsenal_raw_xp"], errors="coerce")
+        out["airsenal_xp"] = pd.to_numeric(out["airsenal_xp"], errors="coerce")
         out["airsenal_xmins"] = pd.to_numeric(out["airsenal_xmins"], errors="coerce")
         out["airsenal_confidence"] = pd.to_numeric(out["airsenal_confidence"], errors="coerce")
         if valid_ids is not None:
@@ -131,7 +186,12 @@ def validate_airsenal_forecast(
     max_age_hours: float = 36.0,
     min_player_coverage: float = 1.0,
 ) -> tuple[bool, str]:
-    """Validate that an AIrsenal file is genuine, current and horizon-complete."""
+    """Validate that an AIrsenal file is genuine, current and horizon-complete.
+
+    Completeness is assessed on the raw export. Explicitly unsupported rows are
+    allowed only when their raw value is still finite and provenance says why the
+    upstream abstained; those rows are not counted as usable expert opinions.
+    """
     if forecast.empty:
         return False, "genuine projection export not configured"
 
@@ -145,12 +205,31 @@ def validate_airsenal_forecast(
     if missing:
         return False, f"missing requested Gameweeks: {missing}"
 
-    xp = pd.to_numeric(forecast["airsenal_xp"], errors="coerce")
-    if xp.isna().any() or not np.isfinite(xp).all():
-        return False, "expected-points surface contains non-finite values"
-    if (xp < 0).any() or (xp > 40).any():
-        sample = forecast.loc[(xp < 0) | (xp > 40), ["player_id", "gw", "airsenal_xp"]]
+    raw_col = "airsenal_raw_xp" if "airsenal_raw_xp" in forecast.columns else "airsenal_xp"
+    raw_xp = pd.to_numeric(forecast[raw_col], errors="coerce")
+    if raw_xp.isna().any() or not np.isfinite(raw_xp).all():
+        return False, "raw expected-points surface contains non-finite values"
+    if (raw_xp < 0).any() or (raw_xp > 40).any():
+        sample = forecast.loc[(raw_xp < 0) | (raw_xp > 40), ["player_id", "gw", raw_col]]
         return False, f"expected-points values outside [0, 40]: {sample.head(5).to_dict('records')}"
+
+    if "airsenal_source_supported" in forecast.columns:
+        support = forecast["airsenal_source_supported"]
+        if support.isna().any():
+            return False, "source-supported metadata is incomplete"
+        support = support.astype(bool)
+        usable = pd.to_numeric(forecast["airsenal_xp"], errors="coerce")
+        if usable.loc[support].isna().any() or not np.isfinite(usable.loc[support]).all():
+            return False, "supported AIrsenal rows contain non-finite usable xP"
+        if usable.loc[~support].notna().any():
+            return False, "unsupported AIrsenal rows must abstain from usable xP"
+        reason = forecast.get(
+            "airsenal_support_reason", pd.Series("", index=forecast.index)
+        ).fillna("").astype(str).str.strip()
+        if reason.loc[~support].eq("").any():
+            return False, "unsupported AIrsenal rows are missing support_reason provenance"
+    else:
+        support = pd.Series(True, index=forecast.index, dtype=bool)
 
     if "airsenal_xmins" in forecast and forecast["airsenal_xmins"].notna().any():
         xmins = pd.to_numeric(forecast["airsenal_xmins"], errors="coerce")
@@ -166,14 +245,14 @@ def validate_airsenal_forecast(
             return False, "confidence values outside [0, 1]"
 
     min_players = max(1, int(len(valid_ids) * min_player_coverage))
-    coverage = forecast[forecast["gw"].isin(gameweeks)].groupby("gw")["player_id"].nunique()
+    requested_rows = forecast[forecast["gw"].isin(gameweeks)]
+    coverage = requested_rows.groupby("gw")["player_id"].nunique()
     thin = {int(gw): int(count) for gw, count in coverage.items() if int(count) < min_players}
     if thin:
         return False, f"insufficient official-player coverage; expected >= {min_players} per GW, got {thin}"
 
     if "generated_at" not in forecast or forecast["generated_at"].isna().all():
         return False, "missing generated_at provenance; re-export with scripts/export_airsenal.py"
-    requested_rows = forecast[forecast["gw"].isin(gameweeks)]
     generated = pd.to_datetime(requested_rows["generated_at"], utc=True, errors="coerce")
     if generated.isna().any():
         return False, "invalid generated_at provenance"
@@ -216,7 +295,14 @@ def validate_airsenal_forecast(
         return False, f"export mixes multiple AIrsenal prediction tags: {sorted(tags)}"
 
     counts = {int(gw): int(count) for gw, count in coverage.items()}
+    support_rows = support.loc[requested_rows.index]
+    semantic_abstentions = int((~support_rows).sum())
+    supported_players = int(
+        requested_rows.loc[support_rows, "player_id"].nunique()
+    ) if bool(support_rows.any()) else 0
     return True, (
-        f"{len(forecast)} rows; player coverage={counts}; age={max(age_hours, 0):.1f}h; "
+        f"{len(forecast)} rows; raw player coverage={counts}; "
+        f"semantic supported players={supported_players}/{len(valid_ids)}; "
+        f"semantic abstention rows={semantic_abstentions}; age={max(age_hours, 0):.1f}h; "
         f"tag={next(iter(tags))}"
     )
