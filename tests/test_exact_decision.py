@@ -61,8 +61,13 @@ def test_exact_horizon_decision_reconciles_and_is_deterministic() -> None:
     assert len(first.candidates) == 2
     assert len({candidate.squad_ids for candidate in first.candidates}) == 2
     # Reaching the resource ceiling is never evidence that the governed objective
-    # band was exhausted. Production readiness must remain fail-closed in this case.
+    # band was exhausted. The secondary selector must fall back to generation rank
+    # one, which is the globally optimal canonical maximum-EV MILP result.
     assert first.shortlist_complete is False
+    rank_one = next(
+        candidate for candidate in first.candidates if candidate.generation_rank == 1
+    )
+    assert tuple(sorted(first.solution.squad.player_id.astype(int))) == rank_one.squad_ids
     assert first.solution.objective == pytest.approx(
         sum(
             week.discount * week.mechanics.expected_total_points
@@ -75,8 +80,14 @@ def test_exact_horizon_decision_reconciles_and_is_deterministic() -> None:
     assert set(first.solution.vice_captain["player_id"]) == {
         first.weeks[0].mechanics.vice_captain_id
     }
+    assert first.solution.solver["selection_contract"] == (
+        "global_max_ev_then_bounded_exact_secondary"
+    )
+    assert first.solution.solver["selector_mode"] == "maximum_ev_fallback"
+    assert first.solution.solver["global_max_ev_certified"] is True
+    assert first.solution.solver["secondary_exact_selector_certified"] is False
     assert first.solution.solver["authoritative_objective"] == (
-        "exact_horizon_fpl_mechanics"
+        "global_max_ev_with_exact_horizon_mechanics"
     )
 
 
@@ -101,11 +112,13 @@ def test_subsequent_shortlist_solves_receive_governed_floor(monkeypatch) -> None
     assert calls[1] is not None
 
 
-def test_production_exact_search_budget_exceeds_live_failed_ceiling() -> None:
+def test_production_exact_secondary_budget_is_bounded() -> None:
     settings = load_settings("config/apex.yaml")
-    # The production cap is only a fail-closed resource ceiling; the live band is
-    # now constrained directly in every post-rank-one solve for fast exhaustion.
-    assert settings.exact_candidate_limit >= 256
+    # This is a secondary audit resource budget, not a global-optimality proof.
+    # If the 0.5% band is denser than this, production uses the certified rank-one
+    # maximum-EV fallback rather than pretending the band was exhausted.
+    assert settings.exact_candidate_limit == 16
+    assert settings.exact_candidate_regret_fraction == pytest.approx(0.005)
 
 
 def test_exact_horizon_rejects_invalid_candidate_controls() -> None:
