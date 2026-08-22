@@ -18,6 +18,7 @@ import pandas as pd
 import apex_fpl.services.joint_initial_path as joint
 from apex_fpl.services.decision_bundle import DecisionBundle
 from apex_fpl.services.finalized_stability import optimise_with_bounded_stability_retry
+from apex_fpl.services.hierarchy_evidence import load_current_hierarchy_evidence
 from apex_fpl.services.selection_reality import audit_selected_squad_reality
 
 FIRST_BENCH_MIN_APPEARANCE = 0.70
@@ -25,25 +26,15 @@ FIRST_BENCH_MIN_EXPECTED_MINUTES = 30.0
 
 
 def _frame_if_present(path: Path) -> pd.DataFrame | None:
+    """Load an optional generated CSV; malformed present files are fatal.
+
+    A missing optional corroboration surface is handled by the reality policy. A
+    present-but-malformed current-run surface is a data-integrity error and must not
+    be silently demoted to "missing evidence".
+    """
     if not path.exists() or path.stat().st_size == 0:
         return None
-    try:
-        return pd.read_csv(path)
-    except Exception:
-        return None
-
-
-def _current_hierarchy_evidence(path: Path) -> pd.DataFrame | None:
-    frame = _frame_if_present(path)
-    if frame is None or frame.empty:
-        return frame
-    if "valid_until" not in frame.columns:
-        return frame
-    expiry = pd.to_datetime(frame["valid_until"], errors="coerce", utc=True)
-    now = pd.Timestamp.now(tz="UTC")
-    has_value = frame["valid_until"].fillna("").astype(str).str.strip().ne("")
-    current = (~has_value) | (expiry.notna() & expiry.ge(now))
-    return frame.loc[current].copy()
+    return pd.read_csv(path)
 
 
 def _cli_path(flag: str, default: str) -> Path:
@@ -107,9 +98,16 @@ def _promote_credible_first_bench(
         if int(pid) not in indexed.index:
             return False
         row = indexed.loc[int(pid)]
-        app = pd.to_numeric(pd.Series([row.get("appearance_probability", 0.0)]), errors="coerce").fillna(0.0).iloc[0]
-        minutes = pd.to_numeric(pd.Series([row.get("expected_minutes", 0.0)]), errors="coerce").fillna(0.0).iloc[0]
-        return float(app) >= FIRST_BENCH_MIN_APPEARANCE or float(minutes) >= FIRST_BENCH_MIN_EXPECTED_MINUTES
+        app = pd.to_numeric(
+            pd.Series([row.get("appearance_probability", 0.0)]), errors="coerce"
+        ).fillna(0.0).iloc[0]
+        minutes = pd.to_numeric(
+            pd.Series([row.get("expected_minutes", 0.0)]), errors="coerce"
+        ).fillna(0.0).iloc[0]
+        return (
+            float(app) >= FIRST_BENCH_MIN_APPEARANCE
+            or float(minutes) >= FIRST_BENCH_MIN_EXPECTED_MINUTES
+        )
 
     if credible(bench_ids[0]):
         return bench_ids
@@ -117,11 +115,15 @@ def _promote_credible_first_bench(
     if replacement is None:
         return bench_ids
 
-    reordered = [int(replacement)] + [int(pid) for pid in bench_ids if int(pid) != int(replacement)]
+    reordered = [int(replacement)] + [
+        int(pid) for pid in bench_ids if int(pid) != int(replacement)
+    ]
     rec = payload.get("recommendation") or {}
     names = {
         int(row.player_id): str(row.web_name)
-        for row in players[["player_id", "web_name"]].drop_duplicates("player_id").itertuples(index=False)
+        for row in players[["player_id", "web_name"]]
+        .drop_duplicates("player_id")
+        .itertuples(index=False)
     }
     rec["outfield_bench_order_ids"] = reordered
     rec["outfield_bench_order"] = [names.get(pid, str(pid)) for pid in reordered]
@@ -155,10 +157,16 @@ def _withhold_for_reality(
     }
     payload["ready_to_act"] = False
     payload["safe_to_act"] = False
-    payload["blockers"] = list(dict.fromkeys((payload.get("blockers") or []) + list(blockers)))
-    payload["warnings"] = list(dict.fromkeys((payload.get("warnings") or []) + list(warnings)))
+    payload["blockers"] = list(
+        dict.fromkeys((payload.get("blockers") or []) + list(blockers))
+    )
+    payload["warnings"] = list(
+        dict.fromkeys((payload.get("warnings") or []) + list(warnings))
+    )
     payload["recommendation"] = None
-    (output_dir / "apex_recommendation_latest.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    (output_dir / "apex_recommendation_latest.json").write_text(
+        json.dumps(payload, indent=2), encoding="utf-8"
+    )
     (output_dir / "apex_recommendation_latest.md").write_text(
         "# Apex Unified Recommendation — NOT READY\n\n"
         + "\n".join(f"- {row}" for row in payload["blockers"])
@@ -173,7 +181,9 @@ def _withhold_for_reality(
         context["production_result"] = None
         context["blockers"] = list(payload["blockers"])
         context["warnings"] = list(payload["warnings"])
-        context.setdefault("diagnostics", {})["selection_reality"] = diagnostics["selection_reality"]
+        context.setdefault("diagnostics", {})["selection_reality"] = diagnostics[
+            "selection_reality"
+        ]
         context_path.write_text(json.dumps(context, indent=2), encoding="utf-8")
 
 
@@ -195,13 +205,22 @@ def _audit_final_selection(*, output_dir: Path, bundle_dir: Path) -> None:
     bench_ids = _bench_ids(rec, squad, xi_ids)
 
     bundle = DecisionBundle.load(bundle_dir)
-    players = bundle.to_pipeline_output().players.copy()
-    if "player_id" not in players.columns:
+    sealed_players = bundle.to_pipeline_output().players.copy()
+    if "player_id" not in sealed_players.columns:
         raise SystemExit("selection reality gate requires player_id on sealed player surface")
-    players = players[players["player_id"].astype(int).isin(selected_ids)].copy()
+    hierarchy = load_current_hierarchy_evidence(
+        sealed_players,
+        Path("data/manual/squad_hierarchy.csv"),
+        strict_identity=True,
+    )
+    players = sealed_players[
+        sealed_players["player_id"].astype(int).isin(selected_ids)
+    ].copy()
     sealed_ids = set(players["player_id"].astype(int))
     if sealed_ids != selected_ids or len(players) != 15:
-        raise SystemExit("selection reality gate selected IDs do not reconcile to sealed player surface")
+        raise SystemExit(
+            "selection reality gate selected IDs do not reconcile to sealed player surface"
+        )
 
     bench_ids = _promote_credible_first_bench(payload, players, bench_ids)
 
@@ -210,8 +229,10 @@ def _audit_final_selection(*, output_dir: Path, bundle_dir: Path) -> None:
         selected_ids=selected_ids,
         xi_ids=xi_ids,
         bench_ids=bench_ids,
-        specialist_report=_frame_if_present(output_dir / "specialist_disagreement.csv"),
-        hierarchy_evidence=_current_hierarchy_evidence(Path("data/manual/squad_hierarchy.csv")),
+        specialist_report=_frame_if_present(
+            output_dir / "specialist_disagreement.csv"
+        ),
+        hierarchy_evidence=hierarchy,
         transfer_report=_frame_if_present(output_dir / "transfer_intelligence.csv"),
         require_current_evidence=True,
         first_bench_min_appearance=FIRST_BENCH_MIN_APPEARANCE,
@@ -227,7 +248,13 @@ def _audit_final_selection(*, output_dir: Path, bundle_dir: Path) -> None:
         "rows": json.loads(result.report.to_json(orient="records")),
     }
     if not result.ready_for_high_confidence:
-        _withhold_for_reality(payload, result.blockers, result.warnings, result.report, output_dir=output_dir)
+        _withhold_for_reality(
+            payload,
+            result.blockers,
+            result.warnings,
+            result.report,
+            output_dir=output_dir,
+        )
         raise SystemExit("selected-squad football reality gate is not ready")
     recommendation_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
