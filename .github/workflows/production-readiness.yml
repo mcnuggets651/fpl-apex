@@ -14,23 +14,44 @@ jobs:
   readiness:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      RUN_DIR: data/generated/runs/${{ github.run_id }}
+      BUNDLE_DIR: data/generated/runs/${{ github.run_id }}/decision_bundle
+      PARITY_DIR: data/generated/runs/${{ github.run_id }}/open_solver_parity_input
+      AIRSENAL_CSV: data/generated/runs/${{ github.run_id }}/airsenal.csv
+      PROMOTION_DIR: ${{ runner.temp }}/apex-readiness-promotion
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
 
+      - name: Create empty certification generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUN_DIR" "$PROMOTION_DIR"
+          mkdir -p "$RUN_DIR"
+          test ! -e "$RUN_DIR/pinnacle_latest.json"
+          test ! -e "$RUN_DIR/solver_parity.json"
+          test ! -e "$RUN_DIR/apex_recommendation_latest.json"
+
       - name: Install Apex + pinned AIrsenal worker
         run: bash scripts/install_pinned_airsenal.sh
 
-      - name: Run deterministic repository tests
+      - name: Run deterministic and adversarial repository tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           pytest -q
           ruff check src tests scripts
           python scripts/check_upstreams.py
+          python scripts/check_governance_consistency.py
 
       - name: Restore Apex runtime cache
         uses: actions/cache@v4
@@ -59,58 +80,64 @@ jobs:
           python scripts/run_airsenal_worker.py \
             --db "$AIRSENAL_DB_FILE" \
             --horizon 8 \
-            --output data/generated/airsenal.csv
+            --output "$AIRSENAL_CSV"
 
-      - name: Generate Pinnacle surface for same-surface parity
+      - name: Warm Official FPL cache
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from apex_fpl.data.http import CachedHttp
+          from apex_fpl.data.official import OfficialFPLClient
+          snapshot = OfficialFPLClient(CachedHttp(Path("data/cache"))).snapshot(force=True)
+          print("official_bootstrap_sha256", snapshot.bootstrap_sha256)
+          print("official_fixtures_sha256", snapshot.fixtures_sha256)
+          PY
+
+      - name: Build sealed actionable-horizon DecisionBundle
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
           FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
+          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+        run: |
+          python scripts/build_decision_bundle.py \
+            --horizon 8 \
+            --bundle-dir "$BUNDLE_DIR" \
+            --force
+
+      - name: Generate Pinnacle surface awaiting independent parity
+        env:
+          APEX_SEASON: "2026-2027"
+          APEX_HORIZON: "8"
+          FPL_ENTRY_ID: "63984"
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         shell: bash
         run: |
-          set -euo pipefail
-          python scripts/build_decision_bundle.py \
-            --horizon 8 \
-            --bundle-dir data/generated/decision_bundle \
-            --force
-
           set +e
           python scripts/run_pinnacle.py \
             --horizon 8 \
             --stochastic-scenarios 256 \
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
-            --bundle-dir data/generated/decision_bundle
+            --bundle-dir "$BUNDLE_DIR" \
+            --output-dir "$RUN_DIR"
           status=$?
           set -e
-
-          test -s data/generated/pinnacle_latest.json
+          test -s "$RUN_DIR/pinnacle_latest.json"
           if [ "$status" -ne 0 ]; then
             python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
-
-          payload = json.loads(Path("data/generated/pinnacle_latest.json").read_text())
+          payload = json.loads((Path(os.environ["RUN_DIR"]) / "pinnacle_latest.json").read_text())
           blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
-          parity_bootstrap = [
-              "required independent solver parity snapshot is not embedded"
-          ]
-          if payload.get("pinnacle_ready") is not False or blockers != parity_bootstrap:
-              raise SystemExit(
-                  "Pinnacle readiness failed before same-surface parity bootstrap: "
-                  + "; ".join(blockers)
-              )
-          print("Pinnacle surface complete; advancing to same-surface parity.")
+          expected = ["required independent solver parity snapshot is not embedded"]
+          if blockers != expected:
+              raise SystemExit("Pinnacle blocked before parity: " + "; ".join(blockers))
           PY
           fi
-
-          python scripts/export_open_solver.py \
-            reports/players.csv reports/projections.csv /tmp/apex.csv \
-            --projection-col xp
+          python scripts/export_open_solver.py "$BUNDLE_DIR" /tmp/apex.csv --projection-col xp
 
       - name: Read pinned independent solver revision
         id: parity-pin
@@ -123,6 +150,16 @@ jobs:
           print(f"sha={source['commit']}")
           PY
 
+      - name: Build content-addressed same-world parity input
+        run: |
+          python scripts/build_open_solver_parity_input.py \
+            --bundle-dir "$BUNDLE_DIR" \
+            --apex-csv /tmp/apex.csv \
+            --base-config config/open_solver_parity.json \
+            --output-dir "$PARITY_DIR" \
+            --external-repository "${{ steps.parity-pin.outputs.repository }}" \
+            --external-sha "${{ steps.parity-pin.outputs.sha }}"
+
       - name: Run and embed same-surface independent parity
         shell: bash
         run: |
@@ -133,29 +170,25 @@ jobs:
             "$RUNNER_TEMP/open-fpl-solver"
           git -C "$RUNNER_TEMP/open-fpl-solver" checkout --detach \
             "${{ steps.parity-pin.outputs.sha }}"
-          cp /tmp/apex.csv "$RUNNER_TEMP/open-fpl-solver/data/apex.csv"
           cd "$RUNNER_TEMP/open-fpl-solver"
           uv sync
-          uv run python run/solve.py \
-            --config "$GITHUB_WORKSPACE/config/open_solver_parity.json" \
-            --datasource apex \
-            --horizon 8
           cd "$GITHUB_WORKSPACE"
-          RESULT="$(ls -t "$RUNNER_TEMP"/open-fpl-solver/data/results/apex_*.csv | head -1)"
+          uv run --project "$RUNNER_TEMP/open-fpl-solver" python scripts/run_open_solver_parity.py \
+            --solver-root "$RUNNER_TEMP/open-fpl-solver" \
+            --input-dir "$PARITY_DIR" \
+            --result "$RUN_DIR/open_solver_result.csv" \
+            --execution-manifest "$RUN_DIR/open_solver_execution.json"
           python scripts/compare_solver_parity.py \
-            data/generated/pinnacle_latest.json "$RESULT"
+            "$RUN_DIR/pinnacle_latest.json" "$RUN_DIR/open_solver_result.csv"
           python scripts/embed_solver_parity.py \
-            data/generated/pinnacle_latest.json \
-            data/generated/solver_parity.json
+            "$RUN_DIR/pinnacle_latest.json" "$RUN_DIR/solver_parity.json"
 
-      - name: Run canonical Apex readiness audit
+      - name: Run canonical Apex on the sealed generation
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
           FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         run: |
           python scripts/run_apex.py \
@@ -164,20 +197,40 @@ jobs:
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
             --reuse-pinnacle \
-            --force
+            --output-dir "$RUN_DIR" \
+            --bundle-dir "$BUNDLE_DIR"
 
-      - name: Upload unified readiness artefacts
+      - name: Validate exact production promotion transaction without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/promote_certified_generation.py \
+            --run-dir "$RUN_DIR" \
+            --bundle-dir "$BUNDLE_DIR" \
+            --target-dir "$PROMOTION_DIR" \
+            --run-id "${{ github.run_id }}"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          target = Path(os.environ["PROMOTION_DIR"])
+          generation = json.loads((target / "certified_generation.json").read_text())
+          canonical = json.loads((target / "apex_recommendation_latest.json").read_text())
+          context = json.loads((target / "apex_answer_context.json").read_text())
+          assert generation["ready_to_act"] is True, generation
+          assert canonical["ready_to_act"] is True, canonical.get("blockers")
+          assert context["safe_to_act"] is True and context["ready_to_act"] is True
+          print("certified_generation_id", generation["generation_id"])
+          print("decision_bundle_id", generation["decision_bundle_id"])
+          print("gameweeks", generation["gameweeks"])
+          PY
+
+      - name: Upload one coherent readiness generation
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apex-unified-readiness-${{ github.run_id }}
           path: |
-            data/generated/apex_recommendation_latest.json
-            data/generated/apex_recommendation_latest.md
-            data/generated/pinnacle_latest.json
-            data/generated/solver_parity.json
-            data/generated/elite_latest.json
-            data/generated/decision_bundle/
-            reports/
-            data/generated/airsenal.csv
+            ${{ env.RUN_DIR }}/
+            ${{ env.PROMOTION_DIR }}/
+          if-no-files-found: error
           retention-days: 30
