@@ -298,3 +298,32 @@ def test_stale_solver_parity_snapshot_blocks_publication():
     result = evaluate_pinnacle_payload(payload)
     assert not result.ready
     assert any("fixtures_sha256 does not match" in blocker for blocker in result.blockers)
+
+
+def test_incomplete_exact_secondary_uses_certified_max_ev_fallback():
+    payload = _payload()
+    payload["authoritative_decision"]["shortlist"][
+        "complete_within_configured_band"
+    ] = False
+    payload["deterministic_scenarios"]["unrestricted"]["objective"] = 318.5
+    payload["authoritative_decision"]["solution"]["solver"] = {
+        "selection_contract": "global_max_ev_then_bounded_exact_secondary",
+        "selector_mode": "maximum_ev_fallback",
+        "global_max_ev_certified": True,
+        "global_max_ev_objective": 318.5,
+        "secondary_exact_selector_certified": False,
+    }
+    result = evaluate_pinnacle_payload(payload)
+    assert result.ready
+    assert not result.blockers
+    assert any("maximum-EV fallback" in warning for warning in result.warnings)
+
+
+def test_incomplete_exact_secondary_without_certified_fallback_blocks():
+    payload = _payload()
+    payload["authoritative_decision"]["shortlist"][
+        "complete_within_configured_band"
+    ] = False
+    result = evaluate_pinnacle_payload(payload)
+    assert not result.ready
+    assert any("fallback is not active" in blocker for blocker in result.blockers)
