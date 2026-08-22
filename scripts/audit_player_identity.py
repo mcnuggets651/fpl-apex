@@ -13,8 +13,10 @@ import pandas as pd
 from apex_fpl.services.decision_bundle import DecisionBundle
 from apex_fpl.services.player_identity import (
     IDENTITY_CONTRACT,
+    IdentityIntegrityError,
     audit_identity_sources,
     build_official_identity_registry,
+    parse_exact_player_id,
     validate_required_id_coverage,
 )
 
@@ -88,34 +90,41 @@ def _manifest_snapshot_id(bundle_dir: Path) -> str | None:
     return None
 
 
-def _selected_player_ids(payload: object) -> set[int]:
-    """Collect only explicitly player-scoped IDs from a recommendation payload."""
+def _selected_player_reference_scan(payload: object) -> tuple[set[int], list[dict]]:
+    """Collect player-scoped IDs and retain every malformed explicit reference."""
     scalar_keys = {"player_id", "captain_id", "vice_captain_id"}
     list_keys = {"player_ids", "squad_ids", "xi_ids", "bench_ids"}
     found: set[int] = set()
+    invalid: list[dict] = []
 
-    def add(value: object) -> None:
-        try:
-            if value is not None and not isinstance(value, bool):
-                found.add(int(float(value)))
-        except (TypeError, ValueError):
+    def add(value: object, field: str) -> None:
+        if value is None:
             return
+        try:
+            found.add(parse_exact_player_id(value, label=field))
+        except IdentityIntegrityError as exc:
+            invalid.append({"field": field, "value": value, "reason": str(exc)})
 
     def walk(value: object) -> None:
         if isinstance(value, dict):
             for key, child in value.items():
                 if key in scalar_keys:
-                    add(child)
+                    add(child, key)
                 elif key in list_keys and isinstance(child, list):
                     for item in child:
-                        add(item)
+                        add(item, key)
                 walk(child)
         elif isinstance(value, list):
             for item in value:
                 walk(item)
 
     walk(payload)
-    return found
+    return found, invalid
+
+
+def _selected_player_ids(payload: object) -> set[int]:
+    """Compatibility helper returning only exact, validated player IDs."""
+    return _selected_player_reference_scan(payload)[0]
 
 
 def _selected_reference_audit(path: Path, official: pd.DataFrame) -> dict:
@@ -126,11 +135,12 @@ def _selected_reference_audit(path: Path, official: pd.DataFrame) -> dict:
             "present": False,
             "reference_count": 0,
             "unknown_ids": [],
+            "invalid_references": [],
             "ready": True,
             "warning": "recommendation not supplied; selected-reference audit not run",
         }
     payload = json.loads(path.read_text(encoding="utf-8"))
-    selected_ids = _selected_player_ids(payload)
+    selected_ids, invalid_references = _selected_player_reference_scan(payload)
     unknown = sorted(selected_ids - registry_ids)
     return {
         "path": str(path),
@@ -139,7 +149,8 @@ def _selected_reference_audit(path: Path, official: pd.DataFrame) -> dict:
         "reference_count": len(selected_ids),
         "player_ids": sorted(selected_ids),
         "unknown_ids": unknown,
-        "ready": not unknown,
+        "invalid_references": invalid_references,
+        "ready": not unknown and not invalid_references,
     }
 
 
@@ -149,7 +160,12 @@ def _sealed_core_identity(players: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     candidate_name_cols = [
         col
-        for col in ("web_name_core", "source_player_name_core", "player_name_core", "name_core")
+        for col in (
+            "web_name_core",
+            "source_player_name_core",
+            "player_name_core",
+            "name_core",
+        )
         if col in players.columns
     ]
     full_name_available = {"first_name_core", "second_name_core"}.issubset(players.columns)
@@ -158,11 +174,19 @@ def _sealed_core_identity(players: pd.DataFrame) -> pd.DataFrame:
 
     cols = ["player_id"]
     cols.extend(candidate_name_cols)
-    for col in ("first_name_core", "second_name_core", "team_core", "team_name_core", "position_core"):
+    for col in (
+        "first_name_core",
+        "second_name_core",
+        "team_core",
+        "team_name_core",
+        "position_core",
+    ):
         if col in players.columns:
             cols.append(col)
     frame = players[cols].copy()
-    witness_cols = candidate_name_cols + (["first_name_core", "second_name_core"] if full_name_available else [])
+    witness_cols = candidate_name_cols + (
+        ["first_name_core", "second_name_core"] if full_name_available else []
+    )
     present = pd.Series(False, index=frame.index)
     for col in witness_cols:
         present |= frame[col].notna() & frame[col].astype(str).str.strip().ne("")
@@ -229,20 +253,37 @@ def _run(args: argparse.Namespace) -> dict:
         inputs["airsenal"] = _input_meta(air_path, air)
         if air.empty:
             blockers.append("configured AIrsenal export is missing or empty for identity audit")
-        elif "source_player_name" not in air.columns:
-            blockers.append("configured AIrsenal export lacks independent source_player_name witness")
-        elif "identity_witness_type" not in air.columns:
-            blockers.append("configured AIrsenal export lacks identity_witness_type provenance")
-        elif set(air["identity_witness_type"].dropna().astype(str)) != {"airsenal_name"}:
-            blockers.append("configured AIrsenal export contains non-authoritative identity witnesses")
         else:
+            has_name_witness = "source_player_name" in air.columns
+            if not has_name_witness:
+                blockers.append(
+                    "configured AIrsenal export lacks independent source_player_name witness"
+                )
+
+            if "identity_witness_type" not in air.columns:
+                blockers.append("configured AIrsenal export lacks identity_witness_type provenance")
+            else:
+                witness_values = air["identity_witness_type"].map(
+                    lambda value: "" if pd.isna(value) else str(value).strip()
+                )
+                invalid_witness_rows = air.index[
+                    ~witness_values.eq("airsenal_name")
+                ].tolist()
+                if invalid_witness_rows:
+                    blockers.append(
+                        "configured AIrsenal export contains null/non-authoritative "
+                        "identity_witness_type values at rows "
+                        f"{invalid_witness_rows[:20]}"
+                    )
+
             airsenal_coverage = validate_required_id_coverage(
                 players, air, source="airsenal", id_col="player_id"
             )
             blockers.extend(airsenal_coverage.get("blockers") or [])
-            # Keep every GW/source row. A later bad row must not be hidden by an
-            # earlier correct row for the same player.
-            sources["airsenal"] = air
+            if has_name_witness:
+                # Keep every GW/source row. A later bad row must not be hidden by an
+                # earlier correct row for the same player.
+                sources["airsenal"] = air
     else:
         inputs["airsenal"] = _input_meta(air_path)
 
@@ -272,10 +313,17 @@ def _run(args: argparse.Namespace) -> dict:
         recommendation_path = Path(args.recommendation)
         selected = _selected_reference_audit(recommendation_path, players)
         inputs["recommendation"] = _input_meta(recommendation_path)
-        if not selected.get("ready", False):
+        invalid_refs = selected.get("invalid_references") or []
+        unknown_ids = selected.get("unknown_ids") or []
+        if invalid_refs:
+            blockers.append(
+                "canonical recommendation contains malformed/non-integral player ID "
+                f"references: {invalid_refs[:20]}"
+            )
+        if unknown_ids:
             blockers.append(
                 "canonical recommendation references unknown Official FPL player IDs: "
-                f"{selected.get('unknown_ids') or []}"
+                f"{unknown_ids}"
             )
 
     audit["contract"] = IDENTITY_CONTRACT
@@ -317,7 +365,9 @@ def main() -> None:
                 "decision_bundle_manifest": _input_meta(Path(args.bundle_dir) / "manifest.json"),
                 "airsenal": _input_meta(Path(args.airsenal)),
             },
-            "blockers": [f"identity audit internal/load failure: {type(exc).__name__}: {exc}"],
+            "blockers": [
+                f"identity audit internal/load failure: {type(exc).__name__}: {exc}"
+            ],
             "warnings": [],
             "failure_kind": "internal_or_input_error",
             "traceback": traceback.format_exc(),
