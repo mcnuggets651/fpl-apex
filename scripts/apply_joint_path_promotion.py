@@ -211,12 +211,38 @@ def _apply_weekly_strategy(payload: dict, pinnacle: dict) -> None:
     xi = strategy.get("canonical_xi") or []
     if len(squad) != 15 or len(xi) != 11:
         raise SystemExit("weekly strategy does not expose an exact legal 15/XI")
+    squad_ids = _ids(squad)
+    xi_ids = _ids(xi)
+    if len(squad_ids) != 15 or len(xi_ids) != 11 or not xi_ids.issubset(squad_ids):
+        raise SystemExit("weekly strategy canonical 15/XI identities are invalid")
+
     captain = strategy.get("canonical_captain")
     vice = strategy.get("canonical_vice_captain")
     if not captain or not vice:
         raise SystemExit("weekly strategy exact captain/vice is missing")
     captain_id = _resolve_name_id(squad, captain, "captain")
     vice_id = _resolve_name_id(squad, vice, "vice-captain")
+
+    bench_gk = strategy.get("canonical_bench_gk")
+    bench_gk_id_raw = strategy.get("canonical_bench_gk_id")
+    bench_order = strategy.get("canonical_outfield_bench_order") or []
+    bench_order_ids_raw = strategy.get("canonical_outfield_bench_order_ids") or []
+    if not bench_gk or bench_gk_id_raw is None:
+        raise SystemExit("weekly strategy exact bench goalkeeper identity is missing")
+    if len(bench_order) != 3 or len(bench_order_ids_raw) != 3:
+        raise SystemExit("weekly strategy exact outfield bench order is not three players")
+    bench_gk_id = int(bench_gk_id_raw)
+    bench_order_ids = [int(pid) for pid in bench_order_ids_raw]
+    if _resolve_name_id(squad, bench_gk, "bench goalkeeper") != bench_gk_id:
+        raise SystemExit("weekly strategy bench goalkeeper name/id identity does not reconcile")
+    for index, (name, player_id) in enumerate(zip(bench_order, bench_order_ids), start=1):
+        if _resolve_name_id(squad, str(name), f"outfield bench {index}") != player_id:
+            raise SystemExit(
+                f"weekly strategy outfield bench {index} name/id identity does not reconcile"
+            )
+    bench_ids = {bench_gk_id, *bench_order_ids}
+    if len(bench_ids) != 4 or bench_ids != squad_ids - xi_ids:
+        raise SystemExit("weekly strategy bench identities are not the exact complement of the XI")
 
     policy = payload.setdefault("decision_policy", {})
     policy.update(
@@ -249,8 +275,10 @@ def _apply_weekly_strategy(payload: dict, pinnacle: dict) -> None:
         "captain_id": captain_id,
         "vice_captain": vice,
         "vice_captain_id": vice_id,
-        "bench_gk": strategy.get("canonical_bench_gk"),
-        "outfield_bench_order": strategy.get("canonical_outfield_bench_order") or [],
+        "bench_gk": bench_gk,
+        "bench_gk_id": bench_gk_id,
+        "outfield_bench_order": bench_order,
+        "outfield_bench_order_ids": bench_order_ids,
         "gw1_expected_total_with_mechanics": strategy.get("canonical_expected_points"),
         "recommended_action": strategy.get("recommended_action"),
         "recommended_transfers": strategy.get("recommended_transfers"),
