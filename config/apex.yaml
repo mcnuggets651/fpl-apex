@@ -17,10 +17,11 @@ fixture_decay: 0.90
 # Used only to generate the internal near-optimal diagnostic shortlist. The final
 # production team is chosen later by the GW1-first/receding-horizon strategy gate.
 approximate_bench_weight: 0.08
-# Resource ceiling only: production remains fail-closed unless enumeration actually
-# exhausts the governed regret band. Banded solves prune sub-floor candidates, so
-# this ceiling is deliberately generous without weakening exactness semantics.
-exact_candidate_limit: 256
+# Bounded secondary-selector audit budget. Rank one is already the certified global
+# maximum-EV solution. Exact mechanics may replace it only when the full configured
+# epsilon band is actually exhausted; otherwise Apex explicitly falls back to rank
+# one and exact-rescores that squad's XI/captain/vice/bench.
+exact_candidate_limit: 16
 exact_candidate_regret_fraction: 0.005
 exact_near_equivalent_points: 0.25
 risk_penalty: 0.15
