@@ -7,6 +7,13 @@ import math
 import pandas as pd
 
 from apex_fpl.constants import XI_MAX, XI_MIN
+from apex_fpl.optimisation.bench_policy import (
+    BenchResilienceError,
+    admissible_outfield_orders,
+    bench_resilience_ok,
+    credible_first_bench_ids,
+    playable_outfield_ids,
+)
 from apex_fpl.optimisation.initial_horizon import optimise_initial_horizon
 from apex_fpl.optimisation.mechanics import (
     GameweekMechanics,
@@ -14,6 +21,7 @@ from apex_fpl.optimisation.mechanics import (
     best_captain_vice_ids,
     evaluate_gameweek_mechanics_ids,
 )
+from apex_fpl.optimisation.solver_status import certified_infeasible
 from apex_fpl.optimisation.squad import SquadSolution
 
 
@@ -119,34 +127,50 @@ def optimise_fixed_squad_gameweek(
     *,
     captain_eligible: set[int] | None = None,
     xi_eligible: set[int] | None = None,
+    enforce_current_bench_resilience: bool = False,
 ) -> tuple[pd.DataFrame, GameweekMechanics]:
     """Exhaustively choose the legal XI and exact deadline mechanics for a squad."""
     eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
+    xi_allowed = None if xi_eligible is None else {int(pid) for pid in xi_eligible}
     squad_ids = tuple(sorted(squad["player_id"].astype(int).tolist()))
     positions = {
         int(row.player_id): str(row.position)
         for row in squad[["player_id", "position"]].itertuples(index=False)
     }
+    playable = (
+        playable_outfield_ids(squad) if enforce_current_bench_resilience else None
+    )
+    first = (
+        credible_first_bench_ids(squad)
+        if enforce_current_bench_resilience
+        else None
+    )
     best: tuple[float, tuple, GameweekMechanics] | None = None
+    captain_legal_lineup_seen = False
     for lineup_ids in _legal_lineups(squad):
-        if xi_eligible is not None and not set(lineup_ids).issubset(
-            {int(x) for x in xi_eligible}
-        ):
+        lineup_ids = tuple(sorted(int(pid) for pid in lineup_ids))
+        if xi_allowed is not None and not set(lineup_ids).issubset(xi_allowed):
             continue
         if eligible is not None and len(set(lineup_ids) & eligible) < 2:
             continue
-        mechanics = evaluate_gameweek_mechanics_ids(
-            squad_ids,
-            tuple(sorted(int(pid) for pid in lineup_ids)),
-            positions,
-            xp,
-            appearance,
-            captain_eligible=eligible,
-        )
+        captain_legal_lineup_seen = True
+        try:
+            mechanics = evaluate_gameweek_mechanics_ids(
+                squad_ids,
+                lineup_ids,
+                positions,
+                xp,
+                appearance,
+                captain_eligible=eligible,
+                playable_bench_ids=playable,
+                first_bench_eligible_ids=first,
+            )
+        except BenchResilienceError:
+            continue
         tie_key = (
-            tuple(sorted(int(pid) for pid in lineup_ids)),
+            lineup_ids,
             int(mechanics.captain_id),
             int(mechanics.vice_captain_id),
             tuple(int(pid) for pid in mechanics.outfield_bench_order),
@@ -157,9 +181,36 @@ def optimise_fixed_squad_gameweek(
         ):
             best = row
     if best is None:
+        if enforce_current_bench_resilience and captain_legal_lineup_seen:
+            raise BenchResilienceError(
+                "fixed squad has no submitted XI satisfying governed bench resilience"
+            )
         raise ValueError("fixed squad has no legal XI with two captain-eligible players")
     xi = squad[squad["player_id"].astype(int).isin(best[1][0])].copy()
     return xi, best[2]
+
+
+def _order_weights(
+    *,
+    lineup_ids: tuple[int, ...],
+    bench_ids: tuple[int, ...],
+    outfield_orders: tuple[tuple[int, ...], ...],
+    positions: dict[int, str],
+    appearance: dict[int, float],
+) -> list[tuple[tuple[int, ...], dict[int, float]]]:
+    return [
+        (
+            order,
+            autosub_weights_ids(
+                lineup_ids,
+                bench_ids,
+                positions,
+                appearance,
+                outfield_order=order,
+            ),
+        )
+        for order in outfield_orders
+    ]
 
 
 def _rescore_candidate(
@@ -172,6 +223,7 @@ def _rescore_candidate(
     xi_eligible: set[int] | None,
     projection_col: str,
     generation_rank: int,
+    enforce_current_bench_resilience: bool,
 ) -> ExactCandidate:
     appearance = _appearance_map(solution.squad)
     squad_ids = tuple(sorted(solution.squad["player_id"].astype(int).tolist()))
@@ -186,34 +238,70 @@ def _rescore_candidate(
     eligible = (
         None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
+    xi_allowed = None if xi_eligible is None else {int(pid) for pid in xi_eligible}
+    playable = (
+        playable_outfield_ids(solution.squad)
+        if enforce_current_bench_resilience
+        else set()
+    )
+    first = (
+        credible_first_bench_ids(solution.squad)
+        if enforce_current_bench_resilience
+        else set()
+    )
+    current_gw = int(gameweeks[0])
     best_by_gw: dict[
         int, tuple[float, tuple, GameweekMechanics, tuple[int, ...]]
     ] = {}
 
     for lineup_ids in _legal_lineups(solution.squad):
         lineup_ids = tuple(sorted(int(pid) for pid in lineup_ids))
-        if xi_eligible is not None and not set(lineup_ids).issubset(xi_eligible):
+        if xi_allowed is not None and not set(lineup_ids).issubset(xi_allowed):
             continue
         if eligible is not None and len(set(lineup_ids) & eligible) < 2:
             continue
         bench_ids = tuple(sorted(set(squad_ids) - set(lineup_ids)))
         outfield = tuple(pid for pid in bench_ids if positions[pid] != "GK")
         bench_gk = tuple(pid for pid in bench_ids if positions[pid] == "GK")
-        order_weights = [
-            (
-                tuple(int(pid) for pid in order),
-                autosub_weights_ids(
-                    lineup_ids,
-                    bench_ids,
-                    positions,
-                    appearance,
-                    outfield_order=tuple(int(pid) for pid in order),
-                ),
-            )
+        all_orders = tuple(
+            tuple(int(pid) for pid in order)
             for order in permutations(sorted(outfield))
-        ]
+        )
+        all_order_weights = _order_weights(
+            lineup_ids=lineup_ids,
+            bench_ids=bench_ids,
+            outfield_orders=all_orders,
+            positions=positions,
+            appearance=appearance,
+        )
+        current_order_weights: list[tuple[tuple[int, ...], dict[int, float]]] = []
+        if enforce_current_bench_resilience and bench_resilience_ok(
+            outfield,
+            playable_ids=playable,
+            first_bench_ids=first,
+        ):
+            current_orders = admissible_outfield_orders(
+                outfield,
+                first_bench_ids=first,
+            )
+            current_order_weights = _order_weights(
+                lineup_ids=lineup_ids,
+                bench_ids=bench_ids,
+                outfield_orders=current_orders,
+                positions=positions,
+                appearance=appearance,
+            )
+
         for gw in gameweeks:
-            xp = xp_by_gw[int(gw)]
+            gw = int(gw)
+            if enforce_current_bench_resilience and gw == current_gw:
+                order_weights = current_order_weights
+                if not order_weights:
+                    continue
+            else:
+                order_weights = all_order_weights
+
+            xp = xp_by_gw[gw]
             captain, vice, captain_bonus = best_captain_vice_ids(
                 lineup_ids,
                 xp,
@@ -250,7 +338,7 @@ def _rescore_candidate(
                 int(vice),
                 tuple(int(pid) for pid in bench_order),
             )
-            previous = best_by_gw.get(int(gw))
+            previous = best_by_gw.get(gw)
             row = (
                 float(mechanics.expected_total_points),
                 tie_key,
@@ -260,19 +348,25 @@ def _rescore_candidate(
             if previous is None or row[0] > previous[0] + 1e-12 or (
                 abs(row[0] - previous[0]) <= 1e-12 and row[1] < previous[1]
             ):
-                best_by_gw[int(gw)] = row
+                best_by_gw[gw] = row
+
+    if enforce_current_bench_resilience and current_gw not in best_by_gw:
+        raise BenchResilienceError(
+            "candidate squad has no exact current-Gameweek XI satisfying governed bench resilience"
+        )
 
     weeks: list[ExactWeekDecision] = []
     objective = 0.0
     for offset, gw in enumerate(gameweeks):
-        if int(gw) not in best_by_gw:
+        gw = int(gw)
+        if gw not in best_by_gw:
             raise ValueError("candidate squad has no legal exact-mechanics XI")
-        _, _, mechanics, xi_ids = best_by_gw[int(gw)]
+        _, _, mechanics, xi_ids = best_by_gw[gw]
         discount = float(decay) ** offset
         objective += discount * float(mechanics.expected_total_points)
         weeks.append(
             ExactWeekDecision(
-                gw=int(gw),
+                gw=gw,
                 discount=discount,
                 xi_ids=xi_ids,
                 mechanics=mechanics,
@@ -292,21 +386,21 @@ def _authoritative_solution(
     generator: SquadSolution,
     selected: ExactCandidate,
 ) -> SquadSolution:
-    gw1 = selected.weeks[0]
+    current = selected.weeks[0]
     squad = generator.squad.copy()
-    xi = squad[squad["player_id"].astype(int).isin(gw1.xi_ids)].copy()
+    xi = squad[squad["player_id"].astype(int).isin(current.xi_ids)].copy()
     captain = squad[
-        squad["player_id"].astype(int).eq(gw1.mechanics.captain_id)
+        squad["player_id"].astype(int).eq(current.mechanics.captain_id)
     ].copy()
     vice = squad[
-        squad["player_id"].astype(int).eq(gw1.mechanics.vice_captain_id)
+        squad["player_id"].astype(int).eq(current.mechanics.vice_captain_id)
     ].copy()
     bench_ids = (
-        gw1.mechanics.bench_gk_id,
-        *gw1.mechanics.outfield_bench_order,
+        current.mechanics.bench_gk_id,
+        *current.mechanics.outfield_bench_order,
     )
     bench_order = {int(pid): rank for rank, pid in enumerate(bench_ids)}
-    bench = squad[~squad["player_id"].astype(int).isin(gw1.xi_ids)].copy()
+    bench = squad[~squad["player_id"].astype(int).isin(current.xi_ids)].copy()
     bench["exact_bench_rank"] = bench["player_id"].astype(int).map(bench_order)
     bench = bench.sort_values("exact_bench_rank")
     solver = dict(generator.solver)
@@ -345,12 +439,15 @@ def optimise_exact_horizon_decision(
     locked: set[int] | None = None,
     banned: set[int] | None = None,
     projection_col: str = "xp",
+    enforce_current_bench_resilience: bool = False,
 ) -> ExactHorizonDecision:
     """Select one authoritative squad using exact mechanics across the horizon.
 
     The MILP is deliberately a candidate generator. Distinct squads inside a
     transparent approximate-xP band are rescored with exhaustive legal XI choice,
-    captain/vice fallback and autosub order for every Gameweek.
+    captain/vice fallback and autosub order for every Gameweek. When current-deadline
+    resilience is enabled, both the MILP and exhaustive current-Gameweek mechanics
+    independently enforce the same governed bench policy.
     """
     if not gameweeks:
         raise ValueError("exact horizon decision requires at least one Gameweek")
@@ -384,13 +481,16 @@ def optimise_exact_horizon_decision(
             excluded_squads=excluded,
             solver_relative_gap=0.00001,
             solver_time_limit=120,
+            enforce_current_bench_resilience=enforce_current_bench_resilience,
         )
         if solution.status != "Optimal":
             terminal_solution = solution
-            # Only a mathematical infeasibility proves that the candidate universe
-            # has been exhausted. A time/iteration limit or solver error leaves the
-            # shortlist incomplete and must propagate as inconclusive.
-            shortlist_complete = solution.status == "Infeasible"
+            # Only an explicit HiGHS status-code-2 certificate proves that the
+            # candidate universe has been exhausted. Strings alone are insufficient.
+            shortlist_complete = certified_infeasible(
+                solution.status,
+                solution.solver,
+            )
             break
         if best_approximate is None:
             best_approximate = float(solution.objective)
@@ -398,16 +498,24 @@ def optimise_exact_horizon_decision(
         elif float(solution.objective) < shortlist_floor - 1e-9:
             shortlist_complete = True
             break
-        candidate = _rescore_candidate(
-            solution,
-            projections,
-            gameweeks,
-            decay=decay,
-            captain_eligible=captain_eligible,
-            xi_eligible=xi_eligible,
-            projection_col=projection_col,
-            generation_rank=rank,
-        )
+        try:
+            candidate = _rescore_candidate(
+                solution,
+                projections,
+                gameweeks,
+                decay=decay,
+                captain_eligible=captain_eligible,
+                xi_eligible=xi_eligible,
+                projection_col=projection_col,
+                generation_rank=rank,
+                enforce_current_bench_resilience=enforce_current_bench_resilience,
+            )
+        except BenchResilienceError:
+            # Defence in depth. The generator MILP should already guarantee this
+            # invariant when enabled; if exact mechanics disagrees, exclude the
+            # candidate and continue rather than publishing inconsistent mechanics.
+            excluded.append(set(solution.squad["player_id"].astype(int)))
+            continue
         generated.append((solution, candidate))
         excluded.append(set(candidate.squad_ids))
 
@@ -422,7 +530,15 @@ def optimise_exact_horizon_decision(
                 empty,
                 empty,
                 empty,
-                {"termination_reason": "candidate generation ended without result"},
+                {
+                    "status_code": None,
+                    "termination_reason": (
+                        "candidate generation ended without an exact mechanics result"
+                    ),
+                    "current_bench_resilience_enforced": bool(
+                        enforce_current_bench_resilience
+                    ),
+                },
             )
         return ExactHorizonDecision(
             terminal_solution.status,
@@ -439,18 +555,16 @@ def optimise_exact_horizon_decision(
     # If at least one valid candidate exists but the next generator call is
     # inconclusive, the best observed candidate is useful diagnostically but cannot
     # be certified as a complete shortlist. Keep the solution and surface the
-    # incompleteness via ``shortlist_complete=False`` and preserved solver metadata
-    # on the candidates. Production convergence gates must not promote that result as
-    # globally certified merely because exact mechanics were evaluated inside it.
+    # incompleteness via ``shortlist_complete=False`` and preserved solver metadata.
     selected_solution, selected = min(
         generated,
         key=lambda row: (-row[1].exact_objective, row[1].squad_ids),
     )
     authoritative = _authoritative_solution(selected_solution, selected)
-    if terminal_solution is not None and terminal_solution.status not in {
-        "Infeasible",
-        "Optimal",
-    }:
+    if terminal_solution is not None and not certified_infeasible(
+        terminal_solution.status,
+        terminal_solution.solver,
+    ):
         authoritative.solver.update(
             {
                 "shortlist_terminal_status": terminal_solution.status,
