@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from apex_fpl.data.news import TRUSTED_SOURCE_TIERS
+from apex_fpl.optimisation.bench_policy import CURRENT_BENCH_POLICY_COLUMN
 from apex_fpl.services.evidence_time import current_evidence_rows
 from apex_fpl.services.player_identity import resolve_source_identities
 from apex_fpl.services.specialist_disagreement import (
@@ -391,13 +392,18 @@ def evidence_eligibility(
     out["squad_evidence_eligible"] = squad_ok.astype(bool)
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
     out["captain_evidence_eligible"] = xi_ok.astype(bool)
+    # This marker is part of the production decision contract. Any optimiser that
+    # receives this governed surface can infer the current-deadline bench policy
+    # unless a future-only caller explicitly disables it.
+    out[CURRENT_BENCH_POLICY_COLUMN] = True
     report = {
         "contract": "apex-evidence-eligibility-v2",
-        "policy_version": 5,
+        "policy_version": 6,
         "policy": (
             "authoritative_adverse_plus_governed_hierarchy_squad_constraint_plus_"
-            "material_specialist_xi_constraint_pre_solve"
+            "material_specialist_xi_constraint_plus_current_bench_resilience"
         ),
+        "current_bench_resilience_required": True,
         "squad_ineligible_ids": sorted(
             out.loc[~squad_ok, "player_id"].astype(int).tolist()
         ),
