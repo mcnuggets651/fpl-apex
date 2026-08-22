@@ -6,6 +6,12 @@ from itertools import permutations, product
 import pandas as pd
 
 from apex_fpl.constants import XI_MAX, XI_MIN
+from apex_fpl.optimisation.bench_policy import (
+    admissible_outfield_orders,
+    credible_first_bench_ids,
+    playable_outfield_ids,
+    require_bench_resilience,
+)
 
 
 @dataclass(frozen=True)
@@ -269,8 +275,20 @@ def evaluate_gameweek_mechanics_ids(
     *,
     captain_multiplier: int = 2,
     captain_eligible: set[int] | None = None,
+    playable_bench_ids: set[int] | None = None,
+    first_bench_eligible_ids: set[int] | None = None,
 ) -> GameweekMechanics:
-    """Evaluate mechanics without dataframe construction in exhaustive searches."""
+    """Evaluate exact FPL mechanics for one submitted XI.
+
+    Bench resilience is an explicit current-deadline policy, not a hidden mechanics
+    rule. Callers that supply one resilience set must supply both; future/replay
+    callers may omit both and receive unconstrained legal FPL mechanics.
+    """
+    if (playable_bench_ids is None) != (first_bench_eligible_ids is None):
+        raise ValueError(
+            "playable_bench_ids and first_bench_eligible_ids must be supplied together"
+        )
+
     squad_set, xi_set = set(squad_ids), set(xi_ids)
     if len(squad_set) != 15 or len(xi_set) != 11 or not xi_set.issubset(squad_set):
         raise ValueError(
@@ -282,24 +300,41 @@ def evaluate_gameweek_mechanics_ids(
     if len(outfield) != 3 or len(bench_gk) != 1:
         raise ValueError("bench must contain one goalkeeper and three outfield players")
 
+    if playable_bench_ids is not None and first_bench_eligible_ids is not None:
+        require_bench_resilience(
+            outfield,
+            playable_ids=playable_bench_ids,
+            first_bench_ids=first_bench_eligible_ids,
+        )
+        orders = admissible_outfield_orders(
+            outfield,
+            first_bench_ids=first_bench_eligible_ids,
+        )
+    else:
+        orders = tuple(
+            tuple(int(pid) for pid in order)
+            for order in permutations(sorted(outfield))
+        )
+
     best_order: tuple[int, ...] | None = None
     best_autosub = -1.0
-    for order in permutations(sorted(outfield)):
+    for order in orders:
         value = _expected_autosub_ids(
             tuple(sorted(xi_set)),
             bench_ids,
             positions,
             xp,
             appearance,
-            outfield_order=tuple(int(pid) for pid in order),
+            outfield_order=order,
         )
         if value > best_autosub + 1e-12 or (
             abs(value - best_autosub) <= 1e-12
-            and (best_order is None or tuple(order) < best_order)
+            and (best_order is None or order < best_order)
         ):
             best_autosub = value
-            best_order = tuple(int(pid) for pid in order)
+            best_order = order
     assert best_order is not None
+
     captain, vice, captain_bonus = best_captain_vice_ids(
         tuple(sorted(xi_set)),
         xp,
@@ -328,61 +363,33 @@ def optimise_gameweek_mechanics(
     *,
     captain_multiplier: int = 2,
     captain_eligible: set[int] | None = None,
+    enforce_current_bench_resilience: bool = False,
 ) -> GameweekMechanics:
     """Optimise captain/vice and bench order for a fixed legal XI/squad."""
-    squad_ids = set(
-        pd.to_numeric(squad["player_id"], errors="coerce").dropna().astype(int)
+    squad_ids = tuple(
+        sorted(pd.to_numeric(squad["player_id"], errors="coerce").dropna().astype(int))
     )
-    xi_ids = set(pd.to_numeric(xi["player_id"], errors="coerce").dropna().astype(int))
-    if len(squad_ids) != 15 or len(xi_ids) != 11 or not xi_ids.issubset(squad_ids):
-        raise ValueError(
-            "mechanics optimisation requires a legal 15-player squad and 11-player XI"
-        )
-
-    bench = squad[~squad["player_id"].astype(int).isin(xi_ids)].copy()
-    outfield = [
-        int(r.player_id)
-        for r in bench.itertuples(index=False)
-        if str(r.position) != "GK"
-    ]
-    gk = [
-        int(r.player_id)
-        for r in bench.itertuples(index=False)
-        if str(r.position) == "GK"
-    ]
-    if len(outfield) != 3 or len(gk) != 1:
-        raise ValueError("bench must contain one goalkeeper and three outfield players")
-
-    best_order: tuple[int, ...] | None = None
-    best_autosub = -1.0
-    for order in permutations(sorted(outfield)):
-        value = expected_autosub_points(
-            xi,
-            bench,
-            xp,
-            appearance,
-            outfield_order=tuple(int(x) for x in order),
-        )
-        if value > best_autosub + 1e-12:
-            best_autosub = value
-            best_order = tuple(int(x) for x in order)
-    assert best_order is not None
-
-    captain, vice, captain_bonus = best_captain_vice(
-        xi,
+    xi_ids = tuple(
+        sorted(pd.to_numeric(xi["player_id"], errors="coerce").dropna().astype(int))
+    )
+    positions = {
+        int(row.player_id): str(row.position)
+        for row in squad[["player_id", "position"]].itertuples(index=False)
+    }
+    playable = playable_outfield_ids(squad) if enforce_current_bench_resilience else None
+    first = (
+        credible_first_bench_ids(squad)
+        if enforce_current_bench_resilience
+        else None
+    )
+    return evaluate_gameweek_mechanics_ids(
+        squad_ids,
+        xi_ids,
+        positions,
         xp,
         appearance,
         captain_multiplier=captain_multiplier,
         captain_eligible=captain_eligible,
-    )
-    xi_points = sum(max(float(xp.get(pid, 0.0)), 0.0) for pid in xi_ids)
-    return GameweekMechanics(
-        expected_xi_points=float(xi_points),
-        expected_autosub_points=float(best_autosub),
-        expected_captain_bonus=float(captain_bonus),
-        expected_total_points=float(xi_points + best_autosub + captain_bonus),
-        captain_id=int(captain),
-        vice_captain_id=int(vice),
-        bench_gk_id=int(gk[0]),
-        outfield_bench_order=best_order,
+        playable_bench_ids=playable,
+        first_bench_eligible_ids=first,
     )
