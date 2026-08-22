@@ -6,47 +6,8 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
 from apex_fpl.constants import SQUAD_COUNTS, XI_MAX, XI_MIN
+from apex_fpl.optimisation.solver_status import scipy_milp_metadata, scipy_milp_status
 from apex_fpl.optimisation.squad import SquadSolution
-
-
-def _solver_metadata(result, *, relative_gap: float, time_limit: int) -> dict:
-    fun = getattr(result, "fun", None)
-    dual = getattr(result, "mip_dual_bound", None)
-    return {
-        "success": bool(getattr(result, "success", False)),
-        "status_code": int(getattr(result, "status", -1)),
-        "termination_reason": str(getattr(result, "message", "unknown")),
-        "incumbent": None if fun is None or not np.isfinite(fun) else float(-fun),
-        "bound": None if dual is None or not np.isfinite(dual) else float(-dual),
-        "relative_gap": None
-        if getattr(result, "mip_gap", None) is None
-        else float(result.mip_gap),
-        "node_count": None
-        if getattr(result, "mip_node_count", None) is None
-        else int(result.mip_node_count),
-        "configured_relative_gap": float(relative_gap),
-        "time_limit_seconds": int(time_limit),
-    }
-
-
-def _solver_status(result) -> str:
-    """Map HiGHS/Scipy MILP termination to a non-lossy Apex status.
-
-    Scipy ``milp`` uses status 0=optimal, 1=iteration/time limit,
-    2=infeasible, 3=unbounded and 4=other. Historically Apex collapsed every
-    non-success into ``Infeasible``. That is unsafe: a timeout proves nothing about
-    mathematical feasibility and must remain visibly inconclusive.
-    """
-    if bool(getattr(result, "success", False)) and getattr(result, "x", None) is not None:
-        return "Optimal"
-    code = int(getattr(result, "status", -1))
-    if code == 2:
-        return "Infeasible"
-    if code == 1:
-        return "SolverLimit"
-    if code == 3:
-        return "Unbounded"
-    return "SolverError"
 
 
 def optimise_initial_horizon(
@@ -69,7 +30,12 @@ def optimise_initial_horizon(
     solver_relative_gap: float = 0.001,
     solver_time_limit: int = 90,
 ) -> SquadSolution:
-    """Optimise the initial squad over the complete planning horizon."""
+    """Optimise the initial squad over the complete planning horizon.
+
+    Input-contract failures are deliberately distinct from mathematical
+    infeasibility. Only an actual HiGHS status code 2 may leave this function as
+    ``Infeasible``.
+    """
     locked, banned = locked or set(), banned or set()
     if "squad_evidence_eligible" in players:
         banned = set(banned) | set(
@@ -80,9 +46,7 @@ def optimise_initial_horizon(
         )
     excluded_squads = excluded_squads or []
     captain_eligible = (
-        None
-        if captain_eligible is None
-        else {int(pid) for pid in captain_eligible}
+        None if captain_eligible is None else {int(pid) for pid in captain_eligible}
     )
     if xi_eligible is None and "xi_evidence_eligible" in players:
         xi_eligible = set(
@@ -95,8 +59,14 @@ def optimise_initial_horizon(
     if not gws:
         empty = players.iloc[0:0].copy()
         return SquadSolution(
-            "Infeasible", float("nan"), empty, empty, empty, empty, empty,
-            {"status_code": 2, "termination_reason": "no gameweeks supplied"},
+            "InputError",
+            float("nan"),
+            empty,
+            empty,
+            empty,
+            empty,
+            empty,
+            {"status_code": None, "termination_reason": "no gameweeks supplied"},
         )
 
     d = players.drop_duplicates("player_id").copy()
@@ -104,8 +74,14 @@ def optimise_initial_horizon(
     if d.empty:
         empty = d.iloc[0:0]
         return SquadSolution(
-            "Infeasible", float("nan"), empty, empty, empty, empty, empty,
-            {"status_code": 2, "termination_reason": "no eligible players"},
+            "InputError",
+            float("nan"),
+            empty,
+            empty,
+            empty,
+            empty,
+            empty,
+            {"status_code": None, "termination_reason": "no eligible players"},
         )
 
     club_col = "team" if "team" in d.columns else "team_name"
@@ -195,18 +171,14 @@ def optimise_initial_horizon(
         idx = [i for i in range(n) if d.loc[i, club_col] == team]
         add({s(i): 1.0 for i in idx}, -np.inf, max_per_team)
     for excluded in excluded_squads:
-        idx = [
-            i for i, pid in enumerate(pids) if pid in {int(x) for x in excluded}
-        ]
+        idx = [i for i, pid in enumerate(pids) if pid in {int(x) for x in excluded}]
         if len(idx) == 15:
             add({s(i): 1.0 for i in idx}, -np.inf, 14)
     for t in range(t_count):
         add({x(i, t): 1.0 for i in range(n)}, 11, 11)
         add({c(i, t): 1.0 for i in range(n)}, 1, 1)
         if captain_eligible is not None:
-            eligible_idx = [
-                i for i, pid in enumerate(pids) if pid in captain_eligible
-            ]
+            eligible_idx = [i for i, pid in enumerate(pids) if pid in captain_eligible]
             add({x(i, t): 1.0 for i in eligible_idx}, 2, np.inf)
         for pos in SQUAD_COUNTS:
             idx = [i for i in range(n) if d.loc[i, "position"] == pos]
@@ -263,10 +235,10 @@ def optimise_initial_horizon(
         ),
         options={"time_limit": time_limit, "mip_rel_gap": configured_gap},
     )
-    solver = _solver_metadata(
+    solver = scipy_milp_metadata(
         result, relative_gap=configured_gap, time_limit=time_limit
     )
-    status = _solver_status(result)
+    status = scipy_milp_status(result)
     if status != "Optimal":
         empty = d.iloc[0:0]
         return SquadSolution(
