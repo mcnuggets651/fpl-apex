@@ -6,6 +6,11 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
 from apex_fpl.constants import SQUAD_COUNTS, XI_MAX, XI_MIN
+from apex_fpl.optimisation.bench_policy import (
+    MINIMUM_PLAYABLE_OUTFIELD_BENCH,
+    credible_first_bench_ids,
+    playable_outfield_ids,
+)
 from apex_fpl.optimisation.solver_status import scipy_milp_metadata, scipy_milp_status
 from apex_fpl.optimisation.squad import SquadSolution
 
@@ -29,12 +34,18 @@ def optimise_initial_horizon(
     excluded_squads: list[set[int]] | None = None,
     solver_relative_gap: float = 0.001,
     solver_time_limit: int = 90,
+    enforce_current_bench_resilience: bool = False,
 ) -> SquadSolution:
     """Optimise the initial squad over the complete planning horizon.
 
     Input-contract failures are deliberately distinct from mathematical
     infeasibility. Only an actual HiGHS status code 2 may leave this function as
     ``Infeasible``.
+
+    ``enforce_current_bench_resilience`` is deliberately explicit. Production
+    initial-squad solves enable it for the submitted/current Gameweek only; replay
+    and generic optimisation callers are not silently coupled to a live-deadline
+    evidence policy.
     """
     locked, banned = locked or set(), banned or set()
     if "squad_evidence_eligible" in players:
@@ -186,6 +197,32 @@ def optimise_initial_horizon(
         for i in range(n):
             add({x(i, t): 1.0, s(i): -1.0}, -np.inf, 0)
             add({c(i, t): 1.0, x(i, t): -1.0}, -np.inf, 0)
+
+    if enforce_current_bench_resilience:
+        playable_ids = playable_outfield_ids(d)
+        first_bench_ids = credible_first_bench_ids(d)
+        playable_idx = [i for i, pid in enumerate(pids) if pid in playable_ids]
+        first_idx = [i for i, pid in enumerate(pids) if pid in first_bench_ids]
+        # Bench membership is exactly squad_i - XI_i in the submitted Gameweek.
+        add(
+            {
+                variable: coefficient
+                for i in playable_idx
+                for variable, coefficient in ((s(i), 1.0), (x(i, 0), -1.0))
+            },
+            float(MINIMUM_PLAYABLE_OUTFIELD_BENCH),
+            np.inf,
+        )
+        add(
+            {
+                variable: coefficient
+                for i in first_idx
+                for variable, coefficient in ((s(i), 1.0), (x(i, 0), -1.0))
+            },
+            1.0,
+            np.inf,
+        )
+
     if min_reference_objective is not None:
         ref_col = reference_projection_col or "xp"
         reference_values = values_for(ref_col)
@@ -237,6 +274,9 @@ def optimise_initial_horizon(
     )
     solver = scipy_milp_metadata(
         result, relative_gap=configured_gap, time_limit=time_limit
+    )
+    solver["current_bench_resilience_enforced"] = bool(
+        enforce_current_bench_resilience
     )
     status = scipy_milp_status(result)
     if status != "Optimal":
