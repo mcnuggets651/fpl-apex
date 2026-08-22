@@ -129,10 +129,13 @@ jobs:
           AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         run: |
+          set -o pipefail
+          mkdir -p reports
           python scripts/audit_max_ev_policy.py \
             --horizon 8 \
             --bundle-dir data/generated/shadow_decision_bundle \
-            --output reports/max_ev_policy_audit.json
+            --output reports/max_ev_policy_audit.json \
+            2>&1 | tee reports/max_ev_policy_failure.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -141,6 +144,7 @@ jobs:
             reports/projection_audit/
             reports/projection_truth/
             reports/max_ev_policy_audit.json
+            reports/max_ev_policy_failure.log
             reports/team_goal_ratings.csv
             reports/team_goal_surface.csv
             data/generated/shadow_decision_bundle/manifest.json
