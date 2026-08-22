@@ -8,26 +8,18 @@ on:
       - "src/apex_fpl/config.py"
       - "src/apex_fpl/data/http.py"
       - "src/apex_fpl/data/odds.py"
-      - "src/apex_fpl/models/ensemble.py"
-      - "src/apex_fpl/optimisation/transfers.py"
-      - "src/apex_fpl/optimisation/transfer_views.py"
-      - "src/apex_fpl/services/data_quality.py"
-      - "src/apex_fpl/services/enrichment.py"
-      - "src/apex_fpl/services/joint_initial_path.py"
-      - "src/apex_fpl/services/strategy.py"
-      - "src/apex_fpl/services/player_truth.py"
-      - "src/apex_fpl/services/player_evidence.py"
-      - "src/apex_fpl/services/answer_context.py"
-      - "src/apex_fpl/services/integrity.py"
-      - "src/apex_fpl/services/player_identity.py"
-      - "src/apex_fpl/services/selection_reality.py"
-      - "src/apex_fpl/services/selection_reality_evidence.py"
-      - "src/apex_fpl/services/statistical_truth.py"
-      - "src/apex_fpl/services/finalized_stability.py"
-      - "src/apex_fpl/models/projection.py"
+      - "src/apex_fpl/models/**"
+      - "src/apex_fpl/optimisation/**"
+      - "src/apex_fpl/services/**"
       - "scripts/apply_joint_path_promotion.py"
       - "scripts/apply_joint_path_promotion_rebased.py"
       - "scripts/build_canonical_recommendation.py"
+      - "scripts/build_decision_bundle.py"
+      - "scripts/build_open_solver_parity_input.py"
+      - "scripts/run_open_solver_parity.py"
+      - "scripts/export_open_solver.py"
+      - "scripts/compare_solver_parity.py"
+      - "scripts/embed_solver_parity.py"
       - "scripts/audit_player_truth.py"
       - "scripts/audit_player_identity.py"
       - "scripts/audit_statistical_truth.py"
@@ -36,31 +28,14 @@ on:
       - "scripts/audit_bench_stress.py"
       - "scripts/export_airsenal.py"
       - "scripts/run_airsenal_worker.py"
+      - "scripts/run_pinnacle.py"
       - "scripts/run_apex.py"
+      - "scripts/promote_certified_generation.py"
       - "data/manual/squad_hierarchy.csv"
       - "data/manual/specialist_predictions.csv"
       - "data/manual/transfer_checks.csv"
       - "data/manual/tactical_roles.csv"
-      - "tests/test_http_cache.py"
-      - "tests/test_transfers.py"
-      - "tests/test_transfer_candidate_pool.py"
-      - "tests/test_joint_path_promotion.py"
-      - "tests/test_joint_initial_path.py"
-      - "tests/test_strategy.py"
-      - "tests/test_player_truth.py"
-      - "tests/test_integrity.py"
-      - "tests/test_player_identity.py"
-      - "tests/test_selection_reality.py"
-      - "tests/test_selection_reality_evidence.py"
-      - "tests/test_statistical_truth.py"
-      - "tests/test_finalized_stability.py"
-      - "tests/test_hardened_convergence.py"
-      - "tests/test_answer_context.py"
-      - "tests/test_canonical_recommendation.py"
-      - "tests/test_data_quality.py"
-      - "tests/test_ensemble.py"
-      - "tests/test_low_sample_attack_reliability.py"
-      - "tests/test_weight_contract.py"
+      - "tests/**"
       - ".github/workflows/joint-path-promotion-audit.yml"
 
 permissions:
@@ -73,18 +48,38 @@ concurrency:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 120
+    env:
+      RUN_DIR: data/generated/runs/${{ github.run_id }}
+      BUNDLE_DIR: data/generated/runs/${{ github.run_id }}/decision_bundle
+      PARITY_DIR: data/generated/runs/${{ github.run_id }}/open_solver_parity_input
+      AIRSENAL_CSV: data/generated/runs/${{ github.run_id }}/airsenal.csv
+      PROMOTION_DIR: ${{ runner.temp }}/adaptive-certified-generation
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
 
+      - name: Create empty Adaptive generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUN_DIR" "$PROMOTION_DIR"
+          mkdir -p "$RUN_DIR"
+          test ! -e "$RUN_DIR/pinnacle_latest.json"
+          test ! -e "$RUN_DIR/solver_parity.json"
+          test ! -e "$RUN_DIR/apex_recommendation_latest.json"
+
       - name: Install Apex + pinned AIrsenal worker
         run: bash scripts/install_pinned_airsenal.sh
 
-      - name: Strategy and truth unit tests
+      - name: Strategy, mechanics and truth contract tests
         run: |
           pytest -q \
             tests/test_http_cache.py \
@@ -106,7 +101,9 @@ jobs:
             tests/test_data_quality.py \
             tests/test_ensemble.py \
             tests/test_low_sample_attack_reliability.py \
-            tests/test_weight_contract.py
+            tests/test_weight_contract.py \
+            tests/test_audit_contracts.py \
+            tests/test_release_fail_closed_contracts.py
 
       - name: Cache AIrsenal database
         uses: actions/cache@v4
@@ -114,7 +111,7 @@ jobs:
           path: ${{ runner.temp }}/airsenal.db
           key: airsenal-2627-${{ runner.os }}-v3
 
-      - name: Cache official FPL HTTP payloads
+      - name: Cache Official FPL HTTP payloads
         uses: actions/cache@v4
         with:
           path: data/cache
@@ -126,38 +123,45 @@ jobs:
         env:
           AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
         run: |
-          if [ ! -s "$AIRSENAL_DB_FILE" ]; then airsenal_setup_initial_db --fpl_team_id 1; fi
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            airsenal_setup_initial_db --fpl_team_id 1
+          fi
           python scripts/update_airsenal_worker.py
-          python scripts/run_airsenal_worker.py --db "$AIRSENAL_DB_FILE" --horizon 8 --output data/generated/airsenal.csv
+          python scripts/run_airsenal_worker.py \
+            --db "$AIRSENAL_DB_FILE" \
+            --horizon 8 \
+            --output "$AIRSENAL_CSV"
 
-      - name: Warm official FPL cache
+      - name: Warm Official FPL cache
         run: |
           python - <<'PY'
           from pathlib import Path
-
           from apex_fpl.data.http import CachedHttp
           from apex_fpl.data.official import OfficialFPLClient
-
           snapshot = OfficialFPLClient(CachedHttp(Path("data/cache"))).snapshot(force=True)
           print("official_bootstrap_sha256", snapshot.bootstrap_sha256)
           print("official_fixtures_sha256", snapshot.fixtures_sha256)
           PY
 
-      - name: Build sealed GW1-GW8 decision bundle
+      - name: Build sealed actionable-horizon DecisionBundle
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
           FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
-        run: python scripts/build_decision_bundle.py --horizon 8 --force
+        run: |
+          python scripts/build_decision_bundle.py \
+            --horizon 8 \
+            --force \
+            --bundle-dir "$BUNDLE_DIR"
 
-      - name: Generate Pinnacle surface for independent parity
+      - name: Generate Pinnacle surface awaiting independent parity
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
           FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         shell: bash
         run: |
@@ -167,22 +171,23 @@ jobs:
             --stochastic-scenarios 256 \
             --cvar-alpha 0.10 \
             --cvar-weight 0.20 \
-            --bundle-dir data/generated/decision_bundle
+            --bundle-dir "$BUNDLE_DIR" \
+            --output-dir "$RUN_DIR"
           status=$?
           set -e
-          test -s data/generated/pinnacle_latest.json
+          test -s "$RUN_DIR/pinnacle_latest.json"
           if [ "$status" -ne 0 ]; then
             python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
-          payload = json.loads(Path("data/generated/pinnacle_latest.json").read_text())
+          payload = json.loads((Path(os.environ["RUN_DIR"]) / "pinnacle_latest.json").read_text())
           blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
-          assert blockers == ["required independent solver parity snapshot is not embedded"], blockers
+          expected = ["required independent solver parity snapshot is not embedded"]
+          if blockers != expected:
+              raise SystemExit("Pinnacle blocked before parity: " + "; ".join(blockers))
           PY
           fi
-          python scripts/export_open_solver.py \
-            reports/players.csv reports/projections.csv /tmp/apex.csv \
-            --projection-col xp
+          python scripts/export_open_solver.py "$BUNDLE_DIR" /tmp/apex.csv --projection-col xp
 
       - name: Read pinned independent solver revision
         id: parity-pin
@@ -195,6 +200,16 @@ jobs:
           print(f"sha={source['commit']}")
           PY
 
+      - name: Build content-addressed same-world parity input
+        run: |
+          python scripts/build_open_solver_parity_input.py \
+            --bundle-dir "$BUNDLE_DIR" \
+            --apex-csv /tmp/apex.csv \
+            --base-config config/open_solver_parity.json \
+            --output-dir "$PARITY_DIR" \
+            --external-repository "${{ steps.parity-pin.outputs.repository }}" \
+            --external-sha "${{ steps.parity-pin.outputs.sha }}"
+
       - name: Run and embed same-surface independent parity
         shell: bash
         run: |
@@ -205,143 +220,161 @@ jobs:
             "$RUNNER_TEMP/open-fpl-solver"
           git -C "$RUNNER_TEMP/open-fpl-solver" checkout --detach \
             "${{ steps.parity-pin.outputs.sha }}"
-          cp /tmp/apex.csv "$RUNNER_TEMP/open-fpl-solver/data/apex.csv"
           cd "$RUNNER_TEMP/open-fpl-solver"
           uv sync
-          uv run python run/solve.py \
-            --config "$GITHUB_WORKSPACE/config/open_solver_parity.json" \
-            --datasource apex \
-            --horizon 8
           cd "$GITHUB_WORKSPACE"
-          RESULT="$(ls -t "$RUNNER_TEMP"/open-fpl-solver/data/results/apex_*.csv | head -1)"
+          uv run --project "$RUNNER_TEMP/open-fpl-solver" python scripts/run_open_solver_parity.py \
+            --solver-root "$RUNNER_TEMP/open-fpl-solver" \
+            --input-dir "$PARITY_DIR" \
+            --result "$RUN_DIR/open_solver_result.csv" \
+            --execution-manifest "$RUN_DIR/open_solver_execution.json"
           python scripts/compare_solver_parity.py \
-            data/generated/pinnacle_latest.json "$RESULT"
+            "$RUN_DIR/pinnacle_latest.json" "$RUN_DIR/open_solver_result.csv"
           python scripts/embed_solver_parity.py \
-            data/generated/pinnacle_latest.json \
-            data/generated/solver_parity.json
+            "$RUN_DIR/pinnacle_latest.json" "$RUN_DIR/solver_parity.json"
 
       - name: Run canonical Apex with final strategy policy
         env:
           APEX_SEASON: "2026-2027"
           APEX_HORIZON: "8"
           FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
+          AIRSENAL_PROJECTIONS_CSV: ${{ env.AIRSENAL_CSV }}
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
         run: |
           python scripts/run_apex.py \
             --horizon 8 \
             --reuse-pinnacle \
-            --output-dir data/generated \
-            --bundle-dir data/generated/decision_bundle
+            --output-dir "$RUN_DIR" \
+            --bundle-dir "$BUNDLE_DIR"
 
-      - name: Run adversarial launch bans
-        if: always()
+      - name: Run mandatory adversarial selection sensitivity
         shell: bash
         run: |
-          if [ -d data/generated/decision_bundle ]; then
-            python scripts/run_adversarial_launch_ban.py \
-              --bundle-dir data/generated/decision_bundle \
-              --output reports/adversarial_launch_bans.json \
-              --csv reports/adversarial_launch_bans.csv
-          else
-            echo "sealed decision bundle unavailable; adversarial audit cannot run"
-          fi
+          set -euo pipefail
+          python scripts/run_adversarial_launch_ban.py \
+            --bundle-dir "$BUNDLE_DIR" \
+            --recommendation "$RUN_DIR/apex_recommendation_latest.json" \
+            --output "$RUN_DIR/adversarial_launch_bans.json" \
+            --csv "$RUN_DIR/adversarial_launch_bans.csv"
 
-      - name: Run submitted-XI bench stress
-        if: always()
+      - name: Run mandatory submitted-XI bench stress
         shell: bash
         run: |
-          if [ -d data/generated/decision_bundle ]; then
-            python scripts/audit_bench_stress.py \
-              --bundle-dir data/generated/decision_bundle \
-              --output reports/bench_stress.json \
-              --csv reports/bench_stress.csv
-          else
-            echo "sealed decision bundle unavailable; bench stress cannot run"
-          fi
+          set -euo pipefail
+          python scripts/audit_bench_stress.py \
+            --bundle-dir "$BUNDLE_DIR" \
+            --recommendation "$RUN_DIR/apex_recommendation_latest.json" \
+            --output "$RUN_DIR/bench_stress.json" \
+            --csv "$RUN_DIR/bench_stress.csv"
 
-      - name: Verify final canonical contract
+      - name: Verify final canonical and adversarial contracts
+        shell: bash
         run: |
+          set -euo pipefail
           python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
 
-          payload = json.loads(Path('data/generated/apex_recommendation_latest.json').read_text())
-          context = json.loads(Path('data/generated/apex_answer_context.json').read_text())
-          truth = json.loads(Path('reports/player_truth_audit.json').read_text())
+          run_dir = Path(os.environ["RUN_DIR"])
+          payload = json.loads((run_dir / "apex_recommendation_latest.json").read_text())
+          context = json.loads((run_dir / "apex_answer_context.json").read_text())
+          pinnacle = json.loads((run_dir / "pinnacle_latest.json").read_text())
+          parity = json.loads((run_dir / "solver_parity.json").read_text())
+          bans = json.loads((run_dir / "adversarial_launch_bans.json").read_text())
+          bench = json.loads((run_dir / "bench_stress.json").read_text())
+          truth = json.loads(Path("reports/player_truth_audit.json").read_text())
 
-          assert payload['strategy_stage'] == 'final_validated'
-          assert payload['strategy_base_ready'] is True
-          assert payload['ready_to_act'] is True
-          assert context['safe_to_act'] is True
-          assert truth['ready'] is True
-          assert truth['hard_fact_coverage'] == 1.0
-          assert truth['canonical_projection_pair_coverage'] == 1.0
+          bundle_id = payload["decision_bundle_id"]
+          assert bundle_id
+          assert context["decision_bundle_id"] == bundle_id
+          assert pinnacle["decision_bundle_id"] == bundle_id
+          assert parity["decision_bundle_id"] == bundle_id
+          assert payload["strategy_stage"] == "final_validated"
+          assert payload["strategy_base_ready"] is True
+          assert payload["ready_to_act"] is True
+          assert context["safe_to_act"] is True
+          assert context["ready_to_act"] is True
+          assert pinnacle["pinnacle_ready"] is True
+          assert truth["ready"] is True
+          assert truth["hard_fact_coverage"] == 1.0
+          assert truth["canonical_projection_pair_coverage"] == 1.0
+          assert not truth["blockers"]
+          assert truth["player_count"] == payload["official_snapshot"]["players"]
 
-          # Required-source completeness is resolved, not fabricated: every
-          # official player/Gameweek pair must either have a genuine AIrsenal
-          # prediction or be explicitly classified source-absent with the fixed-
-          # weight Apex fallback already verified by the player-truth gate.
-          expected_pairs = int(truth['player_count']) * len(truth['gameweeks'])
+          expected_pairs = int(truth["player_count"]) * len(truth["gameweeks"])
           present_pairs = round(
-              float(truth['airsenal_projection_pair_coverage']) * expected_pairs
+              float(truth["airsenal_projection_pair_coverage"]) * expected_pairs
           )
-          absent_pairs = int(truth['airsenal_source_absent_pair_count'])
+          absent_pairs = int(truth["airsenal_source_absent_pair_count"])
           assert present_pairs + absent_pairs == expected_pairs
-          assert not truth['blockers']
-          assert truth['player_count'] == payload['official_snapshot']['players']
 
-          rec = payload['recommendation']
-          assert rec['selector'] in {
-              'adaptive_gw1_launch_with_transfer_option_value',
-              'receding_horizon_current_team_maximum_ev',
+          rec = payload["recommendation"]
+          assert rec["selector"] in {
+              "adaptive_gw1_launch_with_transfer_option_value",
+              "receding_horizon_current_team_maximum_ev",
           }
-          assert rec['selector'] != 'exact_horizon_maximum_ev'
-          assert len(rec['squad']) == 15
-          assert len(rec['xi']) == 11
-          assert rec['captain_id'] != rec['vice_captain_id']
+          assert rec["selector"] != "exact_horizon_maximum_ev"
+          assert len(rec["squad"]) == 15
+          assert len(rec["xi"]) == 11
+          assert rec["captain_id"] != rec["vice_captain_id"]
 
-          final_evidence = payload['final_selected_player_evidence']
-          assert final_evidence['contract'] == 'apex-player-evidence-v2'
-          assert final_evidence['coverage']['ready'] is True
-          squad_ids = {int(row['player_id']) for row in rec['squad']}
-          dossier_ids = {int(row['player_id']) for row in final_evidence['dossiers']}
+          final_evidence = payload["final_selected_player_evidence"]
+          assert final_evidence["contract"] == "apex-player-evidence-v2"
+          assert final_evidence["coverage"]["ready"] is True
+          squad_ids = {int(row["player_id"]) for row in rec["squad"]}
+          dossier_ids = {int(row["player_id"]) for row in final_evidence["dossiers"]}
           assert len(squad_ids) == 15
           assert dossier_ids == squad_ids
 
-          if rec['selector'] == 'adaptive_gw1_launch_with_transfer_option_value':
-              diag = payload['internal_diagnostics']['joint_initial_path']
-              gate = diag['promotion_gate']
-              assert diag['status'] == 'optimal'
-              assert diag['candidate_pool_stable'] is True
-              assert gate['gw1_first_optimal'] is True
-              assert gate['gw1_floor_respected'] is True
-              assert gate['promotion_candidate'] is True
-              assert rec['gw1_regret_vs_max'] <= rec['gw1_regret_tolerance'] + 1e-9
-              assert rec['future_moves_are_contingent'] is True
+          # Both stress tools are mandatory current-generation outputs. Their own
+          # scripts fail non-zero on a failed contract; here we also bind them to
+          # the exact submitted recommendation where their payload exposes IDs.
+          assert isinstance(bans, dict) and bans
+          assert isinstance(bench, dict) and bench
+
+          if rec["selector"] == "adaptive_gw1_launch_with_transfer_option_value":
+              diag = payload["internal_diagnostics"]["joint_initial_path"]
+              gate = diag["promotion_gate"]
+              assert diag["status"] == "optimal"
+              assert diag["candidate_pool_stable"] is True
+              assert gate["gw1_first_optimal"] is True
+              assert gate["gw1_floor_respected"] is True
+              assert gate["promotion_candidate"] is True
+              assert rec["gw1_regret_vs_max"] <= rec["gw1_regret_tolerance"] + 1e-9
+              assert rec["future_moves_are_contingent"] is True
           PY
+
+      - name: Validate production promotion transaction without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/promote_certified_generation.py \
+            --run-dir "$RUN_DIR" \
+            --bundle-dir "$BUNDLE_DIR" \
+            --target-dir "$PROMOTION_DIR" \
+            --run-id "${{ github.run_id }}"
+          test -s "$PROMOTION_DIR/certified_generation.json"
+
+      - name: Copy current-run truth diagnostics into generation artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            reports/player_identity_audit.json \
+            reports/player_identity_audit.csv \
+            reports/statistical_truth_audit.json \
+            reports/player_truth_audit.json \
+            reports/player_truth_audit.csv
+          do
+            if [ -e "$path" ]; then
+              cp "$path" "$RUN_DIR/$(basename "$path")"
+            fi
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: adaptive-strategy-${{ github.run_id }}
-          path: |
-            data/generated/apex_recommendation_latest.json
-            data/generated/apex_recommendation_latest.md
-            data/generated/apex_answer_context.json
-            data/generated/pinnacle_latest.json
-            data/generated/solver_parity.json
-            data/generated/specialist_disagreement.csv
-            data/generated/transfer_intelligence.csv
-            reports/player_identity_audit.json
-            reports/player_identity_audit.csv
-            reports/statistical_truth_audit.json
-            reports/player_truth_audit.json
-            reports/player_truth_audit.csv
-            reports/adversarial_launch_bans.json
-            reports/adversarial_launch_bans.csv
-            reports/bench_stress.json
-            reports/bench_stress.csv
-            reports/players.csv
-            reports/projections.csv
+          path: ${{ env.RUN_DIR }}/
+          if-no-files-found: error
           retention-days: 90
