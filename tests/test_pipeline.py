@@ -54,9 +54,11 @@ def _snapshot():
         {"id": 2, "finished": False},
     ])
     fixtures = []
+    fixture_id = 1
     for gw in [1, 2]:
         for h, a in [(1, 2), (3, 4), (5, 6), (7, 8)]:
-            fixtures.append({"event": gw, "team_h": h, "team_a": a})
+            fixtures.append({"id": fixture_id, "event": gw, "team_h": h, "team_a": a})
+            fixture_id += 1
     return OfficialSnapshot(players, teams, pd.DataFrame(fixtures), events, {})
 
 
