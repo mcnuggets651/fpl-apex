@@ -24,6 +24,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from apex_fpl.config import load_settings
 from apex_fpl.data.team_mapping import canonical_team
@@ -44,13 +46,32 @@ BLEND_GRID = (0.0, 0.25, 0.50, 0.75, 1.0)
 HOME_GOALS_BASELINE = 1.55
 AWAY_GOALS_BASELINE = 1.25
 
+_RETRY = Retry(
+    total=4,
+    connect=4,
+    read=4,
+    status=4,
+    backoff_factor=0.5,
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=frozenset({"GET"}),
+    raise_on_status=False,
+)
+_SESSION = requests.Session()
+_SESSION.mount("https://", HTTPAdapter(max_retries=_RETRY))
+
 
 def _raw_url(ref: str, path: str) -> str:
     return f"https://raw.githubusercontent.com/olbauday/FPL-Core-Insights/{ref}/{path}"
 
 
 def _read_csv(url: str) -> pd.DataFrame:
-    response = requests.get(url, timeout=45)
+    """Read a pinned holdout CSV with bounded transport retries and fail closed.
+
+    Network resets and retriable HTTP status codes may be retried, but a final
+    transport failure, non-retriable HTTP failure or malformed CSV is still fatal.
+    Validation evidence is never fabricated or silently replaced with stale data.
+    """
+    response = _SESSION.get(url, timeout=(15, 45))
     response.raise_for_status()
     return pd.read_csv(io.StringIO(response.text))
 
