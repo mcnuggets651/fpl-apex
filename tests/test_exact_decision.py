@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from apex_fpl.config import load_settings
 from apex_fpl.optimisation.exact_decision import optimise_exact_horizon_decision
 
 
@@ -58,6 +59,9 @@ def test_exact_horizon_decision_reconciles_and_is_deterministic() -> None:
     assert len(first.solution.xi) == 11
     assert len(first.candidates) == 2
     assert len({candidate.squad_ids for candidate in first.candidates}) == 2
+    # Reaching the resource ceiling is never evidence that the governed objective
+    # band was exhausted. Production readiness must remain fail-closed in this case.
+    assert first.shortlist_complete is False
     assert first.solution.objective == pytest.approx(
         sum(
             week.discount * week.mechanics.expected_total_points
@@ -73,6 +77,14 @@ def test_exact_horizon_decision_reconciles_and_is_deterministic() -> None:
     assert first.solution.solver["authoritative_objective"] == (
         "exact_horizon_fpl_mechanics"
     )
+
+
+def test_production_exact_search_budget_exceeds_live_failed_ceiling() -> None:
+    settings = load_settings("config/apex.yaml")
+    # The 2026-08-22 GW2-GW9 production surface still had admissible candidates
+    # after rank 16. Preserve enough headroom while retaining fail-closed semantics
+    # if the larger resource ceiling is ever reached.
+    assert settings.exact_candidate_limit >= 64
 
 
 def test_exact_horizon_rejects_invalid_candidate_controls() -> None:
