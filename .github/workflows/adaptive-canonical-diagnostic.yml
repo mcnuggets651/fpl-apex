@@ -6,6 +6,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/adaptive-canonical-diagnostic.yml"
+      - ".github/workflows/joint-path-promotion-audit.yml"
+      - ".github/workflows/production-readiness.yml"
       - "scripts/run_apex.py"
       - "scripts/run_pinnacle.py"
       - "scripts/export_open_solver.py"
@@ -16,6 +18,13 @@ on:
       - "scripts/apply_joint_path_promotion.py"
       - "scripts/apply_joint_path_promotion_rebased.py"
       - "scripts/certify_release_generation.py"
+      - "scripts/audit_inseason_action_sensitivity.py"
+      - "scripts/audit_bench_stress.py"
+      - "scripts/run_adversarial_launch_ban.py"
+      - "scripts/certify_adversarial_launch_ban.py"
+      - "src/apex_fpl/optimisation/transfers.py"
+      - "src/apex_fpl/optimisation/transfer_views.py"
+      - "src/apex_fpl/services/release_profile.py"
       - "src/apex_fpl/services/finalized_stability.py"
       - "src/apex_fpl/services/cached_launch.py"
       - "src/apex_fpl/services/selection_reality.py"
@@ -23,6 +32,9 @@ on:
       - "src/apex_fpl/services/answer_context.py"
       - "tests/test_strategy.py"
       - "tests/test_inseason_answer_contract.py"
+      - "tests/test_release_profile.py"
+      - "tests/test_inseason_action_sensitivity.py"
+      - "tests/test_bench_stress_contract.py"
       - "tests/test_release_generation_certificate.py"
       - "data/manual/specialist_predictions.csv"
       - "data/manual/squad_hierarchy.csv"
@@ -46,6 +58,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -64,11 +77,14 @@ jobs:
       - name: Install Apex + pinned AIrsenal worker
         run: bash scripts/install_pinned_airsenal.sh
 
-      - name: Release certifier contract tests
+      - name: Release-profile contract tests
         run: |
           pytest -q \
             tests/test_strategy.py \
             tests/test_inseason_answer_contract.py \
+            tests/test_release_profile.py \
+            tests/test_inseason_action_sensitivity.py \
+            tests/test_bench_stress_contract.py \
             tests/test_release_generation_certificate.py
 
       - name: Cache AIrsenal database
@@ -209,7 +225,7 @@ jobs:
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Certify adversarial, bench-stress, mechanics and promotion gates
+      - name: Certify lifecycle-specific sensitivity, mechanics and promotion
         if: steps.canonical.outputs.exit_code == '0'
         run: |
           python scripts/certify_release_generation.py \
@@ -263,7 +279,12 @@ jobs:
               "reality_blockers": reality.get("blockers") or [],
               "reality_warnings": reality.get("warnings") or [],
               "release_certificate": release.get("contract"),
-              "adversarial_certificate": release.get("adversarial_audit_complete"),
+              "release_ready": release.get("ready"),
+              "release_lifecycle": release.get("lifecycle"),
+              "release_gates": release.get("gates") or {},
+              "release_blockers": release.get("blockers") or [],
+              "release_warnings": release.get("warnings") or [],
+              "sensitivity_contract": (release.get("sensitivity") or {}).get("contract"),
               "bench_stress_certificate": release.get("bench_stress_fixed_submission"),
               "dry_run_promotion_certificate": release.get("dry_run_promotion_validated"),
           }
