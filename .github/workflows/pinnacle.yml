@@ -255,7 +255,8 @@ jobs:
         env:
           APEX_SEASON: "2026-2027"
           FPL_ENTRY_ID: "63984"
-        run: "$APEX_CORE_PYTHON" scripts/update_learning_archive.py
+        run: |
+          "$APEX_CORE_PYTHON" scripts/update_learning_archive.py
 
       - name: Seal atomic workflow packet
         if: always()
