@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from typing import Iterable, Mapping
+from urllib.parse import urlparse
 
 from .canonical import canonical_sha256
 from .ids import RuleSetId
@@ -11,6 +12,8 @@ from .ids import RuleSetId
 
 JsonScalar = str | int | bool | None
 JsonValue = JsonScalar | tuple["JsonValue", ...] | tuple[tuple[str, "JsonValue"], ...]
+OFFICIAL_RULE_HOSTS = frozenset({"www.premierleague.com", "premierleague.com", "fantasy.premierleague.com"})
+FPL_POSITIONS = frozenset({"GK", "DEF", "MID", "FWD"})
 
 
 def _freeze(value: object) -> JsonValue:
@@ -60,8 +63,11 @@ class OfficialRuleSource:
                 raise ValueError(f"OfficialRuleSource {field_name} cannot be empty")
         if self.publisher != "Premier League":
             raise ValueError("production RuleSet sources must be official Premier League sources")
-        if not self.url.startswith("https://"):
-            raise ValueError("RuleSet source URL must be HTTPS")
+        parsed = urlparse(self.url)
+        if parsed.scheme != "https" or parsed.hostname not in OFFICIAL_RULE_HOSTS:
+            raise ValueError(
+                "RuleSet source URL must be HTTPS on an approved Premier League/FPL host"
+            )
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -206,18 +212,27 @@ class RuleSet:
         if not (len(positions) == len(clubs) == len(prices) == squad_size):
             errors.append(f"squad must contain exactly {squad_size} players")
             return tuple(errors)
+        unknown_positions = sorted(set(positions) - FPL_POSITIONS)
+        if unknown_positions:
+            errors.append(f"squad contains unknown positions: {unknown_positions}")
         expected = self.mapping("FPL-SQUAD-POSITIONS-001")
         for position, count in expected.items():
             actual = sum(item == position for item in positions)
             if actual != int(count):
                 errors.append(f"squad {position} count {actual} != {count}")
-        max_club = self.integer("FPL-SQUAD-MAX-CLUB-001")
-        for club in set(clubs):
-            actual = sum(item == club for item in clubs)
-            if actual > max_club:
-                errors.append(f"club {club} has {actual} players; max is {max_club}")
-        if any(isinstance(price, bool) or not isinstance(price, int) for price in prices):
-            errors.append("all squad prices must be integer tenths")
+        if any(isinstance(club, bool) or not isinstance(club, int) or club <= 0 for club in clubs):
+            errors.append("all squad club IDs must be positive integers")
+        else:
+            max_club = self.integer("FPL-SQUAD-MAX-CLUB-001")
+            for club in set(clubs):
+                actual = sum(item == club for item in clubs)
+                if actual > max_club:
+                    errors.append(f"club {club} has {actual} players; max is {max_club}")
+        if any(
+            isinstance(price, bool) or not isinstance(price, int) or price <= 0
+            for price in prices
+        ):
+            errors.append("all squad prices must be positive integer tenths")
         elif sum(prices) > self.integer("FPL-SQUAD-BUDGET-TENTHS-001"):
             errors.append("squad exceeds official budget")
         return tuple(errors)
@@ -229,6 +244,9 @@ class RuleSet:
         if len(positions) != xi_size:
             errors.append(f"lineup must contain exactly {xi_size} players")
             return tuple(errors)
+        unknown_positions = sorted(set(positions) - FPL_POSITIONS)
+        if unknown_positions:
+            errors.append(f"lineup contains unknown positions: {unknown_positions}")
         minimums = self.mapping("FPL-XI-POSITION-MIN-001")
         maximums = self.mapping("FPL-XI-POSITION-MAX-001")
         for position in ("GK", "DEF", "MID", "FWD"):
