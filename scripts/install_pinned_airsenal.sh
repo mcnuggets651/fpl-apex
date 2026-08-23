@@ -65,12 +65,14 @@ if [ -n "${GITHUB_ENV:-}" ]; then
   {
     echo "AIRSENAL_WORKER_PYTHON=$worker_python"
     echo "AIRSENAL_WORKER_BIN=$worker_bin"
+    echo "AIRSENAL_WORKER_CHECKOUT=$checkout"
     echo "AIRSENAL_WORKER_SOURCE_SHA=$AIRSENAL_SHA"
     echo "AIRSENAL_WORKER_UV_LOCK=$checkout/uv.lock"
   } >> "$GITHUB_ENV"
 else
   printf 'AIRSENAL_WORKER_PYTHON=%s\n' "$worker_python"
   printf 'AIRSENAL_WORKER_BIN=%s\n' "$worker_bin"
+  printf 'AIRSENAL_WORKER_CHECKOUT=%s\n' "$checkout"
   printf 'AIRSENAL_WORKER_SOURCE_SHA=%s\n' "$AIRSENAL_SHA"
   printf 'AIRSENAL_WORKER_UV_LOCK=%s\n' "$checkout/uv.lock"
 fi
