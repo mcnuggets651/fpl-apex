@@ -169,9 +169,8 @@ def test_manager_snapshot_identity_changes_when_official_source_bytes_change(tmp
         store=store,
     )
     changed = _urls()
-    changed_history = dict(HISTORY)
-    changed_history["current"] = [dict(HISTORY["current"][0], bank=246)]
-    changed[f"{FPL_API_BASE}/entry/{ENTRY_ID}/history/"] = _bytes(changed_history)
+    changed_summary = dict(SUMMARY, name="Apex changed")
+    changed[f"{FPL_API_BASE}/entry/{ENTRY_ID}/"] = _bytes(changed_summary)
     second = acquire_official_manager_public_data(
         entry_id=ENTRY_ID,
         published_gameweek=GW,
