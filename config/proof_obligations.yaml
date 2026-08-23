@@ -30,6 +30,16 @@ proof_obligations:
     release_policy: REQUIRED
     owner: control.release_registry
 
+  - proof_id: PO-GLOBAL-WORLD-SEAL-001
+    claim: Every GlobalWorld is derived from retained immutable raw captures and can be replayed without network access.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: global_world
+    required_evidence: [RawCapture_manifest, raw_sha256, GlobalWorldId, sealed_world_manifest]
+    required_tests: [test_same_source_bytes_produce_same_world_across_different_acquisition_runs, test_replay_requires_no_transport_and_sealed_transport_rejects_network, test_corrupted_raw_capture_is_detected_during_replay]
+    failure_consequence: Block V2 world use; acquisition lineage or world seal is not provable.
+    release_policy: REQUIRED
+    owner: acquisition.sealed_world
+
   - proof_id: PO-MANAGER-STATE-001
     claim: In-season financial legality is based on an exact-enough current manager state.
     proof_class: FORMAL_INVARIANT
