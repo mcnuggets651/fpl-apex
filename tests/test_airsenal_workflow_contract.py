@@ -24,6 +24,9 @@ def test_production_workflows_do_not_require_manager_transaction_state():
 def test_scheduled_airsenal_workflow_uses_isolated_canonical_horizon_wrapper():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "airsenal.yml"
     workflow = path.read_text(encoding="utf-8")
+    installer = (path.parents[2] / "scripts/install_pinned_airsenal.sh").read_text(
+        encoding="utf-8"
+    )
 
     assert '"$AIRSENAL_WORKER_PYTHON" "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py"' in workflow
     assert "--horizon 8" in workflow
@@ -32,9 +35,9 @@ def test_scheduled_airsenal_workflow_uses_isolated_canonical_horizon_wrapper():
     assert "Export genuine AIrsenal forecast by official FPL ID" not in workflow
     assert "contents: read" in workflow
     assert "git push origin HEAD:main" not in workflow
-    assert "uv sync --frozen" in (path.parents[2] / "scripts/install_pinned_airsenal.sh").read_text(
-        encoding="utf-8"
-    )
+    assert "uv.lock" in installer
+    assert "--frozen" in installer
+    assert "--python 3.14.7" in installer
 
 
 def test_unified_artifact_is_sealed_before_runtime_release_is_staged():
