@@ -1,6 +1,16 @@
 """Dependency-free constitutional core for Apex V2."""
 
 from .canonical import canonical_json_bytes, canonical_sha256
+from .identity import (
+    IdentityIntegrityError,
+    IdentityRegistry,
+    IdentityResolution,
+    IdentityResolutionState,
+    IdentityWitness,
+    OfficialPlayerId,
+    OfficialPlayerIdentity,
+    PersonLink,
+)
 from .ids import (
     BundleId,
     DecisionInputId,
@@ -8,8 +18,10 @@ from .ids import (
     ForecastId,
     GlobalWorldId,
     ManagerStateId,
+    PersonId,
     RawCaptureId,
     ReleaseId,
+    RuleSetId,
     RunId,
     ScenarioSetId,
 )
@@ -22,6 +34,7 @@ from .proofs import (
     ReleaseCertificate,
     ReleasePolicy,
 )
+from .rules import OfficialRuleSource, RuleDefinition, RuleSet
 from .world import GlobalWorld, WorldSource
 
 __all__ = [
@@ -33,7 +46,17 @@ __all__ = [
     "ForecastId",
     "GlobalWorld",
     "GlobalWorldId",
+    "IdentityIntegrityError",
+    "IdentityRegistry",
+    "IdentityResolution",
+    "IdentityResolutionState",
+    "IdentityWitness",
     "ManagerStateId",
+    "OfficialPlayerId",
+    "OfficialPlayerIdentity",
+    "OfficialRuleSource",
+    "PersonId",
+    "PersonLink",
     "ProofClass",
     "ProofObligation",
     "ProofStatus",
@@ -41,6 +64,9 @@ __all__ = [
     "ReleaseCertificate",
     "ReleaseId",
     "ReleasePolicy",
+    "RuleDefinition",
+    "RuleSet",
+    "RuleSetId",
     "RunId",
     "ScenarioSetId",
     "WorldSource",
