@@ -4,6 +4,16 @@
 - **INV-IMMUTABLE-RELEASE** — a release record and referenced artifact bytes cannot mutate after identity is assigned.
 - **INV-RUNTIME-CONTENT-IDENTITY** — qualified runtime identity is content based, not branch/tag/environment based.
 - **INV-NETWORK-ABOVE-SEAL** — forecast, decision and assurance consume sealed state and cannot fetch new facts.
+- **INV-RAW-CAPTURE-RETENTION** — every decision-global external response used by V2 is retained byte-for-byte under content identity.
+- **INV-DETERMINISTIC-GLOBAL-WORLD** — identical retained semantic source bytes and schemas produce the same GlobalWorldId.
+- **INV-NO-NETWORK-AFTER-SEAL** — sealed-world replay exposes no HTTP or clock port.
+- **INV-GLOBAL-WORLD-MANAGER-NEUTRAL** — GlobalWorld cannot contain entry-specific squad, financial or transfer state.
+- **INV-OFFICIAL-ID-AUTHORITY** — the active-season Official FPL integer player ID is canonical for current player identity.
+- **INV-NAME-NEVER-IDENTITY** — names are display/audit witnesses and never establish decision-critical identity.
+- **INV-AMBIGUITY-FAILS-CLOSED** — conflicting or unmapped identity evidence cannot be attached to a player for decision use.
+- **INV-RULESET-CONTENT-IDENTITY** — every effective RuleSet has deterministic semantic identity that changes when any governed rule or source metadata changes.
+- **INV-RULE-PROVENANCE** — every production rule cites reviewed Official Premier League evidence and an effective season/date.
+- **INV-NO-UNCONTROLLED-RULE-FLOATS** — RuleSet semantic identity excludes uncontrolled floating-point values.
 - **INV-NO-UNPROVEN-SPENDABLE-CASH** — current price forecasts or guessed purchase bases never become legal budget.
 - **INV-LEGAL-CURRENT-ACTION** — every published action passes independent RuleSet/state-transition verification.
 - **INV-NO-FALSE-GLOBAL-OPTIMALITY** — optimisation exactness is scoped to the certified universe and solver state.
