@@ -1,9 +1,9 @@
 from pathlib import Path
 
 
-# Only workflows that actively run the canonical Apex production/readiness path
-# should be required to refresh genuine AIrsenal forecasts. CI-only and archived
-# legacy publishers are intentionally excluded.
+# Workflows that actively run the canonical Apex production/readiness path must
+# refresh AIrsenal through the isolated worker contract rather than importing the
+# worker into the Apex core interpreter.
 WORKFLOWS = (
     "gw1-final-2026.yml",
     "pinnacle.yml",
@@ -11,27 +11,30 @@ WORKFLOWS = (
 )
 
 
-def test_production_workflows_do_not_require_a_manager_team_to_refresh_airsenal():
+def test_production_workflows_do_not_require_manager_transaction_state():
     root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
     for name in WORKFLOWS:
         workflow = (root / name).read_text(encoding="utf-8")
-        assert "airsenal_setup_initial_db --fpl_team_id 1" in workflow, name
-        assert "python scripts/update_airsenal_worker.py" in workflow, name
+        assert "--fpl_team_id 1" in workflow, name
+        assert "scripts/update_airsenal_worker.py" in workflow, name
         assert "airsenal_update_db" not in workflow, name
         assert "scripts/run_apex.py" in workflow, name
 
 
-def test_scheduled_airsenal_workflow_uses_canonical_horizon_wrapper():
+def test_scheduled_airsenal_workflow_uses_isolated_canonical_horizon_wrapper():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "airsenal.yml"
     workflow = path.read_text(encoding="utf-8")
 
-    assert 'uv run python "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py"' in workflow
+    assert '"$AIRSENAL_WORKER_PYTHON" "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py"' in workflow
     assert "--horizon 8" in workflow
     assert "uv run airsenal_run_prediction" not in workflow
     assert "Resolve live eight-Gameweek horizon" not in workflow
     assert "Export genuine AIrsenal forecast by official FPL ID" not in workflow
     assert "contents: read" in workflow
     assert "git push origin HEAD:main" not in workflow
+    assert "uv sync --frozen" in (path.parents[2] / "scripts/install_pinned_airsenal.sh").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_unified_artifact_is_sealed_before_runtime_release_is_staged():
