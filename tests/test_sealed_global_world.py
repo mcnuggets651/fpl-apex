@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import inspect
 import json
 from pathlib import Path
 
@@ -123,6 +124,13 @@ def test_replay_requires_no_transport_and_sealed_transport_rejects_network(tmp_p
     assert transport.calls == [FPL_BOOTSTRAP_URL, FPL_FIXTURES_URL]
     with pytest.raises(NetworkAfterSealError):
         SealedTransport().get("https://example.invalid", params={})
+
+
+def test_replay_api_exposes_no_network_or_clock_port():
+    parameters = inspect.signature(load_official_global_world).parameters
+    assert set(parameters) == {"manifest_artifact_id", "store"}
+    assert "transport" not in parameters
+    assert "clock" not in parameters
 
 
 def test_global_world_contract_is_manager_neutral(tmp_path: Path):
