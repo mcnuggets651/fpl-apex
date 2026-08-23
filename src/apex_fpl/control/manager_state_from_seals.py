@@ -115,6 +115,8 @@ def _event_history(
         gameweek = _positive_int(row.get("event"), label="history event")
         if gameweek > target:
             continue
+        if gameweek in counts:
+            raise ValueError(f"sealed manager history contains duplicate GW{gameweek} rows")
         counts[gameweek] = _nonnegative_int(
             row.get("event_transfers", 0),
             label=f"GW{gameweek} event_transfers",
@@ -127,14 +129,18 @@ def _event_history(
     entry_history = data.picks.get("entry_history")
     if not isinstance(entry_history, dict):
         raise ValueError("sealed target picks entry_history is missing")
-    counts[target] = _nonnegative_int(
+    target_count = _nonnegative_int(
         entry_history.get("event_transfers", 0),
         label=f"GW{target} picks event_transfers",
     )
-    costs[target] = _nonnegative_int(
+    target_cost = _nonnegative_int(
         entry_history.get("event_transfers_cost", 0),
         label=f"GW{target} picks event_transfers_cost",
     )
+    if target in counts and (counts[target] != target_count or costs[target] != target_cost):
+        raise ValueError(f"GW{target} history conflicts with target picks entry_history")
+    counts[target] = target_count
+    costs[target] = target_cost
     return counts, costs
 
 
@@ -151,6 +157,8 @@ def _chips(data: ReplayedManagerPublicData) -> tuple[PublicChipRecord, ...]:
         gameweek = _positive_int(row.get("event"), label="chip event")
         if gameweek > target:
             raise ValueError("sealed manager chip history contains a future Gameweek")
+        if gameweek in by_gameweek:
+            raise ValueError(f"sealed manager chip history contains duplicate GW{gameweek} rows")
         by_gameweek[gameweek] = PublicChipRecord(
             chip=_normalise_chip_name(row.get("name")),
             gameweek=gameweek,
@@ -171,7 +179,9 @@ def _chips(data: ReplayedManagerPublicData) -> tuple[PublicChipRecord, ...]:
     return tuple(by_gameweek[gameweek] for gameweek in sorted(by_gameweek))
 
 
-def _canonical_transfer_group(rows: list[tuple[int, dict[str, Any]]]) -> list[dict[str, Any]]:
+def _canonical_transfer_group(
+    rows: list[tuple[int, dict[str, Any]]],
+) -> list[dict[str, Any]]:
     """Canonicalise same-timestamp disjoint batch rows without claiming chronology."""
 
     participants: list[int] = []
@@ -192,8 +202,14 @@ def _canonical_transfer_group(rows: list[tuple[int, dict[str, Any]]]) -> list[di
             rows,
             key=lambda item: (
                 -(
-                    _positive_int(item[1].get("element_out_cost"), label="element_out_cost")
-                    - _positive_int(item[1].get("element_in_cost"), label="element_in_cost")
+                    _positive_int(
+                        item[1].get("element_out_cost"),
+                        label="element_out_cost",
+                    )
+                    - _positive_int(
+                        item[1].get("element_in_cost"),
+                        label="element_in_cost",
+                    )
                 ),
                 _positive_int(item[1].get("element_out"), label="element_out"),
                 _positive_int(item[1].get("element_in"), label="element_in"),
@@ -228,13 +244,28 @@ def _transfers(data: ReplayedManagerPublicData) -> tuple[PublicTransferRecord, .
         gameweek = _positive_int(row.get("event"), label="transfer event")
         per_gw_sequence[gameweek] = per_gw_sequence.get(gameweek, 0) + 1
         identity_payload = {
-            "entry": _positive_int(row.get("entry", data.snapshot.entry_id), label="transfer entry"),
+            "entry": _positive_int(
+                row.get("entry", data.snapshot.entry_id),
+                label="transfer entry",
+            ),
             "event": gameweek,
             "time": str(row.get("time")),
-            "element_out": _positive_int(row.get("element_out"), label="transfer element_out"),
-            "element_in": _positive_int(row.get("element_in"), label="transfer element_in"),
-            "element_out_cost": _positive_int(row.get("element_out_cost"), label="element_out_cost"),
-            "element_in_cost": _positive_int(row.get("element_in_cost"), label="element_in_cost"),
+            "element_out": _positive_int(
+                row.get("element_out"),
+                label="transfer element_out",
+            ),
+            "element_in": _positive_int(
+                row.get("element_in"),
+                label="transfer element_in",
+            ),
+            "element_out_cost": _positive_int(
+                row.get("element_out_cost"),
+                label="element_out_cost",
+            ),
+            "element_in_cost": _positive_int(
+                row.get("element_in_cost"),
+                label="element_in_cost",
+            ),
         }
         if identity_payload["entry"] != data.snapshot.entry_id:
             raise ValueError("Official transfer row entry does not match sealed manager entry")
@@ -269,7 +300,9 @@ def _current_identities(
     for player_id in player_ids:
         player = registry.get(player_id)
         if player is None:
-            raise ValueError(f"current sealed Official bootstrap is missing player {player_id}")
+            raise ValueError(
+                f"current sealed Official bootstrap is missing player {player_id}"
+            )
         result[player_id] = player
     return result
 
@@ -361,7 +394,10 @@ def reconstruct_manager_state_from_seals(
     )
     errors = state.validation_errors(ruleset=ruleset)
     if errors:
-        raise ValueError("sealed reconstructed manager state failed validation: " + "; ".join(errors))
+        raise ValueError(
+            "sealed reconstructed manager state failed validation: "
+            + "; ".join(errors)
+        )
     resolution = replace(
         resolution,
         state=state,
