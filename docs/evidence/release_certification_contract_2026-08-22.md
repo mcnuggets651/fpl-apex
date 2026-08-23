@@ -1,100 +1,125 @@
-# Apex release certification contract — 2026-08-22
+# Apex release certification contract v2 — 2026-08-23
 
 ## Objective
 
-A green optimiser is not sufficient evidence that Apex is safe to act on. Release certification must prove that one sealed generation is internally coherent, independently solvable, adversarially stable, mechanically executable and promotable without mutating or repairing its certified decision after the fact.
+A green optimiser is not sufficient evidence that Apex is safe to act on. Release certification must prove that one sealed generation is internally coherent, independently solvable, mechanically executable, appropriate to the current FPL lifecycle, adversarially tested on the correct decision surface and promotable without post-certification repair.
 
-The release contract is implemented once in `scripts/certify_release_generation.py` and is used by both PR certification and `main` production.
+The previous v1 contract made a structural mistake: it treated GW1 launch sensitivity and launch-squad bench reconstruction as universal release gates. In GW2 this caused a valid receding-horizon canonical solve to be rejected by a launch-only adversarial audit. The fix is not to skip adversarial testing; it is to make the selector determine the required certification profile.
 
-## Lifecycle
+## Architecture
 
-### Pull request
+There is one live PR release transaction: `.github/workflows/adaptive-canonical-diagnostic.yml`.
 
-`Apex Canonical Diagnostic` is the canonical release-candidate transaction. It:
+`Apex Adaptive Strategy Audit` is now a focused deterministic lifecycle-contract gate. It does not refresh Official FPL, AIrsenal, clone the independent solver or run a second copy of the live release transaction.
 
-1. creates an empty run-scoped generation;
-2. refreshes genuine AIrsenal forecasts;
-3. refreshes Official FPL immediately before sealing;
-4. builds one actionable-horizon DecisionBundle;
-5. builds Pinnacle on that bundle;
-6. runs and embeds same-surface independent solver parity;
-7. runs canonical Apex;
-8. invokes the complete release certifier;
-9. uploads the entire generation and certificate.
+`Apex Unified Readiness Audit` reuses the canonical diagnostic transaction instead of maintaining another orchestration copy.
 
-`Apex Adaptive Strategy Audit` is a thin reusable-workflow caller of that exact transaction. It exists as a distinct required PR check without maintaining a second divergent implementation.
+`Apex Unified` remains the only production publisher. It invokes the same Python release certifier before production finalization and compare-and-swap publication.
 
-### Main production
+Selector/lifecycle rules live in `src/apex_fpl/services/release_profile.py`, not in workflow names or duplicated YAML.
 
-`Apex Unified` runs the same `certify_release_generation.py` after canonical assembly and before production finalization/promotion.
+## Release profiles
 
-The production finalizer receives `--canonical-step-succeeded` only when both:
+### `pre_gw1_launch`
 
-- canonical assembly exited successfully; and
-- the complete release certificate exited successfully.
+Selector: `adaptive_gw1_launch_with_transfer_option_value`.
 
-A release-certificate failure therefore enters the normal fail-closed production path and cannot inherit `ready_to_act=true` merely because canonical assembly completed.
+Required state:
 
-## Release certificate invariants
+- actionable horizon begins at GW1;
+- no published personal deadline squad exists.
 
-The certifier requires all release surfaces to share one non-empty DecisionBundle identity:
+Required sensitivity:
 
-- DecisionBundle manifest;
-- canonical recommendation;
-- answer context;
-- Pinnacle;
-- independent solver parity;
-- adversarial sensitivity audit;
-- submitted-bench stress audit.
+- `apex-adversarial-launch-ban-v2`;
+- hardened candidate-pool stability;
+- GW1 regret-floor compliance;
+- hostile force/ban perturbations with no search-surface defect signal or inconclusive solve.
 
-It requires:
+### `in_season_receding_horizon`
 
-- canonical `strategy_stage=final_validated`;
-- canonical strategy base ready;
-- canonical `ready_to_act=true`;
-- answer context `safe_to_act=true` and `ready_to_act=true` with no blockers;
-- Pinnacle ready;
-- all-player truth ready with 100% certified hard-fact, canonical projection and AIrsenal-or-governed-fallback coverage;
-- parity on the `pinnacle_ev` comparison surface;
-- adversarial audit complete with no search-surface defect signals and no ban-solve errors;
-- submitted-bench stress fixed to the certified submission with no hindsight reordering;
-- exactly 15 unique squad identities and 11 unique XI identities;
-- distinct captain and vice-captain inside the XI;
-- final evidence dossiers covering exactly the canonical 15.
+Selector: `receding_horizon_current_team_maximum_ev`.
 
-For in-season `receding_horizon_current_team_maximum_ev`, the certifier additionally requires `action_now` to use the independent exact current-Gameweek mechanics authority and to match the canonical top-level result on:
+Required state:
 
-- exact 15;
-- ordered XI;
-- captain;
-- vice-captain;
-- bench goalkeeper;
-- ordered outfield bench;
-- exact expected total points.
+- healthy sealed personal team state;
+- published deadline squad exists;
+- next actionable GW is later than the published GW;
+- exact 15-player realised selling-price state.
 
-## Mandatory stress certificates
+Required sensitivity:
 
-Before a release certificate is issued, the certifier runs:
+- `apex-inseason-action-sensitivity-v1`;
+- fresh same-bundle unconstrained replay must reproduce the published transfer action and objective;
+- exact roll counterfactual;
+- no-hit counterfactual capped at current free transfers;
+- exact published transfer-count replay;
+- one-fewer and one-more transfer counterfactual where legal;
+- every counterfactual must be Optimal or solver-certified Infeasible; limits/errors/input failures are blockers;
+- no constrained counterfactual may beat the supposedly unconstrained baseline.
 
-- mandatory adversarial selection sensitivity (`run_adversarial_launch_ban.py` + `certify_adversarial_launch_ban.py`);
-- mandatory submitted-XI bench stress (`audit_bench_stress.py`);
-- a dry-run `promote_certified_generation.py` transaction into an isolated temporary target.
+The transfer MILP therefore supports first-GW-only min/max transfer-count constraints. Hit costs remain inside the normal objective. There is no arbitrary rule forbidding a large hit: a large hit must survive the same-surface counterfactual proof.
 
-The dry-run promotion must emit `certified_generation.json`; a copy is sealed into the run artifact as `dry_run_certified_generation.json`.
+## Common gates
 
-The final certificate is written as `release_generation_certificate.json` with contract `apex-release-generation-certificate-v1`.
+Both profiles require:
 
-## Workflow-evaluation safety
+- one DecisionBundle identity across manifest, canonical, answer context, Pinnacle, parity, sensitivity and bench stress;
+- `strategy_stage=final_validated`;
+- canonical and answer-context ready/safe flags;
+- 100% certified hard-fact/canonical-projection/AIrsenal-or-governed-fallback coverage;
+- independent parity on `pinnacle_ev`;
+- 15 unique squad IDs and 11 unique XI IDs;
+- captain and vice inside the XI and distinct;
+- final evidence dossiers matching exactly the canonical 15;
+- selector-neutral `apex-bench-stress-v2` on the actual canonical submission;
+- dry-run `promote_certified_generation.py` into an isolated target.
 
-GitHub's `runner` context is step/runner scoped and must not be used in job-level environment evaluation. A prior Adaptive workflow used `PROMOTION_DIR: ${{ runner.temp }}/...` at job level, which prevented the workflow from being instantiated. Promotion targets used during graph evaluation are now plain job-safe paths; `RUNNER_TEMP` is used only inside runner-executed steps.
+For in-season output, `action_now` must also agree with the top-level exact mechanics on squad, ordered XI, captain, vice, bench goalkeeper, ordered outfield bench and exact expected points.
 
-`tests/test_release_workflow_contract.py` permanently checks:
+## Bench stress v2
 
-- Canonical remains reusable and invokes the release certifier;
-- Adaptive remains a thin caller of Canonical rather than a drifting duplicate;
-- job-level `runner.temp` promotion wiring does not return;
-- Unified requires the release certificate before it can mark canonical finalization successful.
+Bench stress no longer reconstructs a GW1 launch squad. It consumes the exact canonical 15/XI/captain/vice/bench for the current actionable GW and evaluates one- and two-starter absence scenarios while keeping the submitted bench order fixed. It never reorders with hindsight.
+
+## Public FPL state boundary
+
+FPL publicly exposes another manager's transfers only up to the last deadline. The live current team requires the authenticated `my-team` surface. Therefore a public entry snapshot is exact only if the manager has not made undisclosed post-deadline moves.
+
+Apex preserves this boundary:
+
+- public deadline state is sealed with exact selling prices and transfer-history provenance;
+- the in-season sensitivity certificate records `public_deadline_snapshot=true` when applicable;
+- it emits a warning that a manual override is required if the manager has already changed the team;
+- Apex does not fabricate private transfer knowledge.
+
+## Failure observability
+
+`release_generation_certificate.json` is now contract `apex-release-generation-certificate-v2` and is written at the start of certification, updated after every gate, and preserved on failure.
+
+It records:
+
+- run ID;
+- DecisionBundle ID;
+- selector;
+- lifecycle;
+- per-gate status;
+- blockers and warnings;
+- sensitivity contract/summary;
+- mechanics proof;
+- dry-run promotion status.
+
+The CLI exits non-zero when `ready=false`, but the failed certificate remains in the workflow artifact. A red release should therefore identify the actual failed gate instead of ending with only a generic child-process exit.
+
+## Workflow ownership
+
+- **Apex CI:** full pytest, Ruff, upstream/governance contracts.
+- **Apex Adaptive Strategy Audit:** fast deterministic lifecycle/release contract tests.
+- **Apex Canonical Diagnostic:** sole live PR release transaction.
+- **Apex Unified Readiness Audit:** manual reuse of Canonical Diagnostic; never publishes.
+- **Apex Unified:** sole main publisher, guarded by the same release certifier and compare-and-swap.
+
+This separation prevents workflow copies from drifting while retaining independent model/data audits and one production publication authority.
 
 ## Fail-closed rule
 
-There is no release fallback. A missing certificate, cross-artifact identity mismatch, mechanics mismatch, adversarial defect signal, bench-stress violation or failed dry-run promotion blocks actionable publication. The correct response is to preserve the failed generation for diagnosis and withhold the recommendation, not to repair the published payload after certification.
+There is no cross-lifecycle fallback. A launch selector cannot be certified with an in-season audit and an in-season selector cannot be certified with a launch audit. Unknown selector, lifecycle mismatch, missing state proof, inconclusive counterfactual, cross-artifact identity mismatch, mechanics mismatch, bench-stress violation or failed dry-run promotion blocks publication.
