@@ -120,9 +120,10 @@ jobs:
           PY
 
       - name: Verify proposed pinned source contract
-        run: "$APEX_CORE_PYTHON" scripts/check_upstreams.py
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          "$APEX_CORE_PYTHON" scripts/check_upstreams.py
 
       - name: Write candidate audit manifest
         shell: bash
