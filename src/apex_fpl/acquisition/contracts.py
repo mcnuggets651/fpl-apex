@@ -120,6 +120,17 @@ def _selected_headers(headers: Mapping[str, str]) -> tuple[tuple[str, str], ...]
     return tuple(sorted(rows))
 
 
+def _sha256_digest_from_artifact_id(artifact_id: str) -> str:
+    algorithm, separator, digest = str(artifact_id).partition(":")
+    if algorithm != "sha256" or not separator or len(digest) != 64:
+        raise ValueError("raw capture body_artifact_id must be a sha256 artifact id")
+    try:
+        int(digest, 16)
+    except ValueError as exc:
+        raise ValueError("raw capture body_artifact_id has invalid digest") from exc
+    return digest
+
+
 @dataclass(frozen=True, slots=True)
 class RawCapture:
     capture_id: RawCaptureId
@@ -135,6 +146,27 @@ class RawCapture:
     body_size: int
     schema_name: str
     schema_version: str
+
+    def __post_init__(self) -> None:
+        digest = _sha256_digest_from_artifact_id(self.body_artifact_id)
+        if self.body_sha256 != digest:
+            raise ValueError("raw capture body_sha256 must match body_artifact_id")
+        if self.body_size < 0 or self.freshness_seconds < 0:
+            raise ValueError("raw capture size/freshness cannot be negative")
+        if self.status_code < 100 or self.status_code > 599:
+            raise ValueError("raw capture status_code is invalid")
+        if not self.source_name.strip() or not self.url.strip():
+            raise ValueError("raw capture source/url cannot be empty")
+        try:
+            stamp = datetime.fromisoformat(self.retrieved_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("raw capture retrieved_at is invalid") from exc
+        if stamp.tzinfo is None or stamp.utcoffset() is None:
+            raise ValueError("raw capture retrieved_at must be timezone-aware")
+        if tuple(sorted(self.params)) != self.params:
+            raise ValueError("raw capture params must be canonical-sorted")
+        if tuple(sorted(self.response_headers)) != self.response_headers:
+            raise ValueError("raw capture response_headers must be canonical-sorted")
 
     @classmethod
     def create(
