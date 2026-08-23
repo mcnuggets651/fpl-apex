@@ -1,9 +1,13 @@
 """Fail-closed reconstruction of exact public FPL deadline manager state.
 
-The public FPL entry surface is a deadline snapshot, not proof of the manager's private
-current state between deadlines. This adapter reconstructs exact ownership bases,
-realised selling values, bank and FT state *as of the published deadline* when and only
-when the required initial price capture and chronological public ledgers are complete.
+Official FPL's public transfer endpoint exposes the *realised sale price* as
+``element_out_cost``. It does not expose the player's market price at the instant of a
+historical transfer. V2 therefore never fabricates a historical market price merely to
+re-run the selling-price formula.
+
+Historical public transactions are reconstructed as authoritative sale receipts. Live
+transitions remain in ``core.manager_state.TransferLedgerEvent``, where Apex has an
+exact current Official price and can prove the RuleSet selling formula directly.
 """
 
 from __future__ import annotations
@@ -12,14 +16,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable, Mapping
 
+from apex_fpl.core.canonical import canonical_sha256
 from apex_fpl.core.identity import OfficialPlayerId, OfficialPlayerIdentity
 from apex_fpl.core.manager_state import (
     ChipUse,
     ManagerState,
     ManagerStateIntegrityError,
     ManagerStateScope,
-    TransferLedgerEvent,
-    calculate_selling_price_tenths,
     owned_player_from_official,
 )
 from apex_fpl.core.rules import RuleSet
@@ -31,25 +34,44 @@ class ManagerStateResolutionStatus(str, Enum):
     INVALID = "INVALID"
 
 
+def _artifact_id(value: str) -> str:
+    text = str(value).strip()
+    algorithm, separator, digest = text.partition(":")
+    if algorithm != "sha256" or not separator or len(digest) != 64:
+        raise ValueError(f"invalid provenance artifact ID: {value!r}")
+    try:
+        int(digest, 16)
+    except ValueError as exc:
+        raise ValueError(f"invalid provenance artifact digest: {value!r}") from exc
+    return text
+
+
 @dataclass(frozen=True, slots=True)
 class PublicTransferRecord:
+    """One Official FPL public transfer transaction.
+
+    ``realised_sale_tenths`` maps directly to Official FPL ``element_out_cost``.
+    No historical market price is inferred from this value.
+    """
+
     transfer_id: str
     gameweek: int
     sequence: int
     outgoing_player_id: OfficialPlayerId
     incoming_player_id: OfficialPlayerId
-    outgoing_market_price_tenths: int
+    realised_sale_tenths: int
     incoming_purchase_tenths: int
     source_artifact_id: str
 
     def __post_init__(self) -> None:
-        if not self.transfer_id.strip() or not self.source_artifact_id.strip():
-            raise ValueError("public transfer requires ID and source provenance")
+        if not self.transfer_id.strip():
+            raise ValueError("public transfer requires an ID")
+        _artifact_id(self.source_artifact_id)
         for name in ("gameweek", "sequence"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                 raise ValueError(f"public transfer {name} must be a positive integer")
-        for name in ("outgoing_market_price_tenths", "incoming_purchase_tenths"):
+        for name in ("realised_sale_tenths", "incoming_purchase_tenths"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                 raise ValueError(f"public transfer {name} must be a positive integer")
@@ -73,9 +95,77 @@ class PublicChipRecord:
             or self.gameweek <= 0
         ):
             raise ValueError("public chip gameweek must be a positive integer")
-        if not self.source_artifact_id.strip():
-            raise ValueError("public chip requires source provenance")
+        _artifact_id(self.source_artifact_id)
         object.__setattr__(self, "chip", chip)
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalTransferReceipt:
+    """Reconciled historical transaction without an invented market-price field."""
+
+    transfer_id: str
+    sequence: int
+    gameweek: int
+    outgoing_player_id: OfficialPlayerId
+    incoming_player_id: OfficialPlayerId
+    outgoing_purchase_basis_tenths: int
+    realised_sale_tenths: int
+    incoming_purchase_tenths: int
+    bank_before_tenths: int
+    bank_after_tenths: int
+    free_transfers_before: int
+    free_transfers_after: int
+    hit_points: int
+    mode: str
+    source_artifact_id: str
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"NORMAL", "WILDCARD"}:
+            raise ValueError(f"unsupported historical transfer mode: {self.mode}")
+        _artifact_id(self.source_artifact_id)
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "transfer_id": self.transfer_id,
+            "sequence": self.sequence,
+            "gameweek": self.gameweek,
+            "outgoing_player_id": int(self.outgoing_player_id),
+            "incoming_player_id": int(self.incoming_player_id),
+            "outgoing_purchase_basis_tenths": self.outgoing_purchase_basis_tenths,
+            "realised_sale_tenths": self.realised_sale_tenths,
+            "incoming_purchase_tenths": self.incoming_purchase_tenths,
+            "bank_before_tenths": self.bank_before_tenths,
+            "bank_after_tenths": self.bank_after_tenths,
+            "free_transfers_before": self.free_transfers_before,
+            "free_transfers_after": self.free_transfers_after,
+            "hit_points": self.hit_points,
+            "mode": self.mode,
+            "source_artifact_id": self.source_artifact_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalTransferLedger:
+    entry_id: int
+    through_gameweek: int
+    initial_bank_tenths: int
+    final_bank_tenths: int
+    receipts: tuple[HistoricalTransferReceipt, ...]
+
+    def semantic_payload(self) -> dict[str, object]:
+        return {
+            "schema_name": "apex-historical-manager-transfer-ledger",
+            "schema_version": 1,
+            "entry_id": self.entry_id,
+            "through_gameweek": self.through_gameweek,
+            "initial_bank_tenths": self.initial_bank_tenths,
+            "final_bank_tenths": self.final_bank_tenths,
+            "receipts": [row.as_dict() for row in self.receipts],
+        }
+
+    @property
+    def ledger_id(self) -> str:
+        return canonical_sha256(self.semantic_payload())
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,12 +174,14 @@ class ManagerStateResolution:
     state: ManagerState | None
     blockers: tuple[str, ...]
     evidence: tuple[str, ...]
+    historical_ledger: HistoricalTransferLedger | None = None
 
     @property
     def exact_deadline_snapshot(self) -> bool:
         return (
             self.status is ManagerStateResolutionStatus.EXACT_DEADLINE_SNAPSHOT
             and self.state is not None
+            and self.historical_ledger is not None
         )
 
 
@@ -156,7 +248,7 @@ def derive_next_window_free_transfers(
     chip_by_gw = _chip_map(chips)
     if any(gameweek > published_gameweek for gameweek in chip_by_gw):
         raise ManagerStateIntegrityError("public chip history contains a future Gameweek")
-    free_transfers = 0  # initial construction is unlimited, not a bankable FT.
+    free_transfers = 0
     for gameweek in range(1, published_gameweek + 1):
         transfers = _validated_history_value(
             event_transfer_counts,
@@ -191,10 +283,18 @@ def reconstruct_public_deadline_state(
     transfer_history_complete: bool,
     initial_price_capture_complete: bool,
 ) -> ManagerStateResolution:
-    """Reconstruct exact state at the latest published deadline or fail closed."""
+    """Reconstruct exact public deadline state using Official realised sale receipts."""
 
     blockers: list[str] = []
-    evidence = tuple(sorted(set(str(item) for item in provenance_artifact_ids)))
+    try:
+        evidence = tuple(sorted({_artifact_id(str(item)) for item in provenance_artifact_ids}))
+    except ValueError as exc:
+        return ManagerStateResolution(
+            ManagerStateResolutionStatus.INVALID,
+            None,
+            (str(exc),),
+            (),
+        )
     if not transfer_history_complete:
         blockers.append("public transfer history is not proven complete")
     if not initial_price_capture_complete:
@@ -230,10 +330,10 @@ def reconstruct_public_deadline_state(
         blockers.append("manager-state reconstruction has no immutable provenance")
     if blockers:
         return ManagerStateResolution(
-            status=ManagerStateResolutionStatus.INCOMPLETE,
-            state=None,
-            blockers=tuple(blockers),
-            evidence=evidence,
+            ManagerStateResolutionStatus.INCOMPLETE,
+            None,
+            tuple(blockers),
+            evidence,
         )
 
     chip_rows = tuple(chips)
@@ -254,9 +354,7 @@ def reconstruct_public_deadline_state(
             evidence,
         )
 
-    transfer_rows = tuple(
-        sorted(transfers, key=lambda row: (row.gameweek, row.sequence))
-    )
+    transfer_rows = tuple(sorted(transfers, key=lambda row: (row.gameweek, row.sequence)))
     if len({row.transfer_id for row in transfer_rows}) != len(transfer_rows):
         return ManagerStateResolution(
             ManagerStateResolutionStatus.INVALID,
@@ -264,9 +362,7 @@ def reconstruct_public_deadline_state(
             ("public transfer IDs are not unique",),
             evidence,
         )
-    if len({(row.gameweek, row.sequence) for row in transfer_rows}) != len(
-        transfer_rows
-    ):
+    if len({(row.gameweek, row.sequence) for row in transfer_rows}) != len(transfer_rows):
         return ManagerStateResolution(
             ManagerStateResolutionStatus.INVALID,
             None,
@@ -302,13 +398,12 @@ def reconstruct_public_deadline_state(
         if chip_by_gw.get(gameweek) == "FREE_HIT":
             if rows_per_gw.get(gameweek, 0):
                 blockers.append(
-                    f"GW{gameweek} Free Hit has transfer rows whose permanent "
-                    "semantics are unverified"
+                    f"GW{gameweek} Free Hit has transfer rows whose permanent semantics are unverified"
                 )
             continue
         if rows_per_gw.get(gameweek, 0) != expected:
             blockers.append(
-                f"GW{gameweek} transfer ledger rows {rows_per_gw.get(gameweek, 0)} "
+                f"GW{gameweek} transfer receipt rows {rows_per_gw.get(gameweek, 0)} "
                 f"!= public event_transfers {expected}"
             )
     if blockers:
@@ -342,7 +437,7 @@ def reconstruct_public_deadline_state(
 
     free_before_gw = 0
     bank = initial_bank
-    ledger: list[TransferLedgerEvent] = []
+    receipts: list[HistoricalTransferReceipt] = []
     sequence = 0
     by_gw: dict[int, list[PublicTransferRecord]] = {}
     for row in transfer_rows:
@@ -354,9 +449,7 @@ def reconstruct_public_deadline_state(
             return ManagerStateResolution(
                 ManagerStateResolutionStatus.INCOMPLETE,
                 None,
-                (
-                    f"GW{gameweek} Free Hit transfer rows cannot mutate permanent state",
-                ),
+                (f"GW{gameweek} Free Hit transfer rows cannot mutate permanent state",),
                 evidence,
             )
         free_remaining = free_before_gw
@@ -376,12 +469,7 @@ def reconstruct_public_deadline_state(
                     evidence,
                 )
             basis = ownership_basis[row.outgoing_player_id]
-            realised_sale = calculate_selling_price_tenths(
-                basis,
-                row.outgoing_market_price_tenths,
-                ruleset=ruleset,
-            )
-            bank_after = bank + realised_sale - row.incoming_purchase_tenths
+            bank_after = bank + row.realised_sale_tenths - row.incoming_purchase_tenths
             if bank_after < 0:
                 return ManagerStateResolution(
                     ManagerStateResolutionStatus.INVALID,
@@ -403,16 +491,15 @@ def reconstruct_public_deadline_state(
                 )
                 mode = "NORMAL"
             sequence += 1
-            ledger.append(
-                TransferLedgerEvent(
-                    event_id=row.transfer_id,
+            receipts.append(
+                HistoricalTransferReceipt(
+                    transfer_id=row.transfer_id,
                     sequence=sequence,
                     gameweek=gameweek,
                     outgoing_player_id=row.outgoing_player_id,
                     incoming_player_id=row.incoming_player_id,
                     outgoing_purchase_basis_tenths=basis,
-                    outgoing_current_price_tenths=row.outgoing_market_price_tenths,
-                    realised_sale_tenths=realised_sale,
+                    realised_sale_tenths=row.realised_sale_tenths,
                     incoming_purchase_tenths=row.incoming_purchase_tenths,
                     bank_before_tenths=bank,
                     bank_after_tenths=bank_after,
@@ -430,7 +517,7 @@ def reconstruct_public_deadline_state(
 
         official_cost = event_transfer_costs[gameweek]
         derived_cost = sum(
-            event.hit_points for event in ledger if event.gameweek == gameweek
+            receipt.hit_points for receipt in receipts if receipt.gameweek == gameweek
         )
         if derived_cost != official_cost:
             return ManagerStateResolution(
@@ -450,12 +537,8 @@ def reconstruct_public_deadline_state(
         )
 
     if set(ownership_basis) != set(published_ids):
-        missing = sorted(
-            int(item) for item in set(published_ids) - set(ownership_basis)
-        )
-        extra = sorted(
-            int(item) for item in set(ownership_basis) - set(published_ids)
-        )
+        missing = sorted(int(item) for item in set(published_ids) - set(ownership_basis))
+        extra = sorted(int(item) for item in set(ownership_basis) - set(published_ids))
         return ManagerStateResolution(
             ManagerStateResolutionStatus.INVALID,
             None,
@@ -473,6 +556,13 @@ def reconstruct_public_deadline_state(
             evidence,
         )
 
+    ledger = HistoricalTransferLedger(
+        entry_id=entry_id,
+        through_gameweek=published_gameweek,
+        initial_bank_tenths=initial_bank,
+        final_bank_tenths=bank,
+        receipts=tuple(receipts),
+    )
     try:
         next_ft = derive_next_window_free_transfers(
             published_gameweek=published_gameweek,
@@ -508,7 +598,7 @@ def reconstruct_public_deadline_state(
             free_transfers=next_ft,
             squad=owned,
             chips_used=chip_uses,
-            transfer_ledger=tuple(ledger),
+            transfer_ledger=(),
             provenance_artifact_ids=evidence,
         )
         errors = state.validation_errors(ruleset=ruleset)
@@ -526,4 +616,5 @@ def reconstruct_public_deadline_state(
         state,
         (),
         evidence,
+        ledger,
     )
