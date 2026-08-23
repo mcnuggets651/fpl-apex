@@ -37,7 +37,9 @@ def _artifact_id(value: str) -> str:
     try:
         int(digest, 16)
     except ValueError as exc:
-        raise ManagerStateIntegrityError(f"invalid provenance artifact digest: {value!r}") from exc
+        raise ManagerStateIntegrityError(
+            f"invalid provenance artifact digest: {value!r}"
+        ) from exc
     return text
 
 
@@ -66,7 +68,9 @@ class OwnedPlayer:
             or not isinstance(self.team_id, int)
             or self.team_id <= 0
         ):
-            raise ManagerStateIntegrityError("owned player team_id must be a positive integer")
+            raise ManagerStateIntegrityError(
+                "owned player team_id must be a positive integer"
+            )
         if self.position not in {"GK", "DEF", "MID", "FWD"}:
             raise ManagerStateIntegrityError(
                 f"invalid owned-player position: {self.position!r}"
@@ -148,13 +152,17 @@ class TransferLedgerEvent:
             or not isinstance(self.sequence, int)
             or self.sequence <= 0
         ):
-            raise ManagerStateIntegrityError("transfer sequence must be a positive integer")
+            raise ManagerStateIntegrityError(
+                "transfer sequence must be a positive integer"
+            )
         if (
             isinstance(self.gameweek, bool)
             or not isinstance(self.gameweek, int)
             or self.gameweek <= 0
         ):
-            raise ManagerStateIntegrityError("transfer gameweek must be a positive integer")
+            raise ManagerStateIntegrityError(
+                "transfer gameweek must be a positive integer"
+            )
         if self.outgoing_player_id == self.incoming_player_id:
             raise ManagerStateIntegrityError(
                 "transfer must replace a player with a different player"
@@ -177,7 +185,9 @@ class TransferLedgerEvent:
         ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise ManagerStateIntegrityError(f"{name} must be a nonnegative integer")
+                raise ManagerStateIntegrityError(
+                    f"{name} must be a nonnegative integer"
+                )
         if self.mode not in {"NORMAL", "WILDCARD"}:
             raise ManagerStateIntegrityError(
                 f"unsupported permanent-transfer mode: {self.mode}"
@@ -215,7 +225,9 @@ class CurrentStateAttestation:
 
     def __post_init__(self) -> None:
         if not self.author.strip():
-            raise ManagerStateIntegrityError("current-state attestation requires an author")
+            raise ManagerStateIntegrityError(
+                "current-state attestation requires an author"
+            )
         _artifact_id(self.source_artifact_id)
         if (
             isinstance(self.gameweek, bool)
@@ -228,7 +240,9 @@ class CurrentStateAttestation:
         created = _parse_aware_time(self.created_at, label="created_at")
         expires = _parse_aware_time(self.expires_at, label="expires_at")
         if expires < created:
-            raise ManagerStateIntegrityError("attestation expires before it is created")
+            raise ManagerStateIntegrityError(
+                "attestation expires before it is created"
+            )
         if not self.confirms_no_unrecorded_transfers:
             raise ManagerStateIntegrityError(
                 "attestation must explicitly confirm no unrecorded transfers"
@@ -292,7 +306,9 @@ def owned_player_from_official(
     current_price_tenths: int | None,
     ruleset: RuleSet,
 ) -> OwnedPlayer:
-    current = player.price_tenths if current_price_tenths is None else current_price_tenths
+    current = (
+        player.price_tenths if current_price_tenths is None else current_price_tenths
+    )
     selling = calculate_selling_price_tenths(
         purchase_basis_tenths,
         current,
@@ -375,13 +391,11 @@ def _roll_ft_once(
     preserves = False
     if chip == "WILDCARD":
         preserves = (
-            ruleset.value("FPL-WILDCARD-PRESERVES-BANKED-TRANSFERS-001")
-            is True
+            ruleset.value("FPL-WILDCARD-PRESERVES-BANKED-TRANSFERS-001") is True
         )
     elif chip == "FREE_HIT":
         preserves = (
-            ruleset.value("FPL-FREE-HIT-PRESERVES-BANKED-TRANSFERS-001")
-            is True
+            ruleset.value("FPL-FREE-HIT-PRESERVES-BANKED-TRANSFERS-001") is True
         )
     if preserves:
         return free_transfers
@@ -497,7 +511,9 @@ class ManagerState:
             or not isinstance(self.bank_tenths, int)
             or self.bank_tenths < 0
         ):
-            raise ManagerStateIntegrityError("bank_tenths must be a nonnegative integer")
+            raise ManagerStateIntegrityError(
+                "bank_tenths must be a nonnegative integer"
+            )
         if (
             isinstance(self.free_transfers, bool)
             or not isinstance(self.free_transfers, int)
@@ -514,6 +530,10 @@ class ManagerState:
         chips = tuple(
             sorted(self.chips_used, key=lambda row: (row.gameweek, row.chip))
         )
+        if any(row.gameweek >= self.gameweek for row in chips):
+            raise ManagerStateIntegrityError(
+                "chips_used may contain only completed Gameweeks before manager state"
+            )
         ledger = tuple(self.transfer_ledger)
         sequences = [event.sequence for event in ledger]
         event_ids = [event.event_id for event in ledger]
@@ -522,7 +542,9 @@ class ManagerState:
                 "transfer ledger sequence must be unique and increasing"
             )
         if len(event_ids) != len(set(event_ids)):
-            raise ManagerStateIntegrityError("transfer ledger event IDs must be unique")
+            raise ManagerStateIntegrityError(
+                "transfer ledger event IDs must be unique"
+            )
         if any(event.gameweek > self.gameweek for event in ledger):
             raise ManagerStateIntegrityError(
                 "transfer ledger cannot contain a future Gameweek"
@@ -531,7 +553,9 @@ class ManagerState:
             ledger[index].gameweek > ledger[index + 1].gameweek
             for index in range(len(ledger) - 1)
         ):
-            raise ManagerStateIntegrityError("transfer ledger must be chronological")
+            raise ManagerStateIntegrityError(
+                "transfer ledger must be chronological"
+            )
         provenance = tuple(
             sorted({_artifact_id(item) for item in self.provenance_artifact_ids})
         )
@@ -855,13 +879,16 @@ def advance_deadline(
     current_events = tuple(
         event for event in state.transfer_ledger if event.gameweek == state.gameweek
     )
-    if chip == "WILDCARD" and any(event.mode != "WILDCARD" for event in current_events):
+    if chip == "WILDCARD" and any(
+        event.mode != "WILDCARD" for event in current_events
+    ):
         raise ManagerStateIntegrityError(
             "Wildcard cannot certify a window containing normal transfer events"
         )
     if chip == "FREE_HIT" and current_events:
         raise ManagerStateIntegrityError(
-            "Free Hit uses a temporary squad; permanent transfer events are invalid in that window"
+            "Free Hit uses a temporary squad; permanent transfer events are invalid "
+            "in that window"
         )
 
     chips = state.chips_used
