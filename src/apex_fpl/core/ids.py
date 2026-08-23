@@ -45,6 +45,14 @@ class RuleSetId(ApexId):
     kind = "ruleset_id"
 
 
+class ManagerPublicSnapshotId(ApexId):
+    kind = "manager_public_snapshot_id"
+
+
+class InitialManagerBasisId(ApexId):
+    kind = "initial_manager_basis_id"
+
+
 class ManagerStateId(ApexId):
     kind = "manager_state_id"
 

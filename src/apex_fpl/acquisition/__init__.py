@@ -11,6 +11,15 @@ from .contracts import (
     StoredRawCapture,
     SystemClock,
 )
+from .sealed_manager import (
+    FPL_API_BASE,
+    ManagerPublicSnapshot,
+    ManagerPublicSource,
+    ReplayedManagerPublicData,
+    SealedManagerPublicData,
+    acquire_official_manager_public_data,
+    load_official_manager_public_data,
+)
 from .sealed_world import (
     FPL_BOOTSTRAP_URL,
     FPL_FIXTURES_URL,
@@ -22,20 +31,27 @@ from .sealed_world import (
 )
 
 __all__ = [
+    "FPL_API_BASE",
     "FPL_BOOTSTRAP_URL",
     "FPL_FIXTURES_URL",
     "HttpResponse",
     "HttpTransport",
+    "ManagerPublicSnapshot",
+    "ManagerPublicSource",
     "NetworkAfterSealError",
     "RawCapture",
     "ReplayedGlobalWorld",
+    "ReplayedManagerPublicData",
     "RequestsTransport",
     "SealedGlobalWorld",
+    "SealedManagerPublicData",
     "SealedTransport",
     "SourceRequest",
     "StoredRawCapture",
     "SystemClock",
     "acquire_official_global_world",
+    "acquire_official_manager_public_data",
     "capture_request",
     "load_official_global_world",
+    "load_official_manager_public_data",
 ]

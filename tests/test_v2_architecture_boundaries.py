@@ -7,6 +7,13 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / "src" / "apex_fpl" / "core"
+MANAGER_V2 = (
+    ROOT / "src" / "apex_fpl" / "acquisition" / "sealed_manager.py",
+    ROOT / "src" / "apex_fpl" / "control" / "initial_manager_basis.py",
+    ROOT / "src" / "apex_fpl" / "control" / "manager_state_from_seals.py",
+    ROOT / "src" / "apex_fpl" / "control" / "manager_state_reconstruction.py",
+    ROOT / "src" / "apex_fpl" / "control" / "manager_state_override.py",
+)
 
 
 def test_constitutional_core_depends_only_on_stdlib_or_core() -> None:
@@ -36,3 +43,29 @@ def test_core_domain_logic_has_no_wall_clock_reads() -> None:
         text = path.read_text(encoding="utf-8")
         assert "datetime.now(" not in text, path.name
         assert "datetime.utcnow(" not in text, path.name
+
+
+def test_v2_manager_state_path_cannot_depend_on_v1_cache_services_or_dataframe_runtime() -> None:
+    forbidden_modules = {
+        "apex_fpl.data",
+        "apex_fpl.services",
+        "pandas",
+    }
+    violations: list[str] = []
+    for path in MANAGER_V2:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [item.name for item in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            else:
+                continue
+            for name in names:
+                if any(name == forbidden or name.startswith(forbidden + ".") for forbidden in forbidden_modules):
+                    violations.append(f"{path.name}: {name}")
+        text = path.read_text(encoding="utf-8")
+        for forbidden_symbol in ("CachedHttp", "services.team_state", "data.http"):
+            if forbidden_symbol in text:
+                violations.append(f"{path.name}: {forbidden_symbol}")
+    assert violations == []

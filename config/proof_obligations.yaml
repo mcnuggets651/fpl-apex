@@ -60,15 +60,35 @@ proof_obligations:
     release_policy: REQUIRED
     owner: control.ruleset_registry
 
+  - proof_id: PO-MANAGER-PUBLIC-SEAL-001
+    claim: Manager-specific Official FPL summary, history, transfer and picks bytes are retained under immutable content identity and replayed without network or clock access before manager-state reconstruction.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: manager_public_snapshot
+    required_evidence: [ManagerPublicSnapshotId, manager_raw_capture_manifests, sealed_manager_public_manifest, raw_sha256]
+    required_tests: [test_same_manager_source_bytes_have_same_semantic_snapshot_across_capture_times, test_manager_acquisition_retains_all_four_raw_official_surfaces_and_replays_offline, test_manager_replay_api_exposes_no_network_or_clock_port, test_corrupted_manager_raw_capture_is_detected_during_replay]
+    failure_consequence: Block manager-state reconstruction; V1 CachedHttp or mutable files cannot substitute for sealed manager evidence.
+    release_policy: REQUIRED
+    owner: acquisition.sealed_manager
+
+  - proof_id: PO-INITIAL-MANAGER-BASIS-001
+    claim: Original purchase bases come only from a retained Official price universe captured before the first deadline plus the sealed GW1 manager picks, with the resulting initial bank reconciled to Official FPL.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: manager_state
+    required_evidence: [InitialManagerBasisId, pre_gw1_GlobalWorldId, GW1_ManagerPublicSnapshotId, pre_deadline_bootstrap_capture_time, Official_GW1_bank]
+    required_tests: [test_initial_basis_requires_real_pre_deadline_bootstrap_and_replays_offline, test_post_deadline_bootstrap_cannot_be_mislabeled_as_initial_purchase_basis, test_initial_basis_rejects_bank_that_does_not_reconcile_to_pre_gw1_prices]
+    failure_consequence: Abstain from in-season financial action; current prices or guessed purchase bases are not spendable truth.
+    release_policy: REQUIRED
+    owner: control.initial_manager_basis
+
   - proof_id: PO-MANAGER-STATE-001
-    claim: In-season financial legality is based on an exact-enough current manager state.
+    claim: Every live in-season action is based on one current-exact ManagerState with exact current 15, integer-tenths bank and prices, purchase bases, realised selling values, free transfers, chip state and immutable reconciled transfer/provenance evidence.
     proof_class: FORMAL_INVARIANT
     scope: decision_world
-    required_evidence: [ManagerState, purchase_bases, selling_prices, transfer_ledger]
-    required_tests: [test_manager_state_transition_reference_parity]
-    failure_consequence: Abstain from any in-season action.
+    required_evidence: [ManagerState, ManagerStateId, RuleSetId, current_exact_scope, InitialManagerBasis, current_Official_price_surface, HistoricalTransferLedger, Official_realised_sale_receipts, provenance_artifacts, current_state_attestation_or_full_override]
+    required_tests: [test_selling_price_boundaries_are_exact_integer_tenths, test_current_exact_state_accepts_zero_free_transfers_and_rejects_unproven_scope, test_rebuy_resets_purchase_basis_and_future_selling_price, test_tampered_transfer_ledger_bank_hit_and_selling_values_fail_closed, test_public_transfer_contract_uses_official_realised_sale_not_invented_market_price, test_sealed_gw2_reconstruction_uses_official_sale_receipt_and_current_price_surface, test_full_override_is_immutable_provenance_and_partial_override_fails]
+    failure_consequence: Abstain from any in-season action; approximate or deadline-only financial state cannot become spendable truth.
     release_policy: REQUIRED
-    owner: world.manager_state
+    owner: core.manager_state
 
   - proof_id: PO-FPL-LEGALITY-001
     claim: The selected current action is legal under the sealed versioned RuleSet.
