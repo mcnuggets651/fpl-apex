@@ -43,7 +43,7 @@ requirements:
   - requirement_id: REQ-EXACT-MANAGER-STATE
     requirement: Live in-season action requires one current-exact manager state with exact permanent 15, bank, free transfers, purchase bases, realised selling prices, chip state and reconciled immutable transfer provenance.
     critical: true
-    invariants: [INV-NO-UNPROVEN-SPENDABLE-CASH, INV-MONEY-IN-TENTHS, INV-SELLING-PRICE-EXACT, INV-REBUIY-RESETS-BASIS, INV-DEADLINE-SNAPSHOT-NOT-CURRENT, INV-MANAGER-LEDGER-RECONCILED, INV-FULL-OVERRIDE-ONLY]
+    invariants: [INV-NO-UNPROVEN-SPENDABLE-CASH, INV-MONEY-IN-TENTHS, INV-SELLING-PRICE-EXACT, INV-REBUY-RESETS-BASIS, INV-DEADLINE-SNAPSHOT-NOT-CURRENT, INV-MANAGER-LEDGER-RECONCILED, INV-FULL-OVERRIDE-ONLY]
     implementation: [src/apex_fpl/core/manager_state.py, src/apex_fpl/control/manager_state_override.py]
     tests: [tests/test_v2_manager_state.py, tests/test_v2_manager_state_adversarial.py]
     proof_obligations: [PO-MANAGER-STATE-001, PO-ARTIFACT-INTEGRITY-001]
