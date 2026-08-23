@@ -47,6 +47,23 @@ def _input_error(message: str) -> TransferPlan:
     )
 
 
+def _normalise_first_gw_transfer_bound(value: int | None, label: str) -> tuple[int | None, str | None]:
+    if value is None:
+        return None, None
+    if isinstance(value, bool):
+        return None, f"{label} must be an integer between 0 and 15"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None, f"{label} must be an integer between 0 and 15"
+    if not np.isfinite(numeric) or not numeric.is_integer():
+        return None, f"{label} must be an integer between 0 and 15"
+    bound = int(numeric)
+    if bound < 0 or bound > 15:
+        return None, f"{label} must be an integer between 0 and 15"
+    return bound, None
+
+
 def optimise_transfer_plan(
     players: pd.DataFrame,
     projections: pd.DataFrame,
@@ -67,6 +84,8 @@ def optimise_transfer_plan(
     solver_time_limit: float = 120.0,
     solver_relative_gap: float = 0.002,
     enforce_current_bench_resilience: bool = False,
+    first_gw_min_transfers: int | None = None,
+    first_gw_max_transfers: int | None = None,
 ) -> TransferPlan:
     """Multi-period FPL transfer MILP with exact rolled-FT state transitions.
 
@@ -79,6 +98,10 @@ def optimise_transfer_plan(
     When ``enforce_current_bench_resilience`` is true, only the first/submitted
     Gameweek is constrained by the current evidence-based bench floor. Later weeks
     remain contingencies and must be rebuilt under fresh evidence at their deadline.
+
+    ``first_gw_min_transfers`` / ``first_gw_max_transfers`` constrain only the
+    executable first action. They exist for same-surface release counterfactuals
+    (roll, no-hit, exact transfer count) and never alter later contingent weeks.
     """
     locked, banned = set(locked or set()), set(banned or set())
     if "squad_evidence_eligible" in players:
@@ -103,6 +126,18 @@ def optimise_transfer_plan(
     selling_prices = selling_prices or {}
     if not gameweeks:
         return _input_error("no gameweeks supplied")
+    min_first, error = _normalise_first_gw_transfer_bound(
+        first_gw_min_transfers, "first_gw_min_transfers"
+    )
+    if error:
+        return _input_error(error)
+    max_first, error = _normalise_first_gw_transfer_bound(
+        first_gw_max_transfers, "first_gw_max_transfers"
+    )
+    if error:
+        return _input_error(error)
+    if min_first is not None and max_first is not None and min_first > max_first:
+        return _input_error("first_gw_min_transfers cannot exceed first_gw_max_transfers")
 
     base = players.drop_duplicates("player_id").copy()
     base = base[base["position"].isin(SQUAD_COUNTS)].copy()
@@ -282,6 +317,11 @@ def optimise_transfer_plan(
         )
         add(coeff, 0, 0)
         if t == 0:
+            transfer_count = {q(IN0, i, t): 1 for i in range(n)}
+            if min_first is not None:
+                add(transfer_count, float(min_first), np.inf)
+            if max_first is not None:
+                add(transfer_count, -np.inf, float(max_first))
             if int(free_transfers) < 1 or int(free_transfers) > F:
                 return _input_error(
                     f"free_transfers must be between 1 and {F}, got {free_transfers}"
