@@ -17,18 +17,60 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -e '.[dev]'
-      - run: pytest -q
-      - run: ruff check src tests scripts
-      - run: python scripts/check_upstreams.py
+          python-version: "3.12.14"
+      - name: Install frozen Apex CI environment
+        shell: bash
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --no-deps -r requirements.lock
+          .venv/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - run: .venv/bin/python -m pytest -q
+      - run: .venv/bin/ruff check src tests scripts
+      - run: .venv/bin/python scripts/check_upstreams.py
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - run: python scripts/check_governance_consistency.py
+      - run: .venv/bin/python scripts/check_governance_consistency.py
+
+      - name: Build immutable Apex core image
+        shell: bash
+        run: |
+          docker build --iidfile "$RUNNER_TEMP/apex-core.iid" -t apex-core:qualified .
+          cat "$RUNNER_TEMP/apex-core.iid"
+
+      - name: Generate build SBOM and provenance evidence
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/apex-build-evidence"
+          .venv/bin/python scripts/generate_spdx_sbom.py \
+            --output "$RUNNER_TEMP/apex-build-evidence/sbom.spdx.json"
+          cat > "$RUNNER_TEMP/apex-build-evidence/provenance.json" <<JSON
+          {
+            "schema_name": "apex-build-provenance",
+            "schema_version": 1,
+            "builder_identity": "github-actions:${{ github.repository }}:${{ github.workflow }}",
+            "source_sha": "${{ github.event.pull_request.head.sha || github.sha }}",
+            "workflow_run_id": "${{ github.run_id }}",
+            "workflow_run_attempt": "${{ github.run_attempt }}"
+          }
+          JSON
+          runtime_digest="$(cat "$RUNNER_TEMP/apex-core.iid")"
+          .venv/bin/python scripts/build_runtime_manifest.py \
+            --source-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --runtime-digest "$runtime_digest" \
+            --builder-identity "github-actions:${{ github.repository }}:${{ github.workflow }}" \
+            --built-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --sbom "$RUNNER_TEMP/apex-build-evidence/sbom.spdx.json" \
+            --provenance "$RUNNER_TEMP/apex-build-evidence/provenance.json" \
+            --output "$RUNNER_TEMP/apex-build-evidence/build_manifest.json"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apex-build-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/apex-build-evidence/
+          retention-days: 30
 
 # Production team generation is intentionally excluded from this workflow.
 # `.github/workflows/pinnacle.yml` runs production and publishes only an immutable
