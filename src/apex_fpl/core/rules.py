@@ -12,7 +12,9 @@ from .ids import RuleSetId
 
 JsonScalar = str | int | bool | None
 JsonValue = JsonScalar | tuple["JsonValue", ...] | tuple[tuple[str, "JsonValue"], ...]
-OFFICIAL_RULE_HOSTS = frozenset({"www.premierleague.com", "premierleague.com", "fantasy.premierleague.com"})
+OFFICIAL_RULE_HOSTS = frozenset(
+    {"www.premierleague.com", "premierleague.com", "fantasy.premierleague.com"}
+)
 FPL_POSITIONS = frozenset({"GK", "DEF", "MID", "FWD"})
 
 
@@ -203,7 +205,16 @@ class RuleSet:
         positions: Iterable[str],
         club_ids: Iterable[int],
         prices_tenths: Iterable[int],
+        enforce_budget: bool = True,
     ) -> tuple[str, ...]:
+        """Validate squad structure, and initial-construction budget when requested.
+
+        `enforce_budget=False` is required for an already-owned in-season squad:
+        current market value may legitimately exceed the original £100.0m budget.
+        Transfer affordability is then governed by exact bank and selling-price
+        transitions rather than by reapplying the initial construction cap.
+        """
+
         positions = tuple(positions)
         clubs = tuple(club_ids)
         prices = tuple(prices_tenths)
@@ -220,7 +231,10 @@ class RuleSet:
             actual = sum(item == position for item in positions)
             if actual != int(count):
                 errors.append(f"squad {position} count {actual} != {count}")
-        if any(isinstance(club, bool) or not isinstance(club, int) or club <= 0 for club in clubs):
+        if any(
+            isinstance(club, bool) or not isinstance(club, int) or club <= 0
+            for club in clubs
+        ):
             errors.append("all squad club IDs must be positive integers")
         else:
             max_club = self.integer("FPL-SQUAD-MAX-CLUB-001")
@@ -233,7 +247,7 @@ class RuleSet:
             for price in prices
         ):
             errors.append("all squad prices must be positive integer tenths")
-        elif sum(prices) > self.integer("FPL-SQUAD-BUDGET-TENTHS-001"):
+        elif enforce_budget and sum(prices) > self.integer("FPL-SQUAD-BUDGET-TENTHS-001"):
             errors.append("squad exceeds official budget")
         return tuple(errors)
 
