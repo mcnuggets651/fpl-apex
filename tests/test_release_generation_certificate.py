@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from apex_fpl.services.release_profile import INSEASON_SELECTOR, LAUNCH_SELECTOR
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "certify_release_generation.py"
 SPEC = spec_from_file_location("certify_release_generation", SCRIPT)
@@ -11,10 +13,11 @@ MODULE = module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
-def _payloads():
+def _payloads(*, selector=INSEASON_SELECTOR):
     squad = [{"player_id": pid, "web_name": f"P{pid}"} for pid in range(1, 16)]
     recommendation = {
-        "selector": "receding_horizon_current_team_maximum_ev",
+        "selector": selector,
+        "current_gameweek": 2 if selector == INSEASON_SELECTOR else 1,
         "squad": squad,
         "xi": squad[:11],
         "captain_id": 1,
@@ -22,7 +25,9 @@ def _payloads():
         "bench_gk_id": 12,
         "outfield_bench_order_ids": [13, 14, 15],
         "gw1_expected_total_with_mechanics": 50.0,
-        "action_now": {
+    }
+    if selector == INSEASON_SELECTOR:
+        recommendation["action_now"] = {
             "squad": [dict(row) for row in squad],
             "xi": [dict(row) for row in squad[:11]],
             "captain": [dict(squad[0])],
@@ -32,8 +37,7 @@ def _payloads():
             "exact_expected_total_points": 50.0,
             "mechanics_authority": "independent_exact_current_gameweek_rescore",
             "mechanics_reconciled": True,
-        },
-    }
+        }
     canonical = {
         "decision_bundle_id": "bundle",
         "strategy_stage": "final_validated",
@@ -62,43 +66,75 @@ def _payloads():
     }
     pinnacle = {"decision_bundle_id": "bundle", "pinnacle_ready": True}
     parity = {"decision_bundle_id": "bundle", "comparison_surface": "pinnacle_ev"}
-    adversarial = {
-        "decision_bundle_id": "bundle",
-        "summary": {
-            "audit_complete": True,
-            "search_surface_defect_signals": [],
-            "ban_solve_errors": [],
-        },
-    }
+    if selector == INSEASON_SELECTOR:
+        sensitivity = {
+            "contract": "apex-inseason-action-sensitivity-v1",
+            "decision_bundle_id": "bundle",
+            "selector": INSEASON_SELECTOR,
+            "ready": True,
+            "blockers": [],
+            "published_action": {"transfers": 5, "hit_cost": 16},
+            "baseline": {"objective": 100.0},
+            "counterfactuals": [{"name": "roll", "regret_vs_unconstrained": 7.0}],
+        }
+        state = {
+            "squad": list(range(1, 16)),
+            "published_gw": 1,
+            "selling_prices_exact": True,
+            "selling_prices": {str(pid): 5.0 for pid in range(1, 16)},
+        }
+        team_state = {"configured": True, "ok": True, "state": state}
+        gameweeks = [2, 3]
+    else:
+        sensitivity = {
+            "contract": "apex-adversarial-launch-ban-v2",
+            "decision_bundle_id": "bundle",
+            "summary": {
+                "audit_complete": True,
+                "search_surface_defect_signals": [],
+                "ban_solve_errors": [],
+            },
+        }
+        team_state = None
+        gameweeks = [1, 2]
     bench = {
+        "contract": "apex-bench-stress-v2",
         "decision_bundle_id": "bundle",
+        "selector": selector,
         "fixed_submission": True,
         "bench_reordered_with_hindsight": False,
     }
-    manifest = {"bundle_id": "bundle"}
-    return canonical, answer, pinnacle, parity, adversarial, bench, manifest
+    manifest = {"bundle_id": "bundle", "gameweeks": gameweeks, "team_state": team_state}
+    return canonical, answer, pinnacle, parity, sensitivity, bench, manifest
 
 
 def _validate(payloads):
-    canonical, answer, pinnacle, parity, adversarial, bench, manifest = payloads
+    canonical, answer, pinnacle, parity, sensitivity, bench, manifest = payloads
     return MODULE.validate_release_payloads(
         recommendation_payload=canonical,
         answer_context=answer,
         pinnacle=pinnacle,
         parity=parity,
-        adversarial=adversarial,
+        sensitivity=sensitivity,
         bench_stress=bench,
         manifest=manifest,
     )
 
 
-def test_complete_release_certificate_accepts_one_coherent_generation():
-    payloads = _payloads()
-    certificate = _validate(payloads)
+def test_inseason_release_certificate_accepts_one_coherent_generation():
+    certificate = _validate(_payloads())
     assert certificate["decision_bundle_id"] == "bundle"
-    assert certificate["selector"] == "receding_horizon_current_team_maximum_ev"
+    assert certificate["selector"] == INSEASON_SELECTOR
+    assert certificate["lifecycle"] == "in_season_receding_horizon"
+    assert certificate["sensitivity"]["contract"] == "apex-inseason-action-sensitivity-v1"
     assert certificate["mechanics"]["action_captain_id"] == 1
     assert certificate["mechanics"]["outfield_bench_order_ids"] == [13, 14, 15]
+
+
+def test_launch_release_certificate_requires_launch_specific_adversarial_contract():
+    certificate = _validate(_payloads(selector=LAUNCH_SELECTOR))
+    assert certificate["lifecycle"] == "pre_gw1_launch"
+    assert certificate["sensitivity"]["contract"] == "apex-adversarial-launch-ban-v2"
 
 
 def test_release_certificate_rejects_action_captain_drift():
@@ -118,12 +154,15 @@ def test_release_certificate_rejects_cross_artifact_bundle_drift():
         _validate(payloads)
 
 
-def test_release_certificate_rejects_adversarial_or_bench_shortcuts():
+def test_release_certificate_rejects_inseason_sensitivity_failure():
     payloads = _payloads()
-    payloads[4]["summary"]["search_surface_defect_signals"] = ["candidate-space defect"]
-    with pytest.raises(ValueError, match="defect signals"):
+    payloads[4]["ready"] = False
+    payloads[4]["blockers"] = ["roll counterfactual inconclusive"]
+    with pytest.raises(ValueError, match="in-season action sensitivity is not ready"):
         _validate(payloads)
 
+
+def test_release_certificate_rejects_bench_hindsight_reordering():
     payloads = _payloads()
     payloads[5]["bench_reordered_with_hindsight"] = True
     with pytest.raises(ValueError, match="hindsight"):
