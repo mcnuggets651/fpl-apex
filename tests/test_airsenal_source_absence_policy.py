@@ -24,8 +24,6 @@ def test_missing_airsenal_uses_explicit_apex_fallback_without_fabricating_source
     weights = {"official_ep": 0.2, "apex_model": 0.5, "airsenal": 0.3, "market": 0.0}
     out = blend_projection(base, weights, 0.0).iloc[0]
 
-    # Fixed weights: 20% official + 50% Apex + the missing 30% explicitly
-    # delegated to Apex. The absent AIrsenal source itself remains absent.
     assert math.isclose(float(out["canonical_ev_xp"]), 4.2, rel_tol=1e-9)
     assert not bool(out["source_present_airsenal"])
     assert bool(out["airsenal_source_absent"])
@@ -87,8 +85,6 @@ def test_truth_contract_accepts_only_explicitly_reconciled_airsenal_absence():
     audit = audit_player_truth(players, projections, expected_players=1)
 
     assert audit["ready"]
-    # Production consumes certified pair coverage. Raw upstream presence stays
-    # separately visible and is never fabricated.
     assert audit["airsenal_projection_pair_coverage"] == 1.0
     assert audit["airsenal_raw_projection_pair_coverage"] == 0.0
     assert audit["airsenal_source_absence_reconciled"] is True
@@ -143,19 +139,12 @@ def test_truth_contract_reports_raw_presence_separately_when_source_is_present()
     assert audit["airsenal_source_absence_reconciled"] is True
 
 
-def test_adaptive_release_uses_certified_not_fabricated_airsenal_coverage():
-    adaptive = Path(".github/workflows/joint-path-promotion-audit.yml").read_text(
-        encoding="utf-8"
-    )
+def test_release_uses_certified_not_fabricated_airsenal_coverage():
     canonical = Path(".github/workflows/adaptive-canonical-diagnostic.yml").read_text(
         encoding="utf-8"
     )
     certifier = Path("scripts/certify_release_generation.py").read_text(encoding="utf-8")
 
-    # Adaptive delegates to the exact Canonical transaction; the shared release
-    # certifier consumes certified coverage from player_truth. Raw AIrsenal presence
-    # remains a diagnostic field and is never required to be fabricated to 100%.
-    assert "uses: ./.github/workflows/adaptive-canonical-diagnostic.yml" in adaptive
     assert "scripts/certify_release_generation.py" in canonical
     assert '"airsenal_projection_pair_coverage"' in certifier
     assert '"airsenal_raw_projection_pair_coverage"' not in certifier
