@@ -40,6 +40,26 @@ proof_obligations:
     release_policy: REQUIRED
     owner: acquisition.sealed_world
 
+  - proof_id: PO-OFFICIAL-PLAYER-IDENTITY-001
+    claim: Decision-critical player evidence attaches only through an exact current Official FPL integer ID or an explicitly reviewed cross-season PersonId link; names never establish identity.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: global_world
+    required_evidence: [OfficialFPL_player_registry, IdentityResolution, reviewed_PersonLink]
+    required_tests: [test_current_official_integer_id_is_exact_identity, test_name_alone_never_resolves_decision_critical_identity, test_conflicting_identity_witness_is_ambiguous_and_blocks, test_official_registry_rejects_non_integer_and_duplicate_ids]
+    failure_consequence: Block the affected evidence and any decision that requires it; never guess identity from a name.
+    release_policy: REQUIRED
+    owner: core.identity
+
+  - proof_id: PO-RULESET-PROVENANCE-001
+    claim: The active season RuleSet is deterministic, versioned, complete for its declared capabilities and every rule cites reviewed Official Premier League evidence.
+    proof_class: PROVENANCE_ASSERTION
+    scope: ruleset
+    required_evidence: [RuleSet, RuleSetId, OfficialRuleSource]
+    required_tests: [test_ruleset_is_versioned_official_and_provenance_complete, test_ruleset_semantic_identity_changes_when_rule_changes, test_ruleset_semantic_values_reject_uncontrolled_floats]
+    failure_consequence: Block use of the RuleSet and therefore block any action whose legality depends on it.
+    release_policy: REQUIRED
+    owner: control.ruleset_registry
+
   - proof_id: PO-MANAGER-STATE-001
     claim: In-season financial legality is based on an exact-enough current manager state.
     proof_class: FORMAL_INVARIANT
