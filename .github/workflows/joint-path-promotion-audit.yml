@@ -124,7 +124,8 @@ jobs:
           FPL_ENTRY_ID: "63984"
           AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
           APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
-        run: "$APEX_CORE_PYTHON" scripts/build_decision_bundle.py --horizon 8 --force
+        run: |
+          "$APEX_CORE_PYTHON" scripts/build_decision_bundle.py --horizon 8 --force
 
       - name: Generate Pinnacle surface for independent parity
         env:
