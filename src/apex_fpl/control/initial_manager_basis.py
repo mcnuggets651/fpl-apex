@@ -30,6 +30,8 @@ from apex_fpl.core.rules import RuleSet
 
 INITIAL_BASIS_SCHEMA_NAME = "apex-initial-manager-basis"
 INITIAL_BASIS_SCHEMA_VERSION = 1
+SEALED_WORLD_SCHEMA_NAME = "apex-sealed-global-world"
+SEALED_MANAGER_SCHEMA_NAME = "apex-sealed-manager-public-data"
 
 
 def _parse_aware(value: object, *, label: str) -> datetime:
@@ -62,7 +64,11 @@ class InitialPurchaseBasis:
     purchase_basis_tenths: int
 
     def __post_init__(self) -> None:
-        if isinstance(self.team_id, bool) or not isinstance(self.team_id, int) or self.team_id <= 0:
+        if (
+            isinstance(self.team_id, bool)
+            or not isinstance(self.team_id, int)
+            or self.team_id <= 0
+        ):
             raise ValueError("initial basis team_id must be a positive integer")
         if self.position not in {"GK", "DEF", "MID", "FWD"}:
             raise ValueError(f"invalid initial basis position: {self.position!r}")
@@ -99,20 +105,30 @@ class InitialManagerBasis:
             raise ValueError("unsupported InitialManagerBasis schema_version")
         if not self.season.strip():
             raise ValueError("initial manager basis season cannot be empty")
-        if isinstance(self.entry_id, bool) or not isinstance(self.entry_id, int) or self.entry_id <= 0:
+        if (
+            isinstance(self.entry_id, bool)
+            or not isinstance(self.entry_id, int)
+            or self.entry_id <= 0
+        ):
             raise ValueError("initial manager basis entry_id must be positive")
         if (
             isinstance(self.initial_bank_tenths, bool)
             or not isinstance(self.initial_bank_tenths, int)
             or self.initial_bank_tenths < 0
         ):
-            raise ValueError("initial manager basis bank must be nonnegative integer tenths")
+            raise ValueError(
+                "initial manager basis bank must be nonnegative integer tenths"
+            )
         players = tuple(sorted(self.players, key=lambda row: int(row.player_id)))
         if len(players) != 15 or len({row.player_id for row in players}) != 15:
             raise ValueError("initial manager basis requires exactly 15 unique players")
-        provenance = tuple(sorted({_artifact_id(item) for item in self.provenance_artifact_ids}))
-        if not provenance:
-            raise ValueError("initial manager basis requires immutable provenance")
+        provenance = tuple(
+            sorted({_artifact_id(item) for item in self.provenance_artifact_ids})
+        )
+        if len(provenance) != 2:
+            raise ValueError(
+                "initial manager basis requires exactly two sealed provenance manifests"
+            )
         object.__setattr__(self, "players", players)
         object.__setattr__(self, "provenance_artifact_ids", provenance)
 
@@ -124,7 +140,9 @@ class InitialManagerBasis:
             "entry_id": self.entry_id,
             "ruleset_id": str(self.ruleset_id),
             "pre_gw1_global_world_id": str(self.pre_gw1_global_world_id),
-            "gw1_manager_public_snapshot_id": str(self.gw1_manager_public_snapshot_id),
+            "gw1_manager_public_snapshot_id": str(
+                self.gw1_manager_public_snapshot_id
+            ),
             "initial_bank_tenths": self.initial_bank_tenths,
             "players": [row.as_dict() for row in self.players],
         }
@@ -160,7 +178,9 @@ def _first_deadline(bootstrap: dict[str, Any]) -> datetime:
     for row in events:
         if not isinstance(row, dict) or not row.get("deadline_time"):
             continue
-        deadlines.append(_parse_aware(row["deadline_time"], label="FPL deadline_time"))
+        deadlines.append(
+            _parse_aware(row["deadline_time"], label="FPL deadline_time")
+        )
     if not deadlines:
         raise ValueError("pre-GW1 bootstrap has no valid deadline_time")
     return min(deadlines)
@@ -187,12 +207,19 @@ def build_initial_manager_basis(
 
     deadline = _first_deadline(pre_world.bootstrap)
     bootstrap_capture = next(
-        (row for row in pre_world.captures if row.source_name == "official_fpl_bootstrap"),
+        (
+            row
+            for row in pre_world.captures
+            if row.source_name == "official_fpl_bootstrap"
+        ),
         None,
     )
     if bootstrap_capture is None:
         raise ValueError("pre-GW1 GlobalWorld is missing Official bootstrap capture")
-    retrieved = _parse_aware(bootstrap_capture.retrieved_at, label="bootstrap retrieved_at")
+    retrieved = _parse_aware(
+        bootstrap_capture.retrieved_at,
+        label="bootstrap retrieved_at",
+    )
     if retrieved >= deadline:
         raise ValueError(
             "initial purchase basis requires Official bootstrap captured before first deadline"
@@ -209,7 +236,9 @@ def build_initial_manager_basis(
         player_id = OfficialPlayerId(int(row["element"]))
         official = registry.get(player_id)
         if official is None:
-            raise ValueError(f"GW1 pick {player_id} is absent from pre-GW1 Official bootstrap")
+            raise ValueError(
+                f"GW1 pick {player_id} is absent from pre-GW1 Official bootstrap"
+            )
         players.append(
             InitialPurchaseBasis(
                 player_id=player_id,
@@ -225,7 +254,9 @@ def build_initial_manager_basis(
         prices_tenths=(row.purchase_basis_tenths for row in players),
     )
     if legality:
-        raise ValueError("GW1 initial squad is illegal under RuleSet: " + "; ".join(legality))
+        raise ValueError(
+            "GW1 initial squad is illegal under RuleSet: " + "; ".join(legality)
+        )
     initial_bank = ruleset.integer("FPL-SQUAD-BUDGET-TENTHS-001") - sum(
         row.purchase_basis_tenths for row in players
     )
@@ -237,7 +268,8 @@ def build_initial_manager_basis(
     published_bank = int(entry_history["bank"])
     if published_bank != initial_bank:
         raise ValueError(
-            f"pre-GW1 purchase basis bank {initial_bank} != Official GW1 bank {published_bank}"
+            f"pre-GW1 purchase basis bank {initial_bank} "
+            f"!= Official GW1 bank {published_bank}"
         )
 
     basis = InitialManagerBasis(
@@ -259,6 +291,58 @@ def build_initial_manager_basis(
     return StoredInitialManagerBasis(basis=basis, artifact_id=ref.artifact_id)
 
 
+def _verify_basis_provenance(
+    basis: InitialManagerBasis,
+    *,
+    store: ArtifactStore,
+) -> None:
+    matched_world = False
+    matched_manager = False
+    for provenance_id in basis.provenance_artifact_ids:
+        if not store.verify(provenance_id):
+            raise ValueError(
+                f"initial manager basis provenance artifact failed integrity: {provenance_id}"
+            )
+        raw = store.read_bytes(provenance_id)
+        try:
+            envelope = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "initial manager basis provenance manifest is not UTF-8 JSON"
+            ) from exc
+        if not isinstance(envelope, dict):
+            raise ValueError("initial manager basis provenance manifest is not an object")
+        schema_name = envelope.get("schema_name")
+        if schema_name == SEALED_WORLD_SCHEMA_NAME:
+            replay = load_official_global_world(provenance_id, store=store)
+            if replay.world.world_id != basis.pre_gw1_global_world_id:
+                raise ValueError(
+                    "initial manager basis provenance GlobalWorldId mismatch"
+                )
+            if replay.world.season != basis.season:
+                raise ValueError("initial manager basis provenance season mismatch")
+            matched_world = True
+        elif schema_name == SEALED_MANAGER_SCHEMA_NAME:
+            replay = load_official_manager_public_data(provenance_id, store=store)
+            if replay.snapshot.snapshot_id != basis.gw1_manager_public_snapshot_id:
+                raise ValueError(
+                    "initial manager basis provenance ManagerPublicSnapshotId mismatch"
+                )
+            if replay.snapshot.entry_id != basis.entry_id:
+                raise ValueError("initial manager basis provenance entry mismatch")
+            if replay.snapshot.published_gameweek != 1:
+                raise ValueError("initial manager basis provenance is not a GW1 snapshot")
+            matched_manager = True
+        else:
+            raise ValueError(
+                f"unexpected initial manager basis provenance schema: {schema_name!r}"
+            )
+    if not matched_world or not matched_manager:
+        raise ValueError(
+            "initial manager basis provenance must contain one sealed world and one GW1 manager snapshot"
+        )
+
+
 def load_initial_manager_basis(
     artifact_id: str,
     *,
@@ -271,7 +355,10 @@ def load_initial_manager_basis(
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("initial manager basis artifact is not UTF-8 JSON") from exc
-    if not isinstance(payload, dict) or payload.get("schema_name") != INITIAL_BASIS_SCHEMA_NAME:
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema_name") != INITIAL_BASIS_SCHEMA_NAME
+    ):
         raise ValueError("not an Apex initial manager basis artifact")
     rows = payload.get("players")
     provenance = payload.get("provenance_artifact_ids")
@@ -281,7 +368,9 @@ def load_initial_manager_basis(
         season=str(payload["season"]),
         entry_id=int(payload["entry_id"]),
         ruleset_id=RuleSetId(str(payload["ruleset_id"])),
-        pre_gw1_global_world_id=GlobalWorldId(str(payload["pre_gw1_global_world_id"])),
+        pre_gw1_global_world_id=GlobalWorldId(
+            str(payload["pre_gw1_global_world_id"])
+        ),
         gw1_manager_public_snapshot_id=ManagerPublicSnapshotId(
             str(payload["gw1_manager_public_snapshot_id"])
         ),
@@ -302,4 +391,5 @@ def load_initial_manager_basis(
     declared = payload.get("initial_manager_basis_id")
     if declared is not None and str(declared) != str(basis.basis_id):
         raise ValueError("initial manager basis semantic identity mismatch")
+    _verify_basis_provenance(basis, store=store)
     return basis
