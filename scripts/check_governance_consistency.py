@@ -49,9 +49,10 @@ CONCURRENT_PR_AUDITS = {
     "team-strength-validation.yml": "github.event.pull_request.number || github.ref",
     "understat-player-production-ab.yml": "github.event.pull_request.number || github.ref",
 }
-REQUIRED_SOURCE_INVALIDATORS = {
-    "airsenal.yml": "--source airsenal",
-    "refresh-core-pin.yml": "--source fpl_core_insights",
+RUNTIME_ARTIFACT_WORKFLOWS = {
+    "airsenal.yml",
+    "pinnacle.yml",
+    "refresh-core-pin.yml",
 }
 
 
@@ -94,28 +95,46 @@ def main() -> None:
                 f"expensive PR workflow does not cancel superseded runs: {name}"
             )
 
-    if not Path("scripts/invalidate_published_decision.py").exists():
-        failures.append("required-source canonical invalidation CLI is missing")
-    for name, source_arg in REQUIRED_SOURCE_INVALIDATORS.items():
+    # Slice 0 constitutional boundary: active workflows may not use Git as the
+    # live runtime database. Any future source mutation must be an explicit,
+    # reviewed repository change rather than a scheduled publication side effect.
+    for name in ACTIVE_WORKFLOWS:
         text = _text(active_dir / name)
-        if "scripts/invalidate_published_decision.py" not in text or source_arg not in text:
-            failures.append(
-                f"required-source refresh can leave a stale actionable decision: {name}"
-            )
-        if "apex_answer_context.json" not in text or "apex_recommendation_latest.json" not in text:
-            failures.append(
-                f"required-source refresh does not atomically stage invalidated canonical files: {name}"
-            )
+        if "contents: write" in text:
+            failures.append(f"active workflow has source write permission: {name}")
+        if "git push origin HEAD:main" in text:
+            failures.append(f"active workflow directly pushes runtime/source state to main: {name}")
+
+    for name in RUNTIME_ARTIFACT_WORKFLOWS:
+        text = _text(active_dir / name)
+        if "contents: read" not in text:
+            failures.append(f"runtime artifact workflow is not read-only: {name}")
+
+    airsenal = _text(active_dir / "airsenal.yml")
+    if "actions/upload-artifact@v4" not in airsenal or "data/generated/airsenal.csv" not in airsenal:
+        failures.append("AIrsenal validation workflow does not retain its runtime artifact")
+    if "invalidate_published_decision.py" in airsenal:
+        failures.append("AIrsenal validation still mutates a tracked published decision")
+
+    core_pin = _text(active_dir / "refresh-core-pin.yml")
+    if "actions/upload-artifact@v4" not in core_pin or "upstreams.lock.json" not in core_pin:
+        failures.append("FPL Core pin audit does not retain the validated proposal artifact")
+    if "reviewed dependency source change required" not in core_pin:
+        failures.append("FPL Core pin audit does not enforce reviewed source promotion")
+    if "invalidate_published_decision.py" in core_pin:
+        failures.append("FPL Core pin audit still mutates a tracked published decision")
 
     workflow = _text(active_dir / "pinnacle.yml")
     if "scripts/run_apex.py" not in workflow:
         failures.append("production workflow does not use the single Apex runner")
     if "apex_answer_context.json" not in workflow:
-        failures.append("production workflow does not publish apex_answer_context.json")
+        failures.append("production workflow does not retain apex_answer_context.json in its runtime packet")
     if "scripts/build_decision_bundle.py" not in workflow:
         failures.append("production workflow does not seal a decision bundle")
     if "data/generated/decision_bundle" not in workflow:
         failures.append("production workflow does not retain the decision bundle artifact")
+    if "scripts/stage_runtime_release.py" not in workflow:
+        failures.append("production workflow does not stage an immutable runtime release")
 
     for script_name in ("scripts/run_pinnacle.py", "scripts/run_elite.py"):
         script = _text(script_name)

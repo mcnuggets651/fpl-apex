@@ -31,6 +31,5 @@ jobs:
       - run: python scripts/check_governance_consistency.py
 
 # Production team generation is intentionally excluded from this workflow.
-# The only scheduled/user-facing decision workflow is `.github/workflows/pinnacle.yml`
-# (display name: Apex Unified), which runs `scripts/run_apex.py` and publishes only
-# `data/generated/apex_recommendation_latest.*`.
+# `.github/workflows/pinnacle.yml` runs production and publishes only an immutable
+# runtime artifact packet. It is forbidden from committing recommendation state to main.

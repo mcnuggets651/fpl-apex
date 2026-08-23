@@ -1,18 +1,17 @@
-name: Refresh FPL Core data pin
+name: Audit FPL Core data pin candidate
 
 on:
   workflow_dispatch:
   schedule:
-    # FPL Core documents two daily data refreshes. Resolve its moving data branch
-    # shortly before each six-hour Apex production run so the live data stays
-    # current while every Apex run still uses one immutable, auditable commit.
+    # Audit the moving upstream shortly before production. A validated candidate
+    # becomes a proposed source change, never an unreviewed direct push to main.
     - cron: "3 */6 * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: apex-production-write
+  group: apex-core-pin-audit
   cancel-in-progress: false
 
 jobs:
@@ -45,7 +44,7 @@ jobs:
               url,
               headers={
                   "Accept": "application/vnd.github+json",
-                  "User-Agent": "apex-fpl-core-pin/1.0",
+                  "User-Agent": "apex-fpl-core-pin/2.0",
               },
           )
           with urllib.request.urlopen(request, timeout=30) as response:
@@ -66,7 +65,7 @@ jobs:
               raise SystemExit(f"FPL Core commit timestamp is {abs(age_hours):.1f}h in the future")
           if age_hours > 30:
               raise SystemExit(
-                  f"FPL Core main is stale ({age_hours:.1f}h old); refusing to promote it"
+                  f"FPL Core main is stale ({age_hours:.1f}h old); refusing to propose it"
               )
 
           print(f"sha={sha}")
@@ -75,7 +74,7 @@ jobs:
           print(f"age_hours={max(age_hours, 0):.2f}")
           PY
 
-      - name: Validate candidate FPL Core semantics before publication
+      - name: Validate candidate FPL Core semantics
         shell: bash
         env:
           CORE_SHA: ${{ steps.core.outputs.sha }}
@@ -87,7 +86,7 @@ jobs:
             --season "$APEX_SEASON" \
             --cache-dir data/cache/core-candidate
 
-      - name: Update immutable data pin after validation
+      - name: Materialize proposed immutable data pin
         shell: bash
         env:
           CORE_SHA: ${{ steps.core.outputs.sha }}
@@ -110,39 +109,57 @@ jobs:
           source["resolved_age_hours"] = float(os.environ["CORE_AGE_HOURS"])
           source["newer_revision_available"] = False
           source["resolution_policy"] = (
-              "moving main candidate validated semantically before immutable publication"
+              "moving main candidate validated semantically before reviewed source promotion"
           )
           path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
-          print(f"Validated FPL Core pin: {old} -> {source['commit']}")
+          print(f"Proposed validated FPL Core pin: {old} -> {source['commit']}")
           PY
 
-      - name: Verify pinned source contract
+      - name: Verify proposed pinned source contract
         run: python scripts/check_upstreams.py
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Commit validated FPL Core revision and invalidate older decision
+      - name: Write candidate audit manifest
+        shell: bash
+        env:
+          CORE_SHA: ${{ steps.core.outputs.sha }}
+          CORE_COMMITTED_AT: ${{ steps.core.outputs.committed_at }}
+          CORE_RESOLVED_AT: ${{ steps.core.outputs.resolved_at }}
+        run: |
+          mkdir -p reports/core-pin-candidate
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_name": "apex-core-pin-candidate",
+              "schema_version": "1",
+              "candidate_sha": os.environ["CORE_SHA"],
+              "committed_at": os.environ["CORE_COMMITTED_AT"],
+              "resolved_at": os.environ["CORE_RESOLVED_AT"],
+              "validated": True,
+              "source_control_updated": False,
+              "promotion_policy": "reviewed dependency source change required",
+          }
+          Path("reports/core-pin-candidate/manifest.json").write_text(
+              json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Assert audit did not publish source state
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add upstreams.lock.json
-          if git diff --cached --quiet; then
-            echo "FPL Core pin is already current"
-            exit 0
-          fi
-          python scripts/invalidate_published_decision.py \
-            --source fpl_core_insights \
-            --reason "validated pinned FPL Core snapshot changed"
-          git add \
-            data/generated/apex_recommendation_latest.json \
-            data/generated/apex_recommendation_latest.md \
-            data/generated/apex_answer_context.json
-          git commit -m "data: refresh validated pinned FPL Core snapshot"
-          git fetch origin main
-          if [ "$(git rev-parse origin/main)" != "${{ github.sha }}" ]; then
-            echo "Main changed during candidate validation; aborting publication for a clean rerun."
-            exit 1
-          fi
-          git push origin HEAD:main
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          echo "Candidate validated; source pin remains a reviewed repository change."
+
+      - name: Upload proposed pin evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: fpl-core-pin-candidate-${{ github.run_id }}
+          path: |
+            upstreams.lock.json
+            reports/core-pin-candidate/
+          retention-days: 30

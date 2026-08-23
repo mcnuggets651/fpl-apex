@@ -5,11 +5,12 @@ on:
   schedule:
     - cron: "23 4 * * *"
 
+# Validation workers produce runtime artifacts; they never mutate source control.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: apex-production-write
+  group: apex-airsenal-validation
   cancel-in-progress: false
 
 jobs:
@@ -67,29 +68,18 @@ jobs:
           mkdir -p "$AIRSENAL_HOME"
           cd workers/airsenal
           if [ ! -s "$AIRSENAL_DB_FILE" ]; then
-            # The upstream setup CLI requires a positive team ID. Before GW1 it
-            # explicitly skips initial-squad transactions. If this cache ever has
-            # to be rebuilt after GW1, team 1 is used only to satisfy that setup
-            # interface; Apex forecasts never consume its transaction table.
+            # Upstream setup requires a positive team ID. The forecast worker does
+            # not consume that manager's transaction table.
             uv run airsenal_setup_initial_db --fpl_team_id 1
           fi
 
-          # Reuse AIrsenal's exact current-season update functions while skipping
-          # manager-specific transfer-history updates. This makes the forecasting
-          # worker independent of any arbitrary FPL manager team throughout season.
           uv run python "$GITHUB_WORKSPACE/scripts/update_airsenal_worker.py"
 
-          # AIrsenal issue #827: the pinned revision can leave historical
-          # PlayerAttributes.position empty. Patch only those historical DB rows
-          # from AIrsenal's own player_summary files, then refuse the forecast if
-          # a current FPL player is still unresolved.
           cd "$GITHUB_WORKSPACE"
           python scripts/patch_airsenal_positions.py \
             "$AIRSENAL_DB_FILE" \
             workers/airsenal
 
-          # Use the canonical wrapper for live horizon resolution, exclusive-end
-          # AIrsenal semantics, official-ID export and horizon-completeness checks.
           cd workers/airsenal
           uv run python "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py" \
             --db "$AIRSENAL_DB_FILE" \
@@ -111,31 +101,13 @@ jobs:
               raise SystemExit("Apex rejected the generated AIrsenal forecast")
           PY
 
-      - name: Commit validated forecast and invalidate older decision
+      - name: Assert validated forecast remains outside source control
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/generated/airsenal.csv
-          if git diff --cached --quiet; then
-            echo "Forecast unchanged"
-            exit 0
-          fi
-          python scripts/invalidate_published_decision.py \
-            --source airsenal \
-            --reason "validated AIrsenal forecast changed"
-          git add \
-            data/generated/apex_recommendation_latest.json \
-            data/generated/apex_recommendation_latest.md \
-            data/generated/apex_answer_context.json
-          git commit -m "data: refresh validated AIrsenal GW forecast"
-          git fetch origin main
-          if [ "$(git rev-parse origin/main)" != "${{ github.sha }}" ]; then
-            echo "Main changed during forecast generation; aborting publication for a clean rerun."
-            exit 1
-          fi
-          git push origin HEAD:main
+          test -s data/generated/airsenal.csv
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          echo "Validated forecast is a runtime artifact; no source commit is permitted."
 
       - name: Upload worker evidence
         if: always()

@@ -4,7 +4,7 @@ import yaml
 
 
 ROOT = Path(__file__).parents[1]
-WRITERS = ["pinnacle.yml", "airsenal.yml", "refresh-core-pin.yml"]
+RUNTIME_WORKFLOWS = ["pinnacle.yml", "airsenal.yml", "refresh-core-pin.yml"]
 
 
 def _workflow(name: str) -> tuple[dict, str]:
@@ -12,43 +12,59 @@ def _workflow(name: str) -> tuple[dict, str]:
     return yaml.safe_load(text), text
 
 
-def test_all_main_writers_share_one_non_cancelling_concurrency_group():
-    for name in WRITERS:
-        workflow, _ = _workflow(name)
-        assert workflow["concurrency"] == {
-            "group": "apex-production-write",
-            "cancel-in-progress": False,
-        }
+def test_runtime_workflows_have_no_source_write_permission_or_main_push():
+    for name in RUNTIME_WORKFLOWS:
+        workflow, text = _workflow(name)
+        assert workflow["permissions"] == {"contents": "read"}, name
+        assert "contents: write" not in text, name
+        assert "git push origin HEAD:main" not in text, name
+        assert "git pull --rebase" not in text, name
+        assert "git rebase" not in text, name
 
 
-def test_no_production_writer_rebases_a_result_onto_changed_inputs():
-    for name in WRITERS:
-        _, text = _workflow(name)
-        assert "git rebase" not in text
-        assert "git pull --rebase" not in text
-        assert "git rev-parse origin/main" in text
-        assert "github.sha" in text
-
-
-def test_unified_publishes_latest_status_even_when_decision_is_withheld():
-    _, text = _workflow("pinnacle.yml")
-    marker = "- name: Publish latest canonical status and durable forecast archive"
-    publish = text[text.index(marker) :]
-    assert "if: steps.canonical.outputs.ready == 'true'" not in publish.split(
-        "- name:", 1
-    )[0]
-    assert "data/history/deadlines" in publish
-
-
-def test_unified_finalizes_and_publishes_after_early_failure():
+def test_unified_stages_current_status_even_when_decision_is_withheld():
     _, text = _workflow("pinnacle.yml")
     finalize = text.index("- name: Finalize fail-closed production status")
-    publish = text.index("- name: Publish latest canonical status and durable forecast archive")
-    assert finalize < publish
-    assert "if: always()" in text[finalize:publish]
-    assert "scripts/finalize_production_status.py" in text[finalize:publish]
-    assert "if: always()" in text[publish : publish + 180]
-    assert "data/history/production_runs" in text[publish:]
+    seal = text.index("- name: Seal atomic workflow packet")
+    stage = text.index("- name: Stage immutable runtime release outside source control")
+    upload = text.index("- uses: actions/upload-artifact@v4")
+    assert finalize < seal < stage < upload
+    assert "if: always()" in text[finalize:seal]
+    assert "if: always()" in text[seal:stage]
+    assert "if: always()" in text[stage:upload]
+    assert "scripts/stage_runtime_release.py" in text[stage:upload]
+    assert "data/history/deadlines" in text[seal:stage]
+    assert "data/history/production_runs" in text[seal:stage]
+
+
+def test_unified_never_recreates_git_as_runtime_registry():
+    _, text = _workflow("pinnacle.yml")
+    forbidden = (
+        "git add -f",
+        "data: publish canonical Apex recommendation",
+        "git config user.name",
+        "git config user.email",
+    )
+    assert all(token not in text for token in forbidden)
+    assert 'test "$(git rev-parse HEAD)" = "${{ github.sha }}"' in text
+
+
+def test_airsenal_forecast_is_validation_artifact_not_tracked_runtime_state():
+    _, text = _workflow("airsenal.yml")
+    assert "Commit validated forecast" not in text
+    assert "invalidate_published_decision.py" not in text
+    assert "data/generated/airsenal.csv" in text
+    assert "actions/upload-artifact@v4" in text
+
+
+def test_core_pin_refresh_is_audited_proposal_not_direct_source_mutation():
+    _, text = _workflow("refresh-core-pin.yml")
+    assert "Materialize proposed immutable data pin" in text
+    assert "Commit validated FPL Core revision" not in text
+    assert "invalidate_published_decision.py" not in text
+    assert "reviewed dependency source change required" in text
+    assert "actions/upload-artifact@v4" in text
+    assert "upstreams.lock.json" in text
 
 
 def test_explicit_readiness_block_skips_parity_without_failing_workflow():
@@ -60,7 +76,7 @@ def test_explicit_readiness_block_skips_parity_without_failing_workflow():
 
 def test_missing_parity_alone_bootstraps_independent_solver_stage():
     _, text = _workflow("pinnacle.yml")
-    assert 'if blockers == parity_bootstrap:' in text
+    assert "if blockers == parity_bootstrap:" in text
     assert 'echo "ready_for_parity=true" >> "$GITHUB_OUTPUT"' in text
     assert "scripts/export_open_solver.py" in text
 

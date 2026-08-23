@@ -7,11 +7,12 @@ on:
   push:
     branches: [main]
 
+# Slice 0: production runs may read source, but runtime publication cannot mutate source.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: apex-production-write
+  group: apex-production
   cancel-in-progress: false
 
 jobs:
@@ -234,7 +235,7 @@ jobs:
 
       - name: Report withheld canonical decision
         if: steps.canonical.outputs.ready != 'true'
-        run: echo "::warning title=Apex Unified not decision-ready::The system is healthy, but the canonical decision contract withheld a team. Inspect the artifact blockers."
+        run: echo "::warning title=Apex Unified not decision-ready::The canonical decision contract withheld a team. Inspect the immutable runtime artifact."
 
       - name: Update no-hindsight learning archive
         if: steps.pinnacle.outputs.ready_for_parity == 'true'
@@ -243,12 +244,13 @@ jobs:
           FPL_ENTRY_ID: "63984"
         run: python scripts/update_learning_archive.py
 
-      - name: Seal atomic workflow artifact before publication cleanup
+      - name: Seal atomic workflow packet
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           packet="$RUNNER_TEMP/apex-unified-packet"
+          rm -rf "$packet"
           mkdir -p "$packet"
           for path in \
             reports \
@@ -272,54 +274,31 @@ jobs:
             fi
           done
 
-      - name: Publish latest canonical status and durable forecast archive
+      - name: Stage immutable runtime release outside source control
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main
-          if [ "$(git rev-parse origin/main)" != "${{ github.sha }}" ]; then
-            echo "Material repository state changed during solve; aborting publication so Apex can rerun on the new head."
-            exit 1
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f \
-            data/generated/apex_recommendation_latest.json \
-            data/generated/apex_recommendation_latest.md \
-            data/generated/apex_answer_context.json
-          for path in \
-            data/generated/solver_parity.json \
-            data/generated/calibration_report.json
-          do
-            if [ -e "$path" ]; then
-              git add -f "$path"
-            fi
-          done
-          if [ -d data/history/production_runs ]; then
-            git add -f data/history/production_runs
-          fi
-          if [ -d data/history/deadlines ]; then
-            git add -f data/history/deadlines
-          fi
-          if git diff --cached --quiet; then
-            echo "Canonical Apex recommendation unchanged"
-            exit 0
-          fi
-          git commit -m "data: publish canonical Apex recommendation [skip ci]"
+          packet="$RUNNER_TEMP/apex-unified-packet"
+          python scripts/stage_runtime_release.py \
+            --packet-root "$packet" \
+            --artifact-root "$RUNNER_TEMP/apex-artifact-store" \
+            --registry-root "$RUNNER_TEMP/apex-release-registry" \
+            --season "2026-2027" \
+            --entry "63984" \
+            --run-id "${{ github.run_id }}" \
+            --runtime-digest "git:${{ github.sha }}"
+          mkdir -p "$packet/runtime/backend"
+          cp -a "$RUNNER_TEMP/apex-artifact-store" "$packet/runtime/backend/artifact-store"
+          cp -a "$RUNNER_TEMP/apex-release-registry" "$packet/runtime/backend/release-registry"
 
-          # The live model also refreshes internal diagnostic files. Revert only
-          # uncommitted tracked diagnostics after the canonical files are safely
-          # recorded in HEAD.
-          echo "Discarding uncommitted runtime diagnostics:"
-          git status --short
-          git restore --worktree .
-
-          git push origin HEAD:main
-
-      - name: Confirm team was withheld while current NOT READY status was published
-        if: steps.canonical.outputs.ready != 'true'
-        run: echo "The current teamless NOT READY contract and healthy forecast archive were published; blocked candidates remain artifact-only."
+      - name: Assert source tree was not used as runtime publication
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          echo "No runtime commit or push is permitted by this workflow."
 
       - uses: actions/upload-artifact@v4
         if: always()
