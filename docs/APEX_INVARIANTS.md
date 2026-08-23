@@ -6,8 +6,9 @@
 - **INV-NETWORK-ABOVE-SEAL** — forecast, decision and assurance consume sealed state and cannot fetch new facts.
 - **INV-RAW-CAPTURE-RETENTION** — every decision-global external response used by V2 is retained byte-for-byte under content identity.
 - **INV-DETERMINISTIC-GLOBAL-WORLD** — identical retained semantic source bytes and schemas produce the same GlobalWorldId.
-- **INV-NO-NETWORK-AFTER-SEAL** — sealed-world replay exposes no HTTP or clock port.
+- **INV-NO-NETWORK-AFTER-SEAL** — sealed-world and sealed-manager replay expose no HTTP or clock port.
 - **INV-GLOBAL-WORLD-MANAGER-NEUTRAL** — GlobalWorld cannot contain entry-specific squad, financial or transfer state.
+- **INV-MANAGER-PUBLIC-SEALED** — manager-specific Official FPL summary, history, transfers and picks are retained as immutable raw captures before state reconstruction.
 - **INV-OFFICIAL-ID-AUTHORITY** — the active-season Official FPL integer player ID is canonical for current player identity.
 - **INV-NAME-NEVER-IDENTITY** — names are display/audit witnesses and never establish decision-critical identity.
 - **INV-AMBIGUITY-FAILS-CLOSED** — conflicting or unmapped identity evidence cannot be attached to a player for decision use.
@@ -15,11 +16,13 @@
 - **INV-RULE-PROVENANCE** — every production rule cites reviewed Official Premier League evidence and an effective season/date.
 - **INV-NO-UNCONTROLLED-RULE-FLOATS** — RuleSet semantic identity excludes uncontrolled floating-point values.
 - **INV-NO-UNPROVEN-SPENDABLE-CASH** — current price forecasts or guessed purchase bases never become legal budget.
+- **INV-INITIAL-BASIS-PREDEADLINE** — original purchase bases may only derive from sealed GW1 picks plus an Official price universe captured before the first deadline and reconciled to the Official GW1 bank.
 - **INV-MONEY-IN-TENTHS** — decision-critical FPL money is represented as integer tenths, never binary floating point.
-- **INV-SELLING-PRICE-EXACT** — every owned player's realised selling value is recomputed from its exact purchase basis, current Official price and active RuleSet.
+- **INV-SELLING-PRICE-EXACT** — every currently owned player's realised selling value is recomputed from its exact purchase basis, current Official price and active RuleSet.
+- **INV-OFFICIAL-SALE-RECEIPT** — historical Official `element_out_cost` is treated as the realised sale receipt it actually represents; Apex never relabels it as historical market price or fabricates a market price to satisfy a formula.
 - **INV-REBUY-RESETS-BASIS** — selling and later rebuying a player creates a new ownership basis at the rebuy price.
 - **INV-DEADLINE-SNAPSHOT-NOT-CURRENT** — a public deadline snapshot cannot silently claim to be the manager's current private state between deadlines.
-- **INV-MANAGER-LEDGER-RECONCILED** — transfer events reconcile selling value, bank, FT and hit transitions and form a chronological immutable chain.
+- **INV-MANAGER-LEDGER-RECONCILED** — historical Official sale receipts reconcile ownership, bank, FT and hit history; live transfer events separately prove selling value from known current Official price and purchase basis.
 - **INV-FULL-OVERRIDE-ONLY** — a manual manager-state override is complete, attributable, scoped, expiring and content-addressed; partial patches cannot become current exact state.
 - **INV-LEGAL-CURRENT-ACTION** — every published action passes independent RuleSet/state-transition verification.
 - **INV-NO-FALSE-GLOBAL-OPTIMALITY** — optimisation exactness is scoped to the certified universe and solver state.
