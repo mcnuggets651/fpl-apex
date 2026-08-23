@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
@@ -69,6 +70,12 @@ def _initial_bank() -> int:
     return 1000 - sum(PRICES)
 
 
+def test_public_transfer_contract_uses_official_realised_sale_not_invented_market_price():
+    names = {field.name for field in fields(PublicTransferRecord)}
+    assert "realised_sale_tenths" in names
+    assert "outgoing_market_price_tenths" not in names
+
+
 def test_no_transfer_public_gw1_reconstructs_exact_deadline_snapshot_not_current_state():
     players = _initial_players()
     resolution = reconstruct_public_deadline_state(
@@ -90,16 +97,20 @@ def test_no_transfer_public_gw1_reconstructs_exact_deadline_snapshot_not_current
         initial_price_capture_complete=True,
     )
     assert resolution.status is ManagerStateResolutionStatus.EXACT_DEADLINE_SNAPSHOT
+    assert resolution.exact_deadline_snapshot
     assert resolution.state is not None
+    assert resolution.historical_ledger is not None
+    assert resolution.historical_ledger.receipts == ()
     assert resolution.state.scope is ManagerStateScope.DEADLINE_SNAPSHOT
     assert resolution.state.gameweek == 2
     assert resolution.state.free_transfers == 1
     assert resolution.state.bank_tenths == _initial_bank()
+    assert resolution.state.transfer_ledger == ()
     with pytest.raises(ManagerStateIntegrityError, match="not current exact"):
         resolution.state.require_decision_safe(ruleset=RULESET)
 
 
-def test_public_transfer_reconstructs_basis_sale_bank_and_next_ft_exactly():
+def test_public_transfer_reconstructs_basis_official_sale_bank_and_next_ft_exactly():
     current = _initial_players()
     del current[OfficialPlayerId(8)]
     current[OfficialPlayerId(101)] = OfficialPlayerIdentity(
@@ -119,7 +130,7 @@ def test_public_transfer_reconstructs_basis_sale_bank_and_next_ft_exactly():
         sequence=1,
         outgoing_player_id=OfficialPlayerId(8),
         incoming_player_id=OfficialPlayerId(101),
-        outgoing_market_price_tenths=52,
+        realised_sale_tenths=51,
         incoming_purchase_tenths=50,
         source_artifact_id=_artifact("c"),
     )
@@ -137,18 +148,22 @@ def test_public_transfer_reconstructs_basis_sale_bank_and_next_ft_exactly():
         event_transfer_costs={1: 0, 2: 0},
         chips=(),
         ruleset=RULESET,
-        provenance_artifact_ids=(_artifact("d"), _artifact("e")),
+        provenance_artifact_ids=(_artifact("d"), _artifact("e"), _artifact("c")),
         transfer_history_complete=True,
         initial_price_capture_complete=True,
     )
     assert resolution.exact_deadline_snapshot
     assert resolution.state is not None
+    assert resolution.historical_ledger is not None
     assert resolution.state.gameweek == 3
     assert resolution.state.free_transfers == 1
     assert resolution.state.bank_tenths == _initial_bank() + 1
     assert resolution.state.player(OfficialPlayerId(101)).purchase_basis_tenths == 50
-    assert resolution.state.transfer_ledger[0].realised_sale_tenths == 51
-    assert resolution.state.transfer_ledger[0].hit_points == 0
+    receipt = resolution.historical_ledger.receipts[0]
+    assert receipt.realised_sale_tenths == 51
+    assert receipt.hit_points == 0
+    assert receipt.outgoing_purchase_basis_tenths == 50
+    assert resolution.state.transfer_ledger == ()
 
 
 def test_public_sell_and_rebuy_resets_basis_and_records_exact_hit():
@@ -167,7 +182,7 @@ def test_public_sell_and_rebuy_resets_basis_and_records_exact_hit():
             sequence=1,
             outgoing_player_id=OfficialPlayerId(8),
             incoming_player_id=OfficialPlayerId(101),
-            outgoing_market_price_tenths=54,
+            realised_sale_tenths=52,
             incoming_purchase_tenths=50,
             source_artifact_id=_artifact("f"),
         ),
@@ -177,7 +192,7 @@ def test_public_sell_and_rebuy_resets_basis_and_records_exact_hit():
             sequence=2,
             outgoing_player_id=OfficialPlayerId(101),
             incoming_player_id=OfficialPlayerId(8),
-            outgoing_market_price_tenths=50,
+            realised_sale_tenths=50,
             incoming_purchase_tenths=54,
             source_artifact_id=_artifact("1"),
         ),
@@ -196,16 +211,22 @@ def test_public_sell_and_rebuy_resets_basis_and_records_exact_hit():
         event_transfer_costs={1: 0, 2: 4},
         chips=(),
         ruleset=RULESET,
-        provenance_artifact_ids=(_artifact("2"), _artifact("3")),
+        provenance_artifact_ids=(
+            _artifact("2"),
+            _artifact("3"),
+            _artifact("f"),
+            _artifact("1"),
+        ),
         transfer_history_complete=True,
         initial_price_capture_complete=True,
     )
     assert resolution.exact_deadline_snapshot
     assert resolution.state is not None
+    assert resolution.historical_ledger is not None
     owned = resolution.state.player(OfficialPlayerId(8))
     assert owned.purchase_basis_tenths == 54
     assert owned.selling_price_tenths == 54
-    assert [row.hit_points for row in resolution.state.transfer_ledger] == [0, 4]
+    assert [row.hit_points for row in resolution.historical_ledger.receipts] == [0, 4]
     assert resolution.state.free_transfers == 1
 
 
@@ -266,7 +287,7 @@ def test_missing_transfer_row_and_bank_mismatch_fail_closed():
         initial_price_capture_complete=True,
     )
     assert missing_row.status is ManagerStateResolutionStatus.INCOMPLETE
-    assert any("ledger rows" in blocker for blocker in missing_row.blockers)
+    assert any("receipt rows" in blocker for blocker in missing_row.blockers)
 
     bad_bank = reconstruct_public_deadline_state(
         season="2026-2027",
@@ -299,7 +320,7 @@ def test_public_transfer_cost_mismatch_and_future_chip_fail_closed():
             sequence=1,
             outgoing_player_id=OfficialPlayerId(8),
             incoming_player_id=OfficialPlayerId(101),
-            outgoing_market_price_tenths=50,
+            realised_sale_tenths=50,
             incoming_purchase_tenths=50,
             source_artifact_id=_artifact("7"),
         ),
@@ -309,7 +330,7 @@ def test_public_transfer_cost_mismatch_and_future_chip_fail_closed():
             sequence=2,
             outgoing_player_id=OfficialPlayerId(9),
             incoming_player_id=OfficialPlayerId(102),
-            outgoing_market_price_tenths=50,
+            realised_sale_tenths=50,
             incoming_purchase_tenths=50,
             source_artifact_id=_artifact("8"),
         ),
@@ -352,7 +373,7 @@ def test_public_transfer_cost_mismatch_and_future_chip_fail_closed():
         event_transfer_costs={1: 0, 2: 0},
         chips=(),
         ruleset=RULESET,
-        provenance_artifact_ids=(_artifact("9"),),
+        provenance_artifact_ids=(_artifact("9"), _artifact("7"), _artifact("8")),
         transfer_history_complete=True,
         initial_price_capture_complete=True,
     )
