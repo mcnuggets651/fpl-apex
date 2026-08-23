@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Apex core dependencies must already be installed from requirements.lock.
-# AIrsenal resolves only inside its own frozen upstream uv.lock environment.
+# Apex core remains on its own frozen Python 3.12 environment. AIrsenal executes
+# in an isolated Python 3.14.7 environment created strictly from its upstream uv.lock.
 readarray -t pins < <(python - <<'PY'
 import json
 
@@ -41,14 +41,22 @@ PY
 
 python -m venv "$uv_venv"
 "$uv_venv/bin/python" -m pip install --no-deps uv==0.12.3
-"$uv_venv/bin/uv" sync --frozen --project "$checkout" --no-dev
+"$uv_venv/bin/uv" python install 3.14.7
+"$uv_venv/bin/uv" sync \
+  --frozen \
+  --project "$checkout" \
+  --python 3.14.7 \
+  --no-dev
 
 worker_python="$checkout/.venv/bin/python"
 worker_bin="$checkout/.venv/bin"
 test -x "$worker_python"
 "$worker_python" - <<'PY'
+import sys
 from importlib.metadata import version
 
+if sys.version_info[:3] != (3, 14, 7):
+    raise SystemExit(f"unexpected AIrsenal worker Python: {sys.version}")
 print('Isolated AIrsenal:', version('airsenal'))
 print('Isolated bpl:', version('bpl'))
 PY
