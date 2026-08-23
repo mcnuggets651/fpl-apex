@@ -16,6 +16,14 @@ requirements:
     tests: [tests/test_v2_proof_framework.py]
     proof_obligations: [PO-RUNTIME-IDENTITY-001]
 
+  - requirement_id: REQ-SEALED-GLOBAL-WORLD
+    requirement: Decision-global football data is acquired once, retained byte-for-byte, sealed under deterministic identity and replayable without network access.
+    critical: true
+    invariants: [INV-RAW-CAPTURE-RETENTION, INV-DETERMINISTIC-GLOBAL-WORLD, INV-NO-NETWORK-AFTER-SEAL, INV-GLOBAL-WORLD-MANAGER-NEUTRAL]
+    implementation: [src/apex_fpl/core/world.py, src/apex_fpl/acquisition/contracts.py, src/apex_fpl/acquisition/sealed_world.py]
+    tests: [tests/test_sealed_global_world.py]
+    proof_obligations: [PO-ARTIFACT-INTEGRITY-001, PO-GLOBAL-WORLD-SEAL-001]
+
   - requirement_id: REQ-EXACT-MANAGER-STATE
     requirement: In-season action requires exact financial and transfer state.
     critical: true

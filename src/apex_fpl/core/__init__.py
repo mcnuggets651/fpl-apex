@@ -22,6 +22,7 @@ from .proofs import (
     ReleaseCertificate,
     ReleasePolicy,
 )
+from .world import GlobalWorld, WorldSource
 
 __all__ = [
     "AssuranceCase",
@@ -30,6 +31,7 @@ __all__ = [
     "DecisionInputId",
     "DecisionWorldId",
     "ForecastId",
+    "GlobalWorld",
     "GlobalWorldId",
     "ManagerStateId",
     "ProofClass",
@@ -41,6 +43,7 @@ __all__ = [
     "ReleasePolicy",
     "RunId",
     "ScenarioSetId",
+    "WorldSource",
     "canonical_json_bytes",
     "canonical_sha256",
 ]
