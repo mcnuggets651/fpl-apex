@@ -117,7 +117,8 @@ def test_manager_state_id_changes_with_financial_state_and_price_surface():
     repriced = reprice_manager_state(
         state,
         current_prices_tenths={
-            row.player_id: row.current_price_tenths + (4 if int(row.player_id) == 8 else 0)
+            row.player_id: row.current_price_tenths
+            + (4 if int(row.player_id) == 8 else 0)
             for row in state.squad
         },
         ruleset=RULESET,
@@ -197,7 +198,8 @@ def test_rebuy_resets_purchase_basis_and_future_selling_price():
     state = reprice_manager_state(
         _state(free_transfers=1, bank_tenths=20),
         current_prices_tenths={
-            row.player_id: row.current_price_tenths + (4 if int(row.player_id) == 8 else 0)
+            row.player_id: row.current_price_tenths
+            + (4 if int(row.player_id) == 8 else 0)
             for row in _state().squad
         },
         ruleset=RULESET,
@@ -297,7 +299,25 @@ def test_deadline_snapshot_needs_scoped_unexpired_attestation_to_become_current(
         )
 
 
-def _override_payload(state: ManagerState) -> dict[str, object]:
+def _stored_evidence(store: FileSystemArtifactStore) -> tuple[str, str]:
+    official = store.put_bytes(
+        b"official-current-state",
+        schema_name="fixture-official",
+        schema_version="1",
+    )
+    ledger = store.put_bytes(
+        b"complete-private-ledger",
+        schema_name="fixture-ledger",
+        schema_version="1",
+    )
+    return official.artifact_id, ledger.artifact_id
+
+
+def _override_payload(
+    state: ManagerState,
+    *,
+    source_artifact_ids: tuple[str, ...],
+) -> dict[str, object]:
     return {
         "schema_name": "apex-manager-state-override",
         "schema_version": 1,
@@ -306,6 +326,7 @@ def _override_payload(state: ManagerState) -> dict[str, object]:
             "reason": "record private post-deadline state exactly",
             "created_at": "2026-08-23T20:00:00+00:00",
             "expires_at": "2026-08-23T22:00:00+00:00",
+            "current_state_confirmed": True,
         },
         "state": {
             "season": state.season,
@@ -317,14 +338,18 @@ def _override_payload(state: ManagerState) -> dict[str, object]:
             "squad": [row.as_dict() for row in state.squad],
             "chips_used": [row.as_dict() for row in state.chips_used],
             "transfer_ledger": [row.as_dict() for row in state.transfer_ledger],
-            "source_artifact_ids": [_artifact("official"), _artifact("ledger")],
+            "transfer_ledger_complete": True,
+            "source_artifact_ids": list(source_artifact_ids),
         },
     }
 
 
-def test_full_override_is_immutable_provenance_and_partial_override_fails(tmp_path: Path):
+def test_full_override_is_immutable_provenance_and_partial_override_fails(
+    tmp_path: Path,
+):
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    payload = _override_payload(_state())
+    source_ids = _stored_evidence(store)
+    payload = _override_payload(_state(), source_artifact_ids=source_ids)
     content = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     loaded = store_and_load_manager_state_override(
         content,
@@ -336,7 +361,7 @@ def test_full_override_is_immutable_provenance_and_partial_override_fails(tmp_pa
     assert loaded.override_artifact_id in loaded.state.provenance_artifact_ids
     loaded.state.require_decision_safe(ruleset=RULESET)
 
-    partial = _override_payload(_state())
+    partial = _override_payload(_state(), source_artifact_ids=source_ids)
     del partial["state"]["squad"][0]["selling_price_tenths"]
     with pytest.raises(ManagerStateIntegrityError, match="missing fields"):
         store_and_load_manager_state_override(
@@ -349,7 +374,8 @@ def test_full_override_is_immutable_provenance_and_partial_override_fails(tmp_pa
 
 def test_override_with_wrong_selling_price_or_expiry_fails_closed(tmp_path: Path):
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    wrong = _override_payload(_state())
+    source_ids = _stored_evidence(store)
+    wrong = _override_payload(_state(), source_artifact_ids=source_ids)
     wrong["state"]["squad"][7]["selling_price_tenths"] += 1
     with pytest.raises(ManagerStateIntegrityError, match="selling price"):
         store_and_load_manager_state_override(
@@ -359,11 +385,50 @@ def test_override_with_wrong_selling_price_or_expiry_fails_closed(tmp_path: Path
             observed_at=datetime(2026, 8, 23, 21, tzinfo=timezone.utc),
         )
 
-    expired = _override_payload(_state())
+    expired = _override_payload(_state(), source_artifact_ids=source_ids)
     expired["metadata"]["expires_at"] = "2026-08-23T20:30:00+00:00"
     with pytest.raises(ManagerStateIntegrityError, match="validity window"):
         store_and_load_manager_state_override(
             json.dumps(expired).encode(),
+            store=store,
+            ruleset=RULESET,
+            observed_at=datetime(2026, 8, 23, 21, tzinfo=timezone.utc),
+        )
+
+
+def test_override_requires_complete_ledger_current_confirmation_and_real_sources(
+    tmp_path: Path,
+):
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    source_ids = _stored_evidence(store)
+
+    incomplete = _override_payload(_state(), source_artifact_ids=source_ids)
+    incomplete["state"]["transfer_ledger_complete"] = False
+    with pytest.raises(ManagerStateIntegrityError, match="transfer_ledger_complete"):
+        store_and_load_manager_state_override(
+            json.dumps(incomplete).encode(),
+            store=store,
+            ruleset=RULESET,
+            observed_at=datetime(2026, 8, 23, 21, tzinfo=timezone.utc),
+        )
+
+    unconfirmed = _override_payload(_state(), source_artifact_ids=source_ids)
+    unconfirmed["metadata"]["current_state_confirmed"] = False
+    with pytest.raises(ManagerStateIntegrityError, match="current_state_confirmed"):
+        store_and_load_manager_state_override(
+            json.dumps(unconfirmed).encode(),
+            store=store,
+            ruleset=RULESET,
+            observed_at=datetime(2026, 8, 23, 21, tzinfo=timezone.utc),
+        )
+
+    missing_source = _override_payload(
+        _state(),
+        source_artifact_ids=("sha256:" + "f" * 64,),
+    )
+    with pytest.raises(ManagerStateIntegrityError, match="missing or corrupt"):
+        store_and_load_manager_state_override(
+            json.dumps(missing_source).encode(),
             store=store,
             ruleset=RULESET,
             observed_at=datetime(2026, 8, 23, 21, tzinfo=timezone.utc),
