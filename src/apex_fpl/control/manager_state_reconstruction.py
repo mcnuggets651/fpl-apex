@@ -9,7 +9,6 @@ when the required initial price capture and chronological public ledgers are com
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Iterable, Mapping
 
@@ -68,7 +67,11 @@ class PublicChipRecord:
         chip = self.chip.upper()
         if chip not in {"WILDCARD", "FREE_HIT", "TRIPLE_CAPTAIN", "BENCH_BOOST"}:
             raise ValueError(f"unsupported public chip: {self.chip!r}")
-        if isinstance(self.gameweek, bool) or not isinstance(self.gameweek, int) or self.gameweek <= 0:
+        if (
+            isinstance(self.gameweek, bool)
+            or not isinstance(self.gameweek, int)
+            or self.gameweek <= 0
+        ):
             raise ValueError("public chip gameweek must be a positive integer")
         if not self.source_artifact_id.strip():
             raise ValueError("public chip requires source provenance")
@@ -101,6 +104,20 @@ def _chip_map(chips: Iterable[PublicChipRecord]) -> dict[int, str]:
 
 def _chip_set(gameweek: int, *, ruleset: RuleSet) -> int:
     return 1 if gameweek <= ruleset.integer("FPL-CHIP-FIRST-SET-LAST-GW-001") else 2
+
+
+def _validated_history_value(
+    values: Mapping[int, int],
+    *,
+    gameweek: int,
+    label: str,
+) -> int:
+    value = values.get(gameweek)
+    if value is None:
+        raise ManagerStateIntegrityError(f"public {label} missing for GW{gameweek}")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ManagerStateIntegrityError(f"public {label} for GW{gameweek} is invalid")
+    return value
 
 
 def _advance_ft(
@@ -137,17 +154,15 @@ def derive_next_window_free_transfers(
     if published_gameweek <= 0:
         raise ManagerStateIntegrityError("published_gameweek must be positive")
     chip_by_gw = _chip_map(chips)
+    if any(gameweek > published_gameweek for gameweek in chip_by_gw):
+        raise ManagerStateIntegrityError("public chip history contains a future Gameweek")
     free_transfers = 0  # initial construction is unlimited, not a bankable FT.
     for gameweek in range(1, published_gameweek + 1):
-        transfers = event_transfer_counts.get(gameweek)
-        if transfers is None:
-            raise ManagerStateIntegrityError(
-                f"public event transfer count missing for GW{gameweek}"
-            )
-        if isinstance(transfers, bool) or not isinstance(transfers, int) or transfers < 0:
-            raise ManagerStateIntegrityError(
-                f"public event transfer count for GW{gameweek} is invalid"
-            )
+        transfers = _validated_history_value(
+            event_transfer_counts,
+            gameweek=gameweek,
+            label="event transfer count",
+        )
         free_transfers = _advance_ft(
             free_transfers,
             transfers=transfers,
@@ -169,6 +184,7 @@ def reconstruct_public_deadline_state(
     initial_purchase_prices_tenths: Mapping[OfficialPlayerId, int],
     transfers: Iterable[PublicTransferRecord],
     event_transfer_counts: Mapping[int, int],
+    event_transfer_costs: Mapping[int, int],
     chips: Iterable[PublicChipRecord],
     ruleset: RuleSet,
     provenance_artifact_ids: Iterable[str],
@@ -183,6 +199,12 @@ def reconstruct_public_deadline_state(
         blockers.append("public transfer history is not proven complete")
     if not initial_price_capture_complete:
         blockers.append("pre-GW1 Official price capture is not proven complete")
+    if (
+        isinstance(published_bank_tenths, bool)
+        or not isinstance(published_bank_tenths, int)
+        or published_bank_tenths < 0
+    ):
+        blockers.append("published bank must be a nonnegative integer in tenths")
     initial_ids = tuple(initial_squad_ids)
     published_ids = tuple(published_squad_ids)
     if len(initial_ids) != 15 or len(set(initial_ids)) != 15:
@@ -215,8 +237,26 @@ def reconstruct_public_deadline_state(
         )
 
     chip_rows = tuple(chips)
-    chip_by_gw = _chip_map(chip_rows)
-    transfer_rows = tuple(sorted(transfers, key=lambda row: (row.gameweek, row.sequence)))
+    try:
+        chip_by_gw = _chip_map(chip_rows)
+    except ManagerStateIntegrityError as exc:
+        return ManagerStateResolution(
+            ManagerStateResolutionStatus.INVALID,
+            None,
+            (str(exc),),
+            evidence,
+        )
+    if any(gameweek > published_gameweek for gameweek in chip_by_gw):
+        return ManagerStateResolution(
+            ManagerStateResolutionStatus.INVALID,
+            None,
+            ("public chip history contains a future Gameweek",),
+            evidence,
+        )
+
+    transfer_rows = tuple(
+        sorted(transfers, key=lambda row: (row.gameweek, row.sequence))
+    )
     if len({row.transfer_id for row in transfer_rows}) != len(transfer_rows):
         return ManagerStateResolution(
             ManagerStateResolutionStatus.INVALID,
@@ -224,7 +264,9 @@ def reconstruct_public_deadline_state(
             ("public transfer IDs are not unique",),
             evidence,
         )
-    if len({(row.gameweek, row.sequence) for row in transfer_rows}) != len(transfer_rows):
+    if len({(row.gameweek, row.sequence) for row in transfer_rows}) != len(
+        transfer_rows
+    ):
         return ManagerStateResolution(
             ManagerStateResolutionStatus.INVALID,
             None,
@@ -239,25 +281,32 @@ def reconstruct_public_deadline_state(
             evidence,
         )
 
-    # Prove the public transfer row count matches the entry-history count for every
-    # non-Free-Hit Gameweek. Free Hit is temporary and is not admitted into the
-    # permanent ownership reconstruction without a separate verified temporary-squad
-    # contract.
     rows_per_gw: dict[int, int] = {}
     for row in transfer_rows:
         rows_per_gw[row.gameweek] = rows_per_gw.get(row.gameweek, 0) + 1
     for gameweek in range(1, published_gameweek + 1):
-        expected = event_transfer_counts.get(gameweek)
-        if expected is None:
-            blockers.append(f"event transfer count missing for GW{gameweek}")
+        try:
+            expected = _validated_history_value(
+                event_transfer_counts,
+                gameweek=gameweek,
+                label="event transfer count",
+            )
+            _validated_history_value(
+                event_transfer_costs,
+                gameweek=gameweek,
+                label="event transfer cost",
+            )
+        except ManagerStateIntegrityError as exc:
+            blockers.append(str(exc))
             continue
         if chip_by_gw.get(gameweek) == "FREE_HIT":
             if rows_per_gw.get(gameweek, 0):
                 blockers.append(
-                    f"GW{gameweek} Free Hit has transfer rows whose permanent semantics are unverified"
+                    f"GW{gameweek} Free Hit has transfer rows whose permanent "
+                    "semantics are unverified"
                 )
             continue
-        if rows_per_gw.get(gameweek, 0) != int(expected):
+        if rows_per_gw.get(gameweek, 0) != expected:
             blockers.append(
                 f"GW{gameweek} transfer ledger rows {rows_per_gw.get(gameweek, 0)} "
                 f"!= public event_transfers {expected}"
@@ -270,10 +319,17 @@ def reconstruct_public_deadline_state(
             evidence,
         )
 
-    ownership_basis: dict[OfficialPlayerId, int] = {
-        player_id: int(initial_purchase_prices_tenths[player_id])
-        for player_id in initial_ids
-    }
+    ownership_basis: dict[OfficialPlayerId, int] = {}
+    for player_id in initial_ids:
+        basis = initial_purchase_prices_tenths[player_id]
+        if isinstance(basis, bool) or not isinstance(basis, int) or basis <= 0:
+            return ManagerStateResolution(
+                ManagerStateResolutionStatus.INVALID,
+                None,
+                (f"initial purchase basis for player {player_id} is invalid",),
+                evidence,
+            )
+        ownership_basis[player_id] = basis
     initial_cost = sum(ownership_basis.values())
     initial_bank = ruleset.integer("FPL-SQUAD-BUDGET-TENTHS-001") - initial_cost
     if initial_bank < 0:
@@ -298,7 +354,9 @@ def reconstruct_public_deadline_state(
             return ManagerStateResolution(
                 ManagerStateResolutionStatus.INCOMPLETE,
                 None,
-                (f"GW{gameweek} Free Hit transfer rows cannot mutate permanent state",),
+                (
+                    f"GW{gameweek} Free Hit transfer rows cannot mutate permanent state",
+                ),
                 evidence,
             )
         free_remaining = free_before_gw
@@ -369,20 +427,42 @@ def reconstruct_public_deadline_state(
             ownership_basis[row.incoming_player_id] = row.incoming_purchase_tenths
             bank = bank_after
             free_remaining = free_after
+
+        official_cost = event_transfer_costs[gameweek]
+        derived_cost = sum(
+            event.hit_points for event in ledger if event.gameweek == gameweek
+        )
+        if derived_cost != official_cost:
+            return ManagerStateResolution(
+                ManagerStateResolutionStatus.INVALID,
+                None,
+                (
+                    f"GW{gameweek} reconstructed transfer cost {derived_cost} "
+                    f"!= public event_transfers_cost {official_cost}",
+                ),
+                evidence,
+            )
         free_before_gw = _advance_ft(
             free_before_gw,
-            transfers=int(event_transfer_counts[gameweek]),
+            transfers=event_transfer_counts[gameweek],
             chip=chip,
             ruleset=ruleset,
         )
 
     if set(ownership_basis) != set(published_ids):
-        missing = sorted(int(item) for item in set(published_ids) - set(ownership_basis))
-        extra = sorted(int(item) for item in set(ownership_basis) - set(published_ids))
+        missing = sorted(
+            int(item) for item in set(published_ids) - set(ownership_basis)
+        )
+        extra = sorted(
+            int(item) for item in set(ownership_basis) - set(published_ids)
+        )
         return ManagerStateResolution(
             ManagerStateResolutionStatus.INVALID,
             None,
-            (f"reconstructed ownership does not match published picks; missing={missing} extra={extra}",),
+            (
+                "reconstructed ownership does not match published picks; "
+                f"missing={missing} extra={extra}",
+            ),
             evidence,
         )
     if bank != published_bank_tenths:
