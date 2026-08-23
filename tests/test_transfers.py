@@ -11,7 +11,7 @@ def _pool():
     pid = 1
     for team in range(1, 9):
         for pos, count in [("GK", 1), ("DEF", 2), ("MID", 2), ("FWD", 1)]:
-            for j in range(count):
+            for _ in range(count):
                 rows.append({
                     "player_id": pid,
                     "web_name": f"P{pid}",
@@ -27,8 +27,18 @@ def _pool():
 
 def _legal_current(players: pd.DataFrame) -> set[int]:
     current: set[int] = set()
-    for pos, need in {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3}.items():
-        current.update(players[players.position == pos].head(need).player_id.astype(int))
+    selections = {
+        "GK": [1, 2],
+        "DEF": [1, 2, 3, 4, 5],
+        "MID": [3, 4, 5, 6, 7],
+        "FWD": [6, 7, 8],
+    }
+    for pos, teams in selections.items():
+        for team in teams:
+            row = players[(players.position == pos) & (players.team == team)].iloc[0]
+            current.add(int(row.player_id))
+    assert len(current) == 15
+    assert players[players.player_id.isin(current)].groupby("team").size().max() <= 3
     return current
 
 
@@ -97,14 +107,16 @@ def test_first_gameweek_transfer_bounds_create_exact_counterfactuals():
         first_gw_min_transfers=2,
         first_gw_max_transfers=2,
     )
+    unconstrained = optimise_transfer_plan(
+        players, projections, [1], current, bank=20.0, candidate_limit=60
+    )
 
     assert rolled.status == "Optimal"
     assert rolled.weeks[0]["transfers"] == 0
     assert exact_two.status == "Optimal"
     assert exact_two.weeks[0]["transfers"] == 2
-    assert exact_two.objective <= optimise_transfer_plan(
-        players, projections, [1], current, bank=20.0, candidate_limit=60
-    ).objective + 1e-6
+    assert unconstrained.status == "Optimal"
+    assert exact_two.objective <= unconstrained.objective + 1e-6
 
 
 def test_first_gameweek_transfer_bounds_reject_malformed_ranges():
