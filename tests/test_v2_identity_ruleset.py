@@ -16,7 +16,7 @@ from apex_fpl.core.identity import (
     PersonLink,
 )
 from apex_fpl.core.ids import PersonId
-from apex_fpl.core.rules import RuleDefinition, RuleSet
+from apex_fpl.core.rules import OfficialRuleSource, RuleDefinition, RuleSet
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,7 +89,11 @@ def test_conflicting_identity_witness_is_ambiguous_and_blocks():
 
 
 def test_official_registry_rejects_non_integer_and_duplicate_ids():
-    fractional = {"elements": [{"id": 11.5, "team": 1, "element_type": 3, "now_cost": 75, "web_name": "A"}]}
+    fractional = {
+        "elements": [
+            {"id": 11.5, "team": 1, "element_type": 3, "now_cost": 75, "web_name": "A"}
+        ]
+    }
     with pytest.raises(IdentityIntegrityError, match="exact integer"):
         IdentityRegistry.from_official_bootstrap(fractional)
 
@@ -114,33 +118,147 @@ def test_ruleset_is_versioned_official_and_provenance_complete():
     assert all(rule.effective_season == "2026-2027" for rule in ruleset.rules)
 
 
+def test_ruleset_encodes_current_chip_and_manager_finance_mechanics():
+    ruleset = load_ruleset(RULESET_PATH)
+    assert ruleset.value("FPL-FREE-HIT-DISALLOWED-GWS-001") == [1]
+    assert ruleset.value("FPL-WILDCARD-DISALLOWED-GWS-001") == [1]
+    assert ruleset.value("FPL-FREE-HIT-PRESERVES-BANKED-TRANSFERS-001") is True
+    assert ruleset.value("FPL-WILDCARD-PRESERVES-BANKED-TRANSFERS-001") is True
+    assert ruleset.mapping("FPL-FREE-HIT-CROSS-HALF-CONSECUTIVE-001") == {
+        "allowed": False,
+        "first_half_gw": 19,
+        "second_half_gw": 20,
+    }
+    assert ruleset.mapping("FPL-SELLING-PRICE-PROFIT-STEP-001") == {
+        "purchase_price_rise_tenths": 2,
+        "selling_profit_tenths": 1,
+    }
+    assert ruleset.value("FPL-SELLING-PRICE-LOSS-PASSTHROUGH-001") is True
+
+
 def test_ruleset_static_squad_and_lineup_constraints_match_current_official_rules():
     ruleset = load_ruleset(RULESET_PATH)
     assert ruleset.mapping("FPL-SQUAD-POSITIONS-001") == SQUAD_COUNTS
     assert ruleset.mapping("FPL-XI-POSITION-MIN-001") == XI_MIN
     assert ruleset.mapping("FPL-XI-POSITION-MAX-001") == XI_MAX
 
-    positions = ("GK", "GK", "DEF", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "MID", "MID", "FWD", "FWD", "FWD")
+    positions = (
+        "GK",
+        "GK",
+        "DEF",
+        "DEF",
+        "DEF",
+        "DEF",
+        "DEF",
+        "MID",
+        "MID",
+        "MID",
+        "MID",
+        "MID",
+        "FWD",
+        "FWD",
+        "FWD",
+    )
     clubs = tuple(range(1, 16))
     prices = (40, 40, 45, 45, 45, 45, 45, 50, 50, 50, 50, 50, 60, 60, 60)
-    assert ruleset.validate_squad(positions=positions, club_ids=clubs, prices_tenths=prices) == ()
+    assert ruleset.validate_squad(
+        positions=positions,
+        club_ids=clubs,
+        prices_tenths=prices,
+    ) == ()
     assert ruleset.validate_lineup(
-        positions=("GK", "DEF", "DEF", "DEF", "MID", "MID", "MID", "MID", "FWD", "FWD", "FWD")
+        positions=(
+            "GK",
+            "DEF",
+            "DEF",
+            "DEF",
+            "MID",
+            "MID",
+            "MID",
+            "MID",
+            "FWD",
+            "FWD",
+            "FWD",
+        )
     ) == ()
 
 
-def test_ruleset_rejects_illegal_budget_club_count_and_formation():
+def test_ruleset_rejects_illegal_budget_club_count_formation_and_invalid_domain_values():
     ruleset = load_ruleset(RULESET_PATH)
-    positions = ("GK", "GK", "DEF", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "MID", "MID", "FWD", "FWD", "FWD")
+    positions = (
+        "GK",
+        "GK",
+        "DEF",
+        "DEF",
+        "DEF",
+        "DEF",
+        "DEF",
+        "MID",
+        "MID",
+        "MID",
+        "MID",
+        "MID",
+        "FWD",
+        "FWD",
+        "FWD",
+    )
     clubs = (1, 1, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
     prices = (100,) * 15
-    errors = ruleset.validate_squad(positions=positions, club_ids=clubs, prices_tenths=prices)
+    errors = ruleset.validate_squad(
+        positions=positions,
+        club_ids=clubs,
+        prices_tenths=prices,
+    )
     assert any("club 1" in error for error in errors)
     assert any("budget" in error for error in errors)
+
     formation_errors = ruleset.validate_lineup(
-        positions=("GK", "DEF", "DEF", "MID", "MID", "MID", "MID", "MID", "FWD", "FWD", "FWD")
+        positions=(
+            "GK",
+            "DEF",
+            "DEF",
+            "MID",
+            "MID",
+            "MID",
+            "MID",
+            "MID",
+            "FWD",
+            "FWD",
+            "FWD",
+        )
     )
     assert any("DEF" in error for error in formation_errors)
+
+    unknown_position_errors = ruleset.validate_lineup(
+        positions=(
+            "GK",
+            "DEF",
+            "DEF",
+            "DEF",
+            "MID",
+            "MID",
+            "FWD",
+            "FWD",
+            "FWD",
+            "UNKNOWN",
+            "UNKNOWN",
+        )
+    )
+    assert any("unknown positions" in error for error in unknown_position_errors)
+
+    invalid_club_errors = ruleset.validate_squad(
+        positions=positions,
+        club_ids=(0,) + tuple(range(2, 16)),
+        prices_tenths=(40,) * 15,
+    )
+    assert any("positive integers" in error for error in invalid_club_errors)
+
+    invalid_price_errors = ruleset.validate_squad(
+        positions=positions,
+        club_ids=tuple(range(1, 16)),
+        prices_tenths=(0,) + (40,) * 14,
+    )
+    assert any("positive integer tenths" in error for error in invalid_price_errors)
 
 
 def test_ruleset_semantic_identity_changes_when_rule_changes():
@@ -155,7 +273,11 @@ def test_ruleset_semantic_identity_changes_when_rule_changes():
         effective_season=target.effective_season,
         effective_from=target.effective_from,
     )
-    changed = RuleSet(season=original.season, sources=original.sources, rules=tuple(rules))
+    changed = RuleSet(
+        season=original.season,
+        sources=original.sources,
+        rules=tuple(rules),
+    )
     assert changed.ruleset_id != original.ruleset_id
 
 
@@ -168,4 +290,16 @@ def test_ruleset_semantic_values_reject_uncontrolled_floats():
             source_ids=("source",),
             effective_season="2026-2027",
             effective_from="2026-07-20",
+        )
+
+
+def test_rule_source_rejects_non_official_host_even_with_premier_league_label():
+    with pytest.raises(ValueError, match="approved Premier League/FPL host"):
+        OfficialRuleSource(
+            source_id="fake",
+            publisher="Premier League",
+            title="fake",
+            url="https://example.com/rules",
+            published_on="2026-07-20",
+            verified_on="2026-08-23",
         )
