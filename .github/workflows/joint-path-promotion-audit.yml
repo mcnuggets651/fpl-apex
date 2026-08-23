@@ -5,41 +5,18 @@ on:
   pull_request:
     paths:
       - "config/apex.yaml"
-      - "src/apex_fpl/config.py"
-      - "src/apex_fpl/data/http.py"
-      - "src/apex_fpl/data/odds.py"
-      - "src/apex_fpl/models/**"
       - "src/apex_fpl/optimisation/**"
       - "src/apex_fpl/services/**"
-      - "scripts/apply_joint_path_promotion.py"
-      - "scripts/apply_joint_path_promotion_rebased.py"
-      - "scripts/build_canonical_recommendation.py"
-      - "scripts/build_decision_bundle.py"
-      - "scripts/build_open_solver_parity_input.py"
-      - "scripts/run_open_solver_parity.py"
-      - "scripts/export_open_solver.py"
-      - "scripts/compare_solver_parity.py"
-      - "scripts/embed_solver_parity.py"
-      - "scripts/audit_player_truth.py"
-      - "scripts/audit_player_identity.py"
-      - "scripts/audit_statistical_truth.py"
-      - "scripts/materialize_selection_reality_evidence.py"
-      - "scripts/run_adversarial_launch_ban.py"
-      - "scripts/certify_adversarial_launch_ban.py"
+      - "scripts/audit_inseason_action_sensitivity.py"
       - "scripts/audit_bench_stress.py"
       - "scripts/certify_release_generation.py"
-      - "scripts/export_airsenal.py"
-      - "scripts/run_airsenal_worker.py"
-      - "scripts/run_pinnacle.py"
-      - "scripts/run_apex.py"
-      - "scripts/promote_certified_generation.py"
-      - "data/manual/squad_hierarchy.csv"
-      - "data/manual/specialist_predictions.csv"
-      - "data/manual/transfer_checks.csv"
-      - "data/manual/tactical_roles.csv"
+      - "scripts/run_adversarial_launch_ban.py"
+      - "scripts/certify_adversarial_launch_ban.py"
       - "tests/**"
       - ".github/workflows/adaptive-canonical-diagnostic.yml"
       - ".github/workflows/joint-path-promotion-audit.yml"
+      - ".github/workflows/production-readiness.yml"
+      - ".github/workflows/pinnacle.yml"
 
 permissions:
   contents: read
@@ -50,5 +27,43 @@ concurrency:
 
 jobs:
   audit:
-    uses: ./.github/workflows/adaptive-canonical-diagnostic.yml
-    secrets: inherit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Apex
+        run: pip install -e '.[dev]'
+
+      - name: Prove lifecycle-specific release contracts
+        run: |
+          pytest -q \
+            tests/test_release_profile.py \
+            tests/test_transfers.py \
+            tests/test_strategy.py \
+            tests/test_inseason_action_sensitivity.py \
+            tests/test_bench_stress_contract.py \
+            tests/test_release_generation_certificate.py \
+            tests/test_release_workflow_contract.py \
+            tests/test_certification_workflow_contract.py \
+            tests/test_airsenal_source_absence_policy.py
+
+      - name: Lint lifecycle release surface
+        run: |
+          ruff check \
+            src/apex_fpl/optimisation/transfers.py \
+            src/apex_fpl/services/release_profile.py \
+            scripts/audit_inseason_action_sensitivity.py \
+            scripts/audit_bench_stress.py \
+            scripts/certify_release_generation.py \
+            tests/test_release_profile.py \
+            tests/test_inseason_action_sensitivity.py \
+            tests/test_bench_stress_contract.py
