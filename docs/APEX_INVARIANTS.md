@@ -15,6 +15,12 @@
 - **INV-RULE-PROVENANCE** — every production rule cites reviewed Official Premier League evidence and an effective season/date.
 - **INV-NO-UNCONTROLLED-RULE-FLOATS** — RuleSet semantic identity excludes uncontrolled floating-point values.
 - **INV-NO-UNPROVEN-SPENDABLE-CASH** — current price forecasts or guessed purchase bases never become legal budget.
+- **INV-MONEY-IN-TENTHS** — decision-critical FPL money is represented as integer tenths, never binary floating point.
+- **INV-SELLING-PRICE-EXACT** — every owned player's realised selling value is recomputed from its exact purchase basis, current Official price and active RuleSet.
+- **INV-REBUY-RESETS-BASIS** — selling and later rebuying a player creates a new ownership basis at the rebuy price.
+- **INV-DEADLINE-SNAPSHOT-NOT-CURRENT** — a public deadline snapshot cannot silently claim to be the manager's current private state between deadlines.
+- **INV-MANAGER-LEDGER-RECONCILED** — transfer events reconcile selling value, bank, FT and hit transitions and form a chronological immutable chain.
+- **INV-FULL-OVERRIDE-ONLY** — a manual manager-state override is complete, attributable, scoped, expiring and content-addressed; partial patches cannot become current exact state.
 - **INV-LEGAL-CURRENT-ACTION** — every published action passes independent RuleSet/state-transition verification.
 - **INV-NO-FALSE-GLOBAL-OPTIMALITY** — optimisation exactness is scoped to the certified universe and solver state.
 - **INV-EMPIRICAL-CLAIMS-QUALIFIED** — predictive claims enter production only through registered qualification.
