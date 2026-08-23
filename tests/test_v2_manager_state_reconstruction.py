@@ -6,6 +6,7 @@ import pytest
 
 from apex_fpl.control.manager_state_reconstruction import (
     ManagerStateResolutionStatus,
+    PublicChipRecord,
     PublicTransferRecord,
     reconstruct_public_deadline_state,
 )
@@ -58,7 +59,10 @@ def _initial_ids() -> tuple[OfficialPlayerId, ...]:
 
 
 def _initial_prices() -> dict[OfficialPlayerId, int]:
-    return {player_id: player.price_tenths for player_id, player in _initial_players().items()}
+    return {
+        player_id: player.price_tenths
+        for player_id, player in _initial_players().items()
+    }
 
 
 def _initial_bank() -> int:
@@ -78,6 +82,7 @@ def test_no_transfer_public_gw1_reconstructs_exact_deadline_snapshot_not_current
         initial_purchase_prices_tenths=_initial_prices(),
         transfers=(),
         event_transfer_counts={1: 0},
+        event_transfer_costs={1: 0},
         chips=(),
         ruleset=RULESET,
         provenance_artifact_ids=(_artifact("a"), _artifact("b")),
@@ -118,7 +123,6 @@ def test_public_transfer_reconstructs_basis_sale_bank_and_next_ft_exactly():
         incoming_purchase_tenths=50,
         source_artifact_id=_artifact("c"),
     )
-    # P8 was bought at 5.0 and rose to 5.2 -> realised sale 5.1, so bank +0.1.
     resolution = reconstruct_public_deadline_state(
         season="2026-2027",
         entry_id=63984,
@@ -130,6 +134,7 @@ def test_public_transfer_reconstructs_basis_sale_bank_and_next_ft_exactly():
         initial_purchase_prices_tenths=_initial_prices(),
         transfers=(transfer,),
         event_transfer_counts={1: 0, 2: 1},
+        event_transfer_costs={1: 0, 2: 0},
         chips=(),
         ruleset=RULESET,
         provenance_artifact_ids=(_artifact("d"), _artifact("e")),
@@ -188,6 +193,7 @@ def test_public_sell_and_rebuy_resets_basis_and_records_exact_hit():
         initial_purchase_prices_tenths=_initial_prices(),
         transfers=transfers,
         event_transfer_counts={1: 0, 2: 2},
+        event_transfer_costs={1: 0, 2: 4},
         chips=(),
         ruleset=RULESET,
         provenance_artifact_ids=(_artifact("2"), _artifact("3")),
@@ -215,6 +221,7 @@ def test_incomplete_initial_capture_or_transfer_history_blocks_state_constructio
         initial_purchase_prices_tenths=_initial_prices(),
         transfers=(),
         event_transfer_counts={1: 0},
+        event_transfer_costs={1: 0},
         chips=(),
         ruleset=RULESET,
         provenance_artifact_ids=(_artifact("4"),),
@@ -251,6 +258,7 @@ def test_missing_transfer_row_and_bank_mismatch_fail_closed():
         initial_purchase_prices_tenths=_initial_prices(),
         transfers=(),
         event_transfer_counts={1: 0, 2: 1},
+        event_transfer_costs={1: 0, 2: 0},
         chips=(),
         ruleset=RULESET,
         provenance_artifact_ids=(_artifact("5"),),
@@ -271,6 +279,7 @@ def test_missing_transfer_row_and_bank_mismatch_fail_closed():
         initial_purchase_prices_tenths=_initial_prices(),
         transfers=(),
         event_transfer_counts={1: 0},
+        event_transfer_costs={1: 0},
         chips=(),
         ruleset=RULESET,
         provenance_artifact_ids=(_artifact("6"),),
@@ -279,3 +288,100 @@ def test_missing_transfer_row_and_bank_mismatch_fail_closed():
     )
     assert bad_bank.status is ManagerStateResolutionStatus.INVALID
     assert any("bank" in blocker for blocker in bad_bank.blockers)
+
+
+def test_public_transfer_cost_mismatch_and_future_chip_fail_closed():
+    current = _initial_players()
+    transfers = (
+        PublicTransferRecord(
+            transfer_id="gw2-t1",
+            gameweek=2,
+            sequence=1,
+            outgoing_player_id=OfficialPlayerId(8),
+            incoming_player_id=OfficialPlayerId(101),
+            outgoing_market_price_tenths=50,
+            incoming_purchase_tenths=50,
+            source_artifact_id=_artifact("7"),
+        ),
+        PublicTransferRecord(
+            transfer_id="gw2-t2",
+            gameweek=2,
+            sequence=2,
+            outgoing_player_id=OfficialPlayerId(9),
+            incoming_player_id=OfficialPlayerId(102),
+            outgoing_market_price_tenths=50,
+            incoming_purchase_tenths=50,
+            source_artifact_id=_artifact("8"),
+        ),
+    )
+    current.pop(OfficialPlayerId(8))
+    current.pop(OfficialPlayerId(9))
+    current[OfficialPlayerId(101)] = OfficialPlayerIdentity(
+        player_id=OfficialPlayerId(101),
+        team_id=16,
+        position="MID",
+        price_tenths=50,
+        display_name="N1",
+    )
+    current[OfficialPlayerId(102)] = OfficialPlayerIdentity(
+        player_id=OfficialPlayerId(102),
+        team_id=17,
+        position="MID",
+        price_tenths=50,
+        display_name="N2",
+    )
+    published_ids = tuple(
+        OfficialPlayerId(101)
+        if item == OfficialPlayerId(8)
+        else OfficialPlayerId(102)
+        if item == OfficialPlayerId(9)
+        else item
+        for item in _initial_ids()
+    )
+    bad_cost = reconstruct_public_deadline_state(
+        season="2026-2027",
+        entry_id=63984,
+        published_gameweek=2,
+        published_squad_ids=published_ids,
+        published_bank_tenths=_initial_bank(),
+        current_official=current,
+        initial_squad_ids=_initial_ids(),
+        initial_purchase_prices_tenths=_initial_prices(),
+        transfers=transfers,
+        event_transfer_counts={1: 0, 2: 2},
+        event_transfer_costs={1: 0, 2: 0},
+        chips=(),
+        ruleset=RULESET,
+        provenance_artifact_ids=(_artifact("9"),),
+        transfer_history_complete=True,
+        initial_price_capture_complete=True,
+    )
+    assert bad_cost.status is ManagerStateResolutionStatus.INVALID
+    assert any("event_transfers_cost" in blocker for blocker in bad_cost.blockers)
+
+    future_chip = reconstruct_public_deadline_state(
+        season="2026-2027",
+        entry_id=63984,
+        published_gameweek=1,
+        published_squad_ids=_initial_ids(),
+        published_bank_tenths=_initial_bank(),
+        current_official=_initial_players(),
+        initial_squad_ids=_initial_ids(),
+        initial_purchase_prices_tenths=_initial_prices(),
+        transfers=(),
+        event_transfer_counts={1: 0},
+        event_transfer_costs={1: 0},
+        chips=(
+            PublicChipRecord(
+                chip="BENCH_BOOST",
+                gameweek=2,
+                source_artifact_id=_artifact("a"),
+            ),
+        ),
+        ruleset=RULESET,
+        provenance_artifact_ids=(_artifact("b"),),
+        transfer_history_complete=True,
+        initial_price_capture_complete=True,
+    )
+    assert future_chip.status is ManagerStateResolutionStatus.INVALID
+    assert any("future Gameweek" in blocker for blocker in future_chip.blockers)
