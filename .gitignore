@@ -32,12 +32,16 @@ htmlcov/
 /data/manual/availability.csv
 /data/manual/tactical_roles.csv
 
-# Reproducibility snapshots stay as CI artifacts, not source history.
+# Reproducibility snapshots stay in ArtifactStore / run artifacts, not source history.
 data/snapshots/*
 !data/snapshots/.gitkeep
 
-# The generated AIrsenal forecast is intentionally committed so ordinary Apex
-# runs can consume the last validated worker output without installing JAX.
+# Runtime state is never source-authoritative.
 data/generated/*
 !data/generated/.gitkeep
-!data/generated/airsenal.csv
+!data/generated/README.md
+
+# Local/reference V2 runtime backends.
+.apex-runtime/
+runtime/artifacts/
+runtime/releases/
