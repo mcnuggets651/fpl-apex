@@ -1,9 +1,10 @@
 """Acquire, seal and replay manager-specific Official FPL public data.
 
-This boundary deliberately separates manager-specific public state from the manager-neutral
-GlobalWorld. Raw HTTP bytes and capture manifests are retained in ArtifactStore. The
-semantic snapshot identity depends on source bytes, entry and target Gameweek, not on
-retrieval time. Replay has no transport or clock argument.
+Manager-specific entry data is deliberately excluded from manager-neutral ``GlobalWorld``.
+Every Official response used for manager-state reconstruction is retained byte-for-byte
+through the common V2 RawCapture/ArtifactStore boundary. Semantic snapshot identity
+uses source-content identities, entry and target Gameweek; retrieval time remains audit
+metadata on RawCapture and therefore does not create false semantic differences.
 """
 
 from __future__ import annotations
@@ -23,6 +24,14 @@ from .sealed_world import capture_request
 FPL_API_BASE = "https://fantasy.premierleague.com/api"
 SEALED_MANAGER_SCHEMA_NAME = "apex-sealed-manager-public-data"
 SEALED_MANAGER_SCHEMA_VERSION = 1
+EXPECTED_MANAGER_SOURCES = frozenset(
+    {
+        "official_fpl_entry_summary",
+        "official_fpl_entry_history",
+        "official_fpl_entry_transfers",
+        "official_fpl_entry_picks",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,11 +43,17 @@ class ManagerPublicSource:
     schema_version: str
 
     def __post_init__(self) -> None:
-        if not self.source_name.strip() or not self.schema_name.strip() or not self.schema_version.strip():
+        if (
+            not self.source_name.strip()
+            or not self.schema_name.strip()
+            or not self.schema_version.strip()
+        ):
             raise ValueError("manager public source metadata cannot be empty")
         algorithm, separator, digest = self.artifact_id.partition(":")
         if algorithm != "sha256" or not separator or len(digest) != 64:
-            raise ValueError("manager public source artifact_id must be sha256 content identity")
+            raise ValueError(
+                "manager public source artifact_id must be sha256 content identity"
+            )
         try:
             int(digest, 16)
         except ValueError as exc:
@@ -85,14 +100,10 @@ class ManagerPublicSnapshot:
         sources = tuple(sorted(self.sources, key=lambda row: row.source_name))
         names = [row.source_name for row in sources]
         if len(names) != 4 or len(set(names)) != 4:
-            raise ValueError("manager public snapshot requires exactly four unique sources")
-        expected = {
-            "official_fpl_entry_summary",
-            "official_fpl_entry_history",
-            "official_fpl_entry_transfers",
-            "official_fpl_entry_picks",
-        }
-        if set(names) != expected:
+            raise ValueError(
+                "manager public snapshot requires exactly four unique sources"
+            )
+        if set(names) != EXPECTED_MANAGER_SOURCES:
             raise ValueError("manager public snapshot source coverage is incomplete")
         object.__setattr__(self, "sources", sources)
 
@@ -119,13 +130,19 @@ class ManagerPublicSnapshot:
         if payload.get("schema_name") != "apex-manager-public-snapshot":
             raise ValueError("not an Apex manager public snapshot")
         rows = payload.get("sources")
-        if not isinstance(rows, list):
-            raise ValueError("manager public snapshot sources must be an array")
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise ValueError("manager public snapshot sources must be object rows")
         snapshot = cls(
-            entry_id=int(payload["entry_id"]),
-            published_gameweek=int(payload["published_gameweek"]),
-            sources=tuple(ManagerPublicSource.from_dict(dict(row)) for row in rows if isinstance(row, dict)),
-            schema_version=int(payload.get("schema_version", -1)),
+            entry_id=_exact_positive_int(payload.get("entry_id"), label="entry_id"),
+            published_gameweek=_exact_positive_int(
+                payload.get("published_gameweek"),
+                label="published_gameweek",
+            ),
+            sources=tuple(ManagerPublicSource.from_dict(dict(row)) for row in rows),
+            schema_version=_exact_positive_int(
+                payload.get("schema_version"),
+                label="schema_version",
+            ),
         )
         declared = payload.get("manager_public_snapshot_id")
         if declared is not None and str(declared) != str(snapshot.snapshot_id):
@@ -144,7 +161,8 @@ class SealedManagerPublicData:
             "manager_public_snapshot_id": str(self.snapshot.snapshot_id),
             "manifest_artifact_id": self.manifest_artifact_id,
             "capture_manifest_artifact_ids": [
-                [name, artifact_id] for name, artifact_id in self.capture_manifest_artifact_ids
+                [name, artifact_id]
+                for name, artifact_id in self.capture_manifest_artifact_ids
             ],
         }
 
@@ -159,17 +177,14 @@ class ReplayedManagerPublicData:
     captures: tuple[RawCapture, ...]
 
 
-def _positive_int(value: object, *, label: str, allow_zero: bool = False) -> int:
-    if isinstance(value, bool):
-        raise ValueError(f"{label} must be an integer")
-    try:
-        result = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label} must be an integer") from exc
-    minimum = 0 if allow_zero else 1
-    if result < minimum:
-        raise ValueError(f"{label} must be >= {minimum}")
-    return result
+def _exact_int(value: object, *, label: str, minimum: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError(f"{label} must be an integer >= {minimum}")
+    return value
+
+
+def _exact_positive_int(value: object, *, label: str) -> int:
+    return _exact_int(value, label=label, minimum=1)
 
 
 def _decode_json(content: bytes, *, source_name: str) -> Any:
@@ -190,30 +205,48 @@ def _validate_manager_payloads(
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
     if not isinstance(summary, dict):
         raise ValueError("Official FPL entry summary must be an object")
-    if summary.get("id") is not None and _positive_int(summary["id"], label="entry summary id") != entry_id:
-        raise ValueError("Official FPL entry summary ID does not match requested entry")
+    if summary.get("id") is not None:
+        summary_id = _exact_positive_int(summary["id"], label="entry summary id")
+        if summary_id != entry_id:
+            raise ValueError(
+                "Official FPL entry summary ID does not match requested entry"
+            )
 
     if not isinstance(history, dict):
         raise ValueError("Official FPL entry history must be an object")
     current = history.get("current")
     chips = history.get("chips")
     if not isinstance(current, list) or not isinstance(chips, list):
-        raise ValueError("Official FPL entry history requires current and chips arrays")
-    current_events: list[int] = []
+        raise ValueError(
+            "Official FPL entry history requires current and chips arrays"
+        )
+    current_events: set[int] = set()
+    history_by_event: dict[int, dict[str, Any]] = {}
     for row in current:
         if not isinstance(row, dict):
-            raise ValueError("Official FPL entry history current row must be an object")
-        event = _positive_int(row.get("event"), label="entry history event")
-        current_events.append(event)
+            raise ValueError(
+                "Official FPL entry history current row must be an object"
+            )
+        event = _exact_positive_int(row.get("event"), label="entry history event")
+        if event in current_events:
+            raise ValueError("Official FPL entry history has duplicate Gameweek rows")
+        current_events.add(event)
+        history_by_event[event] = dict(row)
         for field in ("event_transfers", "event_transfers_cost", "bank"):
             if row.get(field) is not None:
-                _positive_int(row[field], label=f"entry history {field}", allow_zero=True)
-    if len(current_events) != len(set(current_events)):
-        raise ValueError("Official FPL entry history has duplicate Gameweek rows")
+                _exact_int(
+                    row[field],
+                    label=f"entry history {field}",
+                )
+
+    chip_events: set[int] = set()
     for row in chips:
         if not isinstance(row, dict):
             raise ValueError("Official FPL chip history row must be an object")
-        _positive_int(row.get("event"), label="chip history event")
+        event = _exact_positive_int(row.get("event"), label="chip history event")
+        if event in chip_events:
+            raise ValueError("Official FPL chip history has duplicate Gameweek rows")
+        chip_events.add(event)
         if not str(row.get("name") or "").strip():
             raise ValueError("Official FPL chip history row requires a chip name")
 
@@ -224,10 +257,27 @@ def _validate_manager_payloads(
         if not isinstance(row, dict):
             raise ValueError("Official FPL transfer history row must be an object")
         item = dict(row)
-        for field in ("element_in", "element_out", "element_in_cost", "element_out_cost", "event"):
-            _positive_int(item.get(field), label=f"transfer {field}")
+        for field in (
+            "element_in",
+            "element_out",
+            "element_in_cost",
+            "element_out_cost",
+            "event",
+        ):
+            _exact_positive_int(item.get(field), label=f"transfer {field}")
         if item["element_in"] == item["element_out"]:
-            raise ValueError("Official FPL transfer row cannot buy and sell the same player")
+            raise ValueError(
+                "Official FPL transfer row cannot buy and sell the same player"
+            )
+        if item.get("entry") is not None:
+            transfer_entry = _exact_positive_int(
+                item["entry"],
+                label="transfer entry",
+            )
+            if transfer_entry != entry_id:
+                raise ValueError(
+                    "Official FPL transfer row entry does not match requested entry"
+                )
         if not str(item.get("time") or "").strip():
             raise ValueError("Official FPL transfer row requires time provenance")
         transfer_rows.append(item)
@@ -247,8 +297,8 @@ def _validate_manager_payloads(
     for row in pick_rows:
         if not isinstance(row, dict):
             raise ValueError("Official FPL pick row must be an object")
-        player_id = _positive_int(row.get("element"), label="pick element")
-        position = _positive_int(row.get("position"), label="pick position")
+        player_id = _exact_positive_int(row.get("element"), label="pick element")
+        position = _exact_positive_int(row.get("position"), label="pick position")
         player_ids.append(player_id)
         positions.append(position)
         if row.get("is_captain") is True:
@@ -259,20 +309,44 @@ def _validate_manager_payloads(
         raise ValueError("Official FPL picks contain duplicate player IDs")
     if set(positions) != set(range(1, 16)):
         raise ValueError("Official FPL picks positions must cover 1..15 exactly")
-    if len(captain_ids) != 1 or len(vice_ids) != 1 or captain_ids[0] == vice_ids[0]:
+    if (
+        len(captain_ids) != 1
+        or len(vice_ids) != 1
+        or captain_ids[0] == vice_ids[0]
+    ):
         raise ValueError("Official FPL picks require distinct captain and vice-captain")
     for field in ("bank", "event_transfers", "event_transfers_cost"):
         if entry_history.get(field) is not None:
-            _positive_int(entry_history[field], label=f"picks entry_history {field}", allow_zero=True)
+            _exact_int(
+                entry_history[field],
+                label=f"picks entry_history {field}",
+            )
     if entry_history.get("event") is not None:
-        event = _positive_int(entry_history["event"], label="picks entry_history event")
+        event = _exact_positive_int(
+            entry_history["event"],
+            label="picks entry_history event",
+        )
         if event != published_gameweek:
             raise ValueError("Official FPL picks entry_history Gameweek mismatch")
+
+    target_history = history_by_event.get(published_gameweek)
+    if target_history is not None:
+        for field in ("event_transfers", "event_transfers_cost", "bank"):
+            left = target_history.get(field)
+            right = entry_history.get(field)
+            if left is not None and right is not None and left != right:
+                raise ValueError(
+                    f"Official FPL target history {field} conflicts with picks entry_history"
+                )
 
     return dict(summary), dict(history), transfer_rows, dict(picks)
 
 
-def _requests(entry_id: int, published_gameweek: int, freshness_seconds: int) -> tuple[SourceRequest, ...]:
+def _requests(
+    entry_id: int,
+    published_gameweek: int,
+    freshness_seconds: int,
+) -> tuple[SourceRequest, ...]:
     base = f"{FPL_API_BASE}/entry/{entry_id}"
     return (
         SourceRequest.create(
@@ -307,7 +381,10 @@ def _requests(entry_id: int, published_gameweek: int, freshness_seconds: int) ->
 
 
 def _snapshot_from_captures(
-    *, entry_id: int, published_gameweek: int, captures: Iterable[RawCapture]
+    *,
+    entry_id: int,
+    published_gameweek: int,
+    captures: Iterable[RawCapture],
 ) -> ManagerPublicSnapshot:
     return ManagerPublicSnapshot(
         entry_id=entry_id,
@@ -325,6 +402,34 @@ def _snapshot_from_captures(
     )
 
 
+def _payloads_from_bodies(
+    bodies: dict[str, bytes],
+    *,
+    entry_id: int,
+    published_gameweek: int,
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+    return _validate_manager_payloads(
+        entry_id=entry_id,
+        published_gameweek=published_gameweek,
+        summary=_decode_json(
+            bodies["official_fpl_entry_summary"],
+            source_name="official_fpl_entry_summary",
+        ),
+        history=_decode_json(
+            bodies["official_fpl_entry_history"],
+            source_name="official_fpl_entry_history",
+        ),
+        transfers=_decode_json(
+            bodies["official_fpl_entry_transfers"],
+            source_name="official_fpl_entry_transfers",
+        ),
+        picks=_decode_json(
+            bodies["official_fpl_entry_picks"],
+            source_name="official_fpl_entry_picks",
+        ),
+    )
+
+
 def acquire_official_manager_public_data(
     *,
     entry_id: int,
@@ -336,33 +441,37 @@ def acquire_official_manager_public_data(
 ) -> SealedManagerPublicData:
     """Capture and seal all Official FPL public surfaces used for manager state."""
 
-    _positive_int(entry_id, label="entry_id")
-    _positive_int(published_gameweek, label="published_gameweek")
+    _exact_positive_int(entry_id, label="entry_id")
+    _exact_positive_int(published_gameweek, label="published_gameweek")
+    if (
+        isinstance(freshness_seconds, bool)
+        or not isinstance(freshness_seconds, int)
+        or freshness_seconds < 0
+    ):
+        raise ValueError("freshness_seconds must be a nonnegative integer")
+
     stored = tuple(
-        capture_request(request, transport=transport, clock=clock, store=store)
+        capture_request(
+            request,
+            transport=transport,
+            clock=clock,
+            store=store,
+        )
         for request in _requests(entry_id, published_gameweek, freshness_seconds)
     )
     by_name = {row.capture.source_name: row for row in stored}
-    _validate_manager_payloads(
+    if set(by_name) != EXPECTED_MANAGER_SOURCES or len(by_name) != len(stored):
+        raise ValueError("manager acquisition did not produce exact required source set")
+    bodies = {
+        name: store.read_bytes(row.capture.body_artifact_id)
+        for name, row in by_name.items()
+    }
+    _payloads_from_bodies(
+        bodies,
         entry_id=entry_id,
         published_gameweek=published_gameweek,
-        summary=_decode_json(
-            store.read_bytes(by_name["official_fpl_entry_summary"].capture.body_artifact_id),
-            source_name="official_fpl_entry_summary",
-        ),
-        history=_decode_json(
-            store.read_bytes(by_name["official_fpl_entry_history"].capture.body_artifact_id),
-            source_name="official_fpl_entry_history",
-        ),
-        transfers=_decode_json(
-            store.read_bytes(by_name["official_fpl_entry_transfers"].capture.body_artifact_id),
-            source_name="official_fpl_entry_transfers",
-        ),
-        picks=_decode_json(
-            store.read_bytes(by_name["official_fpl_entry_picks"].capture.body_artifact_id),
-            source_name="official_fpl_entry_picks",
-        ),
     )
+
     snapshot = _snapshot_from_captures(
         entry_id=entry_id,
         published_gameweek=published_gameweek,
@@ -370,7 +479,10 @@ def acquire_official_manager_public_data(
     )
     capture_manifests = tuple(
         sorted(
-            ((row.capture.source_name, row.manifest_artifact_id) for row in stored),
+            (
+                (row.capture.source_name, row.manifest_artifact_id)
+                for row in stored
+            ),
             key=lambda item: item[0],
         )
     )
@@ -411,7 +523,7 @@ def load_official_manager_public_data(
         raise ValueError("sealed manager public manifest must be an object")
     if envelope.get("schema_name") != SEALED_MANAGER_SCHEMA_NAME:
         raise ValueError("not an Apex sealed manager public manifest")
-    if int(envelope.get("schema_version", -1)) != SEALED_MANAGER_SCHEMA_VERSION:
+    if envelope.get("schema_version") != SEALED_MANAGER_SCHEMA_VERSION:
         raise ValueError("unsupported sealed manager public schema_version")
     snapshot_payload = envelope.get("manager_public_snapshot")
     capture_rows = envelope.get("capture_manifests")
@@ -420,6 +532,7 @@ def load_official_manager_public_data(
     snapshot = ManagerPublicSnapshot.from_dict(dict(snapshot_payload))
 
     captures: list[RawCapture] = []
+    bodies: dict[str, bytes] = {}
     capture_names: set[str] = set()
     for row in capture_rows:
         if not isinstance(row, dict):
@@ -428,8 +541,9 @@ def load_official_manager_public_data(
         if not source_name or source_name in capture_names:
             raise ValueError("manager capture manifest source names must be unique")
         capture_names.add(source_name)
+        capture_manifest_id = str(row.get("artifact_id") or "")
         raw = _decode_json(
-            store.read_bytes(str(row["artifact_id"])),
+            store.read_bytes(capture_manifest_id),
             source_name=f"capture_manifest:{source_name}",
         )
         if not isinstance(raw, dict):
@@ -437,37 +551,31 @@ def load_official_manager_public_data(
         capture = RawCapture.from_dict(dict(raw))
         if capture.source_name != source_name:
             raise ValueError("manager capture manifest source-name mismatch")
-        store.read_bytes(capture.body_artifact_id)
+        body = store.read_bytes(capture.body_artifact_id)
+        if len(body) != capture.body_size:
+            raise ValueError(
+                f"manager raw capture body size mismatch for {source_name}: "
+                f"{len(body)} != {capture.body_size}"
+            )
+        bodies[source_name] = body
         captures.append(capture)
 
+    if capture_names != EXPECTED_MANAGER_SOURCES:
+        raise ValueError("sealed manager capture coverage is incomplete")
     replayed_snapshot = _snapshot_from_captures(
         entry_id=snapshot.entry_id,
         published_gameweek=snapshot.published_gameweek,
         captures=captures,
     )
     if replayed_snapshot.snapshot_id != snapshot.snapshot_id:
-        raise ValueError("replayed manager source bytes do not match sealed semantic snapshot")
+        raise ValueError(
+            "replayed manager source bytes do not match sealed semantic snapshot"
+        )
 
-    source_by_name = {row.source_name: row for row in captures}
-    summary, history, transfers, picks = _validate_manager_payloads(
+    summary, history, transfers, picks = _payloads_from_bodies(
+        bodies,
         entry_id=snapshot.entry_id,
         published_gameweek=snapshot.published_gameweek,
-        summary=_decode_json(
-            store.read_bytes(source_by_name["official_fpl_entry_summary"].body_artifact_id),
-            source_name="official_fpl_entry_summary",
-        ),
-        history=_decode_json(
-            store.read_bytes(source_by_name["official_fpl_entry_history"].body_artifact_id),
-            source_name="official_fpl_entry_history",
-        ),
-        transfers=_decode_json(
-            store.read_bytes(source_by_name["official_fpl_entry_transfers"].body_artifact_id),
-            source_name="official_fpl_entry_transfers",
-        ),
-        picks=_decode_json(
-            store.read_bytes(source_by_name["official_fpl_entry_picks"].body_artifact_id),
-            source_name="official_fpl_entry_picks",
-        ),
     )
     return ReplayedManagerPublicData(
         snapshot=snapshot,
