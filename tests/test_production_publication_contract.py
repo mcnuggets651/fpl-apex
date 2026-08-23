@@ -27,7 +27,7 @@ def test_unified_stages_current_status_even_when_decision_is_withheld():
     finalize = text.index("- name: Finalize fail-closed production status")
     seal = text.index("- name: Seal atomic workflow packet")
     stage = text.index("- name: Stage immutable runtime release outside source control")
-    upload = text.index("- uses: actions/upload-artifact@v4")
+    upload = text.index("- uses: actions/upload-artifact@")
     assert finalize < seal < stage < upload
     assert "if: always()" in text[finalize:seal]
     assert "if: always()" in text[seal:stage]
@@ -54,7 +54,7 @@ def test_airsenal_forecast_is_validation_artifact_not_tracked_runtime_state():
     assert "Commit validated forecast" not in text
     assert "invalidate_published_decision.py" not in text
     assert "data/generated/airsenal.csv" in text
-    assert "actions/upload-artifact@v4" in text
+    assert "actions/upload-artifact@" in text
 
 
 def test_core_pin_refresh_is_audited_proposal_not_direct_source_mutation():
@@ -63,7 +63,7 @@ def test_core_pin_refresh_is_audited_proposal_not_direct_source_mutation():
     assert "Commit validated FPL Core revision" not in text
     assert "invalidate_published_decision.py" not in text
     assert "reviewed dependency source change required" in text
-    assert "actions/upload-artifact@v4" in text
+    assert "actions/upload-artifact@" in text
     assert "upstreams.lock.json" in text
 
 
