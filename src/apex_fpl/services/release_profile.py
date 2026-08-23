@@ -47,10 +47,10 @@ def resolve_release_profile(
     published_gw = team_state.get("published_gw") if isinstance(team_state, dict) else None
 
     if selector == LAUNCH_SELECTOR:
-        if not gameweeks or gameweeks[0] != 1:
-            raise ValueError("GW1 launch selector requires an actionable horizon beginning at GW1")
         if published_gw:
             raise ValueError("GW1 launch selector is invalid once a personal deadline squad exists")
+        if not gameweeks or gameweeks[0] != 1:
+            raise ValueError("GW1 launch selector requires an actionable horizon beginning at GW1")
         return LAUNCH_PROFILE
 
     if selector == INSEASON_SELECTOR:
