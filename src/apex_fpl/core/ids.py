@@ -37,6 +37,14 @@ class GlobalWorldId(ApexId):
     kind = "global_world_id"
 
 
+class PersonId(ApexId):
+    kind = "person_id"
+
+
+class RuleSetId(ApexId):
+    kind = "ruleset_id"
+
+
 class ManagerStateId(ApexId):
     kind = "manager_state_id"
 

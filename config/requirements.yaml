@@ -24,6 +24,22 @@ requirements:
     tests: [tests/test_sealed_global_world.py]
     proof_obligations: [PO-ARTIFACT-INTEGRITY-001, PO-GLOBAL-WORLD-SEAL-001]
 
+  - requirement_id: REQ-OFFICIAL-PLAYER-IDENTITY
+    requirement: Current-season player identity is the exact Official FPL integer ID; cross-season linkage uses only reviewed PersonId mappings and names are display-only witnesses.
+    critical: true
+    invariants: [INV-OFFICIAL-ID-AUTHORITY, INV-NAME-NEVER-IDENTITY, INV-AMBIGUITY-FAILS-CLOSED]
+    implementation: [src/apex_fpl/core/identity.py, src/apex_fpl/core/ids.py]
+    tests: [tests/test_v2_identity_ruleset.py]
+    proof_obligations: [PO-OFFICIAL-PLAYER-IDENTITY-001]
+
+  - requirement_id: REQ-VERSIONED-RULESET
+    requirement: All FPL mechanics used by V2 are represented by a deterministic effective-season RuleSet with reviewed Official Premier League provenance.
+    critical: true
+    invariants: [INV-RULESET-CONTENT-IDENTITY, INV-RULE-PROVENANCE, INV-NO-UNCONTROLLED-RULE-FLOATS]
+    implementation: [src/apex_fpl/core/rules.py, src/apex_fpl/control/ruleset_registry.py, config/rules/2026-2027.yaml]
+    tests: [tests/test_v2_identity_ruleset.py]
+    proof_obligations: [PO-RULESET-PROVENANCE-001]
+
   - requirement_id: REQ-EXACT-MANAGER-STATE
     requirement: In-season action requires exact financial and transfer state.
     critical: true

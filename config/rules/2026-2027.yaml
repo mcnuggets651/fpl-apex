@@ -1,0 +1,256 @@
+schema_version: 1
+season: "2026-2027"
+sources:
+  - source_id: PL-FPL-SQUAD-20260720
+    publisher: Premier League
+    title: "FPL basics explained: How to pick a squad"
+    url: "https://www.premierleague.com/en/news/2174419"
+    published_on: "2026-07-20"
+    verified_on: "2026-08-23"
+  - source_id: PL-FPL-MANAGE-20260720
+    publisher: Premier League
+    title: "FPL basics explained: Managing your team"
+    url: "https://www.premierleague.com/en/news/2174899/fpl-basics-managing-your-team"
+    published_on: "2026-07-20"
+    verified_on: "2026-08-23"
+  - source_id: PL-FPL-TRANSFERS-20260720
+    publisher: Premier League
+    title: "FPL basics explained: How to make transfers"
+    url: "https://www.premierleague.com/en/news/2174907/fpl-basics-explained-how-to-make-transfers"
+    published_on: "2026-07-20"
+    verified_on: "2026-08-23"
+  - source_id: PL-FPL-CHIPS-20260720
+    publisher: Premier League
+    title: "What's happening with FPL chips in 2026/27"
+    url: "https://www.premierleague.com/en/news/4679879/whats-happening-with-fpl-chips-in-202627"
+    published_on: "2026-07-20"
+    verified_on: "2026-08-23"
+  - source_id: PL-FPL-CHIP-BASICS-20260720
+    publisher: Premier League
+    title: "FPL basics explained: How to use your chips"
+    url: "https://www.premierleague.com/en/news/2174900"
+    published_on: "2026-07-20"
+    verified_on: "2026-08-23"
+  - source_id: PL-FPL-SCORING-20260720
+    publisher: Premier League
+    title: "FPL basics explained: Scoring points"
+    url: "https://www.premierleague.com/en/news/2174909"
+    published_on: "2026-07-20"
+    verified_on: "2026-08-23"
+  - source_id: PL-FPL-BPS-20260720
+    publisher: Premier League
+    title: "What's new in 2026/27 Fantasy: Changes to Bonus Points System"
+    url: "https://www.premierleague.com/en/news/4679946/whats-new-in-202627-fantasy-changes-to-bonus-points-system"
+    published_on: "2026-07-20"
+    verified_on: "2026-08-23"
+  - source_id: PL-FPL-UPDATES-2026
+    publisher: Premier League
+    title: "2026/27 Game Updates"
+    url: "https://fantasy.premierleague.com/help/new"
+    published_on: "2026-07-20"
+    verified_on: "2026-08-23"
+
+rules:
+  - rule_id: FPL-SQUAD-BUDGET-TENTHS-001
+    capability: squad_legality
+    value: 1000
+    source_ids: [PL-FPL-SQUAD-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-SQUAD-SIZE-001
+    capability: squad_legality
+    value: 15
+    source_ids: [PL-FPL-SQUAD-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-SQUAD-POSITIONS-001
+    capability: squad_legality
+    value: {GK: 2, DEF: 5, MID: 5, FWD: 3}
+    source_ids: [PL-FPL-SQUAD-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-SQUAD-MAX-CLUB-001
+    capability: squad_legality
+    value: 3
+    source_ids: [PL-FPL-SQUAD-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-XI-SIZE-001
+    capability: lineup_legality
+    value: 11
+    source_ids: [PL-FPL-MANAGE-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-XI-POSITION-MIN-001
+    capability: lineup_legality
+    value: {GK: 1, DEF: 3, MID: 2, FWD: 1}
+    source_ids: [PL-FPL-MANAGE-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-XI-POSITION-MAX-001
+    capability: lineup_legality
+    value: {GK: 1, DEF: 5, MID: 5, FWD: 3}
+    source_ids: [PL-FPL-MANAGE-20260720, PL-FPL-SQUAD-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-DEADLINE-OFFSET-MINUTES-001
+    capability: deadline
+    value: 90
+    source_ids: [PL-FPL-MANAGE-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-CAPTAIN-MULTIPLIER-001
+    capability: captaincy
+    value: 2
+    source_ids: [PL-FPL-MANAGE-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-CAPTAIN-VICE-FALLBACK-001
+    capability: captaincy
+    value: true
+    source_ids: [PL-FPL-MANAGE-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-FREE-TRANSFER-GRANT-001
+    capability: transfer_allowance
+    value: 1
+    source_ids: [PL-FPL-TRANSFERS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-FREE-TRANSFER-BANK-MAX-001
+    capability: transfer_allowance
+    value: 5
+    source_ids: [PL-FPL-TRANSFERS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-EXTRA-TRANSFER-HIT-POINTS-001
+    capability: transfer_allowance
+    value: 4
+    source_ids: [PL-FPL-TRANSFERS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-TRANSFER-SAME-POSITION-001
+    capability: transfer_legality
+    value: true
+    source_ids: [PL-FPL-TRANSFERS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-SELLING-PRICE-PROFIT-STEP-001
+    capability: manager_finance
+    value: {purchase_price_rise_tenths: 2, selling_profit_tenths: 1}
+    source_ids: [PL-FPL-TRANSFERS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-SELLING-PRICE-LOSS-PASSTHROUGH-001
+    capability: manager_finance
+    value: true
+    source_ids: [PL-FPL-TRANSFERS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-CHIP-TYPES-001
+    capability: chips
+    value: [WILDCARD, FREE_HIT, TRIPLE_CAPTAIN, BENCH_BOOST]
+    source_ids: [PL-FPL-CHIPS-20260720, PL-FPL-CHIP-BASICS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-CHIP-SETS-001
+    capability: chips
+    value: 2
+    source_ids: [PL-FPL-CHIPS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-CHIP-ONE-PER-GW-001
+    capability: chips
+    value: true
+    source_ids: [PL-FPL-CHIPS-20260720, PL-FPL-CHIP-BASICS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-CHIP-FIRST-SET-LAST-GW-001
+    capability: chips
+    value: 19
+    source_ids: [PL-FPL-CHIPS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-CHIP-SECOND-SET-FIRST-GW-001
+    capability: chips
+    value: 20
+    source_ids: [PL-FPL-CHIPS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-FREE-HIT-DISALLOWED-GWS-001
+    capability: chips
+    value: [1]
+    source_ids: [PL-FPL-CHIPS-20260720, PL-FPL-CHIP-BASICS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-WILDCARD-DISALLOWED-GWS-001
+    capability: chips
+    value: [1]
+    source_ids: [PL-FPL-CHIP-BASICS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-FREE-HIT-CROSS-HALF-CONSECUTIVE-001
+    capability: chips
+    value: {first_half_gw: 19, second_half_gw: 20, allowed: false}
+    source_ids: [PL-FPL-CHIPS-20260720, PL-FPL-CHIP-BASICS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-WILDCARD-PRESERVES-BANKED-TRANSFERS-001
+    capability: transfer_allowance
+    value: true
+    source_ids: [PL-FPL-CHIP-BASICS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-FREE-HIT-PRESERVES-BANKED-TRANSFERS-001
+    capability: transfer_allowance
+    value: true
+    source_ids: [PL-FPL-CHIP-BASICS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-TRIPLE-CAPTAIN-MULTIPLIER-001
+    capability: chips
+    value: 3
+    source_ids: [PL-FPL-CHIPS-20260720, PL-FPL-CHIP-BASICS-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-SCORING-BASE-001
+    capability: scoring
+    value:
+      appearance_up_to_59: 1
+      appearance_60_plus: 2
+      goals: {GK: 10, DEF: 6, MID: 5, FWD: 4}
+      assist: 3
+      clean_sheet: {GK: 4, DEF: 4, MID: 1, FWD: 0}
+      goalkeeper_saves_per_point: 3
+      goalkeeper_save_point: 1
+      penalty_save: 5
+      defensive_contribution_points: 2
+      defensive_contribution_threshold: {DEF: 10, MID: 12, FWD: 12}
+      penalty_miss: -2
+      goals_conceded_per_penalty: 2
+      goals_conceded_penalty: -1
+      yellow_card: -1
+      red_card: -3
+      own_goal: -2
+      bonus_rank_points: [3, 2, 1]
+    source_ids: [PL-FPL-SCORING-20260720]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-BPS-2026-DELTA-001
+    capability: scoring_bps
+    value:
+      cbi_actions_per_bps: 3
+      goalkeeper_any_save_bps: 2
+      goalkeeper_inside_box_save_extra_bps: 1
+      goalkeeper_big_chance_save_extra_bps: 1
+      goalkeeper_penalty_save_bps: 7
+      being_tackled_bps_penalty: 0
+    source_ids: [PL-FPL-BPS-20260720, PL-FPL-UPDATES-2026]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
+  - rule_id: FPL-GW-FINAL-LOCK-UK-HOUR-001
+    capability: scoring_finality
+    value: 9
+    source_ids: [PL-FPL-UPDATES-2026]
+    effective_season: "2026-2027"
+    effective_from: "2026-07-20"
