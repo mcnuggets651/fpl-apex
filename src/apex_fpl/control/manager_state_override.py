@@ -82,7 +82,9 @@ def _owned(row: object) -> OwnedPlayer:
     if missing:
         raise ManagerStateIntegrityError(f"squad row missing fields: {missing}")
     return OwnedPlayer(
-        player_id=OfficialPlayerId(_int(item["player_id"], label="player_id", minimum=1)),
+        player_id=OfficialPlayerId(
+            _int(item["player_id"], label="player_id", minimum=1)
+        ),
         team_id=_int(item["team_id"], label="team_id", minimum=1),
         position=str(item["position"]),
         purchase_basis_tenths=_int(
@@ -187,23 +189,38 @@ def store_and_load_manager_state_override(
     try:
         payload = json.loads(content.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ManagerStateIntegrityError("manager-state override must be UTF-8 JSON") from exc
+        raise ManagerStateIntegrityError(
+            "manager-state override must be UTF-8 JSON"
+        ) from exc
     root = _object(payload, label="manager-state override")
     if root.get("schema_name") != OVERRIDE_SCHEMA_NAME:
         raise ManagerStateIntegrityError("manager-state override schema_name mismatch")
-    if _int(root.get("schema_version"), label="schema_version", minimum=1) != OVERRIDE_SCHEMA_VERSION:
-        raise ManagerStateIntegrityError("unsupported manager-state override schema_version")
+    if (
+        _int(root.get("schema_version"), label="schema_version", minimum=1)
+        != OVERRIDE_SCHEMA_VERSION
+    ):
+        raise ManagerStateIntegrityError(
+            "unsupported manager-state override schema_version"
+        )
 
     meta = _object(root.get("metadata"), label="override metadata")
     author = str(meta.get("author") or "").strip()
     reason = str(meta.get("reason") or "").strip()
     if not author or not reason:
         raise ManagerStateIntegrityError("override metadata requires author and reason")
+    if meta.get("current_state_confirmed") is not True:
+        raise ManagerStateIntegrityError(
+            "override metadata must explicitly confirm current_state_confirmed=true"
+        )
     created = _aware(meta.get("created_at"), label="created_at")
     expires = _aware(meta.get("expires_at"), label="expires_at")
+    if expires < created:
+        raise ManagerStateIntegrityError("manager-state override expires before creation")
     observed = observed_at.astimezone(timezone.utc)
     if not (created <= observed <= expires):
-        raise ManagerStateIntegrityError("manager-state override is outside its validity window")
+        raise ManagerStateIntegrityError(
+            "manager-state override is outside its validity window"
+        )
 
     state_payload = _object(root.get("state"), label="override state")
     required_state = {
@@ -216,20 +233,38 @@ def store_and_load_manager_state_override(
         "squad",
         "chips_used",
         "transfer_ledger",
+        "transfer_ledger_complete",
         "source_artifact_ids",
     }
     missing = sorted(required_state - set(state_payload))
     if missing:
         raise ManagerStateIntegrityError(f"override state missing fields: {missing}")
+    if state_payload["transfer_ledger_complete"] is not True:
+        raise ManagerStateIntegrityError(
+            "override must explicitly assert transfer_ledger_complete=true"
+        )
     if str(state_payload["ruleset_id"]) != str(ruleset.ruleset_id):
-        raise ManagerStateIntegrityError("override RuleSetId does not match active RuleSet")
+        raise ManagerStateIntegrityError(
+            "override RuleSetId does not match active RuleSet"
+        )
 
-    source_ids = tuple(str(item).strip() for item in _list(
-        state_payload["source_artifact_ids"],
-        label="source_artifact_ids",
-    ))
+    source_ids = tuple(
+        str(item).strip()
+        for item in _list(
+            state_payload["source_artifact_ids"],
+            label="source_artifact_ids",
+        )
+    )
     if not source_ids or any(not item for item in source_ids):
-        raise ManagerStateIntegrityError("override requires underlying source artifact IDs")
+        raise ManagerStateIntegrityError(
+            "override requires underlying source artifact IDs"
+        )
+    unverifiable = tuple(item for item in source_ids if not store.verify(item))
+    if unverifiable:
+        raise ManagerStateIntegrityError(
+            "override references missing or corrupt source artifacts: "
+            + ", ".join(unverifiable)
+        )
 
     state = ManagerState(
         season=str(state_payload["season"]),
@@ -238,14 +273,22 @@ def store_and_load_manager_state_override(
         ruleset_id=RuleSetId(str(state_payload["ruleset_id"])),
         scope=ManagerStateScope.CURRENT_EXACT,
         bank_tenths=_int(state_payload["bank_tenths"], label="bank_tenths"),
-        free_transfers=_int(state_payload["free_transfers"], label="free_transfers"),
-        squad=tuple(_owned(row) for row in _list(state_payload["squad"], label="squad")),
+        free_transfers=_int(
+            state_payload["free_transfers"], label="free_transfers"
+        ),
+        squad=tuple(
+            _owned(row) for row in _list(state_payload["squad"], label="squad")
+        ),
         chips_used=tuple(
-            _chip(row) for row in _list(state_payload["chips_used"], label="chips_used")
+            _chip(row)
+            for row in _list(state_payload["chips_used"], label="chips_used")
         ),
         transfer_ledger=tuple(
             _transfer(row)
-            for row in _list(state_payload["transfer_ledger"], label="transfer_ledger")
+            for row in _list(
+                state_payload["transfer_ledger"],
+                label="transfer_ledger",
+            )
         ),
         provenance_artifact_ids=source_ids + (ref.artifact_id,),
     )
