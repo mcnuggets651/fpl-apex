@@ -9,12 +9,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from apex_fpl.services.release_profile import (
+    INSEASON_PROFILE,
+    LAUNCH_PROFILE,
+    resolve_release_profile,
+)
 
-CONTRACT = "apex-release-generation-certificate-v1"
-FINAL_SELECTORS = {
-    "adaptive_gw1_launch_with_transfer_option_value",
-    "receding_horizon_current_team_maximum_ev",
-}
+
+CONTRACT = "apex-release-generation-certificate-v2"
 EXACT_ACTION_AUTHORITY = "independent_exact_current_gameweek_rescore"
 
 
@@ -42,32 +44,65 @@ def _record_ids(records: Any, *, expected: int | None = None) -> list[int]:
     return ids
 
 
+def _validate_sensitivity(profile, sensitivity: dict[str, Any], bundle_id: str) -> dict[str, Any]:
+    if sensitivity.get("decision_bundle_id") != bundle_id:
+        raise ValueError("lifecycle sensitivity artifact does not match decision_bundle_id")
+    if profile == LAUNCH_PROFILE:
+        if sensitivity.get("contract") != LAUNCH_PROFILE.sensitivity_contract:
+            raise ValueError("launch release requires the launch adversarial sensitivity contract")
+        summary = sensitivity.get("summary") or {}
+        if summary.get("audit_complete") is not True:
+            raise ValueError("launch adversarial selection sensitivity audit is incomplete")
+        if summary.get("search_surface_defect_signals"):
+            raise ValueError("launch adversarial sensitivity found search-surface defect signals")
+        if summary.get("ban_solve_errors"):
+            raise ValueError("launch adversarial sensitivity contains solve errors")
+        return {"contract": sensitivity.get("contract"), "ready": True}
+
+    if profile == INSEASON_PROFILE:
+        if sensitivity.get("contract") != INSEASON_PROFILE.sensitivity_contract:
+            raise ValueError("in-season release requires the transfer-action sensitivity contract")
+        if sensitivity.get("selector") != INSEASON_PROFILE.selector:
+            raise ValueError("in-season sensitivity selector does not match release selector")
+        if sensitivity.get("ready") is not True or sensitivity.get("blockers"):
+            raise ValueError(
+                "in-season action sensitivity is not ready: "
+                + "; ".join(str(row) for row in sensitivity.get("blockers") or [])
+            )
+        return {
+            "contract": sensitivity.get("contract"),
+            "ready": True,
+            "published_action": sensitivity.get("published_action"),
+            "baseline": sensitivity.get("baseline"),
+            "counterfactuals": sensitivity.get("counterfactuals") or [],
+        }
+
+    raise ValueError(f"unsupported release profile: {profile}")
+
+
 def validate_release_payloads(
     *,
     recommendation_payload: dict[str, Any],
     answer_context: dict[str, Any],
     pinnacle: dict[str, Any],
     parity: dict[str, Any],
-    adversarial: dict[str, Any],
+    sensitivity: dict[str, Any],
     bench_stress: dict[str, Any],
     manifest: dict[str, Any],
 ) -> dict[str, Any]:
-    """Validate one sealed generation as a release candidate.
-
-    This is intentionally independent from the producer-side checks. A release cannot
-    be certified merely because each individual producer wrote a green flag; the
-    artifacts must agree on bundle identity, actionable mechanics, truth readiness,
-    adversarial sensitivity and submitted-bench semantics.
-    """
+    """Validate one sealed generation against its selector-specific release profile."""
     bundle_id = str(recommendation_payload.get("decision_bundle_id") or "")
     if not bundle_id:
         raise ValueError("canonical recommendation has no decision_bundle_id")
+    recommendation = recommendation_payload.get("recommendation") or {}
+    profile = resolve_release_profile(recommendation, manifest)
+
     surfaces = {
         "manifest": manifest.get("bundle_id"),
         "answer_context": answer_context.get("decision_bundle_id"),
         "pinnacle": pinnacle.get("decision_bundle_id"),
         "solver_parity": parity.get("decision_bundle_id"),
-        "adversarial": adversarial.get("decision_bundle_id"),
+        "sensitivity": sensitivity.get("decision_bundle_id"),
         "bench_stress": bench_stress.get("decision_bundle_id"),
     }
     mismatched = {name: value for name, value in surfaces.items() if value != bundle_id}
@@ -90,7 +125,11 @@ def validate_release_payloads(
     truth = recommendation_payload.get("all_player_truth") or {}
     if truth.get("ready") is not True or truth.get("blockers"):
         raise ValueError(f"all-player truth is not ready: {truth.get('blockers') or []}")
-    for field in ("hard_fact_coverage", "canonical_projection_pair_coverage", "airsenal_projection_pair_coverage"):
+    for field in (
+        "hard_fact_coverage",
+        "canonical_projection_pair_coverage",
+        "airsenal_projection_pair_coverage",
+    ):
         if abs(float(truth.get(field, 0.0)) - 1.0) > 1e-12:
             raise ValueError(f"certified all-player truth coverage is incomplete: {field}")
 
@@ -98,22 +137,17 @@ def validate_release_payloads(
     if parity_surface != "pinnacle_ev":
         raise ValueError(f"solver parity comparison surface is not pinnacle_ev: {parity_surface!r}")
 
-    bans_summary = adversarial.get("summary") or {}
-    if bans_summary.get("audit_complete") is not True:
-        raise ValueError("adversarial selection sensitivity audit is incomplete")
-    if bans_summary.get("search_surface_defect_signals"):
-        raise ValueError("adversarial selection sensitivity found search-surface defect signals")
-    if bans_summary.get("ban_solve_errors"):
-        raise ValueError("adversarial selection sensitivity contains solve errors")
+    sensitivity_summary = _validate_sensitivity(profile, sensitivity, bundle_id)
+    if bench_stress.get("contract") != "apex-bench-stress-v2":
+        raise ValueError("release requires selector-neutral canonical bench stress v2")
+    if bench_stress.get("selector") != recommendation.get("selector"):
+        raise ValueError("bench-stress selector does not match canonical selector")
     if bench_stress.get("fixed_submission") is not True:
         raise ValueError("submitted-bench stress did not preserve a fixed submission")
     if bench_stress.get("bench_reordered_with_hindsight") is not False:
         raise ValueError("submitted-bench stress reordered the bench with hindsight")
 
-    recommendation = recommendation_payload.get("recommendation") or {}
     selector = str(recommendation.get("selector") or "")
-    if selector not in FINAL_SELECTORS:
-        raise ValueError(f"release selector is not a final selector: {selector!r}")
     squad_ids = _record_ids(recommendation.get("squad"), expected=15)
     xi_ids = _record_ids(recommendation.get("xi"), expected=11)
     if not set(xi_ids).issubset(squad_ids):
@@ -130,7 +164,7 @@ def validate_release_payloads(
         "captain_id": captain_id,
         "vice_captain_id": vice_id,
     }
-    if selector == "receding_horizon_current_team_maximum_ev":
+    if profile == INSEASON_PROFILE:
         action = recommendation.get("action_now")
         if not isinstance(action, dict):
             raise ValueError("receding-horizon recommendation has no executable action_now")
@@ -192,15 +226,23 @@ def validate_release_payloads(
     return {
         "decision_bundle_id": bundle_id,
         "selector": selector,
+        "lifecycle": profile.name,
+        "sensitivity": sensitivity_summary,
         "mechanics": mechanics,
         "truth_player_count": int(truth.get("player_count") or 0),
-        "adversarial_audit_complete": True,
         "bench_stress_fixed_submission": True,
     }
 
 
 def _run(*args: str) -> None:
     subprocess.run([sys.executable, *args], check=True)
+
+
+def _write_certificate(run_dir: Path, certificate: dict[str, Any]) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "release_generation_certificate.json").write_text(
+        json.dumps(certificate, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def certify_generation(
@@ -210,87 +252,148 @@ def certify_generation(
     promotion_dir: Path,
     run_id: str,
 ) -> dict[str, Any]:
-    canonical_path = run_dir / "apex_recommendation_latest.json"
-    bundle_manifest = _load(bundle_dir / "manifest.json")
-    bundle_id = str(bundle_manifest.get("bundle_id") or "")
-    if not bundle_id:
-        raise ValueError("DecisionBundle manifest has no bundle_id")
-
-    _run(
-        "scripts/run_adversarial_launch_ban.py",
-        "--bundle-dir",
-        str(bundle_dir),
-        "--canonical",
-        str(canonical_path),
-        "--output",
-        str(run_dir / "adversarial_launch_bans.json"),
-        "--csv",
-        str(run_dir / "adversarial_launch_bans.csv"),
-    )
-    _run(
-        "scripts/certify_adversarial_launch_ban.py",
-        str(run_dir / "adversarial_launch_bans.json"),
-        "--decision-bundle-id",
-        bundle_id,
-    )
-    _run(
-        "scripts/audit_bench_stress.py",
-        "--bundle-dir",
-        str(bundle_dir),
-        "--canonical",
-        str(canonical_path),
-        "--output",
-        str(run_dir / "bench_stress.json"),
-        "--csv",
-        str(run_dir / "bench_stress.csv"),
-    )
-
-    summary = validate_release_payloads(
-        recommendation_payload=_load(canonical_path),
-        answer_context=_load(run_dir / "apex_answer_context.json"),
-        pinnacle=_load(run_dir / "pinnacle_latest.json"),
-        parity=_load(run_dir / "solver_parity.json"),
-        adversarial=_load(run_dir / "adversarial_launch_bans.json"),
-        bench_stress=_load(run_dir / "bench_stress.json"),
-        manifest=bundle_manifest,
-    )
-
-    if promotion_dir.exists():
-        shutil.rmtree(promotion_dir)
-    _run(
-        "scripts/promote_certified_generation.py",
-        "--run-dir",
-        str(run_dir),
-        "--bundle-dir",
-        str(bundle_dir),
-        "--target-dir",
-        str(promotion_dir),
-        "--run-id",
-        str(run_id),
-    )
-    promoted = promotion_dir / "certified_generation.json"
-    if not promoted.is_file():
-        raise ValueError("dry-run production promotion did not produce certified_generation.json")
-    shutil.copy2(promoted, run_dir / "dry_run_certified_generation.json")
-
-    certificate = {
+    certificate: dict[str, Any] = {
         "contract": CONTRACT,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "run_id": str(run_id),
-        **summary,
-        "dry_run_promotion_validated": True,
-        "certified_generation_artifact": "dry_run_certified_generation.json",
+        "ready": False,
+        "decision_bundle_id": None,
+        "selector": None,
+        "lifecycle": None,
+        "gates": {
+            "profile": "pending",
+            "sensitivity": "pending",
+            "bench_stress": "pending",
+            "cross_artifact_validation": "pending",
+            "dry_run_promotion": "pending",
+        },
+        "blockers": [],
+        "warnings": [],
+        "dry_run_promotion_validated": False,
     }
-    (run_dir / "release_generation_certificate.json").write_text(
-        json.dumps(certificate, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    return certificate
+    _write_certificate(run_dir, certificate)
+
+    try:
+        canonical_path = run_dir / "apex_recommendation_latest.json"
+        canonical = _load(canonical_path)
+        bundle_manifest = _load(bundle_dir / "manifest.json")
+        bundle_id = str(bundle_manifest.get("bundle_id") or "")
+        if not bundle_id:
+            raise ValueError("DecisionBundle manifest has no bundle_id")
+        recommendation = canonical.get("recommendation") or {}
+        profile = resolve_release_profile(recommendation, bundle_manifest)
+        certificate.update(
+            {
+                "decision_bundle_id": bundle_id,
+                "selector": recommendation.get("selector"),
+                "lifecycle": profile.name,
+            }
+        )
+        certificate["gates"]["profile"] = "passed"
+        _write_certificate(run_dir, certificate)
+
+        if profile == LAUNCH_PROFILE:
+            sensitivity_path = run_dir / "adversarial_launch_bans.json"
+            _run(
+                "scripts/run_adversarial_launch_ban.py",
+                "--bundle-dir",
+                str(bundle_dir),
+                "--canonical",
+                str(canonical_path),
+                "--output",
+                str(sensitivity_path),
+                "--csv",
+                str(run_dir / "adversarial_launch_bans.csv"),
+            )
+            _run(
+                "scripts/certify_adversarial_launch_ban.py",
+                str(sensitivity_path),
+                "--decision-bundle-id",
+                bundle_id,
+            )
+        elif profile == INSEASON_PROFILE:
+            sensitivity_path = run_dir / "inseason_action_sensitivity.json"
+            _run(
+                "scripts/audit_inseason_action_sensitivity.py",
+                "--bundle-dir",
+                str(bundle_dir),
+                "--canonical",
+                str(canonical_path),
+                "--output",
+                str(sensitivity_path),
+            )
+        else:  # pragma: no cover - resolve_release_profile is exhaustive
+            raise ValueError(f"unsupported release profile: {profile}")
+        sensitivity = _load(sensitivity_path)
+        certificate["gates"]["sensitivity"] = "passed"
+        certificate["warnings"].extend(str(row) for row in sensitivity.get("warnings") or [])
+        _write_certificate(run_dir, certificate)
+
+        _run(
+            "scripts/audit_bench_stress.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--canonical",
+            str(canonical_path),
+            "--output",
+            str(run_dir / "bench_stress.json"),
+            "--csv",
+            str(run_dir / "bench_stress.csv"),
+        )
+        bench_stress = _load(run_dir / "bench_stress.json")
+        certificate["gates"]["bench_stress"] = "passed"
+        _write_certificate(run_dir, certificate)
+
+        summary = validate_release_payloads(
+            recommendation_payload=canonical,
+            answer_context=_load(run_dir / "apex_answer_context.json"),
+            pinnacle=_load(run_dir / "pinnacle_latest.json"),
+            parity=_load(run_dir / "solver_parity.json"),
+            sensitivity=sensitivity,
+            bench_stress=bench_stress,
+            manifest=bundle_manifest,
+        )
+        certificate.update(summary)
+        certificate["gates"]["cross_artifact_validation"] = "passed"
+        _write_certificate(run_dir, certificate)
+
+        if promotion_dir.exists():
+            shutil.rmtree(promotion_dir)
+        _run(
+            "scripts/promote_certified_generation.py",
+            "--run-dir",
+            str(run_dir),
+            "--bundle-dir",
+            str(bundle_dir),
+            "--target-dir",
+            str(promotion_dir),
+            "--run-id",
+            str(run_id),
+        )
+        promoted = promotion_dir / "certified_generation.json"
+        if not promoted.is_file():
+            raise ValueError("dry-run production promotion did not produce certified_generation.json")
+        shutil.copy2(promoted, run_dir / "dry_run_certified_generation.json")
+        certificate["gates"]["dry_run_promotion"] = "passed"
+        certificate["dry_run_promotion_validated"] = True
+        certificate["certified_generation_artifact"] = "dry_run_certified_generation.json"
+        certificate["ready"] = True
+        certificate["generated_at"] = datetime.now(timezone.utc).isoformat()
+        certificate["warnings"] = list(dict.fromkeys(certificate.get("warnings") or []))
+        _write_certificate(run_dir, certificate)
+        return certificate
+    except Exception as exc:
+        certificate["blockers"] = list(
+            dict.fromkeys([*(certificate.get("blockers") or []), f"{type(exc).__name__}: {exc}"])
+        )
+        certificate["generated_at"] = datetime.now(timezone.utc).isoformat()
+        _write_certificate(run_dir, certificate)
+        return certificate
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run adversarial, bench-stress, mechanics and dry-run promotion release certification."
+        description="Run lifecycle-aware sensitivity, bench, mechanics and dry-run promotion certification."
     )
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--bundle-dir", type=Path, required=True)
@@ -304,6 +407,11 @@ def main() -> None:
         run_id=args.run_id,
     )
     print(json.dumps(certificate, indent=2))
+    if certificate.get("ready") is not True:
+        raise SystemExit(
+            "release generation is not certified: "
+            + "; ".join(str(row) for row in certificate.get("blockers") or [])
+        )
 
 
 if __name__ == "__main__":
