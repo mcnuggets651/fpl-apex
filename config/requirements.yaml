@@ -1,0 +1,65 @@
+schema_version: 1
+requirements:
+  - requirement_id: REQ-RUNTIME-STATE-SEPARATION
+    requirement: Live recommendation state is not source-controlled runtime state.
+    critical: true
+    invariants: [INV-SOURCE-NOT-RUNTIME, INV-IMMUTABLE-RELEASE]
+    implementation: [src/apex_fpl/control/artifact_store.py, src/apex_fpl/control/release_registry.py]
+    tests: [tests/test_runtime_state_separation.py, tests/test_production_publication_contract.py]
+    proof_obligations: [PO-ARTIFACT-INTEGRITY-001, PO-RELEASE-CAS-001]
+
+  - requirement_id: REQ-RUNTIME-PROVENANCE
+    requirement: Every release identifies exact code, dependencies and runtime artifact.
+    critical: true
+    invariants: [INV-RUNTIME-CONTENT-IDENTITY]
+    implementation: [src/apex_fpl/control/provenance.py]
+    tests: [tests/test_v2_proof_framework.py]
+    proof_obligations: [PO-RUNTIME-IDENTITY-001]
+
+  - requirement_id: REQ-EXACT-MANAGER-STATE
+    requirement: In-season action requires exact financial and transfer state.
+    critical: true
+    invariants: [INV-NO-UNPROVEN-SPENDABLE-CASH]
+    implementation: [slice-4-manager-state]
+    tests: [test_manager_state_transition_reference_parity]
+    proof_obligations: [PO-MANAGER-STATE-001]
+
+  - requirement_id: REQ-LEGAL-ACTION
+    requirement: Every published current action is independently legal under the sealed RuleSet.
+    critical: true
+    invariants: [INV-LEGAL-CURRENT-ACTION]
+    implementation: [slice-8-decision-engine, slice-10-independent-assurance]
+    tests: [test_small_universe_optimizer_matches_exhaustive_legal_optimum]
+    proof_obligations: [PO-FPL-LEGALITY-001, PO-MECHANICS-RECONCILIATION-001]
+
+  - requirement_id: REQ-CANDIDATE-EXACTNESS
+    requirement: Optimisation exactness states the universe and expansion evidence truthfully.
+    critical: true
+    invariants: [INV-NO-FALSE-GLOBAL-OPTIMALITY]
+    implementation: [slice-8-decision-engine]
+    tests: [test_expansion_improvement_invalidates_narrow_exactness]
+    proof_obligations: [PO-CANDIDATE-UNIVERSE-001]
+
+  - requirement_id: REQ-FORECAST-QUALIFICATION
+    requirement: Only qualified model artifacts may become production forecast champions.
+    critical: true
+    invariants: [INV-EMPIRICAL-CLAIMS-QUALIFIED]
+    implementation: [slice-7-forecast, slice-11-learning-governance]
+    tests: [test_unqualified_model_cannot_be_champion]
+    proof_obligations: [PO-FORECAST-QUALIFICATION-001]
+
+  - requirement_id: REQ-SCENARIO-CONVERGENCE
+    requirement: Robustness metrics cannot be treated as stable before governed convergence.
+    critical: true
+    invariants: [INV-NONCONVERGENCE-INCONCLUSIVE]
+    implementation: [slice-9-scenario-convergence]
+    tests: [test_nonconverged_scenarios_are_inconclusive]
+    proof_obligations: [PO-SCENARIO-CONVERGENCE-001]
+
+  - requirement_id: REQ-PROBABILISTIC-FOOTBALL
+    requirement: Irreducibly uncertain football outcomes stay probabilistic.
+    critical: true
+    invariants: [INV-NO-FUTURE-CERTAINTY]
+    implementation: [slice-7-forecast]
+    tests: [test_forecast_contract_requires_uncertainty_metadata]
+    proof_obligations: [PO-FOOTBALL-UNCERTAINTY-001]

@@ -94,7 +94,7 @@ def test_production_workflow_cannot_write_runtime_state_to_main():
     assert "git add -f" not in text
     assert "data: publish canonical Apex recommendation" not in text
     assert "scripts/stage_runtime_release.py" in text
-    assert "actions/upload-artifact@v4" in text
+    assert "actions/upload-artifact@" in text
 
 
 def test_live_recommendation_files_are_not_source_authoritative():

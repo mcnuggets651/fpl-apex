@@ -1,0 +1,23 @@
+# Apex V2 runtime dependency lock.
+# Generated from the qualified Python 3.12.14 CI environment on 2026-08-23.
+# Install with --no-deps; every runtime transitive dependency is explicit.
+annotated-doc==0.0.5
+certifi==2026.7.22
+charset-normalizer==3.5.1
+idna==3.19
+markdown-it-py==4.2.0
+mdurl==0.1.2
+numpy==2.5.2
+pandas==2.3.3
+python-dateutil==2.9.0.post0
+pytz==2026.3.post1
+PyYAML==6.0.3
+requests==2.34.2
+rich==14.3.4
+scipy==1.18.1
+shellingham==1.5.4
+six==1.17.0
+tabulate==0.10.0
+typer==0.27.1
+tzdata==2026.3
+urllib3==2.7.0

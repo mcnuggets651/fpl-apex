@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 AUTHORITY = "docs/APEX_OPERATING_MANUAL.md"
@@ -54,6 +55,8 @@ RUNTIME_ARTIFACT_WORKFLOWS = {
     "pinnacle.yml",
     "refresh-core-pin.yml",
 }
+ACTION_REF = re.compile(r"^\s*-?\s*uses:\s*([^\s#]+)", re.MULTILINE)
+FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _text(path: str | Path) -> str:
@@ -95,15 +98,22 @@ def main() -> None:
                 f"expensive PR workflow does not cancel superseded runs: {name}"
             )
 
-    # Slice 0 constitutional boundary: active workflows may not use Git as the
-    # live runtime database. Any future source mutation must be an explicit,
-    # reviewed repository change rather than a scheduled publication side effect.
+    # Runtime/source separation and immutable CI dependencies are constitutional.
     for name in ACTIVE_WORKFLOWS:
         text = _text(active_dir / name)
         if "contents: write" in text:
             failures.append(f"active workflow has source write permission: {name}")
         if "git push origin HEAD:main" in text:
             failures.append(f"active workflow directly pushes runtime/source state to main: {name}")
+        for reference in ACTION_REF.findall(text):
+            if reference.startswith("./") or reference.startswith("docker://"):
+                continue
+            if "@" not in reference:
+                failures.append(f"active workflow action lacks immutable ref: {name}: {reference}")
+                continue
+            action, ref = reference.rsplit("@", 1)
+            if not FULL_SHA.fullmatch(ref):
+                failures.append(f"active workflow action is mutable: {name}: {action}@{ref}")
 
     for name in RUNTIME_ARTIFACT_WORKFLOWS:
         text = _text(active_dir / name)
@@ -111,13 +121,13 @@ def main() -> None:
             failures.append(f"runtime artifact workflow is not read-only: {name}")
 
     airsenal = _text(active_dir / "airsenal.yml")
-    if "actions/upload-artifact@v4" not in airsenal or "data/generated/airsenal.csv" not in airsenal:
+    if "actions/upload-artifact@" not in airsenal or "data/generated/airsenal.csv" not in airsenal:
         failures.append("AIrsenal validation workflow does not retain its runtime artifact")
     if "invalidate_published_decision.py" in airsenal:
         failures.append("AIrsenal validation still mutates a tracked published decision")
 
     core_pin = _text(active_dir / "refresh-core-pin.yml")
-    if "actions/upload-artifact@v4" not in core_pin or "upstreams.lock.json" not in core_pin:
+    if "actions/upload-artifact@" not in core_pin or "upstreams.lock.json" not in core_pin:
         failures.append("FPL Core pin audit does not retain the validated proposal artifact")
     if "reviewed dependency source change required" not in core_pin:
         failures.append("FPL Core pin audit does not enforce reviewed source promotion")

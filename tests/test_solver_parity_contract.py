@@ -7,18 +7,16 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_refresh_core_installs_candidate_validation_dependencies_before_checks():
+def test_refresh_core_installs_frozen_candidate_validation_environment_before_checks():
     workflow = (ROOT / ".github/workflows/refresh-core-pin.yml").read_text(
         encoding="utf-8"
     )
-    install = "python -m pip install pandas requests"
+    install = ".venv/bin/python -m pip install --no-deps -r requirements.lock"
+    validate = 'PYTHONPATH=src "$APEX_CORE_PYTHON" scripts/validate_core_candidate.py'
+    upstream_check = '"$APEX_CORE_PYTHON" scripts/check_upstreams.py'
     assert install in workflow
-    assert workflow.index(install) < workflow.index(
-        "python scripts/validate_core_candidate.py"
-    )
-    assert workflow.index(install) < workflow.index(
-        "python scripts/check_upstreams.py"
-    )
+    assert workflow.index(install) < workflow.index(validate)
+    assert workflow.index(install) < workflow.index(upstream_check)
 
 
 def test_external_solver_uses_same_approximate_pinnacle_objective():
@@ -42,4 +40,6 @@ def test_external_solver_uses_same_approximate_pinnacle_objective():
     assert parity["xmin_lb"] == 0
     assert parity["ev_per_price_cutoff"] == 0
     assert parity["keep_top_ev_percent"] == 100
-    assert 'config/open_solver_parity.json' in workflow
+    assert "config/open_solver_parity.json" in workflow
+    assert "--frozen" in workflow
+    assert "--python 3.14.7" in workflow

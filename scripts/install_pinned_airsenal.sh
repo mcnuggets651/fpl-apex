@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-pip install -e '.[dev]'
-
+# Apex core remains on its own frozen Python 3.12 environment. AIrsenal executes
+# in an isolated Python 3.14.7 environment created strictly from its upstream uv.lock.
 readarray -t pins < <(python - <<'PY'
 import json
 
@@ -20,29 +20,59 @@ BPL_REPOSITORY="${pins[2]}"
 BPL_SHA="${pins[3]}"
 
 checkout="${RUNNER_TEMP:-/tmp}/apex-pinned-airsenal"
-rm -rf "$checkout"
+uv_venv="${RUNNER_TEMP:-/tmp}/apex-worker-uv-bootstrap"
+rm -rf "$checkout" "$uv_venv"
 git clone --filter=blob:none "https://github.com/${AIRSENAL_REPOSITORY}.git" "$checkout"
 git -C "$checkout" checkout --detach "$AIRSENAL_SHA"
 
+# The upstream lock is part of the worker runtime contract. Verify Apex's explicit
+# transitive BPL pin agrees with the exact revision resolved by that lock.
 AIRSENAL_CHECKOUT="$checkout" BPL_REPOSITORY="$BPL_REPOSITORY" BPL_SHA="$BPL_SHA" python - <<'PY'
 import os
 from pathlib import Path
 
-path = Path(os.environ['AIRSENAL_CHECKOUT']) / 'pyproject.toml'
-old = f"bpl @ git+https://github.com/{os.environ['BPL_REPOSITORY']}"
-new = old + '@' + os.environ['BPL_SHA']
-text = path.read_text(encoding='utf-8')
-if old not in text:
-    raise SystemExit('Pinned AIrsenal bpl dependency declaration not found')
-if new in text:
-    raise SystemExit('AIrsenal bpl dependency was already pinned unexpectedly')
-path.write_text(text.replace(old, new, 1), encoding='utf-8')
+lock = (Path(os.environ['AIRSENAL_CHECKOUT']) / 'uv.lock').read_text(encoding='utf-8')
+needle = f"https://github.com/{os.environ['BPL_REPOSITORY']}#{os.environ['BPL_SHA']}"
+if needle not in lock:
+    raise SystemExit(
+        "AIrsenal uv.lock BPL revision disagrees with Apex upstreams.lock.json: " + needle
+    )
 PY
 
-pip install "$checkout"
-python - <<'PY'
+python -m venv "$uv_venv"
+"$uv_venv/bin/python" -m pip install --no-deps uv==0.12.3
+"$uv_venv/bin/uv" python install 3.14.7
+"$uv_venv/bin/uv" sync \
+  --frozen \
+  --project "$checkout" \
+  --python 3.14.7 \
+  --no-dev
+
+worker_python="$checkout/.venv/bin/python"
+worker_bin="$checkout/.venv/bin"
+test -x "$worker_python"
+"$worker_python" - <<'PY'
+import sys
 from importlib.metadata import version
 
-print('Installed AIrsenal:', version('airsenal'))
-print('Installed bpl:', version('bpl'))
+if sys.version_info[:3] != (3, 14, 7):
+    raise SystemExit(f"unexpected AIrsenal worker Python: {sys.version}")
+print('Isolated AIrsenal:', version('airsenal'))
+print('Isolated bpl:', version('bpl'))
 PY
+
+if [ -n "${GITHUB_ENV:-}" ]; then
+  {
+    echo "AIRSENAL_WORKER_PYTHON=$worker_python"
+    echo "AIRSENAL_WORKER_BIN=$worker_bin"
+    echo "AIRSENAL_WORKER_CHECKOUT=$checkout"
+    echo "AIRSENAL_WORKER_SOURCE_SHA=$AIRSENAL_SHA"
+    echo "AIRSENAL_WORKER_UV_LOCK=$checkout/uv.lock"
+  } >> "$GITHUB_ENV"
+else
+  printf 'AIRSENAL_WORKER_PYTHON=%s\n' "$worker_python"
+  printf 'AIRSENAL_WORKER_BIN=%s\n' "$worker_bin"
+  printf 'AIRSENAL_WORKER_CHECKOUT=%s\n' "$checkout"
+  printf 'AIRSENAL_WORKER_SOURCE_SHA=%s\n' "$AIRSENAL_SHA"
+  printf 'AIRSENAL_WORKER_UV_LOCK=%s\n' "$checkout/uv.lock"
+fi

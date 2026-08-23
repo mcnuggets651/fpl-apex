@@ -1,0 +1,101 @@
+schema_version: 1
+proof_obligations:
+  - proof_id: PO-RUNTIME-IDENTITY-001
+    claim: The executing Apex runtime is exactly identified by immutable provenance.
+    proof_class: PROVENANCE_ASSERTION
+    scope: release
+    required_evidence: [BuildManifest, source_sha, dependency_lock_digest, runtime_digest]
+    required_tests: [test_build_manifest_identity_is_content_bound]
+    failure_consequence: Block release; runtime origin is not provable.
+    release_policy: REQUIRED
+    owner: control.provenance
+
+  - proof_id: PO-ARTIFACT-INTEGRITY-001
+    claim: Every decision-critical durable artifact matches its declared content identity.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: release
+    required_evidence: [ArtifactManifest, sha256_verification]
+    required_tests: [test_artifact_store_is_content_addressed_immutable_and_verified]
+    failure_consequence: Block release and quarantine corrupt artifacts.
+    release_policy: REQUIRED
+    owner: control.artifact_store
+
+  - proof_id: PO-RELEASE-CAS-001
+    claim: A stale concurrent writer cannot replace the current certified release.
+    proof_class: ALGORITHMIC_CERTIFICATE
+    scope: season-entry-gameweek
+    required_evidence: [ReleaseRegistry_current_pointer, CAS_result]
+    required_tests: [test_release_registry_rejects_stale_writer]
+    failure_consequence: Block publication because current-release identity is unsafe.
+    release_policy: REQUIRED
+    owner: control.release_registry
+
+  - proof_id: PO-MANAGER-STATE-001
+    claim: In-season financial legality is based on an exact-enough current manager state.
+    proof_class: FORMAL_INVARIANT
+    scope: decision_world
+    required_evidence: [ManagerState, purchase_bases, selling_prices, transfer_ledger]
+    required_tests: [test_manager_state_transition_reference_parity]
+    failure_consequence: Abstain from any in-season action.
+    release_policy: REQUIRED
+    owner: world.manager_state
+
+  - proof_id: PO-FPL-LEGALITY-001
+    claim: The selected current action is legal under the sealed versioned RuleSet.
+    proof_class: FORMAL_INVARIANT
+    scope: decision
+    required_evidence: [RuleSet, DecisionInput, independent_primal_check]
+    required_tests: [test_small_universe_optimizer_matches_exhaustive_legal_optimum]
+    failure_consequence: Block release; never publish an illegal action.
+    release_policy: REQUIRED
+    owner: assurance.legality
+
+  - proof_id: PO-CANDIDATE-UNIVERSE-001
+    claim: The exactness claim truthfully scopes or certifies the candidate universe searched.
+    proof_class: ALGORITHMIC_CERTIFICATE
+    scope: decision
+    required_evidence: [CandidateUniverseId, expansion_certificate, ExactnessClaim]
+    required_tests: [test_expansion_improvement_invalidates_narrow_exactness]
+    failure_consequence: Downgrade exactness or block if policy requires full certification.
+    release_policy: REQUIRED
+    owner: decision.optimisation
+
+  - proof_id: PO-FORECAST-QUALIFICATION-001
+    claim: The active forecast model is empirically qualified for its declared validity scope.
+    proof_class: EMPIRICAL_QUALIFICATION
+    scope: forecast
+    required_evidence: [ModelArtifact, qualification_metrics, dataset_status]
+    required_tests: [test_unqualified_model_cannot_be_champion]
+    failure_consequence: Use a prequalified degraded profile or abstain.
+    release_policy: REQUIRED
+    owner: learning.model_registry
+
+  - proof_id: PO-SCENARIO-CONVERGENCE-001
+    claim: Robustness metrics used by policy have converged to governed tolerance.
+    proof_class: EMPIRICAL_QUALIFICATION
+    scope: scenario_set
+    required_evidence: [ScenarioSet, convergence_trace, xp_reconciliation]
+    required_tests: [test_nonconverged_scenarios_are_inconclusive]
+    failure_consequence: Mark robustness INCONCLUSIVE and block policy requiring it.
+    release_policy: REQUIRED
+    owner: decision.scenarios
+
+  - proof_id: PO-MECHANICS-RECONCILIATION-001
+    claim: Independent mechanics reproduce transfers, hits, XI, captaincy, bench and chips.
+    proof_class: ALGORITHMIC_CERTIFICATE
+    scope: decision
+    required_evidence: [reference_transition, mechanics_reconciled]
+    required_tests: [test_reference_mechanics_reconciles_selected_action]
+    failure_consequence: Block release.
+    release_policy: REQUIRED
+    owner: assurance.mechanics
+
+  - proof_id: PO-FOOTBALL-UNCERTAINTY-001
+    claim: Future football outcomes remain probabilistic and are not represented as certainty.
+    proof_class: IRREDUCIBLY_UNCERTAIN
+    scope: forecast
+    required_evidence: [ForecastDistribution, uncertainty_metadata]
+    required_tests: [test_forecast_contract_requires_uncertainty_metadata]
+    failure_consequence: Block publication of falsely certain football claims.
+    release_policy: REQUIRED
+    owner: forecast.contract

@@ -5,7 +5,6 @@ on:
   schedule:
     - cron: "23 4 * * *"
 
-# Validation workers produce runtime artifacts; they never mutate source control.
 permissions:
   contents: read
 
@@ -18,20 +17,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.12"
-          cache: pip
+          python-version: "3.12.14"
+
+      - name: Install frozen Apex validation environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .venv
+          .venv/bin/python -m pip install --no-deps -r requirements.lock
+          .venv/bin/python -m pip install --no-deps --no-build-isolation -e .
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          echo "APEX_CORE_PYTHON=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
 
       - name: Read pinned AIrsenal revision
         id: pin
         shell: bash
         run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
+          "$APEX_CORE_PYTHON" - <<'PY' >> "$GITHUB_OUTPUT"
           import json
           lock = json.load(open("upstreams.lock.json", encoding="utf-8"))
           source = lock["sources"]["airsenal"]
@@ -40,22 +48,16 @@ jobs:
           PY
 
       - name: Cache AIrsenal database
-        uses: actions/cache@v4
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: .airsenal
-          key: ${{ runner.os }}-airsenal-${{ steps.pin.outputs.sha }}-${{ github.run_id }}
+          key: ${{ runner.os }}-airsenal-${{ steps.pin.outputs.sha }}-py3147-${{ github.run_id }}
           restore-keys: |
-            ${{ runner.os }}-airsenal-${{ steps.pin.outputs.sha }}-
+            ${{ runner.os }}-airsenal-${{ steps.pin.outputs.sha }}-py3147-
 
-      - name: Install uv and checkout pinned AIrsenal
+      - name: Install frozen isolated AIrsenal worker
         shell: bash
-        run: |
-          python -m pip install --upgrade pip uv
-          mkdir -p workers
-          git clone --filter=blob:none "https://github.com/${{ steps.pin.outputs.repository }}.git" workers/airsenal
-          git -C workers/airsenal checkout --detach "${{ steps.pin.outputs.sha }}"
-          cd workers/airsenal
-          uv sync
+        run: bash scripts/install_pinned_airsenal.sh
 
       - name: Build/update AIrsenal database and forecasts
         env:
@@ -66,32 +68,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$AIRSENAL_HOME"
-          cd workers/airsenal
           if [ ! -s "$AIRSENAL_DB_FILE" ]; then
-            # Upstream setup requires a positive team ID. The forecast worker does
-            # not consume that manager's transaction table.
-            uv run airsenal_setup_initial_db --fpl_team_id 1
+            "$AIRSENAL_WORKER_BIN/airsenal_setup_initial_db" --fpl_team_id 1
           fi
-
-          uv run python "$GITHUB_WORKSPACE/scripts/update_airsenal_worker.py"
-
-          cd "$GITHUB_WORKSPACE"
-          python scripts/patch_airsenal_positions.py \
+          "$AIRSENAL_WORKER_PYTHON" "$GITHUB_WORKSPACE/scripts/update_airsenal_worker.py"
+          "$APEX_CORE_PYTHON" scripts/patch_airsenal_positions.py \
             "$AIRSENAL_DB_FILE" \
-            workers/airsenal
-
-          cd workers/airsenal
-          uv run python "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py" \
+            "$AIRSENAL_WORKER_CHECKOUT"
+          "$AIRSENAL_WORKER_PYTHON" "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py" \
             --db "$AIRSENAL_DB_FILE" \
             --horizon 8 \
             --output "$GITHUB_WORKSPACE/data/generated/airsenal.csv"
 
-      - name: Install and validate Apex integration
+      - name: Validate Apex integration
         shell: bash
         run: |
-          pip install -e .
-          apex-fpl run --scenario both --horizon 8 --force
-          python - <<'PY'
+          "$GITHUB_WORKSPACE/.venv/bin/apex-fpl" run --scenario both --horizon 8 --force
+          "$APEX_CORE_PYTHON" - <<'PY'
           import json
           report = json.load(open("reports/latest.json", encoding="utf-8"))
           sources = {row["name"]: row for row in report["sources"]}
@@ -111,7 +104,7 @@ jobs:
 
       - name: Upload worker evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: airsenal-validation-${{ github.run_id }}
           path: |
