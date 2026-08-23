@@ -32,6 +32,18 @@ def _legal_current(players: pd.DataFrame) -> set[int]:
     return current
 
 
+def _projections(players: pd.DataFrame, gws=(1,)) -> pd.DataFrame:
+    return pd.DataFrame([
+        {
+            "player_id": int(r.player_id),
+            "gw": gw,
+            "risk_adjusted_xp": 2.0 + r.player_id / 20 + gw / 10,
+        }
+        for _, r in players.iterrows()
+        for gw in gws
+    ])
+
+
 def test_ft_transition_rule():
     assert _next_ft(1, 0) == 2
     assert _next_ft(5, 0) == 5
@@ -44,10 +56,7 @@ def test_multiweek_transfer_plan_is_legal():
     players = _pool()
     current = _legal_current(players)
     gws = [1, 2]
-    proj = pd.DataFrame([
-        {"player_id": int(r.player_id), "gw": gw, "risk_adjusted_xp": 2.0 + r.player_id / 20 + gw / 10}
-        for _, r in players.iterrows() for gw in gws
-    ])
+    proj = _projections(players, gws)
     plan = optimise_transfer_plan(players, proj, gws, current, bank=20.0, free_transfers=2, candidate_limit=60)
     assert plan.status == "Optimal"
     assert len(plan.weeks) == 2
@@ -61,6 +70,72 @@ def test_multiweek_transfer_plan_is_legal():
         assert week["vice_captain"][0]["player_id"] != week["captain"][0]["player_id"]
         assert (squad.groupby("team_name").size() <= 3).all()
         assert squad.position.value_counts().to_dict() == {"MID": 5, "DEF": 5, "FWD": 3, "GK": 2}
+
+
+def test_first_gameweek_transfer_bounds_create_exact_counterfactuals():
+    players = _pool()
+    current = _legal_current(players)
+    projections = _projections(players)
+
+    rolled = optimise_transfer_plan(
+        players,
+        projections,
+        [1],
+        current,
+        bank=20.0,
+        candidate_limit=60,
+        first_gw_min_transfers=0,
+        first_gw_max_transfers=0,
+    )
+    exact_two = optimise_transfer_plan(
+        players,
+        projections,
+        [1],
+        current,
+        bank=20.0,
+        candidate_limit=60,
+        first_gw_min_transfers=2,
+        first_gw_max_transfers=2,
+    )
+
+    assert rolled.status == "Optimal"
+    assert rolled.weeks[0]["transfers"] == 0
+    assert exact_two.status == "Optimal"
+    assert exact_two.weeks[0]["transfers"] == 2
+    assert exact_two.objective <= optimise_transfer_plan(
+        players, projections, [1], current, bank=20.0, candidate_limit=60
+    ).objective + 1e-6
+
+
+def test_first_gameweek_transfer_bounds_reject_malformed_ranges():
+    players = _pool()
+    current = _legal_current(players)
+    projections = _projections(players)
+
+    invalid = optimise_transfer_plan(
+        players,
+        projections,
+        [1],
+        current,
+        bank=20.0,
+        candidate_limit=60,
+        first_gw_min_transfers=3,
+        first_gw_max_transfers=2,
+    )
+    fractional = optimise_transfer_plan(
+        players,
+        projections,
+        [1],
+        current,
+        bank=20.0,
+        candidate_limit=60,
+        first_gw_max_transfers=1.5,
+    )
+
+    assert invalid.status == "InputError"
+    assert "cannot exceed" in str(invalid.solver_message)
+    assert fractional.status == "InputError"
+    assert "integer between 0 and 15" in str(fractional.solver_message)
 
 
 def test_transfer_plan_never_captains_ineligible_projection_outlier():
