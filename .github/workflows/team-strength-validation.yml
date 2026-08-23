@@ -46,9 +46,11 @@ jobs:
             src/apex_fpl/data/core_insights.py \
             tests/test_fixture_elo.py
       - name: Elo and fixture-surface regressions
-        run: "$APEX_CORE_PYTHON" -m pytest -q tests/test_fixture_elo.py
+        run: |
+          "$APEX_CORE_PYTHON" -m pytest -q tests/test_fixture_elo.py
       - name: Clean fallback selection evidence
-        run: "$APEX_CORE_PYTHON" scripts/validate_fixture_fallback_selection.py --output reports/fixture_fallback_selection.json
+        run: |
+          "$APEX_CORE_PYTHON" scripts/validate_fixture_fallback_selection.py --output reports/fixture_fallback_selection.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
