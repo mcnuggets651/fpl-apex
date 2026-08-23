@@ -5,46 +5,29 @@ import argparse
 from itertools import combinations
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
-from apex_fpl.optimisation.exact_decision import optimise_fixed_squad_gameweek
 from apex_fpl.optimisation.mechanics import autosub_weights_ids
-from apex_fpl.services.cached_launch import load_cached_hardened_launch
 from apex_fpl.services.decision_bundle import DecisionBundle
-from apex_fpl.services.decision_eligibility import captain_eligible_ids, evidence_eligibility
-from apex_fpl.services.finalized_stability import optimise_with_bounded_stability_retry
-from apex_fpl.services.joint_initial_path import optimise_joint_initial_path
 
 
-CONTRACT = "apex-bench-stress-v1"
-TRANSFER_CANDIDATE_LIMIT = 180
+CONTRACT = "apex-bench-stress-v2"
 
 
-def _surface(bundle: DecisionBundle):
-    out = bundle.to_pipeline_output()
-    players, _ = evidence_eligibility(out.players, out.news_audit)
-    captain_eligible = captain_eligible_ids(players)
-    xi_eligible = set(players.loc[players["xi_evidence_eligible"], "player_id"].astype(int))
-    return out, players, captain_eligible, xi_eligible
+def _load(path: str | Path) -> dict[str, Any]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected JSON object: {path}")
+    return payload
 
 
-def _fresh_launch(bundle: DecisionBundle, out, players, captain_eligible, xi_eligible):
-    settings = bundle.settings
-    return optimise_with_bounded_stability_retry(
-        optimise_joint_initial_path,
-        players,
-        out.projections,
-        out.gameweeks,
-        budget=float(settings["budget"]),
-        max_per_team=int(settings["max_per_team"]),
-        decay=float(settings["fixture_decay"]),
-        projection_col="xp",
-        captain_eligible=captain_eligible,
-        xi_eligible=xi_eligible,
-        transfer_candidate_limit=TRANSFER_CANDIDATE_LIMIT,
-        exact_candidate_limit=int(settings.get("exact_candidate_limit", 16)),
-        gw1_regret_tolerance=float(settings.get("exact_near_equivalent_points", 0.25)),
+def _ids(rows: list[dict] | None) -> tuple[int, ...]:
+    return tuple(
+        int(row["player_id"])
+        for row in (rows or [])
+        if isinstance(row, dict) and row.get("player_id") is not None
     )
 
 
@@ -86,36 +69,45 @@ def _fixed_total(
     return float(xi_points + autosub + captain_bonus)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
-    parser.add_argument("--canonical", default="data/generated/apex_recommendation_latest.json")
-    parser.add_argument("--output", default="reports/bench_stress.json")
-    parser.add_argument("--csv", default="reports/bench_stress.csv")
-    args = parser.parse_args()
+def audit_canonical_bench_stress(
+    *,
+    bundle: DecisionBundle,
+    canonical: dict[str, Any],
+) -> tuple[dict[str, Any], pd.DataFrame]:
+    if canonical.get("decision_bundle_id") != bundle.bundle_id:
+        raise ValueError("bench stress canonical payload does not match the DecisionBundle")
+    recommendation = canonical.get("recommendation") or {}
+    squad_ids = _ids(recommendation.get("squad"))
+    xi_ids = _ids(recommendation.get("xi"))
+    if len(squad_ids) != 15 or len(set(squad_ids)) != 15:
+        raise ValueError("bench stress requires the exact canonical 15")
+    if len(xi_ids) != 11 or len(set(xi_ids)) != 11 or not set(xi_ids).issubset(squad_ids):
+        raise ValueError("bench stress requires the exact canonical XI")
 
-    bundle = DecisionBundle.load(args.bundle_dir)
-    out, players, captain_eligible, xi_eligible = _surface(bundle)
-    result = load_cached_hardened_launch(
-        args.canonical,
-        decision_bundle_id=bundle.bundle_id,
-    )
-    launch_source = "canonical_hardened_launch_cache"
-    if result is None:
-        result = _fresh_launch(bundle, out, players, captain_eligible, xi_eligible)
-        launch_source = "fresh_hardened_launch_solve"
-    if not (
-        result.status == "optimal"
-        and result.selected is not None
-        and result.selected.within_gw1_band
-        and result.candidate_pool_stable
+    captain_id = int(recommendation.get("captain_id") or 0)
+    vice_id = int(recommendation.get("vice_captain_id") or 0)
+    bench_gk_id = int(recommendation.get("bench_gk_id") or 0)
+    bench_order = tuple(int(pid) for pid in recommendation.get("outfield_bench_order_ids") or [])
+    bench_ids = set(squad_ids) - set(xi_ids)
+    if (
+        captain_id not in xi_ids
+        or vice_id not in xi_ids
+        or captain_id == vice_id
+        or len(bench_order) != 3
+        or len(set(bench_order)) != 3
+        or {bench_gk_id, *bench_order} != bench_ids
     ):
-        raise SystemExit("hardened launch is not certified; bench stress cannot run")
+        raise ValueError("bench stress canonical mechanics do not reconcile to the submitted 15/XI")
 
-    selected = result.selected
-    squad_ids = tuple(sorted(int(pid) for pid in selected.squad_ids))
-    squad = players[players["player_id"].astype(int).isin(squad_ids)].copy()
-    gw = int(out.gameweeks[0])
+    out = bundle.to_pipeline_output()
+    gw = int(recommendation.get("current_gameweek") or (out.gameweeks[0] if out.gameweeks else 0))
+    if not out.gameweeks or gw != int(out.gameweeks[0]):
+        raise ValueError("bench stress gameweek does not match the sealed actionable horizon")
+    players = out.players.drop_duplicates("player_id").copy()
+    selected = players[players["player_id"].astype(int).isin(set(squad_ids))].copy()
+    if len(selected) != 15:
+        raise ValueError("bench stress canonical identities are missing from sealed players")
+
     xp_series = (
         out.projections[out.projections["gw"].astype(int).eq(gw)]
         .groupby("player_id")["xp"]
@@ -130,33 +122,24 @@ def main() -> None:
         int(pid): min(max(float(prob), 0.0), 1.0)
         for pid, prob in zip(players["player_id"].astype(int), appearances)
     }
-    xi, mechanics = optimise_fixed_squad_gameweek(
-        squad,
-        xp,
-        appearance,
-        captain_eligible=captain_eligible,
-        xi_eligible=xi_eligible,
-    )
-    xi_ids = tuple(sorted(int(pid) for pid in xi["player_id"]))
     positions = {
         int(row.player_id): str(row.position)
-        for row in squad[["player_id", "position"]].itertuples(index=False)
+        for row in selected[["player_id", "position"]].itertuples(index=False)
     }
-    bench_order = tuple(int(pid) for pid in mechanics.outfield_bench_order)
+    names = selected.set_index("player_id")["web_name"].astype(str).to_dict()
     baseline = _fixed_total(
         squad_ids=squad_ids,
         xi_ids=xi_ids,
         positions=positions,
         xp=xp,
         appearance=appearance,
-        captain_id=int(mechanics.captain_id),
-        vice_id=int(mechanics.vice_captain_id),
+        captain_id=captain_id,
+        vice_id=vice_id,
         bench_order=bench_order,
         absent=set(),
     )
-    names = players.set_index("player_id")["web_name"].astype(str).to_dict()
 
-    rows: list[dict] = []
+    rows: list[dict[str, Any]] = []
     for size in (1, 2):
         for combo in combinations(xi_ids, size):
             total = _fixed_total(
@@ -165,8 +148,8 @@ def main() -> None:
                 positions=positions,
                 xp=xp,
                 appearance=appearance,
-                captain_id=int(mechanics.captain_id),
-                vice_id=int(mechanics.vice_captain_id),
+                captain_id=captain_id,
+                vice_id=vice_id,
                 bench_order=bench_order,
                 absent=set(combo),
             )
@@ -187,12 +170,15 @@ def main() -> None:
     payload = {
         "contract": CONTRACT,
         "decision_bundle_id": bundle.bundle_id,
-        "hardened_launch_source": launch_source,
+        "selector": recommendation.get("selector"),
+        "canonical_submission_source": "apex_recommendation_latest",
         "gameweek": gw,
-        "submitted_xi": [names.get(pid, str(pid)) for pid in xi_ids],
-        "captain": names.get(int(mechanics.captain_id), str(mechanics.captain_id)),
-        "vice_captain": names.get(int(mechanics.vice_captain_id), str(mechanics.vice_captain_id)),
-        "submitted_outfield_bench_order": [names.get(pid, str(pid)) for pid in bench_order],
+        "submitted_squad_ids": list(squad_ids),
+        "submitted_xi_ids": list(xi_ids),
+        "captain_id": captain_id,
+        "vice_captain_id": vice_id,
+        "bench_gk_id": bench_gk_id,
+        "submitted_outfield_bench_order_ids": list(bench_order),
         "baseline_expected_total": baseline,
         "mean_one_absence_loss": float(one["loss_vs_submitted_baseline"].mean()),
         "mean_two_absence_loss": float(two["loss_vs_submitted_baseline"].mean()),
@@ -201,6 +187,20 @@ def main() -> None:
         "fixed_submission": True,
         "bench_reordered_with_hindsight": False,
     }
+    return payload, frame
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bundle-dir", default="data/generated/decision_bundle")
+    parser.add_argument("--canonical", default="data/generated/apex_recommendation_latest.json")
+    parser.add_argument("--output", default="reports/bench_stress.json")
+    parser.add_argument("--csv", default="reports/bench_stress.csv")
+    args = parser.parse_args()
+
+    bundle = DecisionBundle.load(args.bundle_dir)
+    canonical = _load(args.canonical)
+    payload, frame = audit_canonical_bench_stress(bundle=bundle, canonical=canonical)
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
