@@ -120,6 +120,36 @@ proof_obligations:
     release_policy: REQUIRED
     owner: control.evidence_ingestion
 
+  - proof_id: PO-FEATURE-TIME-TRAVEL-001
+    claim: Every FeatureSnapshot contains only feature observations and derived batches actually knowable by its declared cutoff, with exact immutable lineage and no future-data leakage.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: feature_snapshot
+    required_evidence: [FeatureSnapshotId, cutoff, GlobalWorldId, input_artifact_ids, FeatureObservation_first_known_at, FeatureBatch_available_at, derivation_id]
+    required_tests: [test_feature_snapshot_rejects_any_feature_first_known_after_cutoff, test_later_official_world_cannot_leak_into_earlier_feature_cutoff, test_later_derived_feature_batch_cannot_be_used_at_earlier_cutoff, test_feature_snapshot_records_exact_cutoff_lineage_and_replays_offline]
+    failure_consequence: Block the FeatureSnapshot and every forecast/decision derived from it.
+    release_policy: REQUIRED
+    owner: control.feature_assembly
+
+  - proof_id: PO-OUTCOME-TRUTH-001
+    claim: Every calibration target explicitly names one verified post-event truth authority or is marked UNRESOLVED; no experiment silently chooses a convenient truth provider.
+    proof_class: PROVENANCE_ASSERTION
+    scope: learning
+    required_evidence: [OutcomeTruthRegistry, target_authority_status, source_reference, field_contract]
+    required_tests: [test_outcome_truth_registry_never_silently_selects_unverified_truth_provider]
+    failure_consequence: Block calibration/evaluation for unresolved or unregistered targets; never backfill from an undeclared provider.
+    release_policy: REQUIRED
+    owner: control.outcome_truth_registry
+
+  - proof_id: PO-MINUTES-FEATURE-INPUT-001
+    claim: Minutes-model inputs preserve exact point-in-time status/history/preseason facts, explicit missingness and reviewed cross-season identity without producing or overriding expected minutes.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: feature_snapshot
+    required_evidence: [MinutesFeatureVector, FeatureSnapshotId, known_observation_ids, missing_features, reviewed_PersonLink, preseason_source_artifacts]
+    required_tests: [test_minutes_vector_has_no_implicit_prior_or_preseason_defaults, test_isolated_preseason_cameo_is_preserved_beside_mature_history_not_blended_over_it, test_prior_season_minutes_require_reviewed_person_link_not_name_or_old_id, test_preseason_aggregation_excludes_appearance_first_known_after_cutoff, test_v2_feature_path_has_no_network_wall_clock_dataframe_or_v1_service_dependency]
+    failure_consequence: Block minutes-model input use; expected minutes cannot be supplied by manual override or implicit fallback.
+    release_policy: REQUIRED
+    owner: core.minutes_features
+
   - proof_id: PO-FPL-LEGALITY-001
     claim: The selected current action is legal under the sealed versioned RuleSet.
     proof_class: FORMAL_INVARIANT
