@@ -1,0 +1,7 @@
+schema_version: 1
+
+# There is deliberately no V2 production champion yet.
+# A model may be added only with immutable parameter artifacts, a declared no-hindsight
+# validity scope and, for production use, a verified empirical qualification artifact.
+champion_model_id: null
+models: []
