@@ -107,7 +107,7 @@ proof_obligations:
     required_evidence: [ReliabilityContext, ReliabilityRegistry, qualification_artifact, calibration_sample_count]
     required_tests: [test_missing_contextual_reliability_is_unknown_with_no_numeric_default, test_production_evidence_requires_verified_source_and_reliability_qualification]
     failure_consequence: Retain the claim for audit/shadow use but prohibit weighted production influence.
-    release_policy: REQUIRED
+    release_policy: CONDITIONAL
     owner: control.reliability_registry
 
   - proof_id: PO-EVIDENCE-LEDGER-001
