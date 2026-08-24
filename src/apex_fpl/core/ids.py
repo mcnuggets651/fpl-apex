@@ -85,6 +85,10 @@ class ScenarioSetId(ApexId):
     kind = "scenario_set_id"
 
 
+class DecisionPolicyId(ApexId):
+    kind = "decision_policy_id"
+
+
 class DecisionInputId(ApexId):
     kind = "decision_input_id"
 
