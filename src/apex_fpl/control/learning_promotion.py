@@ -5,9 +5,14 @@ from __future__ import annotations
 from fractions import Fraction
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.learning_policy_registry import (
+    LearningPolicyRegistry,
+    load_learning_policy_registry_bytes,
+)
 from apex_fpl.core.learning_common import (
     ExactMetricValue,
     LearningEvaluationStatus,
+    LearningUseMode,
     MetricDirection,
     ModelPromotionDecision,
 )
@@ -61,6 +66,17 @@ def _interval_superiority(rule: MetricPromotionRule, candidate, incumbent) -> bo
     return None
 
 
+def _replay_policy_registry(
+    *,
+    registry: LearningPolicyRegistry,
+    registry_artifact_id: str,
+    store: ArtifactStore,
+) -> None:
+    retained = load_learning_policy_registry_bytes(store.read_bytes(registry_artifact_id))
+    if retained.semantic_payload() != registry.semantic_payload():
+        raise ValueError("learning policy registry object does not match retained registry artifact")
+
+
 def compare_model_evaluations(
     *,
     candidate: ModelEvaluationReport,
@@ -68,23 +84,45 @@ def compare_model_evaluations(
     candidate_report_artifact_id: str,
     incumbent_report_artifact_id: str,
     policy: LearningEvaluationPolicy,
+    policy_registry: LearningPolicyRegistry,
+    policy_registry_artifact_id: str,
+    policy_cutoff: str,
     store: ArtifactStore,
+    production: bool,
 ) -> ModelComparisonReport:
-    """Compare two complete reports under one predeclared policy."""
+    """Compare two complete reports under one retained predeclared policy authority."""
 
+    if not isinstance(production, bool):
+        raise ValueError("production flag must be boolean")
     _verify(store, (candidate_report_artifact_id, incumbent_report_artifact_id), label="evaluation report")
+    _replay_policy_registry(
+        registry=policy_registry,
+        registry_artifact_id=policy_registry_artifact_id,
+        store=store,
+    )
     if candidate.candidate_model_id == incumbent.candidate_model_id:
         raise ValueError("candidate and incumbent evaluations name the same model")
     if candidate.policy_id != policy.policy_id or incumbent.policy_id != policy.policy_id:
         raise ValueError("candidate/incumbent evaluations do not use the comparison policy")
 
+    expected_mode = LearningUseMode.PRODUCTION if production else LearningUseMode.SHADOW
     blockers: list[str] = []
+    if candidate.use_mode is not expected_mode or incumbent.use_mode is not expected_mode:
+        blockers.append("candidate/incumbent evaluation mode does not match comparison mode")
     if candidate.status is not LearningEvaluationStatus.COMPLETE:
         blockers.append("candidate evaluation is not COMPLETE")
     if incumbent.status is not LearningEvaluationStatus.COMPLETE:
         blockers.append("incumbent evaluation is not COMPLETE")
-    if not policy.production_qualified:
-        blockers.append("learning policy is not production-qualified")
+    try:
+        policy_registry.verify_policy(
+            policy,
+            store=store,
+            season=policy_registry.season,
+            cutoff=policy_cutoff,
+            production=production,
+        )
+    except ValueError as exc:
+        blockers.append(f"learning policy authority: {exc}")
 
     candidate_metrics = {row.key: row for row in candidate.metrics}
     incumbent_metrics = {row.key: row for row in incumbent.metrics}
@@ -126,7 +164,7 @@ def compare_model_evaluations(
         sorted(
             set(candidate.source_artifact_ids)
             | set(incumbent.source_artifact_ids)
-            | {candidate_report_artifact_id, incumbent_report_artifact_id}
+            | {candidate_report_artifact_id, incumbent_report_artifact_id, policy_registry_artifact_id}
             | {
                 item
                 for item in (policy.qualification_artifact_id, policy.promotion_rule_artifact_id)
@@ -141,6 +179,7 @@ def compare_model_evaluations(
         candidate_evaluation_id=candidate.evaluation_id,
         incumbent_evaluation_id=incumbent.evaluation_id,
         policy_id=policy.policy_id,
+        use_mode=expected_mode,
         comparisons=tuple(comparisons),
         status=status,
         blockers=tuple(blockers),
@@ -155,14 +194,27 @@ def issue_model_promotion_certificate(
     candidate_report_artifact_id: str,
     incumbent_report_artifact_id: str,
     policy: LearningEvaluationPolicy,
+    policy_registry: LearningPolicyRegistry,
+    policy_registry_artifact_id: str,
+    promotion_cutoff: str,
     store: ArtifactStore,
 ) -> ModelPromotionCertificate:
-    """Issue a separate promotion decision; evaluation/comparison cannot mutate registry state."""
+    """Issue a production promotion decision; comparison alone cannot mutate registry state."""
 
+    _replay_policy_registry(
+        registry=policy_registry,
+        registry_artifact_id=policy_registry_artifact_id,
+        store=store,
+    )
     sources = tuple(
         sorted(
             set(comparison.source_artifact_ids)
-            | {comparison_artifact_id, candidate_report_artifact_id, incumbent_report_artifact_id}
+            | {
+                comparison_artifact_id,
+                candidate_report_artifact_id,
+                incumbent_report_artifact_id,
+                policy_registry_artifact_id,
+            }
             | {
                 item
                 for item in (policy.qualification_artifact_id, policy.promotion_rule_artifact_id)
@@ -174,9 +226,29 @@ def issue_model_promotion_certificate(
     if comparison.policy_id != policy.policy_id:
         raise ValueError("comparison does not use promotion policy")
 
-    if comparison.status is not LearningEvaluationStatus.COMPLETE or not policy.production_qualified:
+    authority_blocker: str | None = None
+    try:
+        policy_registry.verify_policy(
+            policy,
+            store=store,
+            season=policy_registry.season,
+            cutoff=promotion_cutoff,
+            production=True,
+        )
+    except ValueError as exc:
+        authority_blocker = str(exc)
+
+    if (
+        comparison.use_mode is not LearningUseMode.PRODUCTION
+        or comparison.status is not LearningEvaluationStatus.COMPLETE
+        or authority_blocker is not None
+    ):
         decision = ModelPromotionDecision.INCONCLUSIVE
-        reason = "comparison or learning policy is not production-complete"
+        reason = (
+            f"learning policy authority: {authority_blocker}"
+            if authority_blocker is not None
+            else "comparison is not a COMPLETE production-mode comparison"
+        )
     else:
         rows = {row.key: row for row in comparison.comparisons}
         failed: list[str] = []
@@ -244,7 +316,6 @@ def apply_model_promotion(
         raise ValueError("promotion incumbent/baseline is not registered in current model registry")
     if current.champion_model_id is not None and promotion.incumbent_model_id != current.champion_model_id:
         raise ValueError("promotion incumbent does not match current champion")
-
     sources = tuple(
         sorted(
             set(current.source_artifact_ids)
