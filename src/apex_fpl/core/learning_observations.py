@@ -15,6 +15,12 @@ from .learning_common import ExactMetricValue
 from .outcome_truth import OutcomeTarget
 
 
+def _exact(value: object, *, label: str) -> ExactMetricValue:
+    if not isinstance(value, ExactMetricValue):
+        raise ValueError(f"{label} must be ExactMetricValue")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class EvaluationObservation:
     case_id: str
@@ -32,6 +38,13 @@ class EvaluationObservation:
             raise ValueError("evaluation observation requires case_id and truth_case_id")
         if not isinstance(self.target, OutcomeTarget):
             raise ValueError("evaluation observation target must be typed")
+        if self.predicted_value is not None:
+            _exact(self.predicted_value, label="evaluation predicted value")
+        _exact(self.actual_value, label="evaluation actual value")
+        if self.interval_lower is not None:
+            _exact(self.interval_lower, label="evaluation interval lower")
+        if self.interval_upper is not None:
+            _exact(self.interval_upper, label="evaluation interval upper")
         if self.predicted_value is None and (
             self.interval_lower is not None or self.interval_upper is not None
         ):
@@ -80,6 +93,12 @@ class EvaluationObservationSet:
     def __post_init__(self) -> None:
         if self.schema_version != 3:
             raise ValueError("unsupported EvaluationObservationSet schema_version")
+        if not isinstance(self.evaluation_dataset_id, EvaluationDatasetId):
+            raise ValueError("evaluation observation set dataset ID must be typed")
+        if not isinstance(self.evaluation_truth_set_id, EvaluationTruthSetId):
+            raise ValueError("evaluation observation set truth-set ID must be typed")
+        if any(not isinstance(row, EvaluationObservation) for row in self.observations):
+            raise ValueError("evaluation observation set rows must be typed")
         observations = tuple(sorted(self.observations, key=lambda row: row.case_id))
         if not observations:
             raise ValueError("evaluation observation set cannot be empty")
@@ -93,13 +112,17 @@ class EvaluationObservationSet:
 
     @property
     def realized_truth_set_id(self) -> EvaluationRealizedTruthSetId:
+        model_independent_truth = sorted(
+            (row.realized_truth_payload() for row in self.observations),
+            key=lambda row: str(row["truth_case_id"]),
+        )
         return EvaluationRealizedTruthSetId(
             canonical_sha256(
                 {
                     "schema_name": "apex-evaluation-realized-truth-set",
                     "schema_version": 1,
                     "evaluation_truth_set_id": str(self.evaluation_truth_set_id),
-                    "actuals": [row.realized_truth_payload() for row in self.observations],
+                    "actuals": model_independent_truth,
                 }
             )
         )
