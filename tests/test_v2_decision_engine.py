@@ -211,8 +211,8 @@ def _universe(store: FileSystemArtifactStore) -> CandidateUniverse:
 
 def _independent_no_transfer_oracle(xp: dict[int, int]) -> int:
     ruleset = _ruleset()
-    minimum = ruleset.mapping("FPL-XI-MIN-POSITIONS-001")
-    maximum = ruleset.mapping("FPL-XI-MAX-POSITIONS-001")
+    minimum = ruleset.mapping("FPL-XI-POSITION-MIN-001")
+    maximum = ruleset.mapping("FPL-XI-POSITION-MAX-001")
     by_position = {
         position: tuple(
             player_id
@@ -444,7 +444,7 @@ def test_wildcard_and_free_hit_rebuild_paths_use_verified_ruleset_keys(tmp_path:
 
 def test_triple_captain_and_bench_boost_are_integrated_action_choices(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    common = dict(
+    triple = optimise_current_gameweek(
         state=_state(store, free_transfers=1),
         forecast=_forecast(),
         universe=_universe(store),
@@ -452,13 +452,16 @@ def test_triple_captain_and_bench_boost_are_integrated_action_choices(tmp_path: 
         policy=_policy(),
         use_mode=DecisionUseMode.SHADOW,
         max_normal_transfers=0,
-    )
-    triple = optimise_current_gameweek(
-        **common,
         chips_considered=(DecisionChip.NONE, DecisionChip.TRIPLE_CAPTAIN),
     )
     bench_boost = optimise_current_gameweek(
-        **common,
+        state=_state(store, free_transfers=1),
+        forecast=_forecast(xp={8: 5, 13: 5}),
+        universe=_universe(store),
+        ruleset=_ruleset(),
+        policy=_policy(),
+        use_mode=DecisionUseMode.SHADOW,
+        max_normal_transfers=0,
         chips_considered=(DecisionChip.NONE, DecisionChip.BENCH_BOOST),
     )
     assert triple.selected_action.chip is DecisionChip.TRIPLE_CAPTAIN
