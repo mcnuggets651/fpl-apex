@@ -271,11 +271,21 @@ proof_obligations:
     owner: decision.robustness
 
   - proof_id: PO-MECHANICS-RECONCILIATION-001
-    claim: Independent assurance reproduces transfers, hits, XI, captaincy, bench and chips without trusting the DecisionEngine implementation.
+    claim: Independent assurance reproduces the selected action's sealed-input identity, exact current state, owned-player facts, chip availability, transfer set and positions, realised selling-resource finance, hit cost, RuleSet squad/XI/bench/captain structure and expected mechanics using an algorithm that does not import or reuse DecisionEngine mechanics.
     proof_class: ALGORITHMIC_CERTIFICATE
-    scope: decision
-    required_evidence: [reference_transition, mechanics_reconciled]
-    required_tests: [test_reference_mechanics_reconciles_selected_action]
-    failure_consequence: Block release.
+    scope: decision_assurance
+    required_evidence: [ReferenceMechanicsCertificateId, DecisionId, DecisionInputId, ManagerStateId, ForecastId, RuleSetId, CandidateUniverseId, independent_algorithm_id, reference_checks, recomputed_bank_after_tenths, recomputed_hit_points, recomputed_mechanics, source_artifacts, offline_replay]
+    required_tests: [test_reference_mechanics_reconciles_selected_action_with_different_autosub_algorithm, test_reference_mechanics_detects_self_consistent_objective_tampering, test_assurance_certificates_and_report_replay_with_same_semantic_identity, test_reference_mechanics_replay_requires_retained_source_artifact, test_v2_independent_assurance_cannot_import_decision_engine_or_v1_runtime]
+    failure_consequence: Block release; the selected action has not been independently reconciled against sealed FPL mechanics.
     release_policy: REQUIRED
-    owner: assurance.mechanics
+    owner: assurance.reference_mechanics
+
+  - proof_id: PO-REFERENCE-SOLVER-PARITY-001
+    claim: Production optimality is independently corroborated by a sealed external reference-solver certificate over the exact same DecisionInput, CandidateUniverse and DecisionPolicy, produced by the registered artifact-verified season/horizon-valid qualified champion worker; missing, limited, errored or unqualified worker evidence remains INCONCLUSIVE, while objective disagreement or same-tie-policy action disagreement fails parity.
+    proof_class: ALGORITHMIC_CERTIFICATE
+    scope: decision_assurance
+    required_evidence: [ReferenceSolverCertificateId, ReferenceSolverWorkerId, champion_worker_id, worker_code_artifact, worker_qualification_artifact, solver_input_artifact, solver_output_artifact, DecisionInputId, CandidateUniverseId, DecisionPolicyId, solver_status, best_objective, best_bound, gap, action_surface_complete, tie_break_policy_id, IndependentAssuranceReportId, offline_replay]
+    required_tests: [test_solver_parity_requires_exact_objective_and_same_tie_action, test_missing_or_limited_reference_solver_stays_inconclusive, test_unqualified_or_unregistered_worker_cannot_make_assurance_publishable, test_reference_solver_registry_starts_with_no_fabricated_champion, test_production_reference_solver_requires_registered_qualified_champion, test_reference_solver_registry_rejects_worker_code_identity_mismatch, test_reference_solver_registry_uses_calendar_horizon_and_no_future_worker, test_assurance_certificates_and_report_replay_with_same_semantic_identity]
+    failure_consequence: Block production release or leave the solver-parity proof INCONCLUSIVE; never infer independent optimality from the primary DecisionEngine alone.
+    release_policy: REQUIRED
+    owner: assurance.solver_parity

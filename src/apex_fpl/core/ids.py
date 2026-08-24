@@ -109,6 +109,22 @@ class DecisionId(ApexId):
     kind = "decision_id"
 
 
+class ReferenceMechanicsCertificateId(ApexId):
+    kind = "reference_mechanics_certificate_id"
+
+
+class ReferenceSolverWorkerId(ApexId):
+    kind = "reference_solver_worker_id"
+
+
+class ReferenceSolverCertificateId(ApexId):
+    kind = "reference_solver_certificate_id"
+
+
+class IndependentAssuranceReportId(ApexId):
+    kind = "independent_assurance_report_id"
+
+
 class BundleId(ApexId):
     kind = "bundle_id"
 

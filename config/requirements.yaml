@@ -153,12 +153,20 @@ requirements:
     proof_obligations: [PO-DECISION-REPLAY-001, PO-ARTIFACT-INTEGRITY-001]
 
   - requirement_id: REQ-LEGAL-ACTION
-    requirement: Every published current action is independently legal under the sealed RuleSet and exact state transition, without trusting the DecisionEngine's own legality implementation.
+    requirement: Every published current action is independently legal under the sealed RuleSet and exact state transition, including transfer identity/position, selling-resource finance, hit cost, chip availability, squad/XI/bench and captain/vice mechanics, without trusting the DecisionEngine implementation.
     critical: true
-    invariants: [INV-LEGAL-CURRENT-ACTION]
-    implementation: [src/apex_fpl/decision/engine.py, slice-10-independent-assurance]
-    tests: [tests/test_v2_decision_engine.py, test_reference_mechanics_reconciles_selected_action]
-    proof_obligations: [PO-FPL-LEGALITY-001, PO-MECHANICS-RECONCILIATION-001]
+    invariants: [INV-LEGAL-CURRENT-ACTION, INV-DECISION-SEALED-INPUTS, INV-DECISION-CERTIFICATE-RECONCILED]
+    implementation: [src/apex_fpl/core/assurance.py, src/apex_fpl/assurance/reference_mechanics.py, src/apex_fpl/assurance/store.py]
+    tests: [tests/test_v2_independent_assurance.py, tests/test_v2_independent_assurance_replay.py, tests/test_v2_assurance_architecture.py]
+    proof_obligations: [PO-FPL-LEGALITY-001, PO-MECHANICS-RECONCILIATION-001, PO-ARTIFACT-INTEGRITY-001]
+
+  - requirement_id: REQ-INDEPENDENT-DECISION-ASSURANCE
+    requirement: No production decision is independently certified unless its selected action passes the separate reference-mechanics implementation and its optimal objective is corroborated by a sealed external reference solver over the exact same DecisionInput, CandidateUniverse and DecisionPolicy using a registered artifact-verified season/horizon-valid qualified champion worker; missing, limited, errored, unqualified or mismatched evidence blocks publication or remains explicitly INCONCLUSIVE.
+    critical: true
+    invariants: [INV-LEGAL-CURRENT-ACTION, INV-DECISION-SEALED-INPUTS, INV-DECISION-CERTIFICATE-RECONCILED, INV-EMPIRICAL-CLAIMS-QUALIFIED, INV-NO-FALSE-GLOBAL-OPTIMALITY]
+    implementation: [src/apex_fpl/core/assurance.py, src/apex_fpl/core/reference_solver_worker.py, src/apex_fpl/control/reference_solver_registry.py, src/apex_fpl/assurance/reference_mechanics.py, src/apex_fpl/assurance/solver_parity.py, src/apex_fpl/assurance/store.py, src/apex_fpl/assurance/case_bridge.py, config/reference_solvers_v2.yaml]
+    tests: [tests/test_v2_independent_assurance.py, tests/test_v2_independent_assurance_replay.py, tests/test_v2_reference_solver_registry.py, tests/test_v2_assurance_architecture.py]
+    proof_obligations: [PO-MECHANICS-RECONCILIATION-001, PO-REFERENCE-SOLVER-PARITY-001, PO-ARTIFACT-INTEGRITY-001]
 
   - requirement_id: REQ-SCENARIO-CONVERGENCE
     requirement: Robustness evidence uses one immutable worker-produced joint scenario stream with explicit generator/RNG/seed/weight/order identity; every compared submitted action is scored unchanged on common nested prefixes with exact FPL mechanics, complete Forecast xP reconciliation, governed convergence tolerances and a bounded EV-regret diagnostic band. A 256-scenario run is a floor, not proof of convergence; nonconvergence or missing evidence is never actionable.

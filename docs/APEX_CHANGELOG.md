@@ -2,6 +2,15 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-24 — V2 Slice 10 independent decision assurance
+- Added a dependency-free reference mechanics checker that independently reconstructs current-state legality, transfer resources, hits, squad/XI/bench/captain structure and expected mechanics without importing the DecisionEngine or its mechanics implementation.
+- Added a deliberately different exhaustive realised-appearance-state autosub algorithm so independent mechanics evidence can detect shared implementation defects rather than simply repeat Slice 8 calculations.
+- Added typed immutable reference-mechanics, external reference-solver and combined independent-assurance certificates with content-addressed offline replay and strict source-artifact verification.
+- Added fail-closed external solver semantics: missing, limited, errored or merely feasible evidence remains INCONCLUSIVE; contradictory infeasibility, exact-objective disagreement or same-tie-policy action disagreement fails.
+- Added a qualified reference-solver worker registry with no fabricated production champion; publication-grade solver parity requires an artifact-verified, season/horizon-valid qualified champion worker.
+- Wired independent mechanics and reference-solver parity into the constitutional AssuranceCase as separate release-blocking proof obligations.
+- Added architecture guards prohibiting DecisionEngine/production-mechanics, V1 optimiser/services, network clients, runtime RNG and scientific dataframe stacks from the independent assurance path.
+
 ## 2026-08-24 — V2 Slice 9 sealed scenario convergence
 - Replaced legacy scenario/CVaR authority with dependency-free constitutional joint-scenario contracts and immutable `ScenarioSet` / `RobustnessReport` identities.
 - Required external worker-produced joint streams with explicit generator, RNG, seed, ordering, weights, player/Gameweek outcomes and retained source artifacts; runtime RNG and inference of correlation from marginal forecast labels are prohibited.
