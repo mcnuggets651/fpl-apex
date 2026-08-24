@@ -1,8 +1,9 @@
-"""Bridge independent Slice 10 evidence into the constitutional AssuranceCase."""
+"""Bridge replay-verified Slice 10 evidence into the constitutional AssuranceCase."""
 
 from __future__ import annotations
 
-from apex_fpl.core.assurance import AssuranceParityStatus, IndependentAssuranceReport
+from apex_fpl.assurance.replay_verification import VerifiedIndependentAssuranceEvidence
+from apex_fpl.core.assurance import AssuranceParityStatus
 from apex_fpl.core.proofs import AssuranceClaim, ProofStatus
 
 
@@ -11,16 +12,16 @@ SOLVER_PARITY_PROOF_ID = "PO-REFERENCE-SOLVER-PARITY-001"
 
 
 def claims_from_independent_assurance(
-    report: IndependentAssuranceReport,
-    *,
-    report_artifact_id: str,
-    mechanics_certificate_artifact_id: str,
-    solver_certificate_artifact_id: str | None,
+    verified: VerifiedIndependentAssuranceEvidence,
 ) -> tuple[AssuranceClaim, AssuranceClaim]:
-    """Translate typed assurance outcomes without upgrading inconclusive evidence."""
+    """Translate only replay-verified assurance outcomes without status promotion."""
 
+    stored = verified.stored_report
+    report = stored.report
     mechanics_status = ProofStatus.PROVEN if report.mechanics_passed else ProofStatus.FAILED
     if report.solver_parity_status is AssuranceParityStatus.PASS:
+        if verified.solver_authorization is None:
+            raise ValueError("solver PASS cannot enter AssuranceCase without verified authorization")
         solver_status = ProofStatus.PROVEN
     elif report.solver_parity_status is AssuranceParityStatus.FAIL:
         solver_status = ProofStatus.FAILED
@@ -31,14 +32,19 @@ def claims_from_independent_assurance(
         proof_id=MECHANICS_PROOF_ID,
         status=mechanics_status,
         evidence_ids=(str(report.mechanics_certificate_id),),
-        artifact_ids=(mechanics_certificate_artifact_id, report_artifact_id),
+        artifact_ids=(
+            stored.mechanics_certificate_artifact_id,
+            stored.artifact_id,
+        ),
         reason=None if report.mechanics_passed else "; ".join(report.blockers),
     )
     solver_artifacts = (
-        (report_artifact_id,)
-        if solver_certificate_artifact_id is None
-        else (solver_certificate_artifact_id, report_artifact_id)
+        (stored.artifact_id,)
+        if stored.solver_certificate_artifact_id is None
+        else (stored.solver_certificate_artifact_id, stored.artifact_id)
     )
+    if verified.solver_authorization is not None:
+        solver_artifacts = solver_artifacts + (verified.solver_authorization.artifact_id,)
     solver = AssuranceClaim(
         proof_id=SOLVER_PARITY_PROOF_ID,
         status=solver_status,
