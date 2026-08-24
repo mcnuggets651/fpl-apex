@@ -10,6 +10,7 @@ from apex_fpl.control.learning_policy_registry import (
     load_learning_policy_registry_bytes,
 )
 from apex_fpl.control.learning_store import load_learning_object
+from apex_fpl.control.outcome_truth_normalization import normalize_verified_outcome
 from apex_fpl.control.outcome_truth_registry import load_outcome_truth_registry_bytes
 from apex_fpl.core.learning_common import (
     EvaluationMetric,
@@ -208,6 +209,16 @@ def evaluate_model(
             raise ValueError("evaluation observation target does not match its sealed case")
         if observation.truth_case_id != case.truth_case_id:
             raise ValueError("evaluation observation truth_case_id does not match sealed outcome case")
+        if truth_registry.authority_for(case.target).status is TruthAuthorityStatus.VERIFIED:
+            canonical_actual = normalize_verified_outcome(
+                case=case,
+                truth_registry=truth_registry,
+                store=store,
+            )
+            if canonical_actual != observation.actual_value:
+                raise ValueError(
+                    "evaluation normalized actual disagrees with retained verified outcome truth"
+                )
 
     blockers: list[str] = []
     metrics: list[EvaluationMetricResult] = []
