@@ -16,6 +16,9 @@ from .canonical import canonical_sha256
 from .ids import DecisionPolicyId
 
 
+TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID = "lexicographic-official-id-v1"
+
+
 def _aware_iso(value: str, *, label: str) -> str:
     text = str(value).strip()
     if not text:
@@ -92,6 +95,14 @@ class DecisionPolicy:
             or self.horizon_gameweeks <= 0
         ):
             raise ValueError("DecisionPolicy horizon_gameweeks must be positive integer")
+        if (
+            self.evaluation_mode is DecisionEvaluationMode.TACTICAL_CURRENT_GAMEWEEK
+            and self.tie_break_policy != TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID
+        ):
+            raise ValueError(
+                "tactical DecisionPolicy requests unimplemented tie-break semantics: "
+                f"{self.tie_break_policy!r}"
+            )
         available = _aware_iso(self.first_available_at, label="DecisionPolicy first_available_at")
         qualification = _artifact_id(
             self.qualification_artifact_id,
