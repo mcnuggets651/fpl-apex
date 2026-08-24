@@ -9,6 +9,7 @@ from apex_fpl.assurance.solver_parity import (
     validate_reference_solver_parity,
 )
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.reference_solver_registry import ReferenceSolverRegistry
 from apex_fpl.control.ruleset_registry import load_ruleset
 from apex_fpl.core.assurance import (
     AssuranceParityStatus,
@@ -50,6 +51,10 @@ from apex_fpl.core.ids import (
     PredictionBatchId,
 )
 from apex_fpl.core.manager_state import ManagerState, ManagerStateScope, OwnedPlayer
+from apex_fpl.core.reference_solver_worker import (
+    ReferenceSolverWorkerArtifact,
+    ReferenceSolverWorkerQualification,
+)
 from apex_fpl.decision.engine import optimise_current_gameweek
 
 
@@ -225,7 +230,14 @@ def _decision(store: FileSystemArtifactStore, *, uncertain_high_player: int | No
     return state, universe, forecast, result
 
 
-def _solver_certificate(store, result, *, status=ReferenceSolverStatus.OPTIMAL, objective=None, action_id=None):
+def _solver_certificate(
+    store,
+    result,
+    *,
+    status=ReferenceSolverStatus.OPTIMAL,
+    objective=None,
+    action_id=None,
+):
     input_artifact = store.put_bytes(b"reference-solver-input").artifact_id
     output_artifact = store.put_bytes(b"reference-solver-output").artifact_id
     worker_artifact = store.put_bytes(b"reference-solver-worker").artifact_id
@@ -257,7 +269,32 @@ def _solver_certificate(store, result, *, status=ReferenceSolverStatus.OPTIMAL, 
     )
 
 
-def test_reference_mechanics_reconciles_selected_action_with_different_autosub_algorithm(tmp_path: Path) -> None:
+def _qualified_worker_registry(
+    store: FileSystemArtifactStore,
+    solver: ReferenceSolverCertificate,
+) -> ReferenceSolverRegistry:
+    qualification = store.put_bytes(b"reference-solver-qualification").artifact_id
+    worker = ReferenceSolverWorkerArtifact(
+        worker_name=solver.worker_name,
+        worker_version=solver.worker_version,
+        solver_contract="apex-v2-exact-decision-parity-v1",
+        code_artifact_id=solver.worker_artifact_id,
+        qualification_state=ReferenceSolverWorkerQualification.QUALIFIED,
+        qualification_artifact_id=qualification,
+        valid_seasons=("2026-2027",),
+        first_available_at="2026-08-24T00:00:00Z",
+        max_horizon_gameweeks=1,
+    )
+    return ReferenceSolverRegistry(
+        season="2026-2027",
+        workers=(worker,),
+        champion_worker_id=worker.worker_id,
+    )
+
+
+def test_reference_mechanics_reconciles_selected_action_with_different_autosub_algorithm(
+    tmp_path: Path,
+) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     state, universe, forecast, result = _decision(store, uncertain_high_player=3)
     certificate = certify_selected_action(
@@ -278,7 +315,10 @@ def test_reference_mechanics_detects_self_consistent_objective_tampering(tmp_pat
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     state, universe, forecast, result = _decision(store)
     old = result.selected_action.mechanics
-    plus_one = RationalValue(old.xi_points.numerator + old.xi_points.denominator, old.xi_points.denominator)
+    plus_one = RationalValue(
+        old.xi_points.numerator + old.xi_points.denominator,
+        old.xi_points.denominator,
+    )
     before = RationalValue(
         old.points_before_hits.numerator + old.points_before_hits.denominator,
         old.points_before_hits.denominator,
@@ -344,11 +384,16 @@ def test_solver_parity_requires_exact_objective_and_same_tie_action(tmp_path: Pa
     )
     assert status is AssuranceParityStatus.PASS
     assert blockers == ()
+    registry = _qualified_worker_registry(store, solver)
     report = build_independent_assurance_report(
         result,
         mechanics,
         store=store,
         solver=solver,
+        worker_registry=registry,
+        season="2026-2027",
+        decision_cutoff=forecast.feature_cutoff,
+        horizon_gameweeks=1,
         expected_tie_break_policy_id=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
     )
     assert report.publication_eligible is True
@@ -396,3 +441,37 @@ def test_missing_or_limited_reference_solver_stays_inconclusive(tmp_path: Path) 
     )
     assert limited_report.publication_eligible is False
     assert limited_report.solver_parity_status is AssuranceParityStatus.INCONCLUSIVE
+
+
+def test_unqualified_or_unregistered_worker_cannot_make_assurance_publishable(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    state, universe, forecast, result = _decision(store)
+    mechanics = certify_selected_action(
+        result,
+        state=state,
+        forecast=forecast,
+        universe=universe,
+        ruleset=_ruleset(),
+    )
+    solver = _solver_certificate(store, result)
+    no_registry = build_independent_assurance_report(
+        result,
+        mechanics,
+        store=store,
+        solver=solver,
+    )
+    assert no_registry.publication_eligible is False
+    assert no_registry.solver_parity_status is AssuranceParityStatus.INCONCLUSIVE
+    empty_registry = ReferenceSolverRegistry(season="2026-2027", workers=())
+    unregistered = build_independent_assurance_report(
+        result,
+        mechanics,
+        store=store,
+        solver=solver,
+        worker_registry=empty_registry,
+        season="2026-2027",
+        decision_cutoff=forecast.feature_cutoff,
+        horizon_gameweeks=1,
+    )
+    assert unregistered.publication_eligible is False
+    assert unregistered.solver_parity_status is AssuranceParityStatus.INCONCLUSIVE
