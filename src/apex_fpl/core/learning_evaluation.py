@@ -8,6 +8,7 @@ from .canonical import canonical_sha256
 from .ids import (
     EvaluationDatasetId,
     EvaluationObservationSetId,
+    EvaluationRealizedTruthSetId,
     EvaluationTruthSetId,
     LearningPolicyId,
     ModelArtifactId,
@@ -89,6 +90,7 @@ class ModelEvaluationReport:
     training_run_id: TrainingRunId
     evaluation_dataset_id: EvaluationDatasetId
     evaluation_truth_set_id: EvaluationTruthSetId
+    evaluation_realized_truth_set_id: EvaluationRealizedTruthSetId
     observation_set_id: EvaluationObservationSetId
     policy_id: LearningPolicyId
     use_mode: LearningUseMode
@@ -96,10 +98,10 @@ class ModelEvaluationReport:
     status: LearningEvaluationStatus
     blockers: tuple[str, ...]
     source_artifact_ids: tuple[str, ...]
-    schema_version: int = 4
+    schema_version: int = 5
 
     def __post_init__(self) -> None:
-        if self.schema_version != 4:
+        if self.schema_version != 5:
             raise ValueError("unsupported ModelEvaluationReport schema_version")
         if not isinstance(self.use_mode, LearningUseMode):
             raise ValueError("model evaluation use_mode must be typed")
@@ -134,6 +136,7 @@ class ModelEvaluationReport:
             "training_run_id": str(self.training_run_id),
             "evaluation_dataset_id": str(self.evaluation_dataset_id),
             "evaluation_truth_set_id": str(self.evaluation_truth_set_id),
+            "evaluation_realized_truth_set_id": str(self.evaluation_realized_truth_set_id),
             "observation_set_id": str(self.observation_set_id),
             "policy_id": str(self.policy_id),
             "use_mode": self.use_mode.value,
@@ -201,16 +204,17 @@ class ModelComparisonReport:
     candidate_evaluation_id: ModelEvaluationId
     incumbent_evaluation_id: ModelEvaluationId
     evaluation_truth_set_id: EvaluationTruthSetId
+    evaluation_realized_truth_set_id: EvaluationRealizedTruthSetId
     policy_id: LearningPolicyId
     use_mode: LearningUseMode
     comparisons: tuple[MetricComparisonResult, ...]
     status: LearningEvaluationStatus
     blockers: tuple[str, ...]
     source_artifact_ids: tuple[str, ...]
-    schema_version: int = 3
+    schema_version: int = 4
 
     def __post_init__(self) -> None:
-        if self.schema_version != 3:
+        if self.schema_version != 4:
             raise ValueError("unsupported ModelComparisonReport schema_version")
         if self.candidate_model_id == self.incumbent_model_id:
             raise ValueError("comparison candidate cannot equal incumbent")
@@ -245,6 +249,7 @@ class ModelComparisonReport:
             "candidate_evaluation_id": str(self.candidate_evaluation_id),
             "incumbent_evaluation_id": str(self.incumbent_evaluation_id),
             "evaluation_truth_set_id": str(self.evaluation_truth_set_id),
+            "evaluation_realized_truth_set_id": str(self.evaluation_realized_truth_set_id),
             "policy_id": str(self.policy_id),
             "use_mode": self.use_mode.value,
             "comparisons": [row.semantic_payload() for row in self.comparisons],
