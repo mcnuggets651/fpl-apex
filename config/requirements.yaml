@@ -104,21 +104,61 @@ requirements:
     tests: [tests/test_v2_probabilistic_forecast.py]
     proof_obligations: [PO-FOOTBALL-UNCERTAINTY-001]
 
-  - requirement_id: REQ-LEGAL-ACTION
-    requirement: Every published current action is independently legal under the sealed RuleSet.
+  - requirement_id: REQ-DECISION-SEALED-INPUTS
+    requirement: DecisionEngine consumes only exact ManagerState, sealed Forecast, active RuleSet, immutable candidate universe and versioned DecisionPolicy identities, with no network or wall-clock authority after seal.
     critical: true
-    invariants: [INV-LEGAL-CURRENT-ACTION]
-    implementation: [slice-8-decision-engine, slice-10-independent-assurance]
-    tests: [test_small_universe_optimizer_matches_exhaustive_legal_optimum]
-    proof_obligations: [PO-FPL-LEGALITY-001, PO-MECHANICS-RECONCILIATION-001]
+    invariants: [INV-DECISION-SEALED-INPUTS, INV-DECISION-POLICY-IDENTITY]
+    implementation: [src/apex_fpl/core/decision.py, src/apex_fpl/core/decision_policy.py, src/apex_fpl/decision/engine.py, src/apex_fpl/decision/universe.py]
+    tests: [tests/test_v2_decision_engine.py, tests/test_v2_architecture_boundaries.py]
+    proof_obligations: [PO-FPL-LEGALITY-001, PO-ARTIFACT-INTEGRITY-001]
+
+  - requirement_id: REQ-DECISION-MECHANICS
+    requirement: Transfers, hit costs, legal XI, captain, vice, bench order and chips are integrated into the exact decision objective and in-season affordability uses realised selling resources.
+    critical: true
+    invariants: [INV-MECHANICS-INTEGRATED, INV-NO-ARBITRARY-BENCH-WEIGHT, INV-LEGAL-CURRENT-ACTION, INV-MONEY-IN-TENTHS]
+    implementation: [src/apex_fpl/decision/engine.py, src/apex_fpl/decision/mechanics.py, src/apex_fpl/core/decision.py]
+    tests: [tests/test_v2_decision_engine.py, tests/test_v2_decision_mechanics_regressions.py]
+    proof_obligations: [PO-FPL-LEGALITY-001, PO-DECISION-MECHANICS-001]
+
+  - requirement_id: REQ-DECISION-SOLVER-EXACTNESS
+    requirement: Decision solver outcomes preserve typed termination status, exactness scope, best bound, gap, candidate filter/expansion state and numeric error without laundering limits/errors into infeasibility or optimality.
+    critical: true
+    invariants: [INV-SOLVER-STATUS-TYPED, INV-EXACTNESS-TYPED-SCOPED, INV-DECISION-RATIONAL-NUMERICS, INV-NO-FALSE-GLOBAL-OPTIMALITY]
+    implementation: [src/apex_fpl/core/decision.py, src/apex_fpl/core/decision_search.py, src/apex_fpl/decision/engine.py]
+    tests: [tests/test_v2_decision_contracts.py, tests/test_v2_decision_search.py, tests/test_v2_decision_engine.py]
+    proof_obligations: [PO-DECISION-SOLVER-EXACTNESS-001]
+
+  - requirement_id: REQ-DECISION-POLICY-QUALIFICATION
+    requirement: Production max-EV-over-time requires the registered empirically qualified DecisionPolicy with explicit receding horizon, continuation value, chip option value, price policy, candidate policy and tie-breaking identity; tactical current-GW policy remains shadow-only.
+    critical: true
+    invariants: [INV-DECISION-POLICY-IDENTITY, INV-TACTICAL-NOT-PRODUCTION, INV-DECISION-POLICY-QUALIFIED, INV-EMPIRICAL-CLAIMS-QUALIFIED]
+    implementation: [src/apex_fpl/core/decision_policy.py, src/apex_fpl/control/decision_policy_registry.py, config/decision_policies_v2.yaml]
+    tests: [tests/test_v2_decision_contracts.py, tests/test_v2_decision_engine.py]
+    proof_obligations: [PO-DECISION-POLICY-QUALIFICATION-001, PO-ARTIFACT-INTEGRITY-001]
 
   - requirement_id: REQ-CANDIDATE-EXACTNESS
-    requirement: Optimisation exactness states the universe and expansion evidence truthfully.
+    requirement: Candidate filters are immutable and optimisation exactness states the searched universe and expansion evidence truthfully; a materially better expanded pool invalidates the narrow claim.
     critical: true
-    invariants: [INV-NO-FALSE-GLOBAL-OPTIMALITY]
-    implementation: [slice-8-decision-engine]
-    tests: [test_expansion_improvement_invalidates_narrow_exactness]
-    proof_obligations: [PO-CANDIDATE-UNIVERSE-001]
+    invariants: [INV-CANDIDATE-FILTER-IMMUTABLE, INV-CANDIDATE-EXPANSION-FAILS-CLOSED, INV-NO-FALSE-GLOBAL-OPTIMALITY]
+    implementation: [src/apex_fpl/core/decision.py, src/apex_fpl/decision/universe.py, src/apex_fpl/decision/expansion.py]
+    tests: [tests/test_v2_decision_expansion.py]
+    proof_obligations: [PO-CANDIDATE-UNIVERSE-001, PO-DECISION-SOLVER-EXACTNESS-001]
+
+  - requirement_id: REQ-DECISION-REPLAY
+    requirement: Candidate universes and DecisionResults are content-addressed, strict-typed and replayable offline with identical semantic IDs.
+    critical: true
+    invariants: [INV-IMMUTABLE-RELEASE, INV-DECISION-POLICY-IDENTITY, INV-DECISION-SEALED-INPUTS]
+    implementation: [src/apex_fpl/decision/store.py, src/apex_fpl/core/decision.py]
+    tests: [tests/test_v2_decision_replay.py]
+    proof_obligations: [PO-DECISION-REPLAY-001, PO-ARTIFACT-INTEGRITY-001]
+
+  - requirement_id: REQ-LEGAL-ACTION
+    requirement: Every published current action is independently legal under the sealed RuleSet and exact state transition, without trusting the DecisionEngine's own legality implementation.
+    critical: true
+    invariants: [INV-LEGAL-CURRENT-ACTION]
+    implementation: [src/apex_fpl/decision/engine.py, slice-10-independent-assurance]
+    tests: [tests/test_v2_decision_engine.py, test_reference_mechanics_reconciles_selected_action]
+    proof_obligations: [PO-FPL-LEGALITY-001, PO-MECHANICS-RECONCILIATION-001]
 
   - requirement_id: REQ-SCENARIO-CONVERGENCE
     requirement: Robustness metrics cannot be treated as stable before governed convergence.
