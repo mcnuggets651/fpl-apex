@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 
 from apex_fpl.control.artifact_store import ArtifactStore
@@ -36,10 +37,6 @@ def _artifact_id(value: str) -> str:
 class StoredFeatureSnapshot:
     snapshot: FeatureSnapshot
     artifact_id: str
-
-
-# Dataclass imported late only to keep durable schema definitions visually close to use.
-from dataclasses import dataclass  # noqa: E402
 
 
 def build_and_store_feature_snapshot(
@@ -102,7 +99,7 @@ def _observation(payload: dict[str, object]) -> FeatureObservation:
     artifacts = payload.get("source_artifact_ids")
     if not isinstance(value, dict) or not isinstance(artifacts, list):
         raise ValueError("stored feature observation is malformed")
-    row = FeatureObservation(
+    return FeatureObservation(
         feature_name=str(payload["feature_name"]),
         scope=FeatureScope(str(payload["scope"])),
         entity_id=str(payload["entity_id"]),
@@ -113,7 +110,6 @@ def _observation(payload: dict[str, object]) -> FeatureObservation:
         derivation_id=str(payload["derivation_id"]),
         schema_version=int(payload.get("schema_version", -1)),
     )
-    return row
 
 
 def load_feature_snapshot(artifact_id: str, *, store: ArtifactStore) -> StoredFeatureSnapshot:
@@ -134,11 +130,7 @@ def load_feature_snapshot(artifact_id: str, *, store: ArtifactStore) -> StoredFe
     inputs = semantic.get("input_artifact_ids")
     if not isinstance(inputs, list):
         raise ValueError("feature snapshot input lineage is malformed")
-    observations = tuple(
-        _observation(dict(row))
-        for row in rows
-        if isinstance(row, dict)
-    )
+    observations = tuple(_observation(dict(row)) for row in rows if isinstance(row, dict))
     if len(observations) != len(rows):
         raise ValueError("feature snapshot contains malformed observation rows")
     snapshot = FeatureSnapshot(
