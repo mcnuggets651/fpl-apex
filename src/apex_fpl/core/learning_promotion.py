@@ -80,8 +80,8 @@ class ModelRegistryGeneration:
     registered_model_ids: tuple[ModelArtifactId, ...]
     champion_model_id: ModelArtifactId | None
     promotion_id: ModelPromotionId | None
-    promotion_artifact_id: str | None
     source_artifact_ids: tuple[str, ...]
+    promotion_artifact_id: str | None = None
     schema_version: int = 3
 
     def __post_init__(self) -> None:
