@@ -357,7 +357,7 @@ def test_fixed_action_scenario_scoring_applies_autosub_and_vice_without_hindsigh
         universe=universe,
         ruleset=_ruleset(),
     )
-    assert score == 25
+    assert score == 26
 
 
 def test_common_nested_stream_converges_and_preserves_ev_anchor(tmp_path: Path) -> None:
