@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -40,13 +41,12 @@ from apex_fpl.core.forecast import (
 )
 from apex_fpl.core.identity import OfficialPlayerId
 from apex_fpl.core.ids import (
-    CandidateUniverseId,
     DecisionPolicyId,
     FeatureSnapshotId,
     GlobalWorldId,
+    ManagerStateId,
     ModelArtifactId,
     PredictionBatchId,
-    RuleSetId,
     ScenarioGeneratorId,
 )
 from apex_fpl.core.scenarios import (
@@ -203,9 +203,7 @@ def _decision(forecast: Forecast, universe: CandidateUniverse) -> DecisionResult
     alternative = _action(captain=14, vice=13, objective=59)
     zero = RationalValue.zero()
     decision_input = DecisionInput(
-        manager_state_id=__import__(
-            "apex_fpl.core.ids", fromlist=["ManagerStateId"]
-        ).ManagerStateId("scenario-state"),
+        manager_state_id=ManagerStateId("scenario-state"),
         forecast_id=forecast.forecast_id,
         ruleset_id=_ruleset().ruleset_id,
         candidate_universe_id=universe.candidate_universe_id,
@@ -319,26 +317,14 @@ def test_scenario_policy_has_historical_floor_and_registry_has_no_fabricated_cha
     assert registry.champion_generator() is None
     assert registry.champion_policy() is None
     with pytest.raises(ValueError, match=">= 256"):
-        ScenarioConvergencePolicy(
-            **{**_policy().__dict__, "checkpoint_counts": (128, 256)}
-        )
+        replace(_policy(), checkpoint_counts=(128, 256))
 
 
 def test_scenario_set_identity_binds_seed_weight_order_and_outcomes(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     forecast = _forecast()
     base = _scenarios(store, forecast)
-    changed = ScenarioSet(
-        season=base.season,
-        forecast_id=base.forecast_id,
-        scenario_generator_id=base.scenario_generator_id,
-        rng_algorithm=base.rng_algorithm,
-        seed=base.seed + 1,
-        gameweeks=base.gameweeks,
-        player_ids=base.player_ids,
-        scenarios=base.scenarios,
-        source_artifact_ids=base.source_artifact_ids,
-    )
+    changed = replace(base, seed=base.seed + 1)
     assert base.scenario_set_id != changed.scenario_set_id
 
 
@@ -454,12 +440,10 @@ def test_qualified_registry_requires_real_artifacts_and_champions(tmp_path: Path
         first_available_at="2026-08-21T00:00:00Z",
         max_horizon_gameweeks=8,
     )
-    policy = ScenarioConvergencePolicy(
-        **{
-            **_policy().__dict__,
-            "qualification_state": ScenarioQualificationState.QUALIFIED,
-            "qualification_artifact_id": policy_qualification,
-        }
+    policy = replace(
+        _policy(),
+        qualification_state=ScenarioQualificationState.QUALIFIED,
+        qualification_artifact_id=policy_qualification,
     )
     registry = ScenarioGovernanceRegistry(
         season="2026-2027",
