@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from apex_fpl.core.decision import (
+    CandidateExpansionCertificate,
     CandidateUniverseScope,
     DecisionAction,
     DecisionChip,
@@ -103,6 +104,26 @@ def _exactness(solver: SolverCertificate) -> ExactnessClaim:
     )
 
 
+def _expansion_certificate(
+    *,
+    baseline: int,
+    expanded: int,
+    threshold: int,
+    result: ExpansionResult,
+) -> CandidateExpansionCertificate:
+    return CandidateExpansionCertificate(
+        baseline_universe_id=CandidateUniverseId("baseline"),
+        expanded_universe_id=CandidateUniverseId("expanded"),
+        expanded_universe_scope=CandidateUniverseScope.FULL_OFFICIAL,
+        baseline_objective=RationalValue(baseline, 1),
+        expanded_objective=RationalValue(expanded, 1),
+        materiality_threshold=RationalValue(threshold, 1),
+        result=result,
+        expanded_exactness_status=ExactnessStatus.GLOBAL_OPTIMAL,
+        source_artifact_id="sha256:" + "b" * 64,
+    )
+
+
 def test_decision_action_rejects_hit_or_points_arithmetic_laundering() -> None:
     with pytest.raises(ValueError, match="objective does not reconcile"):
         _action(mechanics=_mechanics(objective=12))
@@ -189,4 +210,24 @@ def test_decision_result_rejects_returned_alternative_better_than_selected() -> 
             solver=solver,
             exactness=_exactness(solver),
             enumerated_actions=2,
+        )
+
+
+def test_expansion_certificate_rejects_expanded_optimum_below_baseline() -> None:
+    with pytest.raises(ValueError, match="cannot be below baseline"):
+        _expansion_certificate(
+            baseline=100,
+            expanded=99,
+            threshold=2,
+            result=ExpansionResult.NO_MATERIAL_IMPROVEMENT,
+        )
+
+
+def test_expansion_certificate_rejects_result_label_that_disagrees_with_objectives() -> None:
+    with pytest.raises(ValueError, match="does not reconcile objectives and threshold"):
+        _expansion_certificate(
+            baseline=100,
+            expanded=110,
+            threshold=2,
+            result=ExpansionResult.NO_MATERIAL_IMPROVEMENT,
         )
