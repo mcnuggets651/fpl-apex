@@ -33,6 +33,13 @@
 - **INV-EVIDENCE-EXACT-ID-ATTACHMENT** — structured evidence attaches only to an exact current Official FPL player ID already present in the sealed identity registry.
 - **INV-SOURCE-PROVENANCE-HOST-BOUND** — a structured claim's source URL must match the registered host set for that source capability; labels cannot impersonate another source.
 - **INV-EVIDENCE-APPEND-ONLY** — evidence history is immutable and parent-linked; corrections supersede earlier same-source/same-player/same-claim facts without rewriting or deleting them.
+- **INV-FEATURES-POINT-IN-TIME** — a FeatureSnapshot at cutoff T contains only observations and derived batches that were actually available by T; later snapshots, corrections, prices, injuries, lineups, transfers or outcomes cannot leak backward.
+- **INV-FEATURE-LINEAGE-EXACT** — every canonical feature records immutable source artifact lineage, derivation identity and first-known time; every FeatureSnapshot records its exact cutoff, GlobalWorldId and complete input artifact set.
+- **INV-MISSING-NEVER-NEUTRAL-DEFAULT** — absent feature evidence stays explicitly MISSING/None and cannot silently become zero, 1.0, 70 minutes, full availability or any other neutral-looking value.
+- **INV-DERIVED-BATCH-TIME-BOUND** — historical/preseason/derived feature batches are immutable artifacts with their own availability time; a batch created after cutoff T cannot be consumed by a snapshot at T even if individual rows claim older observation dates.
+- **INV-CROSS-SEASON-FEATURE-ID-REVIEWED** — prior-season player features attach to the active Official FPL player only through a reviewed PersonId/PersonLink, never a repeated name or assumed FPL ID continuity.
+- **INV-OUTCOME-TRUTH-EXPLICIT** — every calibration target has one explicit verified post-event truth authority or is marked UNRESOLVED; experiments cannot silently select a convenient truth provider.
+- **INV-EXPECTED-MINUTES-IS-MODEL-OUTPUT** — expected minutes is empirically qualifiable model output; feature engineering may expose status, history, preseason and evidence facts but cannot directly override expected minutes.
 - **INV-LEGAL-CURRENT-ACTION** — every published action passes independent RuleSet/state-transition verification.
 - **INV-NO-FALSE-GLOBAL-OPTIMALITY** — optimisation exactness is scoped to the certified universe and solver state.
 - **INV-EMPIRICAL-CLAIMS-QUALIFIED** — predictive claims enter production only through registered qualification.
