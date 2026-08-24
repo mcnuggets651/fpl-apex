@@ -72,6 +72,14 @@ requirements:
     tests: [tests/test_v2_evidence_source_governance.py]
     proof_obligations: [PO-SOURCE-GOVERNANCE-001, PO-EVIDENCE-RELIABILITY-001, PO-EVIDENCE-LEDGER-001, PO-ARTIFACT-INTEGRITY-001, PO-OFFICIAL-PLAYER-IDENTITY-001]
 
+  - requirement_id: REQ-POINT-IN-TIME-FEATURES
+    requirement: Forecast inputs are immutable point-in-time FeatureSnapshots whose facts, derived batches, identities and truth authorities are explicit at the cutoff; missing information is not replaced by neutral defaults and expected minutes is not written by feature engineering.
+    critical: true
+    invariants: [INV-FEATURES-POINT-IN-TIME, INV-FEATURE-LINEAGE-EXACT, INV-MISSING-NEVER-NEUTRAL-DEFAULT, INV-DERIVED-BATCH-TIME-BOUND, INV-CROSS-SEASON-FEATURE-ID-REVIEWED, INV-OUTCOME-TRUTH-EXPLICIT, INV-EXPECTED-MINUTES-IS-MODEL-OUTPUT]
+    implementation: [src/apex_fpl/core/features.py, src/apex_fpl/core/minutes_features.py, src/apex_fpl/core/minutes_history.py, src/apex_fpl/core/outcome_truth.py, src/apex_fpl/control/feature_snapshot.py, src/apex_fpl/control/feature_batch.py, src/apex_fpl/control/feature_assembly.py, src/apex_fpl/control/official_features.py, src/apex_fpl/control/outcome_truth_registry.py, config/outcome_truth_v2.yaml]
+    tests: [tests/test_v2_point_in_time_features.py, tests/test_v2_feature_batches_minutes_history.py, tests/test_v2_architecture_boundaries.py]
+    proof_obligations: [PO-FEATURE-TIME-TRAVEL-001, PO-OUTCOME-TRUTH-001, PO-MINUTES-FEATURE-INPUT-001, PO-ARTIFACT-INTEGRITY-001, PO-OFFICIAL-PLAYER-IDENTITY-001]
+
   - requirement_id: REQ-LEGAL-ACTION
     requirement: Every published current action is independently legal under the sealed RuleSet.
     critical: true
