@@ -430,7 +430,9 @@ class DecisionAction:
             hit_value,
         )
         if self.mechanics.objective_points != expected_objective:
-            raise ValueError("decision objective does not reconcile points before hits and hit cost")
+            raise ValueError(
+                "decision objective does not reconcile points before hits and hit cost"
+            )
         if self.chip is DecisionChip.BENCH_BOOST:
             if self.mechanics.autosub_points != RationalValue.zero():
                 raise ValueError("Bench Boost action cannot also claim autosub points")
@@ -447,7 +449,9 @@ class DecisionAction:
                 self.mechanics.captain_bonus,
             )
         if self.mechanics.points_before_hits != expected_before_hits:
-            raise ValueError("decision points-before-hits do not reconcile submission mechanics")
+            raise ValueError(
+                "decision points-before-hits do not reconcile submission mechanics"
+            )
         object.__setattr__(self, "transfers", transfers)
         object.__setattr__(self, "squad_ids", squad)
         object.__setattr__(self, "xi_ids", xi)
@@ -560,6 +564,23 @@ class CandidateExpansionCertificate:
             raise ValueError("expansion certificate requires a different expanded universe")
         if self.materiality_threshold.numerator < 0:
             raise ValueError("expansion materiality threshold cannot be negative")
+        improvement = _rational_subtract(
+            self.expanded_objective,
+            self.baseline_objective,
+        )
+        if improvement.numerator < 0:
+            raise ValueError(
+                "expanded optimum cannot be below baseline optimum for a strict superset"
+            )
+        expected_result = (
+            ExpansionResult.MATERIAL_IMPROVEMENT_FOUND
+            if _rational_compare(improvement, self.materiality_threshold) > 0
+            else ExpansionResult.NO_MATERIAL_IMPROVEMENT
+        )
+        if self.result is not expected_result:
+            raise ValueError(
+                "candidate expansion result does not reconcile objectives and threshold"
+            )
         source = _artifact_id(
             self.source_artifact_id,
             label="candidate expansion source artifact",
