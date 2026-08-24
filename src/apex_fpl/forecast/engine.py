@@ -11,6 +11,7 @@ from apex_fpl.core.rules import RuleSet
 from .forecast_store import StoredForecast, store_forecast
 from .prediction_store import load_prediction_batch
 from .targets import build_official_forecast_targets
+from .validation import validate_prediction_batch_safety
 
 
 def compile_sealed_forecast(
@@ -49,6 +50,14 @@ def compile_sealed_forecast(
         raise ValueError("prediction batch references an unregistered forecast model")
     production = use_mode is ForecastUseMode.PRODUCTION
     model_registry.verify_model_artifacts(model, store=store, production=production)
+    horizon_span = max(batch.gameweeks) - min(batch.gameweeks) + 1
+    model.require_valid_for(
+        season=batch.season,
+        feature_cutoff=batch.feature_cutoff,
+        horizon_gameweeks=horizon_span,
+        production=production,
+    )
+    validate_prediction_batch_safety(batch)
 
     target_set = build_official_forecast_targets(
         global_world_manifest_artifact_id=global_world_manifest_artifact_id,
