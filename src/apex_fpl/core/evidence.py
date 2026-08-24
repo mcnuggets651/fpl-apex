@@ -1,8 +1,8 @@
 """Dependency-free structured evidence and append-only supersession contracts.
 
-External text is data, never executable instruction.  A fact may enter Apex only as a
+External text is data, never executable instruction. A fact may enter Apex only as a
 constrained claim tied to an exact Official FPL player ID, immutable raw evidence,
-bitemporal timestamps and contextual reliability.  Unqualified reliability remains
+bitemporal timestamps and contextual reliability. Unqualified reliability remains
 UNKNOWN and cannot be converted into a guessed coefficient.
 """
 
@@ -134,8 +134,8 @@ class EvidenceClaim:
         source_event = _optional_time(self.source_event_at, label="source_event_at")
         effective = _optional_time(self.effective_from, label="effective_from")
         expires = _optional_time(self.expires_at, label="expires_at")
-        if _point(observed) > _point(ingested):
-            raise ValueError("observed_at cannot be after ingested_at")
+        if _point(observed) > _point(first_known):
+            raise ValueError("observed_at cannot be after first_known_at")
         if _point(first_known) > _point(ingested):
             raise ValueError("first_known_at cannot be after ingested_at")
         if source_event is not None and _point(source_event) > _point(observed):
