@@ -612,7 +612,7 @@ def test_exact_promotion_rules_and_cas_registry_transition(tmp_path: Path) -> No
         production=True,
     )
     assert comparison.status is LearningEvaluationStatus.COMPLETE
-    assert comparison.comparisons[0].improvement == ExactMetricValue(4)
+    assert comparison.comparisons[0].improvement == ExactMetricValue(5)
     comparison_artifact = store_learning_object(
         comparison,
         store=store,
