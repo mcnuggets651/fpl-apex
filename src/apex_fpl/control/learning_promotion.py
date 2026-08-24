@@ -62,7 +62,9 @@ def _interval_superiority(rule: MetricPromotionRule, candidate, incumbent) -> bo
         return c_low > i_high
     if rule.direction is MetricDirection.CLOSER_TO_ZERO:
         candidate_max_abs = max(abs(c_low), abs(c_high))
-        incumbent_min_abs = Fraction(0, 1) if i_low <= 0 <= i_high else min(abs(i_low), abs(i_high))
+        incumbent_min_abs = (
+            Fraction(0, 1) if i_low <= 0 <= i_high else min(abs(i_low), abs(i_high))
+        )
         return candidate_max_abs < incumbent_min_abs
     return None
 
@@ -113,6 +115,8 @@ def compare_model_evaluations(
         raise ValueError("candidate/incumbent evaluations do not use the comparison policy")
     if candidate.evaluation_truth_set_id != incumbent.evaluation_truth_set_id:
         raise ValueError("candidate/incumbent evaluations do not use the exact same truth set")
+    if candidate.evaluation_realized_truth_set_id != incumbent.evaluation_realized_truth_set_id:
+        raise ValueError("candidate/incumbent evaluations normalized different realized truth values")
 
     expected_mode = LearningUseMode.PRODUCTION if production else LearningUseMode.SHADOW
     blockers: list[str] = []
@@ -163,7 +167,9 @@ def compare_model_evaluations(
                 ),
                 candidate_sample_count=candidate_metric.sample_count,
                 incumbent_sample_count=incumbent_metric.sample_count,
-                interval_superiority=_interval_superiority(rule, candidate_metric, incumbent_metric),
+                interval_superiority=_interval_superiority(
+                    rule, candidate_metric, incumbent_metric
+                ),
             )
         )
 
@@ -174,7 +180,11 @@ def compare_model_evaluations(
         sorted(
             set(candidate.source_artifact_ids)
             | set(incumbent.source_artifact_ids)
-            | {candidate_report_artifact_id, incumbent_report_artifact_id, policy_registry_artifact_id}
+            | {
+                candidate_report_artifact_id,
+                incumbent_report_artifact_id,
+                policy_registry_artifact_id,
+            }
             | {
                 item
                 for item in (policy.qualification_artifact_id, policy.promotion_rule_artifact_id)
@@ -189,6 +199,7 @@ def compare_model_evaluations(
         candidate_evaluation_id=candidate.evaluation_id,
         incumbent_evaluation_id=incumbent.evaluation_id,
         evaluation_truth_set_id=candidate.evaluation_truth_set_id,
+        evaluation_realized_truth_set_id=candidate.evaluation_realized_truth_set_id,
         policy_id=policy.policy_id,
         use_mode=expected_mode,
         comparisons=tuple(comparisons),
@@ -239,6 +250,13 @@ def issue_model_promotion_certificate(
         or comparison.evaluation_truth_set_id != incumbent.evaluation_truth_set_id
     ):
         raise ValueError("promotion inputs do not share the comparison truth set")
+    if (
+        comparison.evaluation_realized_truth_set_id
+        != candidate.evaluation_realized_truth_set_id
+        or comparison.evaluation_realized_truth_set_id
+        != incumbent.evaluation_realized_truth_set_id
+    ):
+        raise ValueError("promotion inputs do not share the same realized truth values")
     _replay_policy_registry(
         registry=policy_registry,
         registry_artifact_id=policy_registry_artifact_id,
@@ -294,7 +312,9 @@ def issue_model_promotion_certificate(
         for rule in policy.promotion_rules:
             row = rows.get(rule.key)
             if row is None:
-                inconclusive.append(f"missing {rule.metric.value}/{rule.target.value}/{rule.cohort}")
+                inconclusive.append(
+                    f"missing {rule.metric.value}/{rule.target.value}/{rule.cohort}"
+                )
                 continue
             if row.improvement.as_fraction() < rule.minimum_improvement.as_fraction():
                 failed.append(
