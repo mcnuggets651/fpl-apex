@@ -4,6 +4,10 @@ This engine is intentionally correctness-first. It completely enumerates the dec
 candidate universe and declared action surface, then exhaustively optimises submission
 mechanics for each legal resulting squad. Its exactness certificate makes any narrower
 universe/action surface visible instead of pretending it is a global optimum.
+
+This entry point is deliberately tactical/shadow-only. A persistent production action
+must use the qualified receding-horizon policy path once that path is implemented and
+qualified; this function refuses to relabel one-Gameweek chip/transfer EV as max-EV-over-time.
 """
 
 from __future__ import annotations
@@ -30,7 +34,8 @@ from apex_fpl.core.decision import (
     SolverStatus,
     TransferMove,
 )
-from apex_fpl.core.forecast import Forecast, ForecastUseMode
+from apex_fpl.core.decision_policy import DecisionEvaluationMode, DecisionPolicy
+from apex_fpl.core.forecast import Forecast
 from apex_fpl.core.identity import OfficialPlayerId
 from apex_fpl.core.manager_state import ManagerState
 from apex_fpl.core.rules import RuleSet
@@ -302,11 +307,7 @@ def _full_rebuild_squads(
         )
         transfers = _pair_transfers(outgoing, incoming)
         bank_during = budget - cost
-        bank_after = (
-            state.bank_tenths
-            if chip is DecisionChip.FREE_HIT
-            else bank_during
-        )
+        bank_after = state.bank_tenths if chip is DecisionChip.FREE_HIT else bank_during
         yield _SquadAction(
             chip=chip,
             transfers=transfers,
@@ -323,9 +324,7 @@ def _decision_action(
     ruleset: RuleSet,
 ) -> DecisionAction:
     squad_ids = tuple(row.player_id for row in squad_action.squad)
-    squad_values = {
-        player_id: values[player_id] for player_id in squad_ids
-    }
+    squad_values = {player_id: values[player_id] for player_id in squad_ids}
     submission = optimise_squad_submission(
         squad_action.squad,
         squad_values,
@@ -382,14 +381,28 @@ def optimise_current_gameweek(
     forecast: Forecast,
     universe: CandidateUniverse,
     ruleset: RuleSet,
+    policy: DecisionPolicy,
     use_mode: DecisionUseMode,
     max_normal_transfers: int,
     chips_considered: tuple[DecisionChip, ...] = (DecisionChip.NONE,),
     alternatives_limit: int = 5,
 ) -> DecisionResult:
-    """Return the maximum marginal-EV legal action over the declared search surface."""
+    """Return the maximum tactical marginal-EV action over the declared shadow surface."""
 
     state.require_decision_safe(ruleset=ruleset)
+    policy.require_available_for(
+        season=state.season,
+        decision_cutoff=forecast.feature_cutoff,
+    )
+    if policy.evaluation_mode is not DecisionEvaluationMode.TACTICAL_CURRENT_GAMEWEEK:
+        raise ValueError(
+            "current-gameweek reference engine cannot execute a receding-horizon policy"
+        )
+    if use_mode is DecisionUseMode.PRODUCTION:
+        raise ValueError(
+            "tactical current-Gameweek reference engine is shadow-only; production requires "
+            "the qualified receding-horizon DecisionPolicy path"
+        )
     if state.gameweek <= 0:
         raise ValueError("DecisionEngine requires a positive current gameweek")
     if forecast.season != state.season or ruleset.season != state.season:
@@ -402,28 +415,15 @@ def optimise_current_gameweek(
     if universe.global_world_id != forecast.global_world_id:
         raise ValueError("candidate universe GlobalWorldId does not match Forecast")
     _validate_owned_against_universe(state, universe)
-    if use_mode is DecisionUseMode.PRODUCTION:
-        if (
-            forecast.use_mode is not ForecastUseMode.PRODUCTION
-            or not forecast.production_eligible
-        ):
-            raise ValueError(
-                "production decision requires a production-eligible Forecast"
-            )
-        if forecast.abstentions:
-            raise ValueError(
-                "production decision cannot consume Forecast abstentions"
-            )
 
     available_chips = _available_chips(state, ruleset=ruleset)
-    considered = tuple(
-        sorted(set(chips_considered), key=lambda chip: chip.value)
-    )
+    considered = tuple(sorted(set(chips_considered), key=lambda chip: chip.value))
     decision_input = DecisionInput(
         manager_state_id=state.manager_state_id,
         forecast_id=forecast.forecast_id,
         ruleset_id=ruleset.ruleset_id,
         candidate_universe_id=universe.candidate_universe_id,
+        decision_policy_id=policy.decision_policy_id,
         gameweek=state.gameweek,
         use_mode=use_mode,
         objective_model=DecisionObjectiveModel.MARGINAL_INDEPENDENCE_BASELINE,
@@ -464,18 +464,14 @@ def optimise_current_gameweek(
                 )
             )
     if not legal_actions:
-        raise ValueError(
-            "DecisionEngine found no legal actions in declared search surface"
-        )
+        raise ValueError("DecisionEngine found no legal actions in declared search surface")
 
     legal_actions.sort(
         key=lambda action: (_objective(action), _action_tie_key(action)),
         reverse=True,
     )
     selected = legal_actions[0]
-    alternatives = tuple(
-        legal_actions[1 : 1 + max(0, alternatives_limit)]
-    )
+    alternatives = tuple(legal_actions[1 : 1 + max(0, alternatives_limit)])
     incumbent_fraction = _objective(selected)
     incumbent = _rational(incumbent_fraction)
     zero = RationalValue.zero()
@@ -485,14 +481,16 @@ def optimise_current_gameweek(
         best_bound=incumbent,
         gap=zero,
         numeric_error_bound=zero,
-        message="exhaustive reference enumeration completed",
+        message="exhaustive tactical reference enumeration completed",
     )
 
     action_surface_complete = _surface_complete(
         decision_input,
         available_chips=available_chips,
     )
-    reasons: list[str] = []
+    reasons: list[str] = [
+        "tactical current-Gameweek policy is shadow/reference only"
+    ]
     if universe.scope is not CandidateUniverseScope.FULL_OFFICIAL:
         reasons.append(
             "candidate universe is scoped and has no successful expansion certificate"
@@ -509,18 +507,15 @@ def optimise_current_gameweek(
             )
         if missing_chips:
             reasons.append(
-                "available chips omitted from action surface: "
-                + ",".join(missing_chips)
+                "available chips omitted from action surface: " + ",".join(missing_chips)
             )
 
     status = (
         ExactnessStatus.GLOBAL_OPTIMAL
-        if (
-            universe.scope is CandidateUniverseScope.FULL_OFFICIAL
-            and action_surface_complete
-        )
+        if universe.scope is CandidateUniverseScope.FULL_OFFICIAL and action_surface_complete
         else ExactnessStatus.FEASIBLE_INCUMBENT
     )
+    exactness_reasons = () if status is ExactnessStatus.GLOBAL_OPTIMAL else tuple(reasons)
     exactness = ExactnessClaim(
         status=status,
         candidate_universe_id=universe.candidate_universe_id,
@@ -534,16 +529,8 @@ def optimise_current_gameweek(
         expansion_result=ExpansionResult.NOT_RUN,
         expansion_certificate_id=None,
         numeric_error_bound=solver.numeric_error_bound,
-        reasons=tuple(reasons),
+        reasons=exactness_reasons,
     )
-    if (
-        use_mode is DecisionUseMode.PRODUCTION
-        and not exactness.publication_exactness_eligible
-    ):
-        raise ValueError(
-            "production DecisionEngine exactness is not publication eligible: "
-            + "; ".join(exactness.reasons)
-        )
     return DecisionResult(
         decision_input=decision_input,
         selected_action=selected,
