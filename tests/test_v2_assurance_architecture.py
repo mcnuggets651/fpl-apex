@@ -8,6 +8,9 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSURANCE = (
     ROOT / "src" / "apex_fpl" / "assurance" / "reference_mechanics.py",
     ROOT / "src" / "apex_fpl" / "assurance" / "solver_parity.py",
+    ROOT / "src" / "apex_fpl" / "assurance" / "worker_authorization.py",
+    ROOT / "src" / "apex_fpl" / "assurance" / "replay_verification.py",
+    ROOT / "src" / "apex_fpl" / "assurance" / "case_bridge.py",
     ROOT / "src" / "apex_fpl" / "assurance" / "store.py",
 )
 
