@@ -84,7 +84,7 @@ Solver termination state is typed and cannot be laundered:
 
 `DecisionSearchOutcome` represents either a feasible `DecisionResult` or a typed failure. A timeout, worker error or solver limit can never become `INFEASIBLE` merely because no final optimum was returned.
 
-The exhaustive Slice 8 reference implementation returns an exact `OPTIMAL` solver certificate over the **declared** action surface it actually enumerates, with incumbent, best bound, zero gap and zero arithmetic error bound. The certificate itself reconciles `best_bound - incumbent == gap`, and `DecisionResult` requires the incumbent to equal the selected action objective. That does not by itself imply global production exactness.
+The exhaustive Slice 8 reference implementation returns an exact `OPTIMAL` solver certificate over the **declared** action surface it actually enumerates, with incumbent, best bound, zero gap and zero arithmetic error bound. That does not by itself imply global production exactness.
 
 ## ExactnessClaim
 
@@ -124,10 +124,10 @@ A scoped result may be promoted to `OPTIMAL_WITHIN_CERTIFIED_UNIVERSE` only when
 3. is a strict candidate superset;
 4. reaches `FULL_OFFICIAL`;
 5. is itself `GLOBAL_OPTIMAL`;
-6. has an optimum at least as high as the baseline, because the strict superset still contains every baseline action; and
+6. cannot have a worse optimum than the strict-subset baseline; and
 7. produces no objective improvement above the explicit materiality threshold.
 
-`CandidateExpansionCertificate` derives the expected result from the exact rational objective delta and threshold. A certificate cannot claim `NO_MATERIAL_IMPROVEMENT` when the stored numbers show a material gain, and it cannot claim a lower expanded optimum for a strict superset.
+The expansion certificate recomputes `expanded_objective - baseline_objective` exactly and derives its result from that delta and the materiality threshold. A stored label that disagrees with the arithmetic is invalid even when the surrounding artifact bytes are content-addressed correctly.
 
 If expansion finds a material improvement, the result is `MATERIAL_IMPROVEMENT_FOUND`; the narrow result stays unpromoted and the event is treated as a search-defect signal.
 
@@ -146,6 +146,10 @@ A policy versions:
 - candidate policy; and
 - tie breaking.
 
+The tactical reference engine implements one named deterministic tie policy: `lexicographic-official-id-v1`. A tactical `DecisionPolicy` requesting any other tie semantics is rejected rather than being hashed into identity and then silently ignored.
+
+`TACTICAL_CURRENT_GAMEWEEK` is constitutionally exact about its scope: its horizon is exactly one Gameweek and it cannot carry continuation-value, chip-option-value, price-policy or candidate-policy artifacts that this endpoint does not execute. This prevents unused policy semantics from entering `DecisionPolicyId` while the engine silently behaves as if they did not exist.
+
 A production-qualified policy must be:
 
 - `QUALIFIED`;
@@ -161,9 +165,7 @@ It must also be the registered champion for the season and every retained artifa
 
 `config/decision_policies_v2.yaml` intentionally has no champion today. Apex does not fabricate horizon, terminal value, chip option value, price forecasts or candidate policy merely to open a production path.
 
-The current `optimise_current_gameweek()` reference engine accepts only `TACTICAL_CURRENT_GAMEWEEK` policy and refuses `PRODUCTION` mode. Its only implemented tie-breaking semantics are identified by `TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID = "lexicographic-official-id-v1"`; a tactical policy requesting any other tie semantics is rejected at construction. This prevents a versioned policy field from becoming decorative or silently ignored.
-
-This also prevents a one-Gameweek endpoint from burning a long-lived chip or persistent transfer and then being mislabeled max-EV-over-time.
+The current `optimise_current_gameweek()` reference engine accepts only `TACTICAL_CURRENT_GAMEWEEK` policy and refuses `PRODUCTION` mode. This prevents a one-Gameweek endpoint from burning a long-lived chip or persistent transfer and then being mislabeled max-EV-over-time.
 
 Empirical DecisionPolicy promotion belongs to later learning/replay qualification work.
 
@@ -171,7 +173,7 @@ Empirical DecisionPolicy promotion belongs to later learning/replay qualificatio
 
 Candidate universes and DecisionResults can be stored in ArtifactStore and replayed without network access.
 
-Replay reconstructs strict typed contracts and recomputes semantic IDs. Corruption, declared-ID mismatch and type laundering fail closed. DecisionPolicyId is retained inside DecisionInput, so artifacts from different policy generations cannot collide or be compared as if they represented the same decision problem. A promoted scoped decision must also resolve its retained expansion certificate in ArtifactStore and match that certificate's baseline universe/result semantics.
+Replay reconstructs strict typed contracts and recomputes semantic IDs. Corruption, declared-ID mismatch and type laundering fail closed. DecisionPolicyId is retained inside DecisionInput, so artifacts from different policy generations cannot collide or be compared as if they represented the same decision problem.
 
 ## Differential and adversarial tests
 
@@ -186,11 +188,9 @@ Slice 8 includes:
 - Wildcard and Free Hit rebuild regressions;
 - Triple Captain and Bench Boost action-surface regressions;
 - integrated bench/captain/vice regression;
-- candidate expansion success and failure regressions;
-- expansion-certificate monotonicity and arithmetic-laundering regressions;
+- cached-versus-recomputed autosub-weight equivalence;
+- candidate expansion success, forged-result and monotonicity regressions;
 - solver-limit/error/infeasibility separation;
-- solver-bound/incumbent/selected-objective reconciliation;
-- tactical tie-policy enforcement;
 - rational numeric normalization; and
 - decision replay integrity/type-laundering regressions.
 
