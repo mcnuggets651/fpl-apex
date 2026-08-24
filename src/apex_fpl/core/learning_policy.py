@@ -84,6 +84,8 @@ class MetricPromotionRule:
             raise ValueError(f"{self.metric.value} cannot govern target {self.target.value}")
         if not isinstance(self.direction, MetricDirection):
             raise ValueError("promotion rule direction must be typed")
+        if not isinstance(self.minimum_improvement, ExactMetricValue):
+            raise ValueError("promotion minimum improvement must be ExactMetricValue")
         cohort = str(self.cohort).strip()
         if not cohort:
             raise ValueError("promotion rule cohort cannot be empty")
@@ -131,12 +133,20 @@ class LearningEvaluationPolicy:
             object.__setattr__(self, label, text)
         if not isinstance(self.qualification_state, LearningPolicyQualification):
             raise ValueError("learning policy qualification must be typed")
+        if any(not isinstance(row, MetricRequirement) for row in self.requirements):
+            raise ValueError("learning policy requirements must be typed MetricRequirement rows")
+        if any(not isinstance(row, MetricPromotionRule) for row in self.promotion_rules):
+            raise ValueError("learning policy promotion rules must be typed MetricPromotionRule rows")
         available = aware_iso(self.first_available_at, label="learning policy first_available_at")
         seasons = tuple(sorted({str(item).strip() for item in self.valid_seasons if str(item).strip()}))
         if not seasons:
             raise ValueError("learning policy requires at least one valid season")
-        requirements = tuple(sorted(self.requirements, key=lambda row: (row.metric.value, row.target.value, row.cohort)))
-        rules = tuple(sorted(self.promotion_rules, key=lambda row: (row.metric.value, row.target.value, row.cohort)))
+        requirements = tuple(
+            sorted(self.requirements, key=lambda row: (row.metric.value, row.target.value, row.cohort))
+        )
+        rules = tuple(
+            sorted(self.promotion_rules, key=lambda row: (row.metric.value, row.target.value, row.cohort))
+        )
         if not requirements:
             raise ValueError("learning policy requires at least one metric requirement")
         if len({row.key for row in requirements}) != len(requirements):
