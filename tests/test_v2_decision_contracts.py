@@ -117,6 +117,35 @@ def test_receding_horizon_policy_requires_continuation_and_chip_option_artifacts
         )
 
 
+def test_qualified_policy_without_price_and_candidate_policy_is_not_production_qualified(
+    tmp_path: Path,
+) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    policy = DecisionPolicy(
+        policy_name="incomplete-over-time",
+        policy_version="1",
+        season="2026-2027",
+        qualification_state=DecisionPolicyQualificationState.QUALIFIED,
+        qualification_artifact_id=_artifact(store, b"qualification"),
+        first_available_at="2026-08-24T00:00:00Z",
+        evaluation_mode=DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION,
+        objective_policy=DecisionObjectivePolicy.MAX_EXPECTED_FPL_POINTS_OVER_TIME,
+        horizon_gameweeks=6,
+        continuation_value_artifact_id=_artifact(store, b"continuation"),
+        chip_option_value_artifact_id=_artifact(store, b"chip-option"),
+        price_policy_artifact_id=None,
+        candidate_policy_artifact_id=None,
+        tie_break_policy="v1",
+    )
+    assert policy.production_qualified is False
+    with pytest.raises(ValueError, match="champion must be production qualified"):
+        DecisionPolicyRegistry(
+            season="2026-2027",
+            policies=(policy,),
+            champion_policy_id=policy.decision_policy_id,
+        )
+
+
 def test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified(
     tmp_path: Path,
 ) -> None:
@@ -124,6 +153,8 @@ def test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified(
     qualification = _artifact(store, b"qualification")
     continuation = _artifact(store, b"continuation")
     chip_option = _artifact(store, b"chip-option")
+    price_policy = _artifact(store, b"price-policy")
+    candidate_policy = _artifact(store, b"candidate-policy")
     policy = DecisionPolicy(
         policy_name="qualified-over-time",
         policy_version="1",
@@ -136,10 +167,11 @@ def test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified(
         horizon_gameweeks=6,
         continuation_value_artifact_id=continuation,
         chip_option_value_artifact_id=chip_option,
-        price_policy_artifact_id=None,
-        candidate_policy_artifact_id=None,
+        price_policy_artifact_id=price_policy,
+        candidate_policy_artifact_id=candidate_policy,
         tie_break_policy="v1",
     )
+    assert policy.production_qualified is True
     registry = DecisionPolicyRegistry(
         season="2026-2027",
         policies=(policy,),
