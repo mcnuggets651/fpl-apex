@@ -1,0 +1,7 @@
+schema_version: 1
+season: "2026-2027"
+
+# Deliberately empty. No evaluation/promotion policy becomes production authority
+# until immutable qualification and promotion-rule evidence exists.
+champion_policy_id: null
+policies: []
