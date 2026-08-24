@@ -8,6 +8,7 @@ sources:
     capability: football_news
     criticality: QUALITY_REQUIRED
     admission_state: SHADOW
+    allowed_hosts: [premierleague.com]
     adapter_schema: html_article_index
     adapter_version: "1"
     retention_understood: true
@@ -19,6 +20,7 @@ sources:
     capability: football_news
     criticality: QUALITY_REQUIRED
     admission_state: SHADOW
+    allowed_hosts: [bbc.co.uk, bbci.co.uk]
     adapter_schema: rss
     adapter_version: "1"
     retention_understood: true
@@ -30,6 +32,7 @@ sources:
     capability: football_news
     criticality: QUALITY_REQUIRED
     admission_state: SHADOW
+    allowed_hosts: [skysports.com]
     adapter_schema: rss
     adapter_version: "1"
     retention_understood: true
@@ -41,6 +44,7 @@ sources:
     capability: predicted_lineup
     criticality: ADVISORY
     admission_state: SHADOW
+    allowed_hosts: [fantasyfootballscout.co.uk]
     adapter_schema: governed_web_extract
     adapter_version: "1"
     retention_understood: true
@@ -52,6 +56,7 @@ sources:
     capability: predicted_lineup
     criticality: ADVISORY
     admission_state: SHADOW
+    allowed_hosts: [allaboutfpl.com]
     adapter_schema: governed_web_extract
     adapter_version: "1"
     retention_understood: true
@@ -63,6 +68,7 @@ sources:
     capability: predicted_lineup
     criticality: ADVISORY
     admission_state: SHADOW
+    allowed_hosts: [onefpl.com]
     adapter_schema: governed_web_extract
     adapter_version: "1"
     retention_understood: true
@@ -74,6 +80,7 @@ sources:
     capability: transfer_intelligence
     criticality: ADVISORY
     admission_state: SHADOW
+    allowed_hosts: [t.me]
     adapter_schema: governed_channel_extract
     adapter_version: "1"
     retention_understood: true
