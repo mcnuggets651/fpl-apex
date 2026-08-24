@@ -18,6 +18,7 @@ from .learning_common import (
     EvaluationMetric,
     ExactMetricValue,
     LearningEvaluationStatus,
+    LearningUseMode,
     MetricDirection,
     artifact_id,
     positive_int,
@@ -87,15 +88,18 @@ class ModelEvaluationReport:
     evaluation_dataset_id: EvaluationDatasetId
     observation_set_id: EvaluationObservationSetId
     policy_id: LearningPolicyId
+    use_mode: LearningUseMode
     metrics: tuple[EvaluationMetricResult, ...]
     status: LearningEvaluationStatus
     blockers: tuple[str, ...]
     source_artifact_ids: tuple[str, ...]
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self) -> None:
-        if self.schema_version != 2:
+        if self.schema_version != 3:
             raise ValueError("unsupported ModelEvaluationReport schema_version")
+        if not isinstance(self.use_mode, LearningUseMode):
+            raise ValueError("model evaluation use_mode must be typed")
         if not isinstance(self.status, LearningEvaluationStatus):
             raise ValueError("model evaluation status must be typed")
         metrics = tuple(sorted(self.metrics, key=lambda row: (row.metric.value, row.target.value, row.cohort)))
@@ -124,6 +128,7 @@ class ModelEvaluationReport:
             "evaluation_dataset_id": str(self.evaluation_dataset_id),
             "observation_set_id": str(self.observation_set_id),
             "policy_id": str(self.policy_id),
+            "use_mode": self.use_mode.value,
             "metrics": [row.semantic_payload() for row in self.metrics],
             "status": self.status.value,
             "blockers": list(self.blockers),
@@ -188,17 +193,20 @@ class ModelComparisonReport:
     candidate_evaluation_id: ModelEvaluationId
     incumbent_evaluation_id: ModelEvaluationId
     policy_id: LearningPolicyId
+    use_mode: LearningUseMode
     comparisons: tuple[MetricComparisonResult, ...]
     status: LearningEvaluationStatus
     blockers: tuple[str, ...]
     source_artifact_ids: tuple[str, ...]
-    schema_version: int = 1
+    schema_version: int = 2
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if self.schema_version != 2:
             raise ValueError("unsupported ModelComparisonReport schema_version")
         if self.candidate_model_id == self.incumbent_model_id:
             raise ValueError("comparison candidate cannot equal incumbent")
+        if not isinstance(self.use_mode, LearningUseMode):
+            raise ValueError("model comparison use_mode must be typed")
         comparisons = tuple(sorted(self.comparisons, key=lambda row: (row.metric.value, row.target.value, row.cohort)))
         if len({row.key for row in comparisons}) != len(comparisons):
             raise ValueError("model comparison contains duplicate metric/cohort rows")
@@ -224,6 +232,7 @@ class ModelComparisonReport:
             "candidate_evaluation_id": str(self.candidate_evaluation_id),
             "incumbent_evaluation_id": str(self.incumbent_evaluation_id),
             "policy_id": str(self.policy_id),
+            "use_mode": self.use_mode.value,
             "comparisons": [row.semantic_payload() for row in self.comparisons],
             "status": self.status.value,
             "blockers": list(self.blockers),
