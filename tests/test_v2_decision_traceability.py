@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import re
 
 import yaml
 
@@ -47,6 +48,11 @@ def _repo_path_exists(value: str) -> bool:
     return (ROOT / value).exists()
 
 
+def _declared_invariants() -> set[str]:
+    text = (ROOT / "docs" / "APEX_INVARIANTS.md").read_text(encoding="utf-8")
+    return set(re.findall(r"\*\*(INV-[A-Z0-9-]+)\*\*", text))
+
+
 def test_slice8_proof_obligations_reference_existing_test_functions() -> None:
     registry = ProofRegistry.load(ROOT / "config" / "proof_obligations.yaml")
     by_id = registry.by_id()
@@ -72,6 +78,20 @@ def test_slice8_critical_requirements_have_real_routes_and_registered_proofs() -
         assert all(_repo_path_exists(path) for path in requirement.implementation)
         assert all((ROOT / path).exists() for path in requirement.tests)
         assert requirement.proof_obligations
+
+
+def test_slice8_critical_requirements_reference_declared_invariants() -> None:
+    proof_registry = ProofRegistry.load(ROOT / "config" / "proof_obligations.yaml")
+    matrix = RequirementsTraceabilityMatrix.load(
+        ROOT / "config" / "requirements.yaml",
+        proof_registry=proof_registry,
+    )
+    by_id = {row.requirement_id: row for row in matrix.requirements}
+    declared = _declared_invariants()
+    assert declared
+    for requirement_id in sorted(DECISION_REQUIREMENT_IDS):
+        missing = sorted(set(by_id[requirement_id].invariants) - declared)
+        assert missing == [], f"{requirement_id} references missing invariants: {missing}"
 
 
 def test_slice8_traceability_yaml_contains_no_legacy_placeholder_decision_tests() -> None:
