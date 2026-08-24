@@ -88,6 +88,48 @@ def _verify(store: ArtifactStore, artifact_ids: tuple[str, ...], *, label: str) 
             raise ValueError(f"{label} missing/corrupt: {artifact_id}")
 
 
+def _matching_promotion_sources(
+    *,
+    promotion_id: str,
+    source_artifact_ids: tuple[str, ...],
+    store: ArtifactStore,
+) -> tuple[str, ...]:
+    matches: list[str] = []
+    for source_artifact_id in source_artifact_ids:
+        try:
+            load_learning_object(
+                source_artifact_id,
+                store=store,
+                expected_object_type="MODEL_PROMOTION_CERTIFICATE",
+                expected_semantic_id=promotion_id,
+            )
+        except (ValueError, FileNotFoundError):
+            continue
+        matches.append(source_artifact_id)
+    return tuple(matches)
+
+
+def _verify_registry_promotion_binding(
+    *,
+    promotion_id: object,
+    source_artifact_ids: tuple[str, ...],
+    store: ArtifactStore,
+) -> None:
+    if promotion_id is None:
+        return
+    if not isinstance(promotion_id, str) or not promotion_id.strip():
+        raise ValueError("model registry generation has invalid promotion_id")
+    matches = _matching_promotion_sources(
+        promotion_id=promotion_id,
+        source_artifact_ids=source_artifact_ids,
+        store=store,
+    )
+    if len(matches) != 1:
+        raise ValueError(
+            "model registry champion must bind exactly one retained promotion certificate artifact"
+        )
+
+
 def store_learning_object(
     value: LearningObject,
     *,
@@ -101,6 +143,12 @@ def store_learning_object(
     sources = _source_artifacts(value)
     _verify(store, parents, label="learning parent artifact")
     _verify(store, sources, label="learning source artifact")
+    if isinstance(value, ModelRegistryGeneration):
+        _verify_registry_promotion_binding(
+            promotion_id=(None if value.promotion_id is None else str(value.promotion_id)),
+            source_artifact_ids=sources,
+            store=store,
+        )
     payload = value.semantic_payload()
     semantic_id = _semantic_id(value)
     if canonical_sha256(payload) != semantic_id:
@@ -120,7 +168,14 @@ def store_learning_object(
         schema_name="apex-stored-learning-object",
         schema_version="1",
     )
-    return StoredLearningObject(object_type, semantic_id, ref.artifact_id, payload, parents, sources)
+    return StoredLearningObject(
+        object_type,
+        semantic_id,
+        ref.artifact_id,
+        payload,
+        parents,
+        sources,
+    )
 
 
 def load_learning_object(
@@ -165,4 +220,17 @@ def load_learning_object(
         raise ValueError("stored learning object does not match expected semantic identity")
     _verify(store, parent_ids, label="stored learning parent artifact")
     _verify(store, source_ids, label="stored learning source artifact")
-    return StoredLearningObject(object_type, semantic_id, artifact_id, dict(payload), parent_ids, source_ids)
+    if object_type == "MODEL_REGISTRY_GENERATION":
+        _verify_registry_promotion_binding(
+            promotion_id=payload.get("promotion_id"),
+            source_artifact_ids=source_ids,
+            store=store,
+        )
+    return StoredLearningObject(
+        object_type,
+        semantic_id,
+        artifact_id,
+        dict(payload),
+        parent_ids,
+        source_ids,
+    )
