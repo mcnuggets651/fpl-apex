@@ -1,5 +1,14 @@
 """Dependency-free constitutional core for Apex V2."""
 
+from .assurance import (
+    AssuranceParityStatus,
+    IndependentAssuranceReport,
+    ReferenceCheckResult,
+    ReferenceMechanicsCertificate,
+    ReferenceMechanicsCheck,
+    ReferenceSolverCertificate,
+    ReferenceSolverStatus,
+)
 from .canonical import canonical_json_bytes, canonical_sha256
 from .decision import (
     DEFAULT_NUMERIC_POLICY_ID,
@@ -85,6 +94,7 @@ from .ids import (
     FeatureSnapshotId,
     ForecastId,
     GlobalWorldId,
+    IndependentAssuranceReportId,
     InitialManagerBasisId,
     ManagerPublicSnapshotId,
     ManagerStateId,
@@ -92,6 +102,9 @@ from .ids import (
     PersonId,
     PredictionBatchId,
     RawCaptureId,
+    ReferenceMechanicsCertificateId,
+    ReferenceSolverCertificateId,
+    ReferenceSolverWorkerId,
     ReleaseId,
     RobustnessReportId,
     RuleSetId,
@@ -138,6 +151,10 @@ from .proofs import (
     ReleaseCertificate,
     ReleasePolicy,
 )
+from .reference_solver_worker import (
+    ReferenceSolverWorkerArtifact,
+    ReferenceSolverWorkerQualification,
+)
 from .reliability import ReliabilityContext, ReliabilityQualification
 from .rules import OfficialRuleSource, RuleDefinition, RuleSet
 from .scenarios import (
@@ -169,6 +186,7 @@ __all__ = [
     "ActionRobustnessMetrics",
     "AssuranceCase",
     "AssuranceClaim",
+    "AssuranceParityStatus",
     "BundleId",
     "CandidateExpansionCertificate",
     "CandidatePlayer",
@@ -230,6 +248,8 @@ __all__ = [
     "IdentityResolution",
     "IdentityResolutionState",
     "IdentityWitness",
+    "IndependentAssuranceReport",
+    "IndependentAssuranceReportId",
     "InitialManagerBasisId",
     "JointPlayerGameweekOutcome",
     "JointScenario",
@@ -264,6 +284,16 @@ __all__ = [
     "ProofStatus",
     "RationalValue",
     "RawCaptureId",
+    "ReferenceCheckResult",
+    "ReferenceMechanicsCertificate",
+    "ReferenceMechanicsCertificateId",
+    "ReferenceMechanicsCheck",
+    "ReferenceSolverCertificate",
+    "ReferenceSolverCertificateId",
+    "ReferenceSolverStatus",
+    "ReferenceSolverWorkerArtifact",
+    "ReferenceSolverWorkerId",
+    "ReferenceSolverWorkerQualification",
     "ReleaseCertificate",
     "ReleaseId",
     "ReleasePolicy",
