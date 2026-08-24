@@ -81,11 +81,10 @@ class ModelRegistryGeneration:
     champion_model_id: ModelArtifactId | None
     promotion_id: ModelPromotionId | None
     source_artifact_ids: tuple[str, ...]
-    promotion_artifact_id: str | None = None
-    schema_version: int = 3
+    schema_version: int = 2
 
     def __post_init__(self) -> None:
-        if self.schema_version != 3:
+        if self.schema_version != 2:
             raise ValueError("unsupported ModelRegistryGeneration schema_version")
         season = str(self.season).strip()
         if not season:
@@ -98,21 +97,13 @@ class ModelRegistryGeneration:
             raise ValueError("first model registry generation cannot have parent")
         if generation > 1 and self.parent_generation_id is None:
             raise ValueError("later model registry generation requires parent identity")
-        promotion_artifact = self.promotion_artifact_id
-        if promotion_artifact is not None:
-            promotion_artifact = artifact_id(
-                promotion_artifact,
-                label="model registry promotion artifact",
-            )
         if self.champion_model_id is not None:
             if self.champion_model_id not in models:
                 raise ValueError("model registry champion must be registered")
-            if self.promotion_id is None or promotion_artifact is None:
-                raise ValueError(
-                    "model registry champion requires promotion certificate identity and artifact"
-                )
-        elif self.promotion_id is not None or promotion_artifact is not None:
-            raise ValueError("promotion evidence cannot exist without resulting champion")
+            if self.promotion_id is None:
+                raise ValueError("model registry champion requires promotion certificate identity")
+        elif self.promotion_id is not None:
+            raise ValueError("promotion certificate cannot exist without resulting champion")
         sources = tuple(
             sorted(
                 {
@@ -123,12 +114,9 @@ class ModelRegistryGeneration:
         )
         if not sources:
             raise ValueError("model registry generation requires immutable source evidence")
-        if promotion_artifact is not None and promotion_artifact not in sources:
-            raise ValueError("model registry source lineage must include promotion artifact")
         object.__setattr__(self, "season", season)
         object.__setattr__(self, "generation", generation)
         object.__setattr__(self, "registered_model_ids", models)
-        object.__setattr__(self, "promotion_artifact_id", promotion_artifact)
         object.__setattr__(self, "source_artifact_ids", sources)
 
     def semantic_payload(self) -> dict[str, object]:
@@ -145,7 +133,6 @@ class ModelRegistryGeneration:
                 None if self.champion_model_id is None else str(self.champion_model_id)
             ),
             "promotion_id": None if self.promotion_id is None else str(self.promotion_id),
-            "promotion_artifact_id": self.promotion_artifact_id,
             "source_artifact_ids": list(self.source_artifact_ids),
         }
 
