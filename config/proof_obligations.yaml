@@ -90,6 +90,36 @@ proof_obligations:
     release_policy: REQUIRED
     owner: core.manager_state
 
+  - proof_id: PO-SOURCE-GOVERNANCE-001
+    claim: Every production source capability has explicit criticality, multidimensional health, host-bound provenance, verified admission evidence and only prequalified degradation/freshness behavior; shadow sources remain observe-only.
+    proof_class: PROVENANCE_ASSERTION
+    scope: evidence
+    required_evidence: [SourceRegistry, SourceCapability, SourceHealth, source_qualification_certificate, qualified_degradation_profile, qualified_deadline_freshness_policy]
+    required_tests: [test_v2_catalogue_starts_legacy_news_and_specialists_in_shadow, test_source_url_impersonation_and_unknown_player_fail_closed, test_qualified_source_with_missing_runtime_artifact_is_blocked, test_shadow_source_is_observe_only_even_when_all_health_dimensions_pass, test_shadow_promotion_requires_policy_metrics_and_zero_unqualified_shortcuts, test_missing_freshness_policy_is_unknown_not_implicitly_fresh]
+    failure_consequence: Block the affected source capability; an unqualified or unverifiable source cannot influence production.
+    release_policy: REQUIRED
+    owner: control.source_registry
+
+  - proof_id: PO-EVIDENCE-RELIABILITY-001
+    claim: Reliability used to weight evidence is qualified specifically for source, claim type, horizon and recency; missing calibration remains UNKNOWN with no numeric coefficient.
+    proof_class: EMPIRICAL_QUALIFICATION
+    scope: evidence
+    required_evidence: [ReliabilityContext, ReliabilityRegistry, qualification_artifact, calibration_sample_count]
+    required_tests: [test_missing_contextual_reliability_is_unknown_with_no_numeric_default, test_production_evidence_requires_verified_source_and_reliability_qualification]
+    failure_consequence: Retain the claim for audit/shadow use but prohibit weighted production influence.
+    release_policy: REQUIRED
+    owner: control.reliability_registry
+
+  - proof_id: PO-EVIDENCE-LEDGER-001
+    claim: External text can influence Apex only through constrained exact-ID structured claims backed by immutable raw artifacts and an append-only superseding evidence ledger; raw text never becomes executable instruction.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: evidence
+    required_evidence: [raw_source_artifact, EvidenceClaim, EvidenceLedger, parent_ledger_artifact, exact_Official_player_id, source_host_registration]
+    required_tests: [test_prompt_injection_text_stays_opaque_and_shadow_cannot_become_production, test_source_url_impersonation_and_unknown_player_fail_closed, test_append_only_ledger_preserves_parent_and_supersession_history, test_supersession_cannot_rewrite_another_player_claim]
+    failure_consequence: Quarantine affected evidence and block any decision that depends on it.
+    release_policy: REQUIRED
+    owner: control.evidence_ingestion
+
   - proof_id: PO-FPL-LEGALITY-001
     claim: The selected current action is legal under the sealed versioned RuleSet.
     proof_class: FORMAL_INVARIANT
