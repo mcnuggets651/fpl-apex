@@ -74,6 +74,8 @@ def _nonnegative_int(value: object, *, label: str) -> int:
 
 
 def _nonnegative_rational(value: RationalValue, *, label: str) -> None:
+    if not isinstance(value, RationalValue):
+        raise ValueError(f"{label} must be RationalValue")
     if value.numerator < 0:
         raise ValueError(f"{label} cannot be negative")
 
@@ -107,6 +109,8 @@ class ScenarioGeneratorArtifact:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported ScenarioGeneratorArtifact schema_version")
+        if not isinstance(self.qualification_state, ScenarioQualificationState):
+            raise ValueError("scenario generator qualification_state must be typed")
         for label in (
             "generator_name",
             "generator_version",
@@ -201,6 +205,8 @@ class JointPlayerGameweekOutcome:
     points: int
 
     def __post_init__(self) -> None:
+        if not isinstance(self.player_id, OfficialPlayerId):
+            raise ValueError("scenario outcome player_id must be OfficialPlayerId")
         _positive_int(self.gameweek, label="scenario outcome gameweek")
         if not isinstance(self.appeared, bool):
             raise ValueError("scenario outcome appeared must be boolean")
@@ -231,6 +237,8 @@ class JointScenario:
     def __post_init__(self) -> None:
         _positive_int(self.ordinal, label="scenario ordinal")
         _positive_int(self.weight, label="scenario weight")
+        if any(not isinstance(row, JointPlayerGameweekOutcome) for row in self.outcomes):
+            raise ValueError("joint scenario outcomes must be typed player-gameweek outcomes")
         outcomes = tuple(sorted(self.outcomes, key=lambda row: row.key))
         keys = [row.key for row in outcomes]
         if not outcomes or len(keys) != len(set(keys)):
@@ -267,6 +275,10 @@ class ScenarioSet:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported ScenarioSet schema_version")
+        if not isinstance(self.forecast_id, ForecastId):
+            raise ValueError("ScenarioSet forecast_id must be ForecastId")
+        if not isinstance(self.scenario_generator_id, ScenarioGeneratorId):
+            raise ValueError("ScenarioSet scenario_generator_id must be ScenarioGeneratorId")
         season = str(self.season).strip()
         rng = str(self.rng_algorithm).strip()
         if not season or not rng:
@@ -278,10 +290,16 @@ class ScenarioSet:
             for item in gameweeks
         ):
             raise ValueError("ScenarioSet requires positive integer gameweeks")
+        if any(not isinstance(item, OfficialPlayerId) for item in self.player_ids):
+            raise ValueError("ScenarioSet player_ids must be OfficialPlayerId values")
         players = tuple(sorted(set(self.player_ids)))
         if not players:
             raise ValueError("ScenarioSet requires player coverage")
+        if any(not isinstance(row, JointScenario) for row in self.scenarios):
+            raise ValueError("ScenarioSet scenarios must be JointScenario values")
         scenarios = tuple(sorted(self.scenarios, key=lambda row: row.ordinal))
+        if not scenarios:
+            raise ValueError("ScenarioSet requires at least one joint scenario")
         ordinals = [row.ordinal for row in scenarios]
         if ordinals != list(range(1, len(scenarios) + 1)):
             raise ValueError("ScenarioSet ordinals must be contiguous from one")
@@ -362,6 +380,8 @@ class ScenarioConvergencePolicy:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported ScenarioConvergencePolicy schema_version")
+        if not isinstance(self.qualification_state, ScenarioQualificationState):
+            raise ValueError("scenario convergence qualification_state must be typed")
         for label in ("policy_name", "policy_version", "season"):
             value = str(getattr(self, label)).strip()
             if not value:
@@ -471,6 +491,11 @@ class ActionRobustnessMetrics:
         if not action_id:
             raise ValueError("action robustness requires action_id")
         _positive_int(self.sample_count, label="action robustness sample_count")
+        if not isinstance(self.mean_points, RationalValue) or not isinstance(
+            self.lower_cvar_points,
+            RationalValue,
+        ):
+            raise ValueError("action robustness means/CVaR must be RationalValue")
         if isinstance(self.lower_quantile_points, bool) or not isinstance(
             self.lower_quantile_points, int
         ):
@@ -497,6 +522,8 @@ class ScenarioConvergenceCheckpoint:
 
     def __post_init__(self) -> None:
         _positive_int(self.sample_count, label="convergence sample_count")
+        if any(not isinstance(row, ActionRobustnessMetrics) for row in self.metrics):
+            raise ValueError("convergence metrics must be ActionRobustnessMetrics")
         metrics = tuple(sorted(self.metrics, key=lambda row: row.action_id))
         ids = tuple(row.action_id for row in metrics)
         if not metrics or len(ids) != len(set(ids)):
@@ -539,6 +566,14 @@ class RobustnessReport:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported RobustnessReport schema_version")
+        if not isinstance(self.decision_id, DecisionId):
+            raise ValueError("robustness report decision_id must be DecisionId")
+        if not isinstance(self.forecast_id, ForecastId):
+            raise ValueError("robustness report forecast_id must be ForecastId")
+        if not isinstance(self.scenario_set_id, ScenarioSetId):
+            raise ValueError("robustness report scenario_set_id must be ScenarioSetId")
+        if not isinstance(self.scenario_policy_id, ScenarioPolicyId):
+            raise ValueError("robustness report scenario_policy_id must be ScenarioPolicyId")
         if not isinstance(self.status, ScenarioConvergenceStatus):
             raise ValueError("robustness report status must be ScenarioConvergenceStatus")
         if not isinstance(self.xp_reconciled, bool):
@@ -546,6 +581,8 @@ class RobustnessReport:
         anchor = str(self.ev_anchor_action_id).strip()
         if not anchor:
             raise ValueError("robustness report requires EV anchor action")
+        if any(not isinstance(row, ScenarioConvergenceCheckpoint) for row in self.checkpoints):
+            raise ValueError("robustness report checkpoints must be typed")
         checkpoints = tuple(sorted(self.checkpoints, key=lambda row: row.sample_count))
         if len({row.sample_count for row in checkpoints}) != len(checkpoints):
             raise ValueError("robustness report contains duplicate checkpoints")
