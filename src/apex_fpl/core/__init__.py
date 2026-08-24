@@ -28,6 +28,7 @@ from .decision_policy import (
     DecisionPolicy,
     DecisionPolicyQualificationState,
 )
+from .decision_search import DecisionSearchFailure, DecisionSearchOutcome
 from .evidence import (
     EvidenceClaim,
     EvidenceClaimType,
@@ -173,6 +174,8 @@ __all__ = [
     "DecisionPolicyId",
     "DecisionPolicyQualificationState",
     "DecisionResult",
+    "DecisionSearchFailure",
+    "DecisionSearchOutcome",
     "DecisionUseMode",
     "DecisionWorldId",
     "DegradationDecision",
