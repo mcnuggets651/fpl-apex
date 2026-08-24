@@ -125,6 +125,30 @@ class IndependentAssuranceReportId(ApexId):
     kind = "independent_assurance_report_id"
 
 
+class OutcomeTruthRegistryId(ApexId):
+    kind = "outcome_truth_registry_id"
+
+
+class LearningPolicyId(ApexId):
+    kind = "learning_policy_id"
+
+
+class EvaluationDatasetId(ApexId):
+    kind = "evaluation_dataset_id"
+
+
+class ModelEvaluationId(ApexId):
+    kind = "model_evaluation_id"
+
+
+class ModelPromotionId(ApexId):
+    kind = "model_promotion_id"
+
+
+class ModelRegistryGenerationId(ApexId):
+    kind = "model_registry_generation_id"
+
+
 class BundleId(ApexId):
     kind = "bundle_id"
 
