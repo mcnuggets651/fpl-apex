@@ -100,8 +100,8 @@ def build_gameweek_values(
 
 
 def _lineup_limits(ruleset: RuleSet) -> tuple[dict[str, int], dict[str, int]]:
-    minimum_raw = ruleset.mapping("FPL-XI-MIN-POSITIONS-001")
-    maximum_raw = ruleset.mapping("FPL-XI-MAX-POSITIONS-001")
+    minimum_raw = ruleset.mapping("FPL-XI-POSITION-MIN-001")
+    maximum_raw = ruleset.mapping("FPL-XI-POSITION-MAX-001")
     minimum = {position: int(value) for position, value in minimum_raw.items()}
     maximum = {position: int(value) for position, value in maximum_raw.items()}
     return minimum, maximum
@@ -193,11 +193,17 @@ def _autosub_weights(
         p_appear = appearance[player_id]
         next_distribution: dict[tuple[int, int, int], Fraction] = {}
         for counts, probability in missing_distribution.items():
-            next_distribution[counts] = next_distribution.get(counts, Fraction(0, 1)) + probability * p_appear
+            next_distribution[counts] = (
+                next_distribution.get(counts, Fraction(0, 1))
+                + probability * p_appear
+            )
             missing = list(counts)
             missing[position_index] += 1
             key = tuple(missing)
-            next_distribution[key] = next_distribution.get(key, Fraction(0, 1)) + probability * (1 - p_appear)
+            next_distribution[key] = (
+                next_distribution.get(key, Fraction(0, 1))
+                + probability * (1 - p_appear)
+            )
         missing_distribution = next_distribution
 
     planned_counts = {
@@ -343,7 +349,10 @@ def optimise_squad_submission(
                     ruleset=ruleset,
                 )
                 autosub = sum(
-                    (weights[player_id] * expected[player_id] for player_id in bench_ids),
+                    (
+                        weights[player_id] * expected[player_id]
+                        for player_id in bench_ids
+                    ),
                     Fraction(0, 1),
                 )
                 candidate = (autosub, tuple(-int(pid) for pid in order))
@@ -382,7 +391,9 @@ def optimise_squad_submission(
             tuple(-int(pid) for pid in bench_order),
         )
         row = (objective, tie_key, submission)
-        if best is None or row[0] > best[0] or (row[0] == best[0] and row[1] > best[1]):
+        if best is None or row[0] > best[0] or (
+            row[0] == best[0] and row[1] > best[1]
+        ):
             best = row
     if best is None:
         raise ValueError("fixed squad has no legal RuleSet XI")
