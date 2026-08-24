@@ -9,11 +9,13 @@ import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.core.decision import RationalValue
+from apex_fpl.core.forecast import Forecast
 from apex_fpl.core.ids import ScenarioGeneratorId, ScenarioPolicyId
 from apex_fpl.core.scenarios import (
     ScenarioConvergencePolicy,
     ScenarioGeneratorArtifact,
     ScenarioQualificationState,
+    ScenarioSet,
 )
 
 
@@ -127,6 +129,46 @@ class ScenarioGovernanceRegistry:
             if self.champion_policy_id != policy.scenario_policy_id:
                 raise ValueError("production scenario convergence policy is not registered champion")
 
+    def verify_runtime_contract(
+        self,
+        scenario_set: ScenarioSet,
+        *,
+        generator: ScenarioGeneratorArtifact,
+        policy: ScenarioConvergencePolicy,
+        forecast: Forecast,
+        store: ArtifactStore,
+        production: bool,
+    ) -> None:
+        """Bind one sealed ScenarioSet to its registered generator/policy and Forecast."""
+
+        if scenario_set.season != self.season or forecast.season != self.season:
+            raise ValueError("scenario runtime registry/Forecast/ScenarioSet season mismatch")
+        if scenario_set.forecast_id != forecast.forecast_id:
+            raise ValueError("ScenarioSet does not bind to supplied Forecast identity")
+        if scenario_set.scenario_generator_id != generator.scenario_generator_id:
+            raise ValueError("ScenarioSet generator identity does not match registered generator")
+        if scenario_set.rng_algorithm != generator.rng_algorithm:
+            raise ValueError("ScenarioSet RNG identity does not match registered generator")
+        if production and not forecast.production_eligible:
+            raise ValueError("production scenario evidence requires a production-eligible Forecast")
+
+        horizon_span = max(scenario_set.gameweeks) - min(scenario_set.gameweeks) + 1
+        generator.require_valid_for(
+            season=self.season,
+            forecast_cutoff=forecast.feature_cutoff,
+            horizon_gameweeks=horizon_span,
+            production=production,
+        )
+        policy.require_available_for(
+            season=self.season,
+            cutoff=forecast.feature_cutoff,
+            production=production,
+        )
+        self.verify_generator_artifacts(generator, store=store, production=production)
+        self.verify_policy_artifacts(policy, store=store, production=production)
+        for artifact_id in scenario_set.source_artifact_ids:
+            store.read_bytes(artifact_id)
+
 
 def _objects(value: object, *, label: str) -> list[dict[str, object]]:
     if value is None:
@@ -139,12 +181,24 @@ def _objects(value: object, *, label: str) -> list[dict[str, object]]:
 def _rv(value: object, *, label: str) -> RationalValue:
     if not isinstance(value, dict):
         raise ValueError(f"{label} must be rational object")
-    return RationalValue(int(value["numerator"]), int(value["denominator"]))
+    numerator = value.get("numerator")
+    denominator = value.get("denominator")
+    if isinstance(numerator, bool) or not isinstance(numerator, int):
+        raise ValueError(f"{label} numerator must be integer")
+    if isinstance(denominator, bool) or not isinstance(denominator, int):
+        raise ValueError(f"{label} denominator must be integer")
+    return RationalValue(numerator, denominator)
+
+
+def _int(value: object, *, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{label} must be integer")
+    return value
 
 
 def load_scenario_governance_registry(path: str | Path) -> ScenarioGovernanceRegistry:
     payload = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    if not isinstance(payload, dict) or int(payload.get("schema_version", -1)) != 1:
+    if not isinstance(payload, dict) or _int(payload.get("schema_version"), label="schema_version") != 1:
         raise ValueError("scenario governance registry requires schema_version 1")
     season = str(payload.get("season") or "").strip()
     if not season:
@@ -169,7 +223,10 @@ def load_scenario_governance_registry(path: str | Path) -> ScenarioGovernanceReg
             valid_seasons=tuple(str(item) for item in (row.get("valid_seasons") or [])),
             trained_through=str(row.get("trained_through") or ""),
             first_available_at=str(row.get("first_available_at") or ""),
-            max_horizon_gameweeks=int(row.get("max_horizon_gameweeks") or 0),
+            max_horizon_gameweeks=_int(
+                row.get("max_horizon_gameweeks"),
+                label="max_horizon_gameweeks",
+            ),
         )
         for row in _objects(payload.get("generators"), label="scenario generators")
     )
@@ -187,10 +244,16 @@ def load_scenario_governance_registry(path: str | Path) -> ScenarioGovernanceReg
                 else str(row["qualification_artifact_id"])
             ),
             first_available_at=str(row.get("first_available_at") or ""),
-            checkpoint_counts=tuple(int(item) for item in row.get("checkpoint_counts") or []),
-            max_scenarios=int(row.get("max_scenarios") or 0),
-            cvar_alpha_bps=int(row.get("cvar_alpha_bps") or 0),
-            lower_quantile_bps=int(row.get("lower_quantile_bps") or 0),
+            checkpoint_counts=tuple(
+                _int(item, label="checkpoint_count")
+                for item in (row.get("checkpoint_counts") or [])
+            ),
+            max_scenarios=_int(row.get("max_scenarios"), label="max_scenarios"),
+            cvar_alpha_bps=_int(row.get("cvar_alpha_bps"), label="cvar_alpha_bps"),
+            lower_quantile_bps=_int(
+                row.get("lower_quantile_bps"),
+                label="lower_quantile_bps",
+            ),
             mean_tolerance=_rv(row.get("mean_tolerance"), label="mean_tolerance"),
             cvar_tolerance=_rv(row.get("cvar_tolerance"), label="cvar_tolerance"),
             tail_tolerance=_rv(row.get("tail_tolerance"), label="tail_tolerance"),
