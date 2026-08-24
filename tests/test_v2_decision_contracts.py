@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -84,12 +85,10 @@ def test_empty_registry_has_no_fabricated_production_decision_policy() -> None:
 
 def test_decision_policy_identity_is_part_of_decision_input_identity() -> None:
     first = _shadow_policy()
-    second = DecisionPolicy(
-        **{
-            **first.__dict__,
-            "policy_version": "2",
-            "tie_break_policy": "lexicographic-official-id-v2",
-        }
+    second = replace(
+        first,
+        policy_version="2",
+        tie_break_policy="lexicographic-official-id-v2",
     )
     assert first.decision_policy_id != second.decision_policy_id
     assert (
