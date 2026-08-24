@@ -1,4 +1,4 @@
-"""Admission registry for Apex V2 offline learning policies."""
+"""Admission and replay registry for Apex V2 offline learning policies."""
 
 from __future__ import annotations
 
@@ -52,6 +52,15 @@ class LearningPolicyRegistry:
         object.__setattr__(self, "season", season)
         object.__setattr__(self, "policies", policies)
 
+    def semantic_payload(self) -> dict[str, object]:
+        return {
+            "schema_name": "apex-learning-policy-registry",
+            "schema_version": self.schema_version,
+            "season": self.season,
+            "champion_policy_id": None if self.champion_policy_id is None else str(self.champion_policy_id),
+            "policies": [row.semantic_payload() for row in self.policies],
+        }
+
     def get(self, policy_id: LearningPolicyId) -> LearningEvaluationPolicy | None:
         return next((row for row in self.policies if row.policy_id == policy_id), None)
 
@@ -94,6 +103,12 @@ def _strict_int(value: object, *, label: str) -> int:
     return value
 
 
+def _strict_bool(value: object, *, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be boolean")
+    return value
+
+
 def _rows(value: object, *, label: str) -> list[dict[str, object]]:
     if value is None:
         return []
@@ -111,8 +126,7 @@ def _metric_value(value: object, *, label: str) -> ExactMetricValue:
     )
 
 
-def load_learning_policy_registry(path: str | Path) -> LearningPolicyRegistry:
-    payload = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+def _registry_from_raw(payload: object) -> LearningPolicyRegistry:
     if not isinstance(payload, dict) or _strict_int(payload.get("schema_version"), label="schema_version") != 1:
         raise ValueError("learning policy registry requires schema_version 1")
     season = str(payload.get("season") or "").strip()
@@ -126,7 +140,7 @@ def load_learning_policy_registry(path: str | Path) -> LearningPolicyRegistry:
                 target=OutcomeTarget(str(item.get("target") or "")),
                 cohort=str(item.get("cohort") or ""),
                 minimum_cases=_strict_int(item.get("minimum_cases"), label="minimum_cases"),
-                require_interval=bool(item.get("require_interval", False)),
+                require_interval=_strict_bool(item.get("require_interval", False), label="require_interval"),
             )
             for item in _rows(row.get("requirements"), label="metric requirements")
         )
@@ -136,11 +150,11 @@ def load_learning_policy_registry(path: str | Path) -> LearningPolicyRegistry:
                 target=OutcomeTarget(str(item.get("target") or "")),
                 cohort=str(item.get("cohort") or ""),
                 direction=MetricDirection(str(item.get("direction") or "")),
-                minimum_improvement=_metric_value(
-                    item.get("minimum_improvement"),
-                    label="minimum_improvement",
+                minimum_improvement=_metric_value(item.get("minimum_improvement"), label="minimum_improvement"),
+                require_interval_superiority=_strict_bool(
+                    item.get("require_interval_superiority", False),
+                    label="require_interval_superiority",
                 ),
-                require_interval_superiority=bool(item.get("require_interval_superiority", False)),
             )
             for item in _rows(row.get("promotion_rules"), label="promotion rules")
         )
@@ -163,3 +177,17 @@ def load_learning_policy_registry(path: str | Path) -> LearningPolicyRegistry:
         policies=tuple(policies),
         champion_policy_id=None if champion_raw is None else LearningPolicyId(str(champion_raw)),
     )
+
+
+def load_learning_policy_registry_bytes(content: bytes) -> LearningPolicyRegistry:
+    if not isinstance(content, bytes):
+        raise TypeError("learning policy registry content must be bytes")
+    try:
+        payload = yaml.safe_load(content.decode("utf-8")) or {}
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise ValueError("learning policy registry is not valid UTF-8 YAML") from exc
+    return _registry_from_raw(payload)
+
+
+def load_learning_policy_registry(path: str | Path) -> LearningPolicyRegistry:
+    return load_learning_policy_registry_bytes(Path(path).read_bytes())
