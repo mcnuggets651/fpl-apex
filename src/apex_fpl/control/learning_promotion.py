@@ -9,6 +9,7 @@ from apex_fpl.control.learning_policy_registry import (
     LearningPolicyRegistry,
     load_learning_policy_registry_bytes,
 )
+from apex_fpl.control.learning_store import load_learning_object
 from apex_fpl.core.learning_common import (
     ExactMetricValue,
     LearningEvaluationStatus,
@@ -91,10 +92,20 @@ def compare_model_evaluations(
     production: bool,
 ) -> ModelComparisonReport:
     """Compare two complete reports under one retained predeclared policy authority."""
-
     if not isinstance(production, bool):
         raise ValueError("production flag must be boolean")
-    _verify(store, (candidate_report_artifact_id, incumbent_report_artifact_id), label="evaluation report")
+    load_learning_object(
+        candidate_report_artifact_id,
+        store=store,
+        expected_object_type="MODEL_EVALUATION_REPORT",
+        expected_semantic_id=str(candidate.evaluation_id),
+    )
+    load_learning_object(
+        incumbent_report_artifact_id,
+        store=store,
+        expected_object_type="MODEL_EVALUATION_REPORT",
+        expected_semantic_id=str(incumbent.evaluation_id),
+    )
     _replay_policy_registry(
         registry=policy_registry,
         registry_artifact_id=policy_registry_artifact_id,
@@ -191,7 +202,9 @@ def issue_model_promotion_certificate(
     *,
     comparison: ModelComparisonReport,
     comparison_artifact_id: str,
+    candidate: ModelEvaluationReport,
     candidate_report_artifact_id: str,
+    incumbent: ModelEvaluationReport,
     incumbent_report_artifact_id: str,
     policy: LearningEvaluationPolicy,
     policy_registry: LearningPolicyRegistry,
@@ -200,7 +213,28 @@ def issue_model_promotion_certificate(
     store: ArtifactStore,
 ) -> ModelPromotionCertificate:
     """Issue a production promotion decision; comparison alone cannot mutate registry state."""
-
+    load_learning_object(
+        comparison_artifact_id,
+        store=store,
+        expected_object_type="MODEL_COMPARISON_REPORT",
+        expected_semantic_id=str(comparison.comparison_id),
+    )
+    load_learning_object(
+        candidate_report_artifact_id,
+        store=store,
+        expected_object_type="MODEL_EVALUATION_REPORT",
+        expected_semantic_id=str(candidate.evaluation_id),
+    )
+    load_learning_object(
+        incumbent_report_artifact_id,
+        store=store,
+        expected_object_type="MODEL_EVALUATION_REPORT",
+        expected_semantic_id=str(incumbent.evaluation_id),
+    )
+    if comparison.candidate_evaluation_id != candidate.evaluation_id:
+        raise ValueError("comparison does not bind supplied candidate evaluation")
+    if comparison.incumbent_evaluation_id != incumbent.evaluation_id:
+        raise ValueError("comparison does not bind supplied incumbent evaluation")
     _replay_policy_registry(
         registry=policy_registry,
         registry_artifact_id=policy_registry_artifact_id,
@@ -304,8 +338,18 @@ def apply_model_promotion(
     store: ArtifactStore,
 ) -> ModelRegistryGeneration:
     """CAS-style registry transition; stale writers and non-PROMOTE certificates fail."""
-
-    _verify(store, (current_generation_artifact_id, promotion_artifact_id), label="registry transition")
+    load_learning_object(
+        current_generation_artifact_id,
+        store=store,
+        expected_object_type="MODEL_REGISTRY_GENERATION",
+        expected_semantic_id=str(current.generation_id),
+    )
+    load_learning_object(
+        promotion_artifact_id,
+        store=store,
+        expected_object_type="MODEL_PROMOTION_CERTIFICATE",
+        expected_semantic_id=str(promotion.promotion_id),
+    )
     if expected_parent_generation_id != current.generation_id:
         raise ValueError("stale model-registry writer: expected parent identity does not match current")
     if promotion.decision is not ModelPromotionDecision.PROMOTE:
