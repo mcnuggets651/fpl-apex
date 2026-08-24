@@ -99,6 +99,23 @@ def test_tactical_policy_rejects_unimplemented_tie_break_semantics() -> None:
         replace(_shadow_policy(), tie_break_policy="lexicographic-official-id-v2")
 
 
+def test_tactical_policy_requires_exactly_one_gameweek_horizon() -> None:
+    with pytest.raises(ValueError, match="horizon_gameweeks == 1"):
+        replace(_shadow_policy(), horizon_gameweeks=2)
+
+
+def test_tactical_policy_rejects_semantic_artifacts_it_does_not_execute() -> None:
+    artifact = "sha256:" + "a" * 64
+    for field in (
+        "continuation_value_artifact_id",
+        "chip_option_value_artifact_id",
+        "price_policy_artifact_id",
+        "candidate_policy_artifact_id",
+    ):
+        with pytest.raises(ValueError, match="cannot declare unused policy artifacts"):
+            replace(_shadow_policy(), **{field: artifact})
+
+
 def test_receding_policy_tie_break_is_semantic_identity() -> None:
     artifact = "sha256:" + "a" * 64
     first = DecisionPolicy(
