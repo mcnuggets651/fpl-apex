@@ -20,7 +20,7 @@ class EvaluationObservation:
     case_id: str
     truth_case_id: str
     target: OutcomeTarget
-    predicted_value: ExactMetricValue
+    predicted_value: ExactMetricValue | None
     actual_value: ExactMetricValue
     interval_lower: ExactMetricValue | None = None
     interval_upper: ExactMetricValue | None = None
@@ -32,6 +32,10 @@ class EvaluationObservation:
             raise ValueError("evaluation observation requires case_id and truth_case_id")
         if not isinstance(self.target, OutcomeTarget):
             raise ValueError("evaluation observation target must be typed")
+        if self.predicted_value is None and (
+            self.interval_lower is not None or self.interval_upper is not None
+        ):
+            raise ValueError("missing prediction cannot carry a prediction interval")
         if (self.interval_lower is None) != (self.interval_upper is None):
             raise ValueError("evaluation observation interval requires both bounds")
         if self.interval_lower is not None and self.interval_upper is not None:
@@ -39,6 +43,10 @@ class EvaluationObservation:
                 raise ValueError("evaluation observation lower interval exceeds upper")
         object.__setattr__(self, "case_id", case_id)
         object.__setattr__(self, "truth_case_id", truth_case_id)
+
+    @property
+    def has_prediction(self) -> bool:
+        return self.predicted_value is not None
 
     def realized_truth_payload(self) -> dict[str, object]:
         return {
@@ -55,7 +63,7 @@ class EvaluationObservation:
             "case_id": self.case_id,
             "truth_case_id": self.truth_case_id,
             "target": self.target.value,
-            "predicted_value": self.predicted_value.semantic_payload(),
+            "predicted_value": metric(self.predicted_value),
             "actual_value": self.actual_value.semantic_payload(),
             "interval_lower": metric(self.interval_lower),
             "interval_upper": metric(self.interval_upper),
@@ -67,10 +75,10 @@ class EvaluationObservationSet:
     evaluation_dataset_id: EvaluationDatasetId
     evaluation_truth_set_id: EvaluationTruthSetId
     observations: tuple[EvaluationObservation, ...]
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self) -> None:
-        if self.schema_version != 2:
+        if self.schema_version != 3:
             raise ValueError("unsupported EvaluationObservationSet schema_version")
         observations = tuple(sorted(self.observations, key=lambda row: row.case_id))
         if not observations:
