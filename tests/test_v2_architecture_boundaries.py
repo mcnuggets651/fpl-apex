@@ -21,6 +21,40 @@ FEATURE_V2 = (
     ROOT / "src" / "apex_fpl" / "control" / "official_features.py",
     ROOT / "src" / "apex_fpl" / "control" / "outcome_truth_registry.py",
 )
+FORECAST_V2 = (
+    ROOT / "src" / "apex_fpl" / "control" / "forecast_model_registry.py",
+    ROOT / "src" / "apex_fpl" / "forecast" / "engine.py",
+    ROOT / "src" / "apex_fpl" / "forecast" / "targets.py",
+    ROOT / "src" / "apex_fpl" / "forecast" / "prediction_store.py",
+    ROOT / "src" / "apex_fpl" / "forecast" / "forecast_store.py",
+    ROOT / "src" / "apex_fpl" / "forecast" / "validation.py",
+)
+
+
+def _absolute_imports(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.extend(item.name for item in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            names.append(node.module or "")
+    return names
+
+
+def _forbidden_imports(
+    paths: tuple[Path, ...],
+    forbidden_modules: set[str],
+) -> list[str]:
+    violations: list[str] = []
+    for path in paths:
+        for name in _absolute_imports(path):
+            if any(
+                name == forbidden or name.startswith(forbidden + ".")
+                for forbidden in forbidden_modules
+            ):
+                violations.append(f"{path.name}: {name}")
+    return violations
 
 
 def test_constitutional_core_depends_only_on_stdlib_or_core() -> None:
@@ -58,22 +92,8 @@ def test_v2_manager_state_path_cannot_depend_on_v1_cache_services_or_dataframe_r
         "apex_fpl.services",
         "pandas",
     }
-    violations: list[str] = []
+    violations = _forbidden_imports(MANAGER_V2, forbidden_modules)
     for path in MANAGER_V2:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                names = [item.name for item in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                names = [node.module or ""]
-            else:
-                continue
-            for name in names:
-                if any(
-                    name == forbidden or name.startswith(forbidden + ".")
-                    for forbidden in forbidden_modules
-                ):
-                    violations.append(f"{path.name}: {name}")
         text = path.read_text(encoding="utf-8")
         for forbidden_symbol in ("CachedHttp", "services.team_state", "data.http"):
             if forbidden_symbol in text:
@@ -89,22 +109,8 @@ def test_v2_feature_path_has_no_network_wall_clock_dataframe_or_v1_service_depen
         "requests",
         "httpx",
     }
-    violations: list[str] = []
+    violations = _forbidden_imports(FEATURE_V2, forbidden_modules)
     for path in FEATURE_V2:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                names = [item.name for item in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                names = [node.module or ""]
-            else:
-                continue
-            for name in names:
-                if any(
-                    name == forbidden or name.startswith(forbidden + ".")
-                    for forbidden in forbidden_modules
-                ):
-                    violations.append(f"{path.name}: {name}")
         text = path.read_text(encoding="utf-8")
         for forbidden_symbol in (
             "CachedHttp",
@@ -112,6 +118,37 @@ def test_v2_feature_path_has_no_network_wall_clock_dataframe_or_v1_service_depen
             "datetime.utcnow(",
             "fetch_understat",
             "expected_minutes_override",
+        ):
+            if forbidden_symbol in text:
+                violations.append(f"{path.name}: {forbidden_symbol}")
+    assert violations == []
+
+
+def test_v2_forecast_path_has_no_network_wall_clock_dataframe_or_v1_model_dependency() -> None:
+    forbidden_modules = {
+        "apex_fpl.data",
+        "apex_fpl.services",
+        "apex_fpl.models",
+        "pandas",
+        "numpy",
+        "requests",
+        "httpx",
+    }
+    violations = _forbidden_imports(FORECAST_V2, forbidden_modules)
+    for path in FORECAST_V2:
+        text = path.read_text(encoding="utf-8")
+        for forbidden_symbol in (
+            "CachedHttp",
+            "datetime.now(",
+            "datetime.utcnow(",
+            "fetch_understat",
+            "expected_minutes_override",
+            "start_probability_override",
+            "appearance_probability_override",
+            "news_minutes_delta",
+            "news_start_probability_delta",
+            "fillna(1.0)",
+            "expected_minutes=70",
         ):
             if forbidden_symbol in text:
                 violations.append(f"{path.name}: {forbidden_symbol}")

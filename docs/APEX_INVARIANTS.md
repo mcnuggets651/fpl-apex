@@ -40,6 +40,14 @@
 - **INV-CROSS-SEASON-FEATURE-ID-REVIEWED** — prior-season player features attach to the active Official FPL player only through a reviewed PersonId/PersonLink, never a repeated name or assumed FPL ID continuity.
 - **INV-OUTCOME-TRUTH-EXPLICIT** — every calibration target has one explicit verified post-event truth authority or is marked UNRESOLVED; experiments cannot silently select a convenient truth provider.
 - **INV-EXPECTED-MINUTES-IS-MODEL-OUTPUT** — expected minutes is empirically qualifiable model output; feature engineering may expose status, history, preseason and evidence facts but cannot directly override expected minutes.
+- **INV-FORECAST-DISTRIBUTION-FIRST** — future player minutes and FPL points are represented by explicit probability distributions/scenarios; expected value is derived from those distributions rather than substituted for uncertainty.
+- **INV-FORECAST-RULESET-SCORED** — predictive models forecast football outcomes only; FPL points are compiled independently from those outcomes using the exact sealed season RuleSet.
+- **INV-FORECAST-SEALED-LINEAGE** — every Forecast binds exact FeatureSnapshotId, GlobalWorldId, RuleSetId, ModelArtifactId and PredictionBatchId, and forecast compilation exposes no network or wall-clock port.
+- **INV-FORECAST-OFFICIAL-TARGET-COVERAGE** — production prediction coverage exactly matches the current Official player-fixture universe for the declared horizon; hidden omissions, invented fixtures and altered position/team/opponent context fail closed.
+- **INV-FORECAST-MODEL-NO-HINDSIGHT** — a forecast model cannot be used before its declared training cutoff/availability or outside its registered season and horizon validity scope.
+- **INV-FORECAST-CHAMPION-QUALIFIED** — production forecast compilation requires the registered champion model, immutable parameters and a verifying empirical qualification artifact; repository configuration has no fabricated fallback champion.
+- **INV-FORECAST-ABSTENTION-EXPLICIT** — inability to forecast a target is represented as an explicit abstention; production cannot silently drop or neutral-fill an abstained Official target.
+- **INV-STRUCTURAL-ZERO-ONLY-CERTAINTY** — a degenerate future prediction is permitted only for a structurally certain zero-minute state such as official suspension/ineligibility; ordinary future minutes/performance cannot be presented as deterministic.
 - **INV-LEGAL-CURRENT-ACTION** — every published action passes independent RuleSet/state-transition verification.
 - **INV-NO-FALSE-GLOBAL-OPTIMALITY** — optimisation exactness is scoped to the certified universe and solver state.
 - **INV-EMPIRICAL-CLAIMS-QUALIFIED** — predictive claims enter production only through registered qualification.

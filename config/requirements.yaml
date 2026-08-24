@@ -80,6 +80,30 @@ requirements:
     tests: [tests/test_v2_point_in_time_features.py, tests/test_v2_feature_batches_minutes_history.py, tests/test_v2_architecture_boundaries.py]
     proof_obligations: [PO-FEATURE-TIME-TRAVEL-001, PO-OUTCOME-TRUTH-001, PO-MINUTES-FEATURE-INPUT-001, PO-ARTIFACT-INTEGRITY-001, PO-OFFICIAL-PLAYER-IDENTITY-001]
 
+  - requirement_id: REQ-SEALED-PROBABILISTIC-FORECAST
+    requirement: Every forecast is an immutable distribution-first transformation of one sealed FeatureSnapshot and one immutable model PredictionBatch over the exact Official player-fixture universe, with FPL points independently compiled under the sealed RuleSet.
+    critical: true
+    invariants: [INV-FORECAST-DISTRIBUTION-FIRST, INV-FORECAST-RULESET-SCORED, INV-FORECAST-SEALED-LINEAGE, INV-FORECAST-OFFICIAL-TARGET-COVERAGE, INV-FORECAST-ABSTENTION-EXPLICIT, INV-STRUCTURAL-ZERO-ONLY-CERTAINTY, INV-NO-FUTURE-CERTAINTY]
+    implementation: [src/apex_fpl/core/forecast.py, src/apex_fpl/forecast/targets.py, src/apex_fpl/forecast/prediction_store.py, src/apex_fpl/forecast/validation.py, src/apex_fpl/forecast/engine.py, src/apex_fpl/forecast/forecast_store.py]
+    tests: [tests/test_v2_probabilistic_forecast.py, tests/test_v2_architecture_boundaries.py]
+    proof_obligations: [PO-FORECAST-LINEAGE-001, PO-FORECAST-SCORING-001, PO-FORECAST-COVERAGE-001, PO-FOOTBALL-UNCERTAINTY-001, PO-ARTIFACT-INTEGRITY-001, PO-RULESET-PROVENANCE-001]
+
+  - requirement_id: REQ-FORECAST-QUALIFICATION
+    requirement: Production forecasts use only the registered empirically qualified champion model within its declared no-hindsight season and horizon validity scope; no default champion or hidden model fallback exists.
+    critical: true
+    invariants: [INV-EMPIRICAL-CLAIMS-QUALIFIED, INV-FORECAST-MODEL-NO-HINDSIGHT, INV-FORECAST-CHAMPION-QUALIFIED]
+    implementation: [src/apex_fpl/core/forecast.py, src/apex_fpl/control/forecast_model_registry.py, src/apex_fpl/forecast/engine.py, config/forecast_models_v2.yaml, slice-11-learning-governance]
+    tests: [tests/test_v2_probabilistic_forecast.py]
+    proof_obligations: [PO-FORECAST-QUALIFICATION-001, PO-ARTIFACT-INTEGRITY-001]
+
+  - requirement_id: REQ-PROBABILISTIC-FOOTBALL
+    requirement: Irreducibly uncertain future football outcomes remain explicit probability distributions; ordinary future minutes/performance cannot be represented as certainty.
+    critical: true
+    invariants: [INV-NO-FUTURE-CERTAINTY, INV-FORECAST-DISTRIBUTION-FIRST, INV-STRUCTURAL-ZERO-ONLY-CERTAINTY]
+    implementation: [src/apex_fpl/core/forecast.py, src/apex_fpl/forecast/validation.py]
+    tests: [tests/test_v2_probabilistic_forecast.py]
+    proof_obligations: [PO-FOOTBALL-UNCERTAINTY-001]
+
   - requirement_id: REQ-LEGAL-ACTION
     requirement: Every published current action is independently legal under the sealed RuleSet.
     critical: true
@@ -96,14 +120,6 @@ requirements:
     tests: [test_expansion_improvement_invalidates_narrow_exactness]
     proof_obligations: [PO-CANDIDATE-UNIVERSE-001]
 
-  - requirement_id: REQ-FORECAST-QUALIFICATION
-    requirement: Only qualified model artifacts may become production forecast champions.
-    critical: true
-    invariants: [INV-EMPIRICAL-CLAIMS-QUALIFIED]
-    implementation: [slice-7-forecast, slice-11-learning-governance]
-    tests: [test_unqualified_model_cannot_be_champion]
-    proof_obligations: [PO-FORECAST-QUALIFICATION-001]
-
   - requirement_id: REQ-SCENARIO-CONVERGENCE
     requirement: Robustness metrics cannot be treated as stable before governed convergence.
     critical: true
@@ -111,11 +127,3 @@ requirements:
     implementation: [slice-9-scenario-convergence]
     tests: [test_nonconverged_scenarios_are_inconclusive]
     proof_obligations: [PO-SCENARIO-CONVERGENCE-001]
-
-  - requirement_id: REQ-PROBABILISTIC-FOOTBALL
-    requirement: Irreducibly uncertain football outcomes stay probabilistic.
-    critical: true
-    invariants: [INV-NO-FUTURE-CERTAINTY]
-    implementation: [slice-7-forecast]
-    tests: [test_forecast_contract_requires_uncertainty_metadata]
-    proof_obligations: [PO-FOOTBALL-UNCERTAINTY-001]
