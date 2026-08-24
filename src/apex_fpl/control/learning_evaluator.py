@@ -58,12 +58,14 @@ def _compute_metric(
     source_artifact_ids: tuple[str, ...],
 ) -> EvaluationMetricResult:
     metric = requirement.metric
+    predicted_rows = tuple(row for row in observations if row.predicted_value is not None)
     if metric is EvaluationMetric.PREDICTION_COVERAGE:
-        value = Fraction(len(observations), total_cases)
+        value = Fraction(len(predicted_rows), total_cases)
         sample_count = total_cases
     elif metric is EvaluationMetric.START_BRIER:
         errors: list[Fraction] = []
-        for row in observations:
+        for row in predicted_rows:
+            assert row.predicted_value is not None
             predicted = row.predicted_value.as_fraction()
             actual = row.actual_value.as_fraction()
             if not 0 <= predicted <= 1:
@@ -72,28 +74,37 @@ def _compute_metric(
                 raise ValueError("START_BRIER actual value must be exactly 0 or 1")
             errors.append((predicted - actual) ** 2)
         value = _mean(errors)
-        sample_count = len(observations)
+        sample_count = len(predicted_rows)
     elif metric in {EvaluationMetric.MINUTES_MAE, EvaluationMetric.POINTS_MAE}:
-        value = _mean([
-            abs(row.predicted_value.as_fraction() - row.actual_value.as_fraction())
-            for row in observations
-        ])
-        sample_count = len(observations)
+        value = _mean(
+            [
+                abs(row.predicted_value.as_fraction() - row.actual_value.as_fraction())
+                for row in predicted_rows
+                if row.predicted_value is not None
+            ]
+        )
+        sample_count = len(predicted_rows)
     elif metric is EvaluationMetric.MINUTES_MSE:
-        value = _mean([
-            (row.predicted_value.as_fraction() - row.actual_value.as_fraction()) ** 2
-            for row in observations
-        ])
-        sample_count = len(observations)
+        value = _mean(
+            [
+                (row.predicted_value.as_fraction() - row.actual_value.as_fraction()) ** 2
+                for row in predicted_rows
+                if row.predicted_value is not None
+            ]
+        )
+        sample_count = len(predicted_rows)
     elif metric is EvaluationMetric.POINTS_MEAN_BIAS:
-        value = _mean([
-            row.predicted_value.as_fraction() - row.actual_value.as_fraction()
-            for row in observations
-        ])
-        sample_count = len(observations)
+        value = _mean(
+            [
+                row.predicted_value.as_fraction() - row.actual_value.as_fraction()
+                for row in predicted_rows
+                if row.predicted_value is not None
+            ]
+        )
+        sample_count = len(predicted_rows)
     elif metric is EvaluationMetric.INTERVAL_COVERAGE:
         covered: list[Fraction] = []
-        for row in observations:
+        for row in predicted_rows:
             if row.interval_lower is None or row.interval_upper is None:
                 raise ValueError("INTERVAL_COVERAGE observation lacks interval")
             actual = row.actual_value.as_fraction()
@@ -101,7 +112,7 @@ def _compute_metric(
                 Fraction(int(row.interval_lower.as_fraction() <= actual <= row.interval_upper.as_fraction()))
             )
         value = _mean(covered)
-        sample_count = len(observations)
+        sample_count = len(predicted_rows)
     elif metric is EvaluationMetric.DECISION_REALIZED_POINTS_DELTA:
         raise ValueError("decision-realized points delta requires separate sealed decision-impact evidence")
     else:  # pragma: no cover
@@ -189,8 +200,8 @@ def evaluate_model(
 
     cases_by_id = {row.case_id: row for row in dataset.cases}
     observations_by_id = {row.case_id: row for row in observation_set.observations}
-    if set(observations_by_id) - set(cases_by_id):
-        raise ValueError("observation set contains case IDs outside the sealed evaluation dataset")
+    if set(observations_by_id) != set(cases_by_id):
+        raise ValueError("observation set must contain exactly one actual observation for every sealed case")
     for case_id, observation in observations_by_id.items():
         case = cases_by_id[case_id]
         if observation.target is not case.target:
@@ -224,18 +235,17 @@ def evaluate_model(
             )
             continue
         target_cases = tuple(row for row in dataset.cases if row.target is requirement.target)
-        target_observations = tuple(
-            observations_by_id[row.case_id] for row in target_cases if row.case_id in observations_by_id
-        )
+        target_observations = tuple(observations_by_id[row.case_id] for row in target_cases)
         if not target_cases:
             blockers.append(
                 f"{requirement.metric.value}/{requirement.target.value}: evaluation dataset has no target cases"
             )
             continue
+        predicted_observations = tuple(row for row in target_observations if row.has_prediction)
         gate_count = (
             len(target_cases)
             if requirement.metric is EvaluationMetric.PREDICTION_COVERAGE
-            else len(target_observations)
+            else len(predicted_observations)
         )
         if gate_count < requirement.minimum_cases:
             blockers.append(
@@ -244,7 +254,7 @@ def evaluate_model(
             )
             continue
         if requirement.require_interval and any(
-            row.interval_lower is None or row.interval_upper is None for row in target_observations
+            row.interval_lower is None or row.interval_upper is None for row in predicted_observations
         ):
             blockers.append(
                 f"{requirement.metric.value}/{requirement.target.value}: required intervals are incomplete"
