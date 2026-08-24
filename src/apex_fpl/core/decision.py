@@ -312,6 +312,18 @@ class RationalValue:
         return {"numerator": self.numerator, "denominator": self.denominator}
 
 
+def _rational_compare(left: RationalValue, right: RationalValue) -> int:
+    delta = left.numerator * right.denominator - right.numerator * left.denominator
+    return (delta > 0) - (delta < 0)
+
+
+def _rational_subtract(left: RationalValue, right: RationalValue) -> RationalValue:
+    return RationalValue(
+        left.numerator * right.denominator - right.numerator * left.denominator,
+        left.denominator * right.denominator,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class DecisionMechanics:
     xi_points: RationalValue
@@ -449,6 +461,17 @@ class SolverCertificate:
             raise ValueError("numeric error bound cannot be negative")
         if self.gap is not None and self.gap.numerator < 0:
             raise ValueError("solver gap cannot be negative")
+        if self.gap is not None:
+            if self.incumbent_objective is None or self.best_bound is None:
+                raise ValueError("solver gap requires both incumbent and best bound")
+            if _rational_compare(self.best_bound, self.incumbent_objective) < 0:
+                raise ValueError("maximisation best bound cannot be below incumbent")
+            expected_gap = _rational_subtract(
+                self.best_bound,
+                self.incumbent_objective,
+            )
+            if self.gap != expected_gap:
+                raise ValueError("solver gap does not reconcile incumbent and best bound")
         if self.status is SolverStatus.OPTIMAL:
             if (
                 self.incumbent_objective is None
@@ -664,6 +687,8 @@ class DecisionResult:
             raise ValueError("decision result must enumerate at least one legal action")
         if self.solver.incumbent_objective is None:
             raise ValueError("decision result requires a feasible solver incumbent")
+        if self.solver.incumbent_objective != self.selected_action.mechanics.objective_points:
+            raise ValueError("solver incumbent does not match selected action objective")
         if self.exactness.candidate_universe_id != self.decision_input.candidate_universe_id:
             raise ValueError("exactness candidate universe does not match DecisionInput")
         if self.exactness.solver_status is not self.solver.status:
@@ -675,6 +700,16 @@ class DecisionResult:
         if self.exactness.numeric_error_bound != self.solver.numeric_error_bound:
             raise ValueError("exactness numeric error does not match solver certificate")
         alternatives = tuple(self.alternatives)
+        if self.enumerated_actions < 1 + len(alternatives):
+            raise ValueError("enumerated action count cannot be smaller than returned actions")
+        if any(
+            _rational_compare(
+                alternative.mechanics.objective_points,
+                self.selected_action.mechanics.objective_points,
+            ) > 0
+            for alternative in alternatives
+        ):
+            raise ValueError("decision alternative cannot outrank selected action objective")
         action_ids = [
             self.selected_action.action_id,
             *(row.action_id for row in alternatives),
