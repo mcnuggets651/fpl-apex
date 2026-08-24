@@ -175,3 +175,11 @@ requirements:
     implementation: [src/apex_fpl/core/scenarios.py, src/apex_fpl/control/scenario_registry.py, src/apex_fpl/decision/robustness.py, src/apex_fpl/decision/scenario_store.py, config/scenario_governance_v2.yaml]
     tests: [tests/test_v2_scenario_convergence.py, tests/test_v2_architecture_boundaries.py]
     proof_obligations: [PO-SCENARIO-CONVERGENCE-001, PO-ARTIFACT-INTEGRITY-001, PO-FORECAST-LINEAGE-001]
+
+  - requirement_id: REQ-LEARNING-GOVERNANCE
+    requirement: Offline model learning is no-hindsight, truth-governed, exact-rational and replayable; production comparison uses identical source and normalized realized truth, only the registered qualified champion learning policy may authorize promotion, shadow evidence cannot become production evidence, and champion mutation requires a separate immutable promotion certificate plus stale-writer-safe parent-linked registry transition.
+    critical: true
+    invariants: [INV-LEARNING-NO-HINDSIGHT, INV-LEARNING-TRUTH-AUTHORITY, INV-LEARNING-COMMON-TRUTH, INV-LEARNING-EXACT-NUMERICS, INV-LEARNING-SHADOW-NOT-PRODUCTION, INV-LEARNING-POLICY-QUALIFIED, INV-PROMOTION-SEPARATE-FROM-EVALUATION, INV-MODEL-REGISTRY-CAS, INV-LEARNING-REPLAY-EXACT, INV-OUTCOME-TRUTH-EXPLICIT, INV-EMPIRICAL-CLAIMS-QUALIFIED]
+    implementation: [src/apex_fpl/core/learning_common.py, src/apex_fpl/core/learning_training.py, src/apex_fpl/core/learning_dataset.py, src/apex_fpl/core/learning_observations.py, src/apex_fpl/core/learning_policy.py, src/apex_fpl/core/learning_evaluation.py, src/apex_fpl/core/learning_promotion.py, src/apex_fpl/core/outcome_truth.py, src/apex_fpl/control/outcome_truth_registry.py, src/apex_fpl/control/learning_policy_registry.py, src/apex_fpl/control/learning_evaluator.py, src/apex_fpl/control/learning_promotion.py, src/apex_fpl/control/learning_store.py, config/outcome_truth_v2.yaml, config/learning_policies_v2.yaml]
+    tests: [tests/test_v2_learning_governance.py, tests/test_v2_learning_prediction_coverage.py, tests/test_v2_learning_policy_parsing.py, tests/test_v2_learning_replay.py, tests/test_v2_learning_architecture.py]
+    proof_obligations: [PO-LEARNING-NO-HINDSIGHT-001, PO-MODEL-EVALUATION-001, PO-MODEL-PROMOTION-001, PO-OUTCOME-TRUTH-001, PO-ARTIFACT-INTEGRITY-001]
