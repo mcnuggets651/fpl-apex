@@ -113,6 +113,10 @@ class ReferenceMechanicsCertificateId(ApexId):
     kind = "reference_mechanics_certificate_id"
 
 
+class ReferenceSolverWorkerId(ApexId):
+    kind = "reference_solver_worker_id"
+
+
 class ReferenceSolverCertificateId(ApexId):
     kind = "reference_solver_certificate_id"
 
