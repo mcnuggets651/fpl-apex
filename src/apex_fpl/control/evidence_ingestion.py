@@ -1,6 +1,6 @@
 """Constrained evidence ingestion from retained raw source bytes.
 
-Raw internet content is intentionally opaque at this boundary.  An extractor may submit
+Raw internet content is intentionally opaque at this boundary. An extractor may submit
 only this fixed schema; source text cannot supply executable instructions, source
 identity, admission state, player identity rules or optimisation parameters.
 """
@@ -98,6 +98,10 @@ def ingest_structured_evidence(
         raise ValueError("structured evidence URL host does not match registered source identity")
     if not store.verify(payload.raw_artifact_id):
         raise ValueError("structured evidence raw artifact is missing or corrupt")
+    if registered.capability.admission_state is SourceAdmissionState.QUALIFIED:
+        artifact = registered.qualification_artifact_id
+        if artifact is None or not store.verify(artifact):
+            raise ValueError("structured evidence source qualification artifact is missing/corrupt")
 
     context = reliability.lookup(
         source_id=payload.source_id,
