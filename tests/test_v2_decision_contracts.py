@@ -24,6 +24,7 @@ from apex_fpl.core.decision import (
     SolverStatus,
 )
 from apex_fpl.core.decision_policy import (
+    TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
     DecisionEvaluationMode,
     DecisionObjectivePolicy,
     DecisionPolicy,
@@ -57,7 +58,7 @@ def _shadow_policy() -> DecisionPolicy:
         chip_option_value_artifact_id=None,
         price_policy_artifact_id=None,
         candidate_policy_artifact_id=None,
-        tie_break_policy="lexicographic-official-id-v1",
+        tie_break_policy=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
     )
 
 
@@ -85,16 +86,39 @@ def test_empty_registry_has_no_fabricated_production_decision_policy() -> None:
 
 def test_decision_policy_identity_is_part_of_decision_input_identity() -> None:
     first = _shadow_policy()
-    second = replace(
-        first,
-        policy_version="2",
-        tie_break_policy="lexicographic-official-id-v2",
-    )
+    second = replace(first, policy_version="2")
     assert first.decision_policy_id != second.decision_policy_id
     assert (
         _decision_input(first.decision_policy_id).decision_input_id
         != _decision_input(second.decision_policy_id).decision_input_id
     )
+
+
+def test_tactical_policy_rejects_unimplemented_tie_break_semantics() -> None:
+    with pytest.raises(ValueError, match="unimplemented tie-break semantics"):
+        replace(_shadow_policy(), tie_break_policy="lexicographic-official-id-v2")
+
+
+def test_receding_policy_tie_break_is_semantic_identity() -> None:
+    artifact = "sha256:" + "a" * 64
+    first = DecisionPolicy(
+        policy_name="receding-shadow",
+        policy_version="1",
+        season="2026-2027",
+        qualification_state=DecisionPolicyQualificationState.SHADOW,
+        qualification_artifact_id=None,
+        first_available_at="2026-08-24T00:00:00Z",
+        evaluation_mode=DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION,
+        objective_policy=DecisionObjectivePolicy.MAX_EXPECTED_FPL_POINTS_OVER_TIME,
+        horizon_gameweeks=6,
+        continuation_value_artifact_id=artifact,
+        chip_option_value_artifact_id=artifact,
+        price_policy_artifact_id=None,
+        candidate_policy_artifact_id=None,
+        tie_break_policy="future-policy-v1",
+    )
+    second = replace(first, tie_break_policy="future-policy-v2")
+    assert first.decision_policy_id != second.decision_policy_id
 
 
 def test_receding_horizon_policy_requires_continuation_and_chip_option_artifacts() -> None:
