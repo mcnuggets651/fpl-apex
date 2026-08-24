@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,7 @@ from apex_fpl.control.learning_promotion import (
     compare_model_evaluations,
     issue_model_promotion_certificate,
 )
-from apex_fpl.control.learning_store import store_learning_object
+from apex_fpl.control.learning_store import load_learning_object, store_learning_object
 from apex_fpl.control.outcome_truth_registry import load_outcome_truth_registry_bytes
 from apex_fpl.core.identity import OfficialPlayerId
 from apex_fpl.core.ids import (
@@ -49,9 +50,49 @@ SEASON = "2026-2027"
 PREDICTED_AT = "2026-08-10T08:00:00Z"
 OUTCOME_AT = "2026-08-11T08:00:00Z"
 
+_EVENT_FIELD = {
+    OutcomeTarget.FPL_POINTS: "total_points",
+    OutcomeTarget.MINUTES: "minutes",
+    OutcomeTarget.GOAL: "goals_scored",
+    OutcomeTarget.ASSIST: "assists",
+}
+
 
 def _put(store: FileSystemArtifactStore, text: str) -> str:
     return store.put_bytes(text.encode("utf-8")).artifact_id
+
+
+def _official_outcomes(
+    store: FileSystemArtifactStore,
+    target: OutcomeTarget,
+    actual: tuple[ExactMetricValue, ...],
+) -> tuple[str, ...]:
+    artifacts: list[str] = []
+    for index, metric_value in enumerate(actual):
+        value = metric_value.as_fraction()
+        if value.denominator != 1:
+            raise ValueError("Official FPL synthetic truth fixture requires integer actual")
+        player_id = index + 1
+        if target in _EVENT_FIELD:
+            stats = {
+                "minutes": 0,
+                "total_points": 0,
+                "goals_scored": 0,
+                "assists": 0,
+            }
+            stats[_EVENT_FIELD[target]] = value.numerator
+            payload = {"elements": [{"id": player_id, "stats": stats}]}
+        elif target is OutcomeTarget.PRICE:
+            payload = {"elements": [{"id": player_id, "now_cost": value.numerator}]}
+        else:
+            payload = {
+                "unresolved_target": target.value,
+                "player_id": player_id,
+                "actual": value.numerator,
+            }
+        content = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        artifacts.append(store.put_bytes(content).artifact_id)
+    return tuple(artifacts)
 
 
 def _truth(store: FileSystemArtifactStore):
@@ -158,9 +199,7 @@ def _model_inputs(
     model_id = ModelArtifactId(model_name)
     training, training_artifact = _training(store, model_id, available_at=available_at)
     if outcome_artifacts is None:
-        outcome_artifacts = tuple(
-            _put(store, f"outcome-{target.value}-{index}") for index in range(len(actual))
-        )
+        outcome_artifacts = _official_outcomes(store, target, actual)
     prediction_artifacts = tuple(
         _put(store, f"prediction-{model_name}-{target.value}-{index}")
         for index in range(len(actual))
@@ -249,13 +288,14 @@ def _evaluate(
 
 
 def _shared_reports(store, truth, truth_artifact, policy, policy_artifact, registry, registry_artifact):
-    shared_outcomes = (_put(store, "shared-o1"), _put(store, "shared-o2"))
+    actual = (ExactMetricValue(61), ExactMetricValue(69))
+    shared_outcomes = _official_outcomes(store, OutcomeTarget.MINUTES, actual)
     candidate_inputs = _model_inputs(
         store,
         model_name="candidate",
         target=OutcomeTarget.MINUTES,
         predicted=(ExactMetricValue(60), ExactMetricValue(70)),
-        actual=(ExactMetricValue(61), ExactMetricValue(69)),
+        actual=actual,
         truth_registry_id=truth.truth_registry_id,
         outcome_artifacts=shared_outcomes,
     )
@@ -264,29 +304,15 @@ def _shared_reports(store, truth, truth_artifact, policy, policy_artifact, regis
         model_name="incumbent",
         target=OutcomeTarget.MINUTES,
         predicted=(ExactMetricValue(55), ExactMetricValue(75)),
-        actual=(ExactMetricValue(61), ExactMetricValue(69)),
+        actual=actual,
         truth_registry_id=truth.truth_registry_id,
         outcome_artifacts=shared_outcomes,
     )
     candidate = _evaluate(
-        store,
-        candidate_inputs,
-        truth,
-        truth_artifact,
-        policy,
-        policy_artifact,
-        registry,
-        registry_artifact,
+        store, candidate_inputs, truth, truth_artifact, policy, policy_artifact, registry, registry_artifact
     )
     incumbent = _evaluate(
-        store,
-        incumbent_inputs,
-        truth,
-        truth_artifact,
-        policy,
-        policy_artifact,
-        registry,
-        registry_artifact,
+        store, incumbent_inputs, truth, truth_artifact, policy, policy_artifact, registry, registry_artifact
     )
     return candidate_inputs, incumbent_inputs, candidate, incumbent
 
@@ -335,10 +361,7 @@ def test_verified_minutes_evaluation_is_exact_and_complete(tmp_path: Path) -> No
     assert report.status is LearningEvaluationStatus.COMPLETE
     assert report.metrics[0].value == ExactMetricValue(1)
     assert report.evaluation_truth_set_id == inputs["dataset"].truth_set_id
-    assert (
-        report.evaluation_realized_truth_set_id
-        == inputs["observation_set"].realized_truth_set_id
-    )
+    assert report.evaluation_realized_truth_set_id == inputs["observation_set"].realized_truth_set_id
 
 
 def test_start_brier_remains_inconclusive_while_start_truth_is_unresolved(tmp_path: Path) -> None:
@@ -452,7 +475,7 @@ def test_candidate_and_incumbent_must_share_exact_truth_set(tmp_path: Path) -> N
         model_name="incumbent",
         target=OutcomeTarget.MINUTES,
         predicted=(ExactMetricValue(55), ExactMetricValue(75)),
-        actual=(ExactMetricValue(61), ExactMetricValue(69)),
+        actual=(ExactMetricValue(62), ExactMetricValue(69)),
         truth_registry_id=truth.truth_registry_id,
     )
     candidate = _evaluate(
@@ -480,16 +503,8 @@ def test_same_truth_sources_with_different_normalized_actuals_cannot_compare(tmp
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     truth, truth_artifact = _truth(store)
     policy, policy_artifact, registry, registry_artifact = _policy_bundle(store)
-    shared_outcomes = (_put(store, "truth-o1"), _put(store, "truth-o2"))
-    candidate_inputs = _model_inputs(
-        store,
-        model_name="candidate",
-        target=OutcomeTarget.MINUTES,
-        predicted=(ExactMetricValue(60), ExactMetricValue(70)),
-        actual=(ExactMetricValue(61), ExactMetricValue(69)),
-        truth_registry_id=truth.truth_registry_id,
-        outcome_artifacts=shared_outcomes,
-    )
+    canonical_actual = (ExactMetricValue(61), ExactMetricValue(69))
+    shared_outcomes = _official_outcomes(store, OutcomeTarget.MINUTES, canonical_actual)
     incumbent_inputs = _model_inputs(
         store,
         model_name="incumbent",
@@ -499,26 +514,16 @@ def test_same_truth_sources_with_different_normalized_actuals_cannot_compare(tmp
         truth_registry_id=truth.truth_registry_id,
         outcome_artifacts=shared_outcomes,
     )
-    candidate = _evaluate(
-        store, candidate_inputs, truth, truth_artifact, policy, policy_artifact, registry, registry_artifact
-    )
-    incumbent = _evaluate(
-        store, incumbent_inputs, truth, truth_artifact, policy, policy_artifact, registry, registry_artifact
-    )
-    assert candidate.evaluation_truth_set_id == incumbent.evaluation_truth_set_id
-    assert candidate.evaluation_realized_truth_set_id != incumbent.evaluation_realized_truth_set_id
-    with pytest.raises(ValueError, match="normalized different realized truth"):
-        compare_model_evaluations(
-            candidate=candidate,
-            incumbent=incumbent,
-            candidate_report_artifact_id=store_learning_object(candidate, store=store).artifact_id,
-            incumbent_report_artifact_id=store_learning_object(incumbent, store=store).artifact_id,
-            policy=policy,
-            policy_registry=registry,
-            policy_registry_artifact_id=registry_artifact,
-            policy_cutoff=OUTCOME_AT,
-            store=store,
-            production=True,
+    with pytest.raises(ValueError, match="normalized actual disagrees"):
+        _evaluate(
+            store,
+            incumbent_inputs,
+            truth,
+            truth_artifact,
+            policy,
+            policy_artifact,
+            registry,
+            registry_artifact,
         )
 
 
@@ -526,13 +531,14 @@ def test_shadow_complete_evidence_cannot_be_promoted_as_production(tmp_path: Pat
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     truth, truth_artifact = _truth(store)
     policy, policy_artifact, registry, registry_artifact = _policy_bundle(store)
-    shared_outcomes = (_put(store, "shared-shadow-o1"), _put(store, "shared-shadow-o2"))
+    actual = (ExactMetricValue(61), ExactMetricValue(69))
+    shared_outcomes = _official_outcomes(store, OutcomeTarget.MINUTES, actual)
     candidate_inputs = _model_inputs(
         store,
         model_name="candidate",
         target=OutcomeTarget.MINUTES,
         predicted=(ExactMetricValue(60), ExactMetricValue(70)),
-        actual=(ExactMetricValue(61), ExactMetricValue(69)),
+        actual=actual,
         truth_registry_id=truth.truth_registry_id,
         outcome_artifacts=shared_outcomes,
     )
@@ -541,15 +547,31 @@ def test_shadow_complete_evidence_cannot_be_promoted_as_production(tmp_path: Pat
         model_name="incumbent",
         target=OutcomeTarget.MINUTES,
         predicted=(ExactMetricValue(55), ExactMetricValue(75)),
-        actual=(ExactMetricValue(61), ExactMetricValue(69)),
+        actual=actual,
         truth_registry_id=truth.truth_registry_id,
         outcome_artifacts=shared_outcomes,
     )
     candidate = _evaluate(
-        store, candidate_inputs, truth, truth_artifact, policy, policy_artifact, registry, registry_artifact, production=False
+        store,
+        candidate_inputs,
+        truth,
+        truth_artifact,
+        policy,
+        policy_artifact,
+        registry,
+        registry_artifact,
+        production=False,
     )
     incumbent = _evaluate(
-        store, incumbent_inputs, truth, truth_artifact, policy, policy_artifact, registry, registry_artifact, production=False
+        store,
+        incumbent_inputs,
+        truth,
+        truth_artifact,
+        policy,
+        policy_artifact,
+        registry,
+        registry_artifact,
+        production=False,
     )
     assert candidate.status is LearningEvaluationStatus.COMPLETE
     comparison = compare_model_evaluations(
@@ -636,6 +658,18 @@ def test_exact_promotion_rules_and_cas_registry_transition(tmp_path: Path) -> No
     )
     assert next_generation.champion_model_id == candidate.candidate_model_id
     assert next_generation.parent_generation_id == current.generation_id
+    stored_next = store_learning_object(
+        next_generation,
+        store=store,
+        parent_artifact_ids=(current_artifact,),
+    )
+    replayed_next = load_learning_object(
+        stored_next.artifact_id,
+        store=store,
+        expected_object_type="MODEL_REGISTRY_GENERATION",
+        expected_semantic_id=str(next_generation.generation_id),
+    )
+    assert replayed_next.semantic_id == str(next_generation.generation_id)
     with pytest.raises(ValueError, match="stale"):
         apply_model_promotion(
             current=current,
