@@ -8,6 +8,13 @@ from .evidence import (
     EvidenceLedger,
     EvidencePolarity,
 )
+from .features import (
+    FeatureObservation,
+    FeatureScope,
+    FeatureSnapshot,
+    FeatureValue,
+    FeatureValueKind,
+)
 from .freshness import DeadlineFreshnessPolicy, FreshnessBand
 from .identity import (
     IdentityIntegrityError,
@@ -23,6 +30,7 @@ from .ids import (
     BundleId,
     DecisionInputId,
     DecisionWorldId,
+    FeatureSnapshotId,
     ForecastId,
     GlobalWorldId,
     InitialManagerBasisId,
@@ -50,6 +58,19 @@ from .manager_state import (
     calculate_selling_price_tenths,
     owned_player_from_official,
     reprice_manager_state,
+)
+from .minutes_features import MinutesFeatureVector, minutes_feature_vector
+from .minutes_history import (
+    HistoricalMinutesSample,
+    PreseasonAppearance,
+    historical_minutes_observations,
+    preseason_minutes_observations,
+)
+from .outcome_truth import (
+    OutcomeTarget,
+    OutcomeTruthAuthority,
+    OutcomeTruthRegistry,
+    TruthAuthorityStatus,
 )
 from .proofs import (
     AssuranceCase,
@@ -90,11 +111,18 @@ __all__ = [
     "EvidenceConflictState",
     "EvidenceLedger",
     "EvidencePolarity",
+    "FeatureObservation",
+    "FeatureScope",
+    "FeatureSnapshot",
+    "FeatureSnapshotId",
+    "FeatureValue",
+    "FeatureValueKind",
     "ForecastId",
     "FreshnessBand",
     "GlobalWorld",
     "GlobalWorldId",
     "HealthState",
+    "HistoricalMinutesSample",
     "IdentityIntegrityError",
     "IdentityRegistry",
     "IdentityResolution",
@@ -106,12 +134,17 @@ __all__ = [
     "ManagerStateId",
     "ManagerStateIntegrityError",
     "ManagerStateScope",
+    "MinutesFeatureVector",
     "OfficialPlayerId",
     "OfficialPlayerIdentity",
     "OfficialRuleSource",
+    "OutcomeTarget",
+    "OutcomeTruthAuthority",
+    "OutcomeTruthRegistry",
     "OwnedPlayer",
     "PersonId",
     "PersonLink",
+    "PreseasonAppearance",
     "ProofClass",
     "ProofObligation",
     "ProofStatus",
@@ -132,6 +165,7 @@ __all__ = [
     "SourceHealth",
     "TransferLedgerEvent",
     "TransferTransition",
+    "TruthAuthorityStatus",
     "WorldSource",
     "advance_deadline",
     "apply_permanent_transfer",
@@ -140,6 +174,9 @@ __all__ = [
     "canonical_json_bytes",
     "canonical_sha256",
     "evaluate_source_runtime",
+    "historical_minutes_observations",
+    "minutes_feature_vector",
     "owned_player_from_official",
+    "preseason_minutes_observations",
     "reprice_manager_state",
 ]

@@ -1,0 +1,82 @@
+schema_version: 1
+
+authorities:
+  - target: FPL_POINTS
+    status: VERIFIED
+    source_id: official_fpl
+    capability: event_scoring_truth
+    source_reference: https://fantasy.premierleague.com/
+    field_contract: Retained Official FPL event-live element stats.total_points for the relevant event.
+    rationale: Canonical truth for points awarded by the FPL game.
+
+  - target: MINUTES
+    status: VERIFIED
+    source_id: official_fpl
+    capability: event_scoring_truth
+    source_reference: https://fantasy.premierleague.com/
+    field_contract: Retained Official FPL event-live element stats.minutes for the relevant event.
+    rationale: Canonical minutes used by FPL scoring and therefore the primary minutes calibration target.
+
+  - target: START
+    status: UNRESOLVED
+    source_id: null
+    capability: null
+    source_reference: null
+    field_contract: null
+    rationale: Do not infer start truth from minutes alone; verify a retained official lineup authority before production calibration.
+
+  - target: LINEUP
+    status: UNRESOLVED
+    source_id: null
+    capability: null
+    source_reference: null
+    field_contract: null
+    rationale: A retained official team-sheet authority has not yet been qualified as the V2 canonical lineup truth surface.
+
+  - target: PRICE
+    status: VERIFIED
+    source_id: official_fpl
+    capability: price_truth
+    source_reference: https://fantasy.premierleague.com/
+    field_contract: Retained Official FPL bootstrap element now_cost at each captured point in time.
+    rationale: Official FPL is canonical for active-season fantasy prices; historical truth requires retained snapshots rather than current-value backfill.
+
+  - target: GOAL
+    status: VERIFIED
+    source_id: official_fpl
+    capability: event_scoring_truth
+    source_reference: https://fantasy.premierleague.com/
+    field_contract: Retained Official FPL event-live element stats.goals_scored for the relevant event.
+    rationale: Canonical goal count used by the FPL scoring surface.
+
+  - target: ASSIST
+    status: VERIFIED
+    source_id: official_fpl
+    capability: event_scoring_truth
+    source_reference: https://fantasy.premierleague.com/
+    field_contract: Retained Official FPL event-live element stats.assists for the relevant event.
+    rationale: Canonical FPL assist count; intentionally not conflated with another provider's football-assist definition.
+
+  - target: UNDERLYING_XG
+    status: UNRESOLVED
+    source_id: null
+    capability: null
+    source_reference: null
+    field_contract: null
+    rationale: Underlying xG provider choice is empirical/source-governance work and must not be silently selected by an experiment.
+
+  - target: UNDERLYING_XA
+    status: UNRESOLVED
+    source_id: null
+    capability: null
+    source_reference: null
+    field_contract: null
+    rationale: Underlying xA provider choice is empirical/source-governance work and must not be silently selected by an experiment.
+
+  - target: DEFENSIVE_CONTRIBUTION
+    status: UNRESOLVED
+    source_id: null
+    capability: null
+    source_reference: null
+    field_contract: null
+    rationale: Post-event canonical defensive-contribution truth contract requires explicit field/source verification before calibration.
