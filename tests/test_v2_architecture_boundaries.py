@@ -29,6 +29,14 @@ FORECAST_V2 = (
     ROOT / "src" / "apex_fpl" / "forecast" / "forecast_store.py",
     ROOT / "src" / "apex_fpl" / "forecast" / "validation.py",
 )
+DECISION_V2 = (
+    ROOT / "src" / "apex_fpl" / "control" / "decision_policy_registry.py",
+    ROOT / "src" / "apex_fpl" / "decision" / "engine.py",
+    ROOT / "src" / "apex_fpl" / "decision" / "mechanics.py",
+    ROOT / "src" / "apex_fpl" / "decision" / "universe.py",
+    ROOT / "src" / "apex_fpl" / "decision" / "expansion.py",
+    ROOT / "src" / "apex_fpl" / "decision" / "store.py",
+)
 
 
 def _absolute_imports(path: Path) -> list[str]:
@@ -149,6 +157,37 @@ def test_v2_forecast_path_has_no_network_wall_clock_dataframe_or_v1_model_depend
             "news_start_probability_delta",
             "fillna(1.0)",
             "expected_minutes=70",
+        ):
+            if forbidden_symbol in text:
+                violations.append(f"{path.name}: {forbidden_symbol}")
+    assert violations == []
+
+
+def test_v2_decision_path_has_no_network_dataframe_v1_optimizer_or_runtime_defaults() -> None:
+    forbidden_modules = {
+        "apex_fpl.data",
+        "apex_fpl.services",
+        "apex_fpl.models",
+        "apex_fpl.optimisation",
+        "pandas",
+        "numpy",
+        "requests",
+        "httpx",
+    }
+    violations = _forbidden_imports(DECISION_V2, forbidden_modules)
+    for path in DECISION_V2:
+        text = path.read_text(encoding="utf-8")
+        for forbidden_symbol in (
+            "CachedHttp",
+            "datetime.now(",
+            "datetime.utcnow(",
+            "expected_minutes_override",
+            "start_probability_override",
+            "appearance_probability_override",
+            "fillna(1.0)",
+            "bench_weight",
+            "shortlist_bench_weight",
+            "candidate_regret_fraction",
         ):
             if forbidden_symbol in text:
                 violations.append(f"{path.name}: {forbidden_symbol}")
