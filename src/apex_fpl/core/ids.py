@@ -141,6 +141,10 @@ class EvaluationDatasetId(ApexId):
     kind = "evaluation_dataset_id"
 
 
+class EvaluationTruthSetId(ApexId):
+    kind = "evaluation_truth_set_id"
+
+
 class EvaluationObservationSetId(ApexId):
     kind = "evaluation_observation_set_id"
 
