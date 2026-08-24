@@ -87,6 +87,11 @@ class LearningPolicyQualification(StrEnum):
     SUSPENDED = "SUSPENDED"
 
 
+class LearningUseMode(StrEnum):
+    SHADOW = "SHADOW"
+    PRODUCTION = "PRODUCTION"
+
+
 class LearningEvaluationStatus(StrEnum):
     COMPLETE = "COMPLETE"
     INCONCLUSIVE = "INCONCLUSIVE"
