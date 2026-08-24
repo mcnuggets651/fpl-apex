@@ -8,6 +8,7 @@ from .canonical import canonical_sha256
 from .identity import OfficialPlayerId
 from .ids import (
     EvaluationDatasetId,
+    EvaluationTruthSetId,
     FeatureSnapshotId,
     ForecastId,
     ModelArtifactId,
@@ -47,18 +48,24 @@ class EvaluationCase:
         object.__setattr__(self, "prediction_artifact_id", prediction_artifact)
         object.__setattr__(self, "outcome_artifact_id", outcome_artifact)
 
+    def truth_payload(self) -> dict[str, object]:
+        """Outcome-side identity shared by every model evaluated on the same truth case."""
+        return {
+            "target": self.target.value,
+            "player_id": int(self.player_id),
+            "gameweek": self.gameweek,
+            "outcome_first_available_at": self.outcome_first_available_at,
+            "outcome_artifact_id": self.outcome_artifact_id,
+        }
+
     def semantic_payload(self) -> dict[str, object]:
         return {
             "forecast_id": str(self.forecast_id),
             "feature_snapshot_id": str(self.feature_snapshot_id),
             "model_artifact_id": str(self.model_artifact_id),
-            "target": self.target.value,
-            "player_id": int(self.player_id),
-            "gameweek": self.gameweek,
+            **self.truth_payload(),
             "prediction_sealed_at": self.prediction_sealed_at,
-            "outcome_first_available_at": self.outcome_first_available_at,
             "prediction_artifact_id": self.prediction_artifact_id,
-            "outcome_artifact_id": self.outcome_artifact_id,
         }
 
     @property
@@ -72,23 +79,33 @@ class EvaluationDataset:
     truth_registry_id: OutcomeTruthRegistryId
     cases: tuple[EvaluationCase, ...]
     source_artifact_ids: tuple[str, ...]
-    schema_version: int = 1
+    schema_version: int = 2
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if self.schema_version != 2:
             raise ValueError("unsupported EvaluationDataset schema_version")
         season = str(self.season).strip()
         if not season:
             raise ValueError("evaluation dataset requires season")
-        cases = tuple(sorted(self.cases, key=lambda row: (row.gameweek, int(row.player_id), row.target.value, row.case_id)))
+        cases = tuple(
+            sorted(
+                self.cases,
+                key=lambda row: (row.gameweek, int(row.player_id), row.target.value, row.case_id),
+            )
+        )
         if not cases:
             raise ValueError("evaluation dataset requires at least one case")
         case_ids = [row.case_id for row in cases]
         if len(case_ids) != len(set(case_ids)):
             raise ValueError("evaluation dataset contains duplicate cases")
+        truth_keys = [canonical_sha256(row.truth_payload()) for row in cases]
+        if len(truth_keys) != len(set(truth_keys)):
+            raise ValueError("evaluation dataset contains duplicate model-independent truth cases")
         if len({row.model_artifact_id for row in cases}) != 1:
             raise ValueError("one evaluation dataset must evaluate one exact model artifact")
-        sources = tuple(sorted({artifact_id(item, label="evaluation dataset source artifact") for item in self.source_artifact_ids}))
+        sources = tuple(
+            sorted({artifact_id(item, label="evaluation dataset source artifact") for item in self.source_artifact_ids})
+        )
         required = {
             artifact
             for row in cases
@@ -108,12 +125,27 @@ class EvaluationDataset:
     def first_outcome_available_at(self) -> str:
         return min((row.outcome_first_available_at for row in self.cases), key=instant)
 
+    @property
+    def truth_set_id(self) -> EvaluationTruthSetId:
+        return EvaluationTruthSetId(
+            canonical_sha256(
+                {
+                    "schema_name": "apex-evaluation-truth-set",
+                    "schema_version": 1,
+                    "season": self.season,
+                    "truth_registry_id": str(self.truth_registry_id),
+                    "cases": [row.truth_payload() for row in self.cases],
+                }
+            )
+        )
+
     def semantic_payload(self) -> dict[str, object]:
         return {
             "schema_name": "apex-evaluation-dataset",
             "schema_version": self.schema_version,
             "season": self.season,
             "truth_registry_id": str(self.truth_registry_id),
+            "truth_set_id": str(self.truth_set_id),
             "cases": [row.semantic_payload() for row in self.cases],
             "source_artifact_ids": list(self.source_artifact_ids),
         }
