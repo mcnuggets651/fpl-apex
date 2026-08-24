@@ -133,7 +133,7 @@ def _state(store: FileSystemArtifactStore, *, free_transfers: int = 1) -> Manage
 def _forecast(
     *,
     xp: dict[int, int] | None = None,
-    appearance_bps: int = 5_000,
+    appearance_bps: int = 10_000,
 ) -> Forecast:
     values = {player_id: 2 for player_id in POSITIONS}
     values.update({8: -6, 13: -6, 16: 15, 17: 15})
@@ -290,7 +290,7 @@ def test_one_free_transfer_is_selected_without_hit_and_uses_exact_selling_resour
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     result = optimise_current_gameweek(
         state=_state(store, free_transfers=1),
-        forecast=_forecast(),
+        forecast=_forecast(xp={16: 30, 17: -20}),
         universe=_universe(store),
         ruleset=_ruleset(),
         policy=_policy(),
@@ -348,7 +348,8 @@ def test_zero_transfer_state_is_preserved_when_no_move_beats_hold(tmp_path: Path
 
 def test_tied_transfer_does_not_create_deterministic_churn(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    forecast = _forecast(xp={8: 5, 16: 5, 13: 5, 17: 5})
+    tied = {player_id: 5 for player_id in range(8, 18)}
+    forecast = _forecast(xp=tied)
     result = optimise_current_gameweek(
         state=_state(store, free_transfers=1),
         forecast=forecast,
