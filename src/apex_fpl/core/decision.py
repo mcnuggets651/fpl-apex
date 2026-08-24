@@ -18,6 +18,7 @@ from .ids import (
     CandidateUniverseId,
     DecisionId,
     DecisionInputId,
+    DecisionPolicyId,
     ForecastId,
     GlobalWorldId,
     ManagerStateId,
@@ -214,6 +215,7 @@ class DecisionInput:
     forecast_id: ForecastId
     ruleset_id: RuleSetId
     candidate_universe_id: CandidateUniverseId
+    decision_policy_id: DecisionPolicyId
     gameweek: int
     use_mode: DecisionUseMode
     objective_model: DecisionObjectiveModel
@@ -254,6 +256,7 @@ class DecisionInput:
             "forecast_id": str(self.forecast_id),
             "ruleset_id": str(self.ruleset_id),
             "candidate_universe_id": str(self.candidate_universe_id),
+            "decision_policy_id": str(self.decision_policy_id),
             "gameweek": self.gameweek,
             "use_mode": self.use_mode.value,
             "objective_model": self.objective_model.value,
