@@ -539,31 +539,56 @@ class RobustnessReport:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported RobustnessReport schema_version")
+        if not isinstance(self.status, ScenarioConvergenceStatus):
+            raise ValueError("robustness report status must be ScenarioConvergenceStatus")
+        if not isinstance(self.xp_reconciled, bool):
+            raise ValueError("robustness report xp_reconciled must be boolean")
         anchor = str(self.ev_anchor_action_id).strip()
         if not anchor:
             raise ValueError("robustness report requires EV anchor action")
         checkpoints = tuple(sorted(self.checkpoints, key=lambda row: row.sample_count))
         if len({row.sample_count for row in checkpoints}) != len(checkpoints):
             raise ValueError("robustness report contains duplicate checkpoints")
+        action_sets = tuple(
+            frozenset(metric.action_id for metric in checkpoint.metrics)
+            for checkpoint in checkpoints
+        )
+        if action_sets and any(action_set != action_sets[0] for action_set in action_sets[1:]):
+            raise ValueError("robustness report checkpoint action sets must be identical")
+        if action_sets and anchor not in action_sets[0]:
+            raise ValueError("robustness report EV anchor must be present in checkpoint actions")
         blockers = tuple(str(item).strip() for item in self.blockers if str(item).strip())
+        preferred = self.robust_preferred_action_id
+        regret = self.robust_preferred_ev_regret
+        if preferred is not None:
+            preferred = str(preferred).strip()
+            if not preferred or regret is None:
+                raise ValueError("robust preferred action requires explicit EV regret")
+            _nonnegative_rational(regret, label="robust preferred EV regret")
+            if action_sets and preferred not in action_sets[0]:
+                raise ValueError(
+                    "robustness preferred action must be present in checkpoint actions"
+                )
+        elif regret is not None:
+            raise ValueError("robust EV regret requires a preferred action")
+
         if self.status is ScenarioConvergenceStatus.CONVERGED:
             if not self.xp_reconciled or blockers:
                 raise ValueError("CONVERGED robustness cannot carry reconciliation blockers")
             if len(checkpoints) < 2:
                 raise ValueError("CONVERGED robustness requires at least two checkpoints")
+            if preferred is None or regret is None:
+                raise ValueError(
+                    "CONVERGED robustness requires a bounded preferred-action diagnostic"
+                )
         else:
             if not blockers:
                 raise ValueError("INCONCLUSIVE robustness requires explicit blockers")
-        preferred = self.robust_preferred_action_id
-        regret = self.robust_preferred_ev_regret
-        if preferred is None:
-            if regret is not None:
-                raise ValueError("robust EV regret requires a preferred action")
-        else:
-            preferred = str(preferred).strip()
-            if not preferred or regret is None:
-                raise ValueError("robust preferred action requires explicit EV regret")
-            _nonnegative_rational(regret, label="robust preferred EV regret")
+            if preferred is not None or regret is not None:
+                raise ValueError(
+                    "INCONCLUSIVE robustness cannot expose a preferred action or EV regret"
+                )
+
         object.__setattr__(self, "ev_anchor_action_id", anchor)
         object.__setattr__(self, "robust_preferred_action_id", preferred)
         object.__setattr__(self, "checkpoints", checkpoints)
