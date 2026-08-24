@@ -1,31 +1,31 @@
 {
   "contract": "apex-strategy-recommendation-v2",
-  "generated_at": "2026-08-23T19:43:37.523618+00:00",
+  "generated_at": "2026-08-24T03:43:32.854675+00:00",
   "canonical": true,
   "user_facing_source_of_truth": true,
   "ready_to_act": false,
   "blockers": [
     "Apex Unified production run did not complete canonical assembly",
     "data quality failed: fpl_core_playerstats: official-player coverage=0.0%; missing_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; missing IDs are not an append-only trailing registration block; gap exceeds bounded lag policy (max 5 players and minimum 99.0% coverage)",
-    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (131.7h old; max 18.0h)"
+    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (139.7h old; max 18.0h)"
   ],
   "official_snapshot": {
-    "snapshot_id": "20260823T194328Z-8187ff71",
-    "bootstrap_sha256": "8c3766d9ac776b5bdccb17d0feb84b22aee4312613d1375bb168d4539bcdd535",
-    "fixtures_sha256": "c1a0ae36e617087274b3da9bcd8ab5448cef1cd7f8938dd06a9255ff09b0d976"
+    "snapshot_id": "20260824T034324Z-5ea22987",
+    "bootstrap_sha256": "55dd30635b489bed065590dbbd279fa5872993cb6d887881eb89a86ee9b33bb7",
+    "fixtures_sha256": "78ab47961afb7c99037512b240d5df3f4a636a65a269e57188afcbdad55e09d0"
   },
-  "decision_bundle_id": "92825e7a86cd023076a184639eaa7f1335a59fc611ba948ff36416e244bbb203",
+  "decision_bundle_id": "a2eb5850925880248b38e1456b6ce57655bdbf71220129bfd98a5103e7118718",
   "decision_bundle": {
     "contract": "apex-decision-bundle-v1",
-    "bundle_id": "92825e7a86cd023076a184639eaa7f1335a59fc611ba948ff36416e244bbb203",
+    "bundle_id": "a2eb5850925880248b38e1456b6ce57655bdbf71220129bfd98a5103e7118718",
     "material_inputs": {
       "official_players": {
         "rows": 609,
-        "sha256": "d5bbbe0a7246cb44d3f81b77ba7f54de095bf77f99da364aaa2c88482fa45770"
+        "sha256": "1f7bc3ac1ed5d96815ef2341d6340dd6a6a4c2dad1df486466f1809ab2b3ac09"
       },
       "official_fixtures": {
         "rows": 380,
-        "sha256": "e216555504f71cb8412e8d66824a3b89153e6c98aae3c8a3d9dddcc0fc6e21b0"
+        "sha256": "43260684c155cd6745f95d2d13bb47455ab33f5855761bd6151edcdb19f4a9e0"
       },
       "fpl_core_playerstats": {
         "rows": 0,
@@ -52,24 +52,24 @@
         "sha256": "94ca4a30bca367c8517380ed27a123c98ebbdcef1ef9eaa487feff0b79104f7f"
       },
       "news_evidence": {
-        "rows": 45,
-        "sha256": "5937d54b1092c25827c484a413295a849c469ca0de462b5f101aaeee03b63630"
+        "rows": 43,
+        "sha256": "4303d430b61dbd759e681450ad3d775e997cc35714fb71ada9236f41753800de"
       },
       "understat_team_ratings": {
         "rows": 20,
-        "sha256": "c8bf793ad94b2bac955d0c04f5f2ca73fb179fbb7dfd1682a5b4afd573323316"
+        "sha256": "5fd16fbf22370a464ff3f16558bf2af408caac001c4537b86501552d2f15e684"
       },
       "understat_team_goal_surface": {
         "rows": 160,
-        "sha256": "e4d1fd71ef5f6b65d93df8667f873661df70dea4beeb0254d5e3813f5402baf2"
+        "sha256": "5922f506262bc1d0d665fe6c11b45829e868308f94bc0c365c68deee9b3b4b69"
       },
       "fixture_projection_surface": {
         "rows": 160,
-        "sha256": "10f0b118eb400a9e6a075ef6f592432cb3defcaa62599751b3248db5d90babff"
+        "sha256": "a6fedc6e08738fccd7de1964e7697a7680f8dd9777326da7cddb1e90b59ccb72"
       },
       "airsenal_projection_surface": {
         "rows": 4872,
-        "sha256": "4312a9903c93130c4d86bcb9c5cdf133599f23b840cc3ba912cb84cc29462a03"
+        "sha256": "8b09c2815a7a1123961e5d20239b81d72531f6b69f67f751fd11b8f8cef3721c"
       },
       "market_odds_surface": {
         "rows": 0,
@@ -77,7 +77,7 @@
       },
       "final_projection_matrix": {
         "rows": 4872,
-        "sha256": "e60d9b77bbecab41dce6c965a34d3125061036060bc557bf735c73803189a3d6"
+        "sha256": "19c4582ab20439c97bcaecdcafee96ffac56b9a6c6a97253e49c16791f0766f6"
       }
     }
   },
