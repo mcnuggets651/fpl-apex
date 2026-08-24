@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import combinations
 from pathlib import Path
 
 import pytest
@@ -128,18 +129,28 @@ def _state(store: FileSystemArtifactStore, *, free_transfers: int = 1) -> Manage
     return state
 
 
-def _forecast(*, xp: dict[int, int] | None = None) -> Forecast:
+def _forecast(
+    *,
+    xp: dict[int, int] | None = None,
+    appearance_bps: int = 5_000,
+) -> Forecast:
     values = {player_id: 2 for player_id in POSITIONS}
     values.update({8: -6, 13: -6, 16: 15, 17: 15})
     if xp:
         values.update(xp)
+    if appearance_bps not in {5_000, 10_000}:
+        raise ValueError("test forecast supports 50% or 100% appearance only")
     rows = []
     for player_id, position in POSITIONS.items():
         expected = values[player_id]
         points = DiscreteIntegerDistribution(
             ((expected - 1, 5_000), (expected + 1, 5_000))
         )
-        minutes = DiscreteIntegerDistribution(((0, 5_000), (90, 5_000)))
+        minutes = (
+            DiscreteIntegerDistribution(((90, 10_000),))
+            if appearance_bps == 10_000
+            else DiscreteIntegerDistribution(((0, 5_000), (90, 5_000)))
+        )
         target = PlayerFixtureTarget(
             fixture_id=100 + player_id,
             gameweek=2,
@@ -159,14 +170,14 @@ def _forecast(*, xp: dict[int, int] | None = None) -> Forecast:
                     uncertainty_kind=UncertaintyKind.PROBABILISTIC,
                     deterministic_reason=None,
                     scenario_count=2,
-                    minutes_p10=0,
-                    minutes_p50=0,
+                    minutes_p10=90 if appearance_bps == 10_000 else 0,
+                    minutes_p50=90 if appearance_bps == 10_000 else 0,
                     minutes_p90=90,
                     points_p10=expected - 1,
                     points_p50=expected - 1,
                     points_p90=expected + 1,
-                    appearance_probability_bps=5_000,
-                    sixty_plus_probability_bps=5_000,
+                    appearance_probability_bps=appearance_bps,
+                    sixty_plus_probability_bps=appearance_bps,
                 ),
             )
         )
@@ -195,6 +206,80 @@ def _universe(store: FileSystemArtifactStore) -> CandidateUniverse:
         official_player_count=len(POSITIONS),
         source_artifact_ids=(source,),
     )
+
+
+def _independent_no_transfer_oracle(xp: dict[int, int]) -> int:
+    ruleset = _ruleset()
+    minimum = ruleset.mapping("FPL-XI-POSITION-MIN-001")
+    maximum = ruleset.mapping("FPL-XI-POSITION-MAX-001")
+    by_position = {
+        position: tuple(
+            player_id
+            for player_id in range(1, 16)
+            if POSITIONS[player_id] == position
+        )
+        for position in ("GK", "DEF", "MID", "FWD")
+    }
+    best: int | None = None
+    for goalkeeper in by_position["GK"]:
+        for defenders in range(int(minimum["DEF"]), int(maximum["DEF"]) + 1):
+            for midfielders in range(int(minimum["MID"]), int(maximum["MID"]) + 1):
+                forwards = 10 - defenders - midfielders
+                if not int(minimum["FWD"]) <= forwards <= int(maximum["FWD"]):
+                    continue
+                for chosen_def in combinations(by_position["DEF"], defenders):
+                    for chosen_mid in combinations(by_position["MID"], midfielders):
+                        for chosen_fwd in combinations(by_position["FWD"], forwards):
+                            xi = (
+                                goalkeeper,
+                                *chosen_def,
+                                *chosen_mid,
+                                *chosen_fwd,
+                            )
+                            xi_points = sum(xp[player_id] for player_id in xi)
+                            captain_bonus = max(xp[player_id] for player_id in xi)
+                            objective = xi_points + captain_bonus
+                            best = objective if best is None else max(best, objective)
+    assert best is not None
+    return best
+
+
+def test_small_universe_decision_matches_independent_bruteforce_true_optimum(
+    tmp_path: Path,
+) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    xp = {
+        1: 2,
+        2: 1,
+        3: 8,
+        4: 7,
+        5: 6,
+        6: 1,
+        7: -2,
+        8: 9,
+        9: 5,
+        10: 4,
+        11: 3,
+        12: -3,
+        13: 10,
+        14: 2,
+        15: -4,
+        16: 30,
+        17: 30,
+    }
+    result = optimise_current_gameweek(
+        state=_state(store),
+        forecast=_forecast(xp=xp, appearance_bps=10_000),
+        universe=_universe(store),
+        ruleset=_ruleset(),
+        policy=_policy(),
+        use_mode=DecisionUseMode.SHADOW,
+        max_normal_transfers=0,
+        chips_considered=(DecisionChip.NONE,),
+    )
+    objective = result.selected_action.mechanics.objective_points
+    assert objective.denominator == 1
+    assert objective.numerator == _independent_no_transfer_oracle(xp)
 
 
 def test_one_free_transfer_is_selected_without_hit_and_uses_exact_selling_resource(
@@ -243,7 +328,7 @@ def test_second_transfer_is_exactly_one_four_point_hit_not_double_counted(tmp_pa
 
 
 def test_negative_expected_points_remain_negative_in_decision_values(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    FileSystemArtifactStore(tmp_path / "artifacts")
     values = build_gameweek_values(
         _forecast(),
         gameweek=2,
