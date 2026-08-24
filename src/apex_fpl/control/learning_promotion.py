@@ -68,10 +68,7 @@ def _interval_superiority(rule: MetricPromotionRule, candidate, incumbent) -> bo
 
 
 def _replay_policy_registry(
-    *,
-    registry: LearningPolicyRegistry,
-    registry_artifact_id: str,
-    store: ArtifactStore,
+    *, registry: LearningPolicyRegistry, registry_artifact_id: str, store: ArtifactStore
 ) -> None:
     retained = load_learning_policy_registry_bytes(store.read_bytes(registry_artifact_id))
     if retained.semantic_payload() != registry.semantic_payload():
@@ -91,7 +88,6 @@ def compare_model_evaluations(
     store: ArtifactStore,
     production: bool,
 ) -> ModelComparisonReport:
-    """Compare two complete reports under one retained predeclared policy authority."""
     if not isinstance(production, bool):
         raise ValueError("production flag must be boolean")
     load_learning_object(
@@ -115,6 +111,8 @@ def compare_model_evaluations(
         raise ValueError("candidate and incumbent evaluations name the same model")
     if candidate.policy_id != policy.policy_id or incumbent.policy_id != policy.policy_id:
         raise ValueError("candidate/incumbent evaluations do not use the comparison policy")
+    if candidate.evaluation_truth_set_id != incumbent.evaluation_truth_set_id:
+        raise ValueError("candidate/incumbent evaluations do not use the exact same truth set")
 
     expected_mode = LearningUseMode.PRODUCTION if production else LearningUseMode.SHADOW
     blockers: list[str] = []
@@ -148,11 +146,6 @@ def compare_model_evaluations(
             continue
         if candidate_metric.direction is not rule.direction or incumbent_metric.direction is not rule.direction:
             raise ValueError("metric result direction disagrees with semantic promotion rule")
-        improvement = _improvement(
-            rule.direction,
-            candidate_metric.value.as_fraction(),
-            incumbent_metric.value.as_fraction(),
-        )
         comparisons.append(
             MetricComparisonResult(
                 metric=rule.metric,
@@ -161,7 +154,13 @@ def compare_model_evaluations(
                 direction=rule.direction,
                 candidate_value=candidate_metric.value,
                 incumbent_value=incumbent_metric.value,
-                improvement=ExactMetricValue.from_fraction(improvement),
+                improvement=ExactMetricValue.from_fraction(
+                    _improvement(
+                        rule.direction,
+                        candidate_metric.value.as_fraction(),
+                        incumbent_metric.value.as_fraction(),
+                    )
+                ),
                 candidate_sample_count=candidate_metric.sample_count,
                 incumbent_sample_count=incumbent_metric.sample_count,
                 interval_superiority=_interval_superiority(rule, candidate_metric, incumbent_metric),
@@ -189,6 +188,7 @@ def compare_model_evaluations(
         incumbent_model_id=incumbent.candidate_model_id,
         candidate_evaluation_id=candidate.evaluation_id,
         incumbent_evaluation_id=incumbent.evaluation_id,
+        evaluation_truth_set_id=candidate.evaluation_truth_set_id,
         policy_id=policy.policy_id,
         use_mode=expected_mode,
         comparisons=tuple(comparisons),
@@ -212,7 +212,6 @@ def issue_model_promotion_certificate(
     promotion_cutoff: str,
     store: ArtifactStore,
 ) -> ModelPromotionCertificate:
-    """Issue a production promotion decision; comparison alone cannot mutate registry state."""
     load_learning_object(
         comparison_artifact_id,
         store=store,
@@ -235,6 +234,11 @@ def issue_model_promotion_certificate(
         raise ValueError("comparison does not bind supplied candidate evaluation")
     if comparison.incumbent_evaluation_id != incumbent.evaluation_id:
         raise ValueError("comparison does not bind supplied incumbent evaluation")
+    if (
+        comparison.evaluation_truth_set_id != candidate.evaluation_truth_set_id
+        or comparison.evaluation_truth_set_id != incumbent.evaluation_truth_set_id
+    ):
+        raise ValueError("promotion inputs do not share the comparison truth set")
     _replay_policy_registry(
         registry=policy_registry,
         registry_artifact_id=policy_registry_artifact_id,
@@ -337,7 +341,6 @@ def apply_model_promotion(
     promotion_artifact_id: str,
     store: ArtifactStore,
 ) -> ModelRegistryGeneration:
-    """CAS-style registry transition; stale writers and non-PROMOTE certificates fail."""
     load_learning_object(
         current_generation_artifact_id,
         store=store,
