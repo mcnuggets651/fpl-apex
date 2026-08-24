@@ -58,6 +58,16 @@ An unresolved target remains `INCONCLUSIVE`. In particular, START truth is not i
 
 The retained truth-registry bytes are replayed and must reconstruct the exact semantic `OutcomeTruthRegistryId` named by the evaluation dataset.
 
+For every currently VERIFIED Official-FPL target, the evaluator does not trust a supplied normalized `actual_value`. It independently recomputes the exact actual from the retained canonical raw artifact and exact Official player ID before any metric is allowed to run:
+
+- FPL_POINTS -> retained Official FPL event-live `stats.total_points`;
+- MINUTES -> retained Official FPL event-live `stats.minutes`;
+- GOAL -> retained Official FPL event-live `stats.goals_scored`;
+- ASSIST -> retained Official FPL event-live `stats.assists`;
+- PRICE -> retained Official FPL bootstrap `now_cost` at that captured point in time.
+
+The raw normalizer is strict: malformed JSON, non-integer/bool-laundered values, duplicate/missing Official player rows, source-capability mismatch, missing/corrupt artifacts or disagreement between the retained raw value and the normalized observation reject evaluation. Therefore realized truth is not merely common across candidate and incumbent; it is also reconciled to the declared canonical truth authority.
+
 ## Common truth fairness
 
 Two different identities are deliberately retained.
@@ -74,7 +84,9 @@ This is model-independent normalized realized truth identity. It binds every tru
 
 Candidate and incumbent comparisons also require the same `EvaluationRealizedTruthSetId`.
 
-Therefore two models cannot be compared if they reference the same outcome files but normalize those outcomes differently.
+Therefore two models cannot be compared if they reference different source truth cases or different normalized outcomes. For VERIFIED Official-FPL targets, those normalized outcomes must first reconcile exactly to the retained canonical raw bytes.
+
+Missing predictions are represented explicitly as `predicted_value=None`; they do not remove the corresponding actual outcome from the observation set. This keeps the realized truth set complete while allowing prediction coverage to be measured honestly.
 
 ## Exact metrics
 
@@ -158,6 +170,8 @@ The transition is compare-and-swap style:
 - when a current champion exists, the certificate incumbent must equal that champion;
 - the next generation retains the current generation and promotion artifacts in its lineage.
 
+Storage and replay additionally require that a champion-bearing registry generation's source lineage contain exactly one retained `MODEL_PROMOTION_CERTIFICATE` whose semantic promotion identity equals the generation's declared `promotion_id`. A valid but unrelated promotion artifact cannot authorize the champion.
+
 A stale writer fails rather than overwriting a newer registry generation.
 
 ## Replay and artifact integrity
@@ -171,13 +185,14 @@ Replay checks:
 - semantic ID recomputed from payload;
 - expected semantic ID when supplied;
 - unique/canonical parent and source arrays;
-- existence/integrity of every retained parent/source artifact.
+- existence/integrity of every retained parent/source artifact;
+- exact promotion-certificate authorization for champion-bearing registry generations.
 
 A valid but unrelated learning artifact cannot satisfy another object's dependency merely because its SHA-256 exists.
 
 ## Architecture boundary
 
-Slice 11 core/control learning modules may not depend on:
+Slice 11 core/control learning modules and retained outcome normalization may not depend on:
 
 - V1 `apex_fpl.evaluation` or `apex_fpl.replay`;
 - V1 data/services runtime paths;
@@ -186,7 +201,7 @@ Slice 11 core/control learning modules may not depend on:
 - requests/httpx;
 - wall-clock reads inside the learning path.
 
-Core remains dependency-free. Control owns artifact/replay/admission operations.
+Core remains dependency-free. Control owns artifact/replay/admission and canonical truth-normalization operations.
 
 ## Production state after Slice 11
 
