@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from fractions import Fraction
+from itertools import permutations
 from pathlib import Path
 
 from apex_fpl.control.ruleset_registry import load_ruleset
 from apex_fpl.core.decision import CandidatePlayer, DecisionChip
 from apex_fpl.core.identity import OfficialPlayerId
-from apex_fpl.decision.mechanics import PlayerGameweekValue, optimise_squad_submission
+from apex_fpl.decision.mechanics import (
+    PlayerGameweekValue,
+    _autosub_weights,
+    _starter_missing_distribution,
+    optimise_squad_submission,
+)
 
 
 def _ruleset():
@@ -109,3 +115,54 @@ def test_submission_ties_are_deterministic_under_reversed_input_order() -> None:
     assert first.vice_captain_id == second.vice_captain_id
     assert first.outfield_bench_order == second.outfield_bench_order
     assert first.mechanics == second.mechanics
+
+
+def test_reused_starter_absence_distribution_matches_exact_recomputation() -> None:
+    squad = _squad()
+    values = _values()
+    positions = {row.player_id: row.position for row in squad}
+    appearance = {
+        player_id: value.appearance_probability for player_id, value in values.items()
+    }
+    squad_ids = tuple(sorted(positions))
+    xi_ids = tuple(
+        OfficialPlayerId(player_id)
+        for player_id in (1, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14)
+    )
+    starters = tuple(pid for pid in xi_ids if positions[pid] != "GK")
+    cached = _starter_missing_distribution(
+        starters,
+        positions=positions,
+        appearance=appearance,
+    )
+    ruleset = _ruleset()
+    minimum = {
+        position: int(value)
+        for position, value in ruleset.mapping("FPL-XI-POSITION-MIN-001").items()
+    }
+    maximum = {
+        position: int(value)
+        for position, value in ruleset.mapping("FPL-XI-POSITION-MAX-001").items()
+    }
+    outfield = tuple(OfficialPlayerId(player_id) for player_id in (6, 7, 15))
+    for order in permutations(outfield):
+        recomputed = _autosub_weights(
+            xi_ids=xi_ids,
+            squad_ids=squad_ids,
+            positions=positions,
+            appearance=appearance,
+            outfield_order=order,
+            minimum=minimum,
+            maximum=maximum,
+        )
+        reused = _autosub_weights(
+            xi_ids=xi_ids,
+            squad_ids=squad_ids,
+            positions=positions,
+            appearance=appearance,
+            outfield_order=order,
+            minimum=minimum,
+            maximum=maximum,
+            missing_distribution=cached,
+        )
+        assert reused == recomputed
