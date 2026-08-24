@@ -19,6 +19,9 @@ from apex_fpl.core.identity import OfficialPlayerId
 from apex_fpl.core.rules import RuleSet
 
 
+_POSITION_ORDER = ("DEF", "MID", "FWD")
+
+
 @dataclass(frozen=True, slots=True)
 class PlayerGameweekValue:
     player_id: OfficialPlayerId
@@ -141,11 +144,15 @@ def _legal_lineups(
                             )
 
 
-def _legal_outfield_counts(counts: dict[str, int], *, ruleset: RuleSet) -> bool:
-    minimum, maximum = _lineup_limits(ruleset)
+def _legal_outfield_counts(
+    counts: dict[str, int],
+    *,
+    minimum: dict[str, int],
+    maximum: dict[str, int],
+) -> bool:
     return all(
         minimum[position] <= counts.get(position, 0) <= maximum[position]
-        for position in ("DEF", "MID", "FWD")
+        for position in _POSITION_ORDER
     )
 
 
@@ -159,32 +166,13 @@ def _bench_state_probability(
     return probability
 
 
-def _autosub_weights(
+def _starter_missing_distribution(
+    starters: tuple[OfficialPlayerId, ...],
     *,
-    xi_ids: tuple[OfficialPlayerId, ...],
-    squad_ids: tuple[OfficialPlayerId, ...],
     positions: dict[OfficialPlayerId, str],
     appearance: dict[OfficialPlayerId, Fraction],
-    outfield_order: tuple[OfficialPlayerId, ...],
-    ruleset: RuleSet,
-) -> dict[OfficialPlayerId, Fraction]:
-    bench_ids = tuple(sorted(set(squad_ids) - set(xi_ids)))
-    starting_gk = [pid for pid in xi_ids if positions[pid] == "GK"]
-    bench_gk = [pid for pid in bench_ids if positions[pid] == "GK"]
-    if len(starting_gk) != 1 or len(bench_gk) != 1:
-        raise ValueError("legal FPL submission requires one starting and one bench goalkeeper")
-    gk_start, gk_bench = starting_gk[0], bench_gk[0]
-    weights: dict[OfficialPlayerId, Fraction] = {
-        gk_bench: 1 - appearance[gk_start]
-    }
-
-    starters = [pid for pid in xi_ids if positions[pid] != "GK"]
-    bench_out = [pid for pid in bench_ids if positions[pid] != "GK"]
-    if len(outfield_order) != 3 or set(outfield_order) != set(bench_out):
-        raise ValueError("outfield bench order must cover exactly the three substitutes")
-
-    position_order = ("DEF", "MID", "FWD")
-    index = {position: i for i, position in enumerate(position_order)}
+) -> dict[tuple[int, int, int], Fraction]:
+    index = {position: i for i, position in enumerate(_POSITION_ORDER)}
     missing_distribution: dict[tuple[int, int, int], Fraction] = {
         (0, 0, 0): Fraction(1, 1)
     }
@@ -205,10 +193,45 @@ def _autosub_weights(
                 + probability * (1 - p_appear)
             )
         missing_distribution = next_distribution
+    return missing_distribution
 
+
+def _autosub_weights(
+    *,
+    xi_ids: tuple[OfficialPlayerId, ...],
+    squad_ids: tuple[OfficialPlayerId, ...],
+    positions: dict[OfficialPlayerId, str],
+    appearance: dict[OfficialPlayerId, Fraction],
+    outfield_order: tuple[OfficialPlayerId, ...],
+    minimum: dict[str, int],
+    maximum: dict[str, int],
+    missing_distribution: dict[tuple[int, int, int], Fraction] | None = None,
+) -> dict[OfficialPlayerId, Fraction]:
+    bench_ids = tuple(sorted(set(squad_ids) - set(xi_ids)))
+    starting_gk = [pid for pid in xi_ids if positions[pid] == "GK"]
+    bench_gk = [pid for pid in bench_ids if positions[pid] == "GK"]
+    if len(starting_gk) != 1 or len(bench_gk) != 1:
+        raise ValueError("legal FPL submission requires one starting and one bench goalkeeper")
+    gk_start, gk_bench = starting_gk[0], bench_gk[0]
+    weights: dict[OfficialPlayerId, Fraction] = {
+        gk_bench: 1 - appearance[gk_start]
+    }
+
+    starters = tuple(pid for pid in xi_ids if positions[pid] != "GK")
+    bench_out = [pid for pid in bench_ids if positions[pid] != "GK"]
+    if len(outfield_order) != 3 or set(outfield_order) != set(bench_out):
+        raise ValueError("outfield bench order must cover exactly the three substitutes")
+
+    if missing_distribution is None:
+        missing_distribution = _starter_missing_distribution(
+            starters,
+            positions=positions,
+            appearance=appearance,
+        )
+    index = {position: i for i, position in enumerate(_POSITION_ORDER)}
     planned_counts = {
         position: sum(positions[player_id] == position for player_id in starters)
-        for position in position_order
+        for position in _POSITION_ORDER
     }
     bench_probabilities = tuple(appearance[player_id] for player_id in outfield_order)
     substitution_probability = {
@@ -226,18 +249,22 @@ def _autosub_weights(
                 continue
             live_counts = dict(planned_counts)
             missing_counts = {
-                position: missing_tuple[index[position]] for position in position_order
+                position: missing_tuple[index[position]] for position in _POSITION_ORDER
             }
             for player_id, appears in zip(outfield_order, bench_bits, strict=True):
                 if not appears or not any(missing_counts.values()):
                     continue
-                for missing_position in position_order:
+                for missing_position in _POSITION_ORDER:
                     if missing_counts[missing_position] <= 0:
                         continue
                     trial = dict(live_counts)
                     trial[missing_position] -= 1
                     trial[positions[player_id]] += 1
-                    if not _legal_outfield_counts(trial, ruleset=ruleset):
+                    if not _legal_outfield_counts(
+                        trial,
+                        minimum=minimum,
+                        maximum=maximum,
+                    ):
                         continue
                     live_counts = trial
                     missing_counts[missing_position] -= 1
@@ -318,6 +345,7 @@ def optimise_squad_submission(
     expected = {player_id: values[player_id].expected_points for player_id in squad_ids}
     total_squad_points = sum(expected.values(), Fraction(0, 1))
     captain_multiplier = _captain_multiplier(chip, ruleset=ruleset)
+    minimum, maximum = _lineup_limits(ruleset)
 
     best: tuple[Fraction, tuple[int, ...], SquadSubmission] | None = None
     for xi_ids in _legal_lineups(squad, ruleset=ruleset):
@@ -338,6 +366,12 @@ def optimise_squad_submission(
             autosub_points = Fraction(0, 1)
             points_before_hits = total_squad_points + captain_bonus
         else:
+            starters = tuple(pid for pid in xi_ids if positions[pid] != "GK")
+            missing_distribution = _starter_missing_distribution(
+                starters,
+                positions=positions,
+                appearance=appearance,
+            )
             best_bench: tuple[Fraction, tuple[int, ...]] | None = None
             for order in permutations(sorted(outfield)):
                 weights = _autosub_weights(
@@ -346,7 +380,9 @@ def optimise_squad_submission(
                     positions=positions,
                     appearance=appearance,
                     outfield_order=order,
-                    ruleset=ruleset,
+                    minimum=minimum,
+                    maximum=maximum,
+                    missing_distribution=missing_distribution,
                 )
                 autosub = sum(
                     (
