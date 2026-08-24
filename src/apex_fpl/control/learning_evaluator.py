@@ -5,6 +5,10 @@ from __future__ import annotations
 from fractions import Fraction
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.learning_policy_registry import (
+    LearningPolicyRegistry,
+    load_learning_policy_registry_bytes,
+)
 from apex_fpl.control.outcome_truth_registry import load_outcome_truth_registry_bytes
 from apex_fpl.core.learning_common import (
     EvaluationMetric,
@@ -128,10 +132,15 @@ def evaluate_model(
     truth_registry: OutcomeTruthRegistry,
     truth_registry_artifact_id: str,
     policy: LearningEvaluationPolicy,
+    policy_registry: LearningPolicyRegistry,
+    policy_registry_artifact_id: str,
     store: ArtifactStore,
+    production: bool,
 ) -> ModelEvaluationReport:
-    """Evaluate one sealed model without hindsight or implicit truth substitution."""
+    """Evaluate one sealed model without hindsight or implicit authority substitution."""
 
+    if not isinstance(production, bool):
+        raise ValueError("production flag must be boolean")
     if training_run.model_artifact_id != dataset.model_artifact_id:
         raise ValueError("training run model does not match evaluation dataset model")
     if observation_set.evaluation_dataset_id != dataset.dataset_id:
@@ -139,9 +148,14 @@ def evaluate_model(
     if dataset.truth_registry_id != truth_registry.truth_registry_id:
         raise ValueError("evaluation dataset truth-registry identity mismatch")
 
-    retained_registry = load_outcome_truth_registry_bytes(store.read_bytes(truth_registry_artifact_id))
-    if retained_registry.truth_registry_id != truth_registry.truth_registry_id:
+    retained_truth = load_outcome_truth_registry_bytes(store.read_bytes(truth_registry_artifact_id))
+    if retained_truth.truth_registry_id != truth_registry.truth_registry_id:
         raise ValueError("truth registry object does not match retained registry artifact")
+    retained_policy_registry = load_learning_policy_registry_bytes(
+        store.read_bytes(policy_registry_artifact_id)
+    )
+    if retained_policy_registry.semantic_payload() != policy_registry.semantic_payload():
+        raise ValueError("learning policy registry object does not match retained registry artifact")
 
     _verify_artifacts(store, training_run.source_artifact_ids, label="training")
     _verify_artifacts(store, dataset.source_artifact_ids, label="evaluation dataset")
@@ -169,10 +183,16 @@ def evaluate_model(
 
     blockers: list[str] = []
     metrics: list[EvaluationMetricResult] = []
-    if not policy.production_qualified:
-        blockers.append("learning evaluation policy is not production-qualified")
-    if instant(policy.first_available_at) > instant(dataset.first_outcome_available_at):
-        blockers.append("learning policy was first available only after evaluation outcomes began to be known")
+    try:
+        policy_registry.verify_policy(
+            policy,
+            store=store,
+            season=dataset.season,
+            cutoff=dataset.first_outcome_available_at,
+            production=production,
+        )
+    except ValueError as exc:
+        blockers.append(f"learning policy authority: {exc}")
 
     for requirement in policy.requirements:
         if requirement.cohort != "ALL":
@@ -198,7 +218,11 @@ def evaluate_model(
                 f"{requirement.metric.value}/{requirement.target.value}: evaluation dataset has no target cases"
             )
             continue
-        count_for_gate = len(target_cases) if requirement.metric is EvaluationMetric.PREDICTION_COVERAGE else len(target_observations)
+        count_for_gate = (
+            len(target_cases)
+            if requirement.metric is EvaluationMetric.PREDICTION_COVERAGE
+            else len(target_observations)
+        )
         if count_for_gate < requirement.minimum_cases:
             blockers.append(
                 f"{requirement.metric.value}/{requirement.target.value}: sample_count {count_for_gate} "
@@ -219,7 +243,7 @@ def evaluate_model(
             continue
         metric_sources = tuple(
             sorted(
-                {truth_registry_artifact_id}
+                {truth_registry_artifact_id, policy_registry_artifact_id}
                 | {
                     artifact
                     for row in target_cases
@@ -238,8 +262,7 @@ def evaluate_model(
 
     required_keys = {row.key for row in policy.requirements}
     computed_keys = {row.key for row in metrics}
-    missing_keys = required_keys - computed_keys
-    if missing_keys and not blockers:
+    if required_keys - computed_keys and not blockers:
         blockers.append("required evaluation metrics are incomplete")
 
     status = LearningEvaluationStatus.COMPLETE if not blockers else LearningEvaluationStatus.INCONCLUSIVE
@@ -247,7 +270,7 @@ def evaluate_model(
         sorted(
             set(training_run.source_artifact_ids)
             | set(dataset.source_artifact_ids)
-            | {truth_registry_artifact_id}
+            | {truth_registry_artifact_id, policy_registry_artifact_id}
             | set(policy_artifacts)
         )
     )
