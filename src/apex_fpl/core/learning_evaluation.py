@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fractions import Fraction
 
 from .canonical import canonical_sha256
 from .ids import (
@@ -28,6 +29,28 @@ from .learning_common import (
 from .outcome_truth import OutcomeTarget
 
 
+def _exact(value: object, *, label: str) -> ExactMetricValue:
+    if not isinstance(value, ExactMetricValue):
+        raise ValueError(f"{label} must be ExactMetricValue")
+    return value
+
+
+def _expected_improvement(
+    direction: MetricDirection,
+    candidate: ExactMetricValue,
+    incumbent: ExactMetricValue,
+) -> Fraction:
+    candidate_value = candidate.as_fraction()
+    incumbent_value = incumbent.as_fraction()
+    if direction is MetricDirection.LOWER_IS_BETTER:
+        return incumbent_value - candidate_value
+    if direction is MetricDirection.HIGHER_IS_BETTER:
+        return candidate_value - incumbent_value
+    if direction is MetricDirection.CLOSER_TO_ZERO:
+        return abs(incumbent_value) - abs(candidate_value)
+    raise ValueError("unknown metric direction")
+
+
 @dataclass(frozen=True, slots=True)
 class EvaluationMetricResult:
     metric: EvaluationMetric
@@ -47,6 +70,11 @@ class EvaluationMetricResult:
             raise ValueError("metric target must be typed OutcomeTarget")
         if not isinstance(self.direction, MetricDirection):
             raise ValueError("metric direction must be typed")
+        _exact(self.value, label="evaluation metric value")
+        if self.interval_lower is not None:
+            _exact(self.interval_lower, label="metric interval lower")
+        if self.interval_upper is not None:
+            _exact(self.interval_upper, label="metric interval upper")
         cohort = str(self.cohort).strip()
         if not cohort:
             raise ValueError("metric cohort cannot be empty")
@@ -71,6 +99,7 @@ class EvaluationMetricResult:
     def semantic_payload(self) -> dict[str, object]:
         def value_payload(value: ExactMetricValue | None) -> dict[str, int] | None:
             return None if value is None else value.semantic_payload()
+
         return {
             "metric": self.metric.value,
             "target": self.target.value,
@@ -103,10 +132,28 @@ class ModelEvaluationReport:
     def __post_init__(self) -> None:
         if self.schema_version != 5:
             raise ValueError("unsupported ModelEvaluationReport schema_version")
+        id_contracts = (
+            (self.candidate_model_id, ModelArtifactId, "candidate_model_id"),
+            (self.training_run_id, TrainingRunId, "training_run_id"),
+            (self.evaluation_dataset_id, EvaluationDatasetId, "evaluation_dataset_id"),
+            (self.evaluation_truth_set_id, EvaluationTruthSetId, "evaluation_truth_set_id"),
+            (
+                self.evaluation_realized_truth_set_id,
+                EvaluationRealizedTruthSetId,
+                "evaluation_realized_truth_set_id",
+            ),
+            (self.observation_set_id, EvaluationObservationSetId, "observation_set_id"),
+            (self.policy_id, LearningPolicyId, "policy_id"),
+        )
+        for value, expected_type, label in id_contracts:
+            if not isinstance(value, expected_type):
+                raise ValueError(f"model evaluation {label} must be typed")
         if not isinstance(self.use_mode, LearningUseMode):
             raise ValueError("model evaluation use_mode must be typed")
         if not isinstance(self.status, LearningEvaluationStatus):
             raise ValueError("model evaluation status must be typed")
+        if any(not isinstance(row, EvaluationMetricResult) for row in self.metrics):
+            raise ValueError("model evaluation metrics must be typed EvaluationMetricResult rows")
         metrics = tuple(
             sorted(self.metrics, key=lambda row: (row.metric.value, row.target.value, row.cohort))
         )
@@ -169,6 +216,16 @@ class MetricComparisonResult:
             raise ValueError("metric comparison requires typed metric and target")
         if not isinstance(self.direction, MetricDirection):
             raise ValueError("metric comparison direction must be typed")
+        _exact(self.candidate_value, label="comparison candidate value")
+        _exact(self.incumbent_value, label="comparison incumbent value")
+        _exact(self.improvement, label="comparison improvement")
+        expected = _expected_improvement(
+            self.direction,
+            self.candidate_value,
+            self.incumbent_value,
+        )
+        if self.improvement.as_fraction() != expected:
+            raise ValueError("metric comparison improvement does not reconcile exact values/direction")
         cohort = str(self.cohort).strip()
         if not cohort:
             raise ValueError("metric comparison cohort cannot be empty")
@@ -216,10 +273,30 @@ class ModelComparisonReport:
     def __post_init__(self) -> None:
         if self.schema_version != 4:
             raise ValueError("unsupported ModelComparisonReport schema_version")
+        id_contracts = (
+            (self.candidate_model_id, ModelArtifactId, "candidate_model_id"),
+            (self.incumbent_model_id, ModelArtifactId, "incumbent_model_id"),
+            (self.candidate_evaluation_id, ModelEvaluationId, "candidate_evaluation_id"),
+            (self.incumbent_evaluation_id, ModelEvaluationId, "incumbent_evaluation_id"),
+            (self.evaluation_truth_set_id, EvaluationTruthSetId, "evaluation_truth_set_id"),
+            (
+                self.evaluation_realized_truth_set_id,
+                EvaluationRealizedTruthSetId,
+                "evaluation_realized_truth_set_id",
+            ),
+            (self.policy_id, LearningPolicyId, "policy_id"),
+        )
+        for value, expected_type, label in id_contracts:
+            if not isinstance(value, expected_type):
+                raise ValueError(f"model comparison {label} must be typed")
         if self.candidate_model_id == self.incumbent_model_id:
             raise ValueError("comparison candidate cannot equal incumbent")
         if not isinstance(self.use_mode, LearningUseMode):
             raise ValueError("model comparison use_mode must be typed")
+        if not isinstance(self.status, LearningEvaluationStatus):
+            raise ValueError("model comparison status must be typed")
+        if any(not isinstance(row, MetricComparisonResult) for row in self.comparisons):
+            raise ValueError("model comparison rows must be typed MetricComparisonResult values")
         comparisons = tuple(
             sorted(self.comparisons, key=lambda row: (row.metric.value, row.target.value, row.cohort))
         )
