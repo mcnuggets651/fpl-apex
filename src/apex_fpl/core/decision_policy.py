@@ -95,14 +95,26 @@ class DecisionPolicy:
             or self.horizon_gameweeks <= 0
         ):
             raise ValueError("DecisionPolicy horizon_gameweeks must be positive integer")
-        if (
-            self.evaluation_mode is DecisionEvaluationMode.TACTICAL_CURRENT_GAMEWEEK
-            and self.tie_break_policy != TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID
-        ):
-            raise ValueError(
-                "tactical DecisionPolicy requests unimplemented tie-break semantics: "
-                f"{self.tie_break_policy!r}"
-            )
+        if self.evaluation_mode is DecisionEvaluationMode.TACTICAL_CURRENT_GAMEWEEK:
+            if self.horizon_gameweeks != 1:
+                raise ValueError("tactical DecisionPolicy requires horizon_gameweeks == 1")
+            if self.tie_break_policy != TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID:
+                raise ValueError(
+                    "tactical DecisionPolicy requests unimplemented tie-break semantics: "
+                    f"{self.tie_break_policy!r}"
+                )
+            unused = {
+                "continuation-value": self.continuation_value_artifact_id,
+                "chip-option-value": self.chip_option_value_artifact_id,
+                "price-policy": self.price_policy_artifact_id,
+                "candidate-policy": self.candidate_policy_artifact_id,
+            }
+            present = sorted(label for label, value in unused.items() if value is not None)
+            if present:
+                raise ValueError(
+                    "tactical DecisionPolicy cannot declare unused policy artifacts: "
+                    + ", ".join(present)
+                )
         available = _aware_iso(self.first_available_at, label="DecisionPolicy first_available_at")
         qualification = _artifact_id(
             self.qualification_artifact_id,
