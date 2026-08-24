@@ -23,6 +23,11 @@ from apex_fpl.core.decision import (
     DecisionResult,
     DecisionUseMode,
     ExactnessClaim,
+    ExactnessStatus,
+    ExpansionResult,
+    RationalValue,
+    SolverCertificate,
+    SolverStatus,
     TransferMove,
 )
 from apex_fpl.core.forecast import Forecast, ForecastUseMode
@@ -44,6 +49,10 @@ class _SquadAction:
 
 def _fraction(numerator: int, denominator: int) -> Fraction:
     return Fraction(numerator, denominator)
+
+
+def _rational(value: Fraction) -> RationalValue:
+    return RationalValue(value.numerator, value.denominator)
 
 
 def _objective(action: DecisionAction) -> Fraction:
@@ -198,8 +207,7 @@ def _normal_squad_actions(
 ):
     candidate_by_id = _candidate_map(universe)
     current = tuple(candidate_by_id[row.player_id] for row in state.squad)
-    owned_by_id = {row.player_id: row for row in state.squad}
-    owned_ids = set(owned_by_id)
+    owned_ids = {row.player_id for row in state.squad}
     for transfer_count in range(max_transfers + 1):
         for outgoing in combinations(state.squad, transfer_count):
             outgoing_ids = {row.player_id for row in outgoing}
@@ -468,13 +476,27 @@ def optimise_current_gameweek(
     alternatives = tuple(
         legal_actions[1 : 1 + max(0, alternatives_limit)]
     )
+    incumbent_fraction = _objective(selected)
+    incumbent = _rational(incumbent_fraction)
+    zero = RationalValue.zero()
+    solver = SolverCertificate(
+        status=SolverStatus.OPTIMAL,
+        incumbent_objective=incumbent,
+        best_bound=incumbent,
+        gap=zero,
+        numeric_error_bound=zero,
+        message="exhaustive reference enumeration completed",
+    )
+
     action_surface_complete = _surface_complete(
         decision_input,
         available_chips=available_chips,
     )
     reasons: list[str] = []
     if universe.scope is not CandidateUniverseScope.FULL_OFFICIAL:
-        reasons.append("candidate universe is scoped rather than FULL_OFFICIAL")
+        reasons.append(
+            "candidate universe is scoped and has no successful expansion certificate"
+        )
     if not action_surface_complete:
         missing_chips = sorted(
             chip.value
@@ -490,25 +512,43 @@ def optimise_current_gameweek(
                 "available chips omitted from action surface: "
                 + ",".join(missing_chips)
             )
-    exactness = ExactnessClaim(
-        universe_scope=universe.scope,
-        action_surface_complete=action_surface_complete,
-        search_complete=True,
-        global_optimum=(
+
+    status = (
+        ExactnessStatus.GLOBAL_OPTIMAL
+        if (
             universe.scope is CandidateUniverseScope.FULL_OFFICIAL
             and action_surface_complete
-        ),
+        )
+        else ExactnessStatus.FEASIBLE_INCUMBENT
+    )
+    exactness = ExactnessClaim(
+        status=status,
+        candidate_universe_id=universe.candidate_universe_id,
+        universe_scope=universe.scope,
+        solver_status=solver.status,
+        action_surface_complete=action_surface_complete,
+        search_complete=True,
+        best_bound=solver.best_bound,
+        gap=solver.gap,
+        filter_identity=universe.filter_identity,
+        expansion_result=ExpansionResult.NOT_RUN,
+        expansion_certificate_id=None,
+        numeric_error_bound=solver.numeric_error_bound,
         reasons=tuple(reasons),
     )
-    if use_mode is DecisionUseMode.PRODUCTION and not exactness.global_optimum:
+    if (
+        use_mode is DecisionUseMode.PRODUCTION
+        and not exactness.publication_exactness_eligible
+    ):
         raise ValueError(
-            "production DecisionEngine requires a complete FULL_OFFICIAL global search: "
+            "production DecisionEngine exactness is not publication eligible: "
             + "; ".join(exactness.reasons)
         )
     return DecisionResult(
-        decision_input_id=decision_input.decision_input_id,
+        decision_input=decision_input,
         selected_action=selected,
         alternatives=alternatives,
+        solver=solver,
         exactness=exactness,
         enumerated_actions=len(legal_actions),
     )
