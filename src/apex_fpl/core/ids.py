@@ -65,6 +65,10 @@ class ModelArtifactId(ApexId):
     kind = "model_artifact_id"
 
 
+class TrainingRunId(ApexId):
+    kind = "training_run_id"
+
+
 class PredictionBatchId(ApexId):
     kind = "prediction_batch_id"
 
