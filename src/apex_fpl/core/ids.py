@@ -57,6 +57,10 @@ class ManagerStateId(ApexId):
     kind = "manager_state_id"
 
 
+class FeatureSnapshotId(ApexId):
+    kind = "feature_snapshot_id"
+
+
 class DecisionWorldId(ApexId):
     kind = "decision_world_id"
 
