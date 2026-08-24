@@ -9,6 +9,7 @@ from apex_fpl.control.learning_policy_registry import (
     LearningPolicyRegistry,
     load_learning_policy_registry_bytes,
 )
+from apex_fpl.control.learning_store import load_learning_object
 from apex_fpl.control.outcome_truth_registry import load_outcome_truth_registry_bytes
 from apex_fpl.core.learning_common import (
     EvaluationMetric,
@@ -44,17 +45,13 @@ def _mean(values: list[Fraction]) -> Fraction:
     return sum(values, Fraction(0, 1)) / len(values)
 
 
-def _metric_value(value: Fraction) -> ExactMetricValue:
-    return ExactMetricValue.from_fraction(value)
-
-
-def _verify_artifacts(store: ArtifactStore, artifact_ids: tuple[str, ...], *, label: str) -> None:
+def _verify(store: ArtifactStore, artifact_ids: tuple[str, ...], *, label: str) -> None:
     for artifact_id in artifact_ids:
         if not store.verify(artifact_id):
             raise ValueError(f"{label} artifact missing/corrupt: {artifact_id}")
 
 
-def _validate_start_probability(observation: EvaluationObservation) -> tuple[Fraction, Fraction]:
+def _validate_start(observation: EvaluationObservation) -> tuple[Fraction, Fraction]:
     predicted = observation.predicted_value.as_fraction()
     actual = observation.actual_value.as_fraction()
     if predicted < 0 or predicted > 1:
@@ -73,38 +70,42 @@ def _compute_metric(
 ) -> EvaluationMetricResult:
     metric = requirement.metric
     direction = _DIRECTION[metric]
-    values: list[Fraction]
     if metric is EvaluationMetric.PREDICTION_COVERAGE:
         value = Fraction(len(observations), total_cases)
         sample_count = total_cases
     elif metric is EvaluationMetric.START_BRIER:
-        values = []
+        errors = []
         for row in observations:
-            predicted, actual = _validate_start_probability(row)
-            values.append((predicted - actual) ** 2)
-        value = _mean(values)
+            predicted, actual = _validate_start(row)
+            errors.append((predicted - actual) ** 2)
+        value = _mean(errors)
         sample_count = len(observations)
     elif metric in {EvaluationMetric.MINUTES_MAE, EvaluationMetric.POINTS_MAE}:
-        values = [abs(row.predicted_value.as_fraction() - row.actual_value.as_fraction()) for row in observations]
-        value = _mean(values)
+        value = _mean([
+            abs(row.predicted_value.as_fraction() - row.actual_value.as_fraction())
+            for row in observations
+        ])
         sample_count = len(observations)
     elif metric is EvaluationMetric.MINUTES_MSE:
-        values = [(row.predicted_value.as_fraction() - row.actual_value.as_fraction()) ** 2 for row in observations]
-        value = _mean(values)
+        value = _mean([
+            (row.predicted_value.as_fraction() - row.actual_value.as_fraction()) ** 2
+            for row in observations
+        ])
         sample_count = len(observations)
     elif metric is EvaluationMetric.POINTS_MEAN_BIAS:
-        values = [row.predicted_value.as_fraction() - row.actual_value.as_fraction() for row in observations]
-        value = _mean(values)
+        value = _mean([
+            row.predicted_value.as_fraction() - row.actual_value.as_fraction()
+            for row in observations
+        ])
         sample_count = len(observations)
     elif metric is EvaluationMetric.INTERVAL_COVERAGE:
-        values = []
+        covered: list[Fraction] = []
         for row in observations:
             if row.interval_lower is None or row.interval_upper is None:
                 raise ValueError("INTERVAL_COVERAGE observation lacks interval")
             actual = row.actual_value.as_fraction()
-            inside = row.interval_lower.as_fraction() <= actual <= row.interval_upper.as_fraction()
-            values.append(Fraction(int(inside), 1))
-        value = _mean(values)
+            covered.append(Fraction(int(row.interval_lower.as_fraction() <= actual <= row.interval_upper.as_fraction()), 1))
+        value = _mean(covered)
         sample_count = len(observations)
     elif metric is EvaluationMetric.DECISION_REALIZED_POINTS_DELTA:
         raise ValueError("decision-realized points delta requires separate sealed decision-impact evidence")
@@ -116,7 +117,7 @@ def _compute_metric(
         cohort=requirement.cohort,
         direction=direction,
         sample_count=sample_count,
-        value=_metric_value(value),
+        value=ExactMetricValue.from_fraction(value),
         interval_lower=None,
         interval_upper=None,
         source_artifact_ids=source_artifact_ids,
@@ -126,11 +127,15 @@ def _compute_metric(
 def evaluate_model(
     *,
     training_run: ModelTrainingRun,
+    training_run_artifact_id: str,
     dataset: EvaluationDataset,
+    evaluation_dataset_artifact_id: str,
     observation_set: EvaluationObservationSet,
+    observation_set_artifact_id: str,
     truth_registry: OutcomeTruthRegistry,
     truth_registry_artifact_id: str,
     policy: LearningEvaluationPolicy,
+    policy_artifact_id: str,
     policy_registry: LearningPolicyRegistry,
     policy_registry_artifact_id: str,
     store: ArtifactStore,
@@ -145,23 +150,51 @@ def evaluate_model(
         raise ValueError("observation set does not name the exact evaluation dataset")
     if dataset.truth_registry_id != truth_registry.truth_registry_id:
         raise ValueError("evaluation dataset truth-registry identity mismatch")
+
+    load_learning_object(
+        training_run_artifact_id,
+        store=store,
+        expected_object_type="MODEL_TRAINING_RUN",
+        expected_semantic_id=str(training_run.training_run_id),
+    )
+    load_learning_object(
+        evaluation_dataset_artifact_id,
+        store=store,
+        expected_object_type="EVALUATION_DATASET",
+        expected_semantic_id=str(dataset.dataset_id),
+    )
+    load_learning_object(
+        observation_set_artifact_id,
+        store=store,
+        expected_object_type="EVALUATION_OBSERVATION_SET",
+        expected_semantic_id=str(observation_set.observation_set_id),
+    )
+    load_learning_object(
+        policy_artifact_id,
+        store=store,
+        expected_object_type="LEARNING_EVALUATION_POLICY",
+        expected_semantic_id=str(policy.policy_id),
+    )
+
     retained_truth = load_outcome_truth_registry_bytes(store.read_bytes(truth_registry_artifact_id))
     if retained_truth.truth_registry_id != truth_registry.truth_registry_id:
         raise ValueError("truth registry object does not match retained registry artifact")
     retained_policy_registry = load_learning_policy_registry_bytes(store.read_bytes(policy_registry_artifact_id))
     if retained_policy_registry.semantic_payload() != policy_registry.semantic_payload():
         raise ValueError("learning policy registry object does not match retained registry artifact")
-    _verify_artifacts(store, training_run.source_artifact_ids, label="training")
-    _verify_artifacts(store, dataset.source_artifact_ids, label="evaluation dataset")
+
+    _verify(store, training_run.source_artifact_ids, label="training")
+    _verify(store, dataset.source_artifact_ids, label="evaluation dataset")
     policy_artifacts = tuple(
         item for item in (policy.qualification_artifact_id, policy.promotion_rule_artifact_id) if item is not None
     )
-    _verify_artifacts(store, policy_artifacts, label="learning policy")
+    _verify(store, policy_artifacts, label="learning policy")
     for case in dataset.cases:
         if instant(training_run.first_available_at) > instant(case.prediction_sealed_at):
             raise ValueError("model training run was not available when evaluation prediction was sealed")
         if instant(training_run.training_cutoff) > instant(case.prediction_sealed_at):
             raise ValueError("model training cutoff is after an evaluation prediction seal")
+
     cases_by_id = {row.case_id: row for row in dataset.cases}
     observations_by_id = {row.case_id: row for row in observation_set.observations}
     if set(observations_by_id) - set(cases_by_id):
@@ -169,6 +202,7 @@ def evaluate_model(
     for case_id, observation in observations_by_id.items():
         if observation.target is not cases_by_id[case_id].target:
             raise ValueError("evaluation observation target does not match its sealed case")
+
     blockers: list[str] = []
     metrics: list[EvaluationMetricResult] = []
     try:
@@ -181,6 +215,7 @@ def evaluate_model(
         )
     except ValueError as exc:
         blockers.append(f"learning policy authority: {exc}")
+
     for requirement in policy.requirements:
         if requirement.cohort != "ALL":
             blockers.append(
@@ -218,16 +253,21 @@ def evaluate_model(
         if requirement.metric is EvaluationMetric.DECISION_REALIZED_POINTS_DELTA:
             blockers.append("DECISION_REALIZED_POINTS_DELTA requires a separate sealed decision-impact evaluator")
             continue
-        metric_sources = tuple(
-            sorted(
-                {truth_registry_artifact_id, policy_registry_artifact_id}
-                | {
-                    artifact
-                    for row in target_cases
-                    for artifact in (row.prediction_artifact_id, row.outcome_artifact_id)
-                }
-            )
-        )
+        metric_sources = tuple(sorted(
+            {
+                truth_registry_artifact_id,
+                policy_registry_artifact_id,
+                training_run_artifact_id,
+                evaluation_dataset_artifact_id,
+                observation_set_artifact_id,
+                policy_artifact_id,
+            }
+            | {
+                artifact
+                for row in target_cases
+                for artifact in (row.prediction_artifact_id, row.outcome_artifact_id)
+            }
+        ))
         metrics.append(
             _compute_metric(
                 requirement,
@@ -236,18 +276,24 @@ def evaluate_model(
                 source_artifact_ids=metric_sources,
             )
         )
+
     required_keys = {row.key for row in policy.requirements}
     if required_keys - {row.key for row in metrics} and not blockers:
         blockers.append("required evaluation metrics are incomplete")
     status = LearningEvaluationStatus.COMPLETE if not blockers else LearningEvaluationStatus.INCONCLUSIVE
-    report_sources = tuple(
-        sorted(
-            set(training_run.source_artifact_ids)
-            | set(dataset.source_artifact_ids)
-            | {truth_registry_artifact_id, policy_registry_artifact_id}
-            | set(policy_artifacts)
-        )
-    )
+    report_sources = tuple(sorted(
+        set(training_run.source_artifact_ids)
+        | set(dataset.source_artifact_ids)
+        | {
+            truth_registry_artifact_id,
+            policy_registry_artifact_id,
+            training_run_artifact_id,
+            evaluation_dataset_artifact_id,
+            observation_set_artifact_id,
+            policy_artifact_id,
+        }
+        | set(policy_artifacts)
+    ))
     return ModelEvaluationReport(
         candidate_model_id=dataset.model_artifact_id,
         training_run_id=training_run.training_run_id,
