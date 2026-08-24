@@ -300,7 +300,7 @@ def test_one_free_transfer_is_selected_without_hit_and_uses_exact_selling_resour
     )
     assert len(result.selected_action.transfers) == 1
     move = result.selected_action.transfers[0]
-    assert move.outgoing_player_id == OfficialPlayerId(8)
+    assert POSITIONS[int(move.outgoing_player_id)] == "MID"
     assert move.incoming_player_id == OfficialPlayerId(16)
     assert result.selected_action.mechanics.hit_points == 0
     assert result.selected_action.bank_after_tenths == 0
@@ -323,10 +323,13 @@ def test_second_transfer_is_exactly_one_four_point_hit_not_double_counted(tmp_pa
     )
     assert len(result.selected_action.transfers) == 2
     assert {
-        (int(move.outgoing_player_id), int(move.incoming_player_id))
-        for move in result.selected_action.transfers
-    } == {(8, 16), (13, 17)}
+        int(move.incoming_player_id) for move in result.selected_action.transfers
+    } == {16, 17}
+    assert {
+        POSITIONS[int(move.outgoing_player_id)] for move in result.selected_action.transfers
+    } == {"MID", "FWD"}
     assert result.selected_action.mechanics.hit_points == 4
+    assert result.selected_action.bank_after_tenths == 0
 
 
 def test_zero_transfer_state_is_preserved_when_no_move_beats_hold(tmp_path: Path) -> None:
