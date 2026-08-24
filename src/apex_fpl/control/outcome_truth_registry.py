@@ -1,4 +1,4 @@
-"""Loader for the explicit V2 post-event outcome truth registry."""
+"""Load and replay the explicit V2 post-event outcome truth registry."""
 
 from __future__ import annotations
 
@@ -14,8 +14,7 @@ from apex_fpl.core.outcome_truth import (
 )
 
 
-def load_outcome_truth_registry(path: str | Path) -> OutcomeTruthRegistry:
-    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+def _registry_from_raw(raw: object) -> OutcomeTruthRegistry:
     if not isinstance(raw, dict) or int(raw.get("schema_version", -1)) != 1:
         raise ValueError("outcome truth registry requires schema_version 1")
     rows = raw.get("authorities")
@@ -38,3 +37,17 @@ def load_outcome_truth_registry(path: str | Path) -> OutcomeTruthRegistry:
         for row in rows
     )
     return OutcomeTruthRegistry(authorities)
+
+
+def load_outcome_truth_registry_bytes(content: bytes) -> OutcomeTruthRegistry:
+    if not isinstance(content, bytes):
+        raise TypeError("outcome truth registry content must be bytes")
+    try:
+        raw = yaml.safe_load(content.decode("utf-8"))
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise ValueError("outcome truth registry is not valid UTF-8 YAML") from exc
+    return _registry_from_raw(raw)
+
+
+def load_outcome_truth_registry(path: str | Path) -> OutcomeTruthRegistry:
+    return load_outcome_truth_registry_bytes(Path(path).read_bytes())

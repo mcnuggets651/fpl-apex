@@ -1,0 +1,340 @@
+"""Immutable model evaluation and comparison reports for Apex V2 Slice 11."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from fractions import Fraction
+
+from .canonical import canonical_sha256
+from .ids import (
+    EvaluationDatasetId,
+    EvaluationObservationSetId,
+    EvaluationRealizedTruthSetId,
+    EvaluationTruthSetId,
+    LearningPolicyId,
+    ModelArtifactId,
+    ModelComparisonId,
+    ModelEvaluationId,
+    TrainingRunId,
+)
+from .learning_common import (
+    EvaluationMetric,
+    ExactMetricValue,
+    LearningEvaluationStatus,
+    LearningUseMode,
+    MetricDirection,
+    artifact_id,
+    positive_int,
+)
+from .outcome_truth import OutcomeTarget
+
+
+def _exact(value: object, *, label: str) -> ExactMetricValue:
+    if not isinstance(value, ExactMetricValue):
+        raise ValueError(f"{label} must be ExactMetricValue")
+    return value
+
+
+def _expected_improvement(
+    direction: MetricDirection,
+    candidate: ExactMetricValue,
+    incumbent: ExactMetricValue,
+) -> Fraction:
+    candidate_value = candidate.as_fraction()
+    incumbent_value = incumbent.as_fraction()
+    if direction is MetricDirection.LOWER_IS_BETTER:
+        return incumbent_value - candidate_value
+    if direction is MetricDirection.HIGHER_IS_BETTER:
+        return candidate_value - incumbent_value
+    if direction is MetricDirection.CLOSER_TO_ZERO:
+        return abs(incumbent_value) - abs(candidate_value)
+    raise ValueError("unknown metric direction")
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationMetricResult:
+    metric: EvaluationMetric
+    target: OutcomeTarget
+    cohort: str
+    direction: MetricDirection
+    sample_count: int
+    value: ExactMetricValue
+    interval_lower: ExactMetricValue | None
+    interval_upper: ExactMetricValue | None
+    source_artifact_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.metric, EvaluationMetric):
+            raise ValueError("evaluation metric must be typed")
+        if not isinstance(self.target, OutcomeTarget):
+            raise ValueError("metric target must be typed OutcomeTarget")
+        if not isinstance(self.direction, MetricDirection):
+            raise ValueError("metric direction must be typed")
+        _exact(self.value, label="evaluation metric value")
+        if self.interval_lower is not None:
+            _exact(self.interval_lower, label="metric interval lower")
+        if self.interval_upper is not None:
+            _exact(self.interval_upper, label="metric interval upper")
+        cohort = str(self.cohort).strip()
+        if not cohort:
+            raise ValueError("metric cohort cannot be empty")
+        positive_int(self.sample_count, label="metric sample_count")
+        if (self.interval_lower is None) != (self.interval_upper is None):
+            raise ValueError("metric interval must provide both lower and upper bounds")
+        if self.interval_lower is not None and self.interval_upper is not None:
+            if self.interval_lower.as_fraction() > self.interval_upper.as_fraction():
+                raise ValueError("metric interval lower bound exceeds upper bound")
+        sources = tuple(
+            sorted({artifact_id(item, label="metric source artifact") for item in self.source_artifact_ids})
+        )
+        if not sources:
+            raise ValueError("evaluation metric requires immutable source evidence")
+        object.__setattr__(self, "cohort", cohort)
+        object.__setattr__(self, "source_artifact_ids", sources)
+
+    @property
+    def key(self) -> tuple[EvaluationMetric, OutcomeTarget, str]:
+        return self.metric, self.target, self.cohort
+
+    def semantic_payload(self) -> dict[str, object]:
+        def value_payload(value: ExactMetricValue | None) -> dict[str, int] | None:
+            return None if value is None else value.semantic_payload()
+
+        return {
+            "metric": self.metric.value,
+            "target": self.target.value,
+            "cohort": self.cohort,
+            "direction": self.direction.value,
+            "sample_count": self.sample_count,
+            "value": self.value.semantic_payload(),
+            "interval_lower": value_payload(self.interval_lower),
+            "interval_upper": value_payload(self.interval_upper),
+            "source_artifact_ids": list(self.source_artifact_ids),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ModelEvaluationReport:
+    candidate_model_id: ModelArtifactId
+    training_run_id: TrainingRunId
+    evaluation_dataset_id: EvaluationDatasetId
+    evaluation_truth_set_id: EvaluationTruthSetId
+    evaluation_realized_truth_set_id: EvaluationRealizedTruthSetId
+    observation_set_id: EvaluationObservationSetId
+    policy_id: LearningPolicyId
+    use_mode: LearningUseMode
+    metrics: tuple[EvaluationMetricResult, ...]
+    status: LearningEvaluationStatus
+    blockers: tuple[str, ...]
+    source_artifact_ids: tuple[str, ...]
+    schema_version: int = 5
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 5:
+            raise ValueError("unsupported ModelEvaluationReport schema_version")
+        id_contracts = (
+            (self.candidate_model_id, ModelArtifactId, "candidate_model_id"),
+            (self.training_run_id, TrainingRunId, "training_run_id"),
+            (self.evaluation_dataset_id, EvaluationDatasetId, "evaluation_dataset_id"),
+            (self.evaluation_truth_set_id, EvaluationTruthSetId, "evaluation_truth_set_id"),
+            (
+                self.evaluation_realized_truth_set_id,
+                EvaluationRealizedTruthSetId,
+                "evaluation_realized_truth_set_id",
+            ),
+            (self.observation_set_id, EvaluationObservationSetId, "observation_set_id"),
+            (self.policy_id, LearningPolicyId, "policy_id"),
+        )
+        for value, expected_type, label in id_contracts:
+            if not isinstance(value, expected_type):
+                raise ValueError(f"model evaluation {label} must be typed")
+        if not isinstance(self.use_mode, LearningUseMode):
+            raise ValueError("model evaluation use_mode must be typed")
+        if not isinstance(self.status, LearningEvaluationStatus):
+            raise ValueError("model evaluation status must be typed")
+        if any(not isinstance(row, EvaluationMetricResult) for row in self.metrics):
+            raise ValueError("model evaluation metrics must be typed EvaluationMetricResult rows")
+        metrics = tuple(
+            sorted(self.metrics, key=lambda row: (row.metric.value, row.target.value, row.cohort))
+        )
+        if len({row.key for row in metrics}) != len(metrics):
+            raise ValueError("model evaluation contains duplicate metric/cohort rows")
+        blockers = tuple(str(item).strip() for item in self.blockers if str(item).strip())
+        sources = tuple(
+            sorted({artifact_id(item, label="model evaluation source artifact") for item in self.source_artifact_ids})
+        )
+        metric_sources = {item for row in metrics for item in row.source_artifact_ids}
+        if not metric_sources.issubset(set(sources)):
+            raise ValueError("model evaluation lineage must include all metric source artifacts")
+        if self.status is LearningEvaluationStatus.COMPLETE:
+            if blockers or not metrics:
+                raise ValueError("COMPLETE model evaluation requires metrics and no blockers")
+        elif not blockers:
+            raise ValueError(f"{self.status.value} model evaluation requires blocker detail")
+        object.__setattr__(self, "metrics", metrics)
+        object.__setattr__(self, "blockers", blockers)
+        object.__setattr__(self, "source_artifact_ids", sources)
+
+    def semantic_payload(self) -> dict[str, object]:
+        return {
+            "schema_name": "apex-model-evaluation-report",
+            "schema_version": self.schema_version,
+            "candidate_model_id": str(self.candidate_model_id),
+            "training_run_id": str(self.training_run_id),
+            "evaluation_dataset_id": str(self.evaluation_dataset_id),
+            "evaluation_truth_set_id": str(self.evaluation_truth_set_id),
+            "evaluation_realized_truth_set_id": str(self.evaluation_realized_truth_set_id),
+            "observation_set_id": str(self.observation_set_id),
+            "policy_id": str(self.policy_id),
+            "use_mode": self.use_mode.value,
+            "metrics": [row.semantic_payload() for row in self.metrics],
+            "status": self.status.value,
+            "blockers": list(self.blockers),
+            "source_artifact_ids": list(self.source_artifact_ids),
+        }
+
+    @property
+    def evaluation_id(self) -> ModelEvaluationId:
+        return ModelEvaluationId(canonical_sha256(self.semantic_payload()))
+
+
+@dataclass(frozen=True, slots=True)
+class MetricComparisonResult:
+    metric: EvaluationMetric
+    target: OutcomeTarget
+    cohort: str
+    direction: MetricDirection
+    candidate_value: ExactMetricValue
+    incumbent_value: ExactMetricValue
+    improvement: ExactMetricValue
+    candidate_sample_count: int
+    incumbent_sample_count: int
+    interval_superiority: bool | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.metric, EvaluationMetric) or not isinstance(self.target, OutcomeTarget):
+            raise ValueError("metric comparison requires typed metric and target")
+        if not isinstance(self.direction, MetricDirection):
+            raise ValueError("metric comparison direction must be typed")
+        _exact(self.candidate_value, label="comparison candidate value")
+        _exact(self.incumbent_value, label="comparison incumbent value")
+        _exact(self.improvement, label="comparison improvement")
+        expected = _expected_improvement(
+            self.direction,
+            self.candidate_value,
+            self.incumbent_value,
+        )
+        if self.improvement.as_fraction() != expected:
+            raise ValueError("metric comparison improvement does not reconcile exact values/direction")
+        cohort = str(self.cohort).strip()
+        if not cohort:
+            raise ValueError("metric comparison cohort cannot be empty")
+        positive_int(self.candidate_sample_count, label="candidate sample count")
+        positive_int(self.incumbent_sample_count, label="incumbent sample count")
+        if self.interval_superiority is not None and not isinstance(self.interval_superiority, bool):
+            raise ValueError("interval_superiority must be boolean or None")
+        object.__setattr__(self, "cohort", cohort)
+
+    @property
+    def key(self) -> tuple[EvaluationMetric, OutcomeTarget, str]:
+        return self.metric, self.target, self.cohort
+
+    def semantic_payload(self) -> dict[str, object]:
+        return {
+            "metric": self.metric.value,
+            "target": self.target.value,
+            "cohort": self.cohort,
+            "direction": self.direction.value,
+            "candidate_value": self.candidate_value.semantic_payload(),
+            "incumbent_value": self.incumbent_value.semantic_payload(),
+            "improvement": self.improvement.semantic_payload(),
+            "candidate_sample_count": self.candidate_sample_count,
+            "incumbent_sample_count": self.incumbent_sample_count,
+            "interval_superiority": self.interval_superiority,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ModelComparisonReport:
+    candidate_model_id: ModelArtifactId
+    incumbent_model_id: ModelArtifactId
+    candidate_evaluation_id: ModelEvaluationId
+    incumbent_evaluation_id: ModelEvaluationId
+    evaluation_truth_set_id: EvaluationTruthSetId
+    evaluation_realized_truth_set_id: EvaluationRealizedTruthSetId
+    policy_id: LearningPolicyId
+    use_mode: LearningUseMode
+    comparisons: tuple[MetricComparisonResult, ...]
+    status: LearningEvaluationStatus
+    blockers: tuple[str, ...]
+    source_artifact_ids: tuple[str, ...]
+    schema_version: int = 4
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 4:
+            raise ValueError("unsupported ModelComparisonReport schema_version")
+        id_contracts = (
+            (self.candidate_model_id, ModelArtifactId, "candidate_model_id"),
+            (self.incumbent_model_id, ModelArtifactId, "incumbent_model_id"),
+            (self.candidate_evaluation_id, ModelEvaluationId, "candidate_evaluation_id"),
+            (self.incumbent_evaluation_id, ModelEvaluationId, "incumbent_evaluation_id"),
+            (self.evaluation_truth_set_id, EvaluationTruthSetId, "evaluation_truth_set_id"),
+            (
+                self.evaluation_realized_truth_set_id,
+                EvaluationRealizedTruthSetId,
+                "evaluation_realized_truth_set_id",
+            ),
+            (self.policy_id, LearningPolicyId, "policy_id"),
+        )
+        for value, expected_type, label in id_contracts:
+            if not isinstance(value, expected_type):
+                raise ValueError(f"model comparison {label} must be typed")
+        if self.candidate_model_id == self.incumbent_model_id:
+            raise ValueError("comparison candidate cannot equal incumbent")
+        if not isinstance(self.use_mode, LearningUseMode):
+            raise ValueError("model comparison use_mode must be typed")
+        if not isinstance(self.status, LearningEvaluationStatus):
+            raise ValueError("model comparison status must be typed")
+        if any(not isinstance(row, MetricComparisonResult) for row in self.comparisons):
+            raise ValueError("model comparison rows must be typed MetricComparisonResult values")
+        comparisons = tuple(
+            sorted(self.comparisons, key=lambda row: (row.metric.value, row.target.value, row.cohort))
+        )
+        if len({row.key for row in comparisons}) != len(comparisons):
+            raise ValueError("model comparison contains duplicate metric/cohort rows")
+        blockers = tuple(str(item).strip() for item in self.blockers if str(item).strip())
+        sources = tuple(
+            sorted({artifact_id(item, label="model comparison source artifact") for item in self.source_artifact_ids})
+        )
+        if not sources:
+            raise ValueError("model comparison requires immutable source evidence")
+        if self.status is LearningEvaluationStatus.COMPLETE:
+            if blockers or not comparisons:
+                raise ValueError("COMPLETE model comparison requires comparison rows and no blockers")
+        elif not blockers:
+            raise ValueError(f"{self.status.value} model comparison requires blocker detail")
+        object.__setattr__(self, "comparisons", comparisons)
+        object.__setattr__(self, "blockers", blockers)
+        object.__setattr__(self, "source_artifact_ids", sources)
+
+    def semantic_payload(self) -> dict[str, object]:
+        return {
+            "schema_name": "apex-model-comparison-report",
+            "schema_version": self.schema_version,
+            "candidate_model_id": str(self.candidate_model_id),
+            "incumbent_model_id": str(self.incumbent_model_id),
+            "candidate_evaluation_id": str(self.candidate_evaluation_id),
+            "incumbent_evaluation_id": str(self.incumbent_evaluation_id),
+            "evaluation_truth_set_id": str(self.evaluation_truth_set_id),
+            "evaluation_realized_truth_set_id": str(self.evaluation_realized_truth_set_id),
+            "policy_id": str(self.policy_id),
+            "use_mode": self.use_mode.value,
+            "comparisons": [row.semantic_payload() for row in self.comparisons],
+            "status": self.status.value,
+            "blockers": list(self.blockers),
+            "source_artifact_ids": list(self.source_artifact_ids),
+        }
+
+    @property
+    def comparison_id(self) -> ModelComparisonId:
+        return ModelComparisonId(canonical_sha256(self.semantic_payload()))

@@ -289,3 +289,33 @@ proof_obligations:
     failure_consequence: Block production release or leave the solver-parity proof INCONCLUSIVE; never infer independent optimality from the primary DecisionEngine alone.
     release_policy: REQUIRED
     owner: assurance.solver_parity
+
+  - proof_id: PO-LEARNING-NO-HINDSIGHT-001
+    claim: Offline model evaluation uses only a model training run and learning policy available before the predictions/outcomes they govern, and every post-event target is joined only through retained explicit truth authority.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: learning
+    required_evidence: [TrainingRunId, EvaluationDatasetId, EvaluationTruthSetId, EvaluationRealizedTruthSetId, OutcomeTruthRegistryId, prediction_sealed_at, outcome_first_available_at, prediction_artifact_id, outcome_artifact_id]
+    required_tests: [test_exact_metric_value_reduces_and_no_hindsight_case_is_strict, test_future_training_run_cannot_score_past_prediction, test_start_brier_remains_inconclusive_while_start_truth_is_unresolved, test_same_truth_sources_with_different_normalized_actuals_cannot_compare]
+    failure_consequence: Mark evaluation INCONCLUSIVE or reject the dataset; post-event knowledge cannot be allowed to leak into historical model qualification.
+    release_policy: REQUIRED
+    owner: control.learning_evaluator
+
+  - proof_id: PO-MODEL-EVALUATION-001
+    claim: Production-grade model evaluation is exact, content-addressed and truth-governed, uses the registered qualified champion learning policy, preserves explicit missing prediction coverage, and keeps shadow evidence distinct from production evidence.
+    proof_class: EMPIRICAL_QUALIFICATION
+    scope: learning
+    required_evidence: [LearningPolicyId, champion_policy_id, policy_qualification_artifact, promotion_rule_artifact, ModelEvaluationId, EvaluationTruthSetId, EvaluationRealizedTruthSetId, exact_metric_values, sample_counts, LearningUseMode, learning_object_replay]
+    required_tests: [test_default_learning_registry_has_no_fabricated_champion, test_verified_minutes_evaluation_is_exact_and_complete, test_insufficient_sample_and_future_policy_stay_inconclusive, test_prediction_coverage_keeps_complete_realized_truth_with_explicit_missing_prediction, test_shadow_complete_evidence_cannot_be_promoted_as_production, test_decision_impact_metric_cannot_be_fabricated_by_player_evaluator, test_learning_policy_yaml_rejects_string_boolean_laundering, test_learning_object_replay_preserves_exact_semantic_identity]
+    failure_consequence: Keep evaluation shadow/inconclusive or quarantine its artifact; incomplete, unqualified or coercion-laundered evidence cannot support promotion.
+    release_policy: REQUIRED
+    owner: control.learning_evaluator
+
+  - proof_id: PO-MODEL-PROMOTION-001
+    claim: A model champion changes only after candidate and incumbent are evaluated on identical source and realized truth sets under predeclared qualified promotion rules, a separate immutable PROMOTE certificate is issued, and a parent-linked CAS registry transition rejects stale writers.
+    proof_class: EMPIRICAL_QUALIFICATION
+    scope: learning
+    required_evidence: [ModelComparisonId, candidate_evaluation_id, incumbent_evaluation_id, EvaluationTruthSetId, EvaluationRealizedTruthSetId, ModelPromotionId, ModelRegistryGenerationId, promotion_rule_artifact, parent_generation_id, learning_object_replay]
+    required_tests: [test_candidate_and_incumbent_must_share_exact_truth_set, test_same_truth_sources_with_different_normalized_actuals_cannot_compare, test_exact_promotion_rules_and_cas_registry_transition, test_valid_but_unrelated_evaluation_artifact_cannot_launder_identity, test_learning_replay_rejects_declared_semantic_identity_tamper, test_learning_replay_rejects_missing_parent_even_when_payload_is_valid]
+    failure_consequence: Retain the incumbent or mark promotion INCONCLUSIVE; evaluation alone cannot mutate the champion and stale/unrelated evidence cannot authorize a transition.
+    release_policy: REQUIRED
+    owner: control.learning_promotion

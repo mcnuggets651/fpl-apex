@@ -67,3 +67,12 @@
 - **INV-NO-FUTURE-CERTAINTY** — future injuries, minutes and football events remain probabilistic.
 - **INV-ASSURANCE-DERIVES-RELEASE** — no independent readiness flag can bypass the AssuranceCase.
 - **INV-CAS-CURRENT-POINTER** — a stale competing publisher cannot become current.
+- **INV-LEARNING-NO-HINDSIGHT** — model training and promotion policy authority must predate the predictions/outcomes they govern; post-event facts and thresholds cannot leak backward into historical evaluation.
+- **INV-LEARNING-TRUTH-AUTHORITY** — learning metrics use only explicit VERIFIED OutcomeTruthRegistry targets; an UNRESOLVED truth target remains INCONCLUSIVE and cannot be inferred from a proxy such as minutes-for-starts.
+- **INV-LEARNING-COMMON-TRUTH** — candidate/incumbent comparison requires both the identical model-independent EvaluationTruthSetId and the identical EvaluationRealizedTruthSetId, so source cases and normalized actual values are common across models.
+- **INV-LEARNING-EXACT-NUMERICS** — durable evaluation metrics, comparison improvements and promotion thresholds use reduced exact rational values rather than uncontrolled binary floating point.
+- **INV-LEARNING-SHADOW-NOT-PRODUCTION** — SHADOW learning evidence remains semantically distinct and cannot be relabelled as production promotion evidence even when its numerical evaluation is COMPLETE.
+- **INV-LEARNING-POLICY-QUALIFIED** — production learning uses only the registered season-valid qualified champion LearningEvaluationPolicy with retained qualification and predeclared promotion-rule artifacts; repository configuration has no fabricated champion policy.
+- **INV-PROMOTION-SEPARATE-FROM-EVALUATION** — training/evaluation/comparison artifacts cannot mutate the forecast-model champion; a separate immutable ModelPromotionCertificate is required.
+- **INV-MODEL-REGISTRY-CAS** — champion changes occur only through immutable parent-linked ModelRegistryGeneration transitions that reject stale writers and non-PROMOTE certificates.
+- **INV-LEARNING-REPLAY-EXACT** — every downstream learning dependency replays the exact stored object type and semantic identity and verifies all retained parent/source artifacts; valid-but-unrelated artifacts cannot satisfy another object's evidence obligation.

@@ -11,6 +11,7 @@ from enum import Enum
 from urllib.parse import urlparse
 
 from .canonical import canonical_sha256
+from .ids import OutcomeTruthRegistryId
 
 
 class OutcomeTarget(str, Enum):
@@ -113,6 +114,10 @@ class OutcomeTruthRegistry:
                 "authorities": [row.semantic_payload() for row in self.authorities],
             }
         )
+
+    @property
+    def truth_registry_id(self) -> OutcomeTruthRegistryId:
+        return OutcomeTruthRegistryId(self.registry_id)
 
     def authority_for(self, target: OutcomeTarget) -> OutcomeTruthAuthority:
         return next(row for row in self.authorities if row.target is target)

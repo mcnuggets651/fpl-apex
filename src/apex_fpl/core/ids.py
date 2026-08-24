@@ -65,6 +65,10 @@ class ModelArtifactId(ApexId):
     kind = "model_artifact_id"
 
 
+class TrainingRunId(ApexId):
+    kind = "training_run_id"
+
+
 class PredictionBatchId(ApexId):
     kind = "prediction_batch_id"
 
@@ -123,6 +127,46 @@ class ReferenceSolverCertificateId(ApexId):
 
 class IndependentAssuranceReportId(ApexId):
     kind = "independent_assurance_report_id"
+
+
+class OutcomeTruthRegistryId(ApexId):
+    kind = "outcome_truth_registry_id"
+
+
+class LearningPolicyId(ApexId):
+    kind = "learning_policy_id"
+
+
+class EvaluationDatasetId(ApexId):
+    kind = "evaluation_dataset_id"
+
+
+class EvaluationTruthSetId(ApexId):
+    kind = "evaluation_truth_set_id"
+
+
+class EvaluationRealizedTruthSetId(ApexId):
+    kind = "evaluation_realized_truth_set_id"
+
+
+class EvaluationObservationSetId(ApexId):
+    kind = "evaluation_observation_set_id"
+
+
+class ModelEvaluationId(ApexId):
+    kind = "model_evaluation_id"
+
+
+class ModelComparisonId(ApexId):
+    kind = "model_comparison_id"
+
+
+class ModelPromotionId(ApexId):
+    kind = "model_promotion_id"
+
+
+class ModelRegistryGenerationId(ApexId):
+    kind = "model_registry_generation_id"
 
 
 class BundleId(ApexId):
