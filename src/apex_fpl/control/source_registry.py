@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from urllib.parse import urlparse
 
 import yaml
 
@@ -33,9 +33,23 @@ def _artifact_id(value: object, *, label: str) -> str:
 @dataclass(frozen=True, slots=True)
 class RegisteredSourceCapability:
     capability: SourceCapability
+    allowed_hosts: tuple[str, ...]
     qualification_artifact_id: str | None = None
 
     def __post_init__(self) -> None:
+        hosts = tuple(
+            sorted(
+                {
+                    str(host).strip().casefold().lstrip(".")
+                    for host in self.allowed_hosts
+                    if str(host).strip()
+                }
+            )
+        )
+        if not hosts:
+            raise ValueError("registered source capability requires allowed_hosts")
+        if any("/" in host or ":" in host for host in hosts):
+            raise ValueError("allowed_hosts must be host names, not URLs")
         artifact = self.qualification_artifact_id
         if self.capability.admission_state is SourceAdmissionState.QUALIFIED:
             if artifact is None:
@@ -43,13 +57,19 @@ class RegisteredSourceCapability:
             artifact = _artifact_id(artifact, label="source qualification artifact")
         elif artifact is not None:
             artifact = _artifact_id(artifact, label="source qualification artifact")
+        object.__setattr__(self, "allowed_hosts", hosts)
         object.__setattr__(self, "qualification_artifact_id", artifact)
 
     def semantic_payload(self) -> dict[str, object]:
         return {
             "capability": self.capability.semantic_payload(),
+            "allowed_hosts": list(self.allowed_hosts),
             "qualification_artifact_id": self.qualification_artifact_id,
         }
+
+    def permits_url(self, source_url: str) -> bool:
+        host = (urlparse(str(source_url)).hostname or "").casefold()
+        return any(host == allowed or host.endswith("." + allowed) for allowed in self.allowed_hosts)
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +167,9 @@ def load_source_registry(path: str | Path) -> SourceRegistry:
         raise ValueError("source registry requires schema_version 1")
     entries: list[RegisteredSourceCapability] = []
     for row in _rows(raw.get("sources"), label="sources"):
+        hosts = row.get("allowed_hosts")
+        if not isinstance(hosts, list):
+            raise ValueError("source registry allowed_hosts must be an array")
         capability = SourceCapability(
             source_id=str(row.get("source_id") or ""),
             capability=str(row.get("capability") or ""),
@@ -162,6 +185,7 @@ def load_source_registry(path: str | Path) -> SourceRegistry:
         entries.append(
             RegisteredSourceCapability(
                 capability=capability,
+                allowed_hosts=tuple(str(item) for item in hosts),
                 qualification_artifact_id=(
                     None
                     if row.get("qualification_artifact_id") is None
