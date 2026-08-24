@@ -201,24 +201,64 @@ proof_obligations:
     owner: forecast.contract
 
   - proof_id: PO-FPL-LEGALITY-001
-    claim: The selected current action is legal under the sealed versioned RuleSet.
+    claim: Every selected Slice 8 action is legal under the sealed RuleSet and exact ManagerState; in-season affordability uses realised selling resources rather than fresh-squad market value.
     proof_class: FORMAL_INVARIANT
     scope: decision
-    required_evidence: [RuleSet, DecisionInput, independent_primal_check]
-    required_tests: [test_small_universe_optimizer_matches_exhaustive_legal_optimum]
-    failure_consequence: Block release; never publish an illegal action.
+    required_evidence: [RuleSetId, ManagerStateId, DecisionInputId, DecisionAction, candidate_universe_id]
+    required_tests: [test_small_universe_decision_matches_independent_bruteforce_true_optimum, test_inseason_budget_uses_realised_selling_value_not_fresh_market_value, test_wildcard_and_free_hit_rebuild_paths_use_verified_ruleset_keys]
+    failure_consequence: Block the decision; never publish an illegal or financially impossible action.
     release_policy: REQUIRED
-    owner: assurance.legality
+    owner: decision.engine
 
-  - proof_id: PO-CANDIDATE-UNIVERSE-001
-    claim: The exactness claim truthfully scopes or certifies the candidate universe searched.
+  - proof_id: PO-DECISION-MECHANICS-001
+    claim: Slice 8 integrates transfers, hit costs, XI, captain, vice, bench order and chip mechanics inside the exact objective rather than post-processing them with arbitrary weights, and the typed action reconciles mechanics arithmetic before it can become evidence.
     proof_class: ALGORITHMIC_CERTIFICATE
     scope: decision
-    required_evidence: [CandidateUniverseId, expansion_certificate, ExactnessClaim]
-    required_tests: [test_expansion_improvement_invalidates_narrow_exactness]
-    failure_consequence: Downgrade exactness or block if policy requires full certification.
+    required_evidence: [DecisionMechanics, exact_rational_objective, transfer_frontier, submission_objective]
+    required_tests: [test_second_transfer_is_exactly_one_four_point_hit_not_double_counted, test_submission_optimises_bench_order_and_captain_inside_exact_objective, test_triple_captain_and_bench_boost_are_integrated_action_choices, test_zero_transfer_state_is_preserved_when_no_move_beats_hold, test_decision_action_rejects_hit_or_points_arithmetic_laundering, test_bench_boost_cannot_simultaneously_claim_autosub_points]
+    failure_consequence: Block the decision; mechanics reconciliation is not trustworthy.
     release_policy: REQUIRED
-    owner: decision.optimisation
+    owner: decision.mechanics
+
+  - proof_id: PO-DECISION-SOLVER-EXACTNESS-001
+    claim: Solver termination state, incumbent, best bound, gap, selected objective, candidate scope and numeric error are represented and reconciled explicitly; solver limit or error is never relabelled as infeasible or globally optimal.
+    proof_class: ALGORITHMIC_CERTIFICATE
+    scope: decision
+    required_evidence: [SolverCertificate, ExactnessClaim, numeric_policy_id, incumbent_objective, best_bound, gap, numeric_error_bound]
+    required_tests: [test_solver_limit_and_error_are_not_constructible_as_infeasible_shortcuts, test_solver_limit_error_and_true_infeasibility_remain_distinct_outcomes, test_global_optimal_exactness_requires_full_universe_complete_surface_and_zero_gap, test_rational_numeric_policy_has_exact_semantic_normalisation, test_solver_certificate_rejects_zero_gap_that_does_not_reconcile_bound, test_decision_result_rejects_solver_incumbent_not_equal_to_selected_objective, test_decision_result_rejects_returned_alternative_better_than_selected]
+    failure_consequence: Mark the solve INCONCLUSIVE or block publication; never fabricate exactness.
+    release_policy: REQUIRED
+    owner: core.decision
+
+  - proof_id: PO-DECISION-POLICY-QUALIFICATION-001
+    claim: Production optimisation uses only the registered empirically qualified DecisionPolicy for the current season, with explicit horizon, continuation value, chip option value, price policy, candidate policy and implemented tie-breaking identity.
+    proof_class: EMPIRICAL_QUALIFICATION
+    scope: decision_policy
+    required_evidence: [DecisionPolicyId, champion_policy_id, qualification_artifact, continuation_value_artifact, chip_option_value_artifact, price_policy_artifact, candidate_policy_artifact, tie_break_policy]
+    required_tests: [test_empty_registry_has_no_fabricated_production_decision_policy, test_qualified_policy_without_price_and_candidate_policy_is_not_production_qualified, test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified, test_tactical_policy_rejects_unimplemented_tie_break_semantics, test_receding_policy_tie_break_is_semantic_identity, test_tactical_engine_refuses_production_even_with_full_universe]
+    failure_consequence: Keep the policy shadow-only or abstain; a tactical one-Gameweek solve cannot become production max-EV-over-time or silently execute unimplemented tie semantics.
+    release_policy: REQUIRED
+    owner: control.decision_policy_registry
+
+  - proof_id: PO-CANDIDATE-UNIVERSE-001
+    claim: Candidate-universe identity and filter lineage are immutable; a strict-superset expansion is monotone, its result exactly reconciles objective delta versus materiality threshold, and a scoped optimum is promoted only after a FULL_OFFICIAL expansion finds no material improvement under identical DecisionPolicy semantics.
+    proof_class: ALGORITHMIC_CERTIFICATE
+    scope: decision
+    required_evidence: [CandidateUniverseId, filter_artifact_id, CandidateExpansionCertificate, baseline_objective, expanded_objective, materiality_threshold, ExactnessClaim, DecisionPolicyId]
+    required_tests: [test_materially_better_expanded_pool_invalidates_narrow_search_claim, test_full_official_expansion_without_material_improvement_certifies_scoped_pool, test_expansion_certificate_rejects_expanded_optimum_below_baseline, test_expansion_certificate_rejects_result_label_that_disagrees_with_objectives]
+    failure_consequence: Downgrade exactness, flag a search defect, or block if expansion arithmetic, monotonicity or certified/full coverage cannot be proven.
+    release_policy: REQUIRED
+    owner: decision.expansion
+
+  - proof_id: PO-DECISION-REPLAY-001
+    claim: Candidate universes and decisions are immutable content-addressed artifacts that replay offline with the same semantic identities, strict typed parsing and reconciled decision certificate semantics.
+    proof_class: DATA_INTEGRITY_ASSERTION
+    scope: decision
+    required_evidence: [candidate_universe_artifact, decision_result_artifact, CandidateUniverseId, DecisionId, DecisionPolicyId]
+    required_tests: [test_candidate_universe_and_decision_replay_preserve_semantic_identities, test_decision_replay_rejects_declared_semantic_identity_mismatch, test_decision_replay_rejects_bool_fields_laundered_as_integers, test_decision_result_rejects_solver_incumbent_not_equal_to_selected_objective]
+    failure_consequence: Quarantine the artifact and block any assurance/release claim derived from it.
+    release_policy: REQUIRED
+    owner: decision.store
 
   - proof_id: PO-SCENARIO-CONVERGENCE-001
     claim: Robustness metrics used by policy have converged to governed tolerance.
@@ -231,7 +271,7 @@ proof_obligations:
     owner: decision.scenarios
 
   - proof_id: PO-MECHANICS-RECONCILIATION-001
-    claim: Independent mechanics reproduce transfers, hits, XI, captaincy, bench and chips.
+    claim: Independent assurance reproduces transfers, hits, XI, captaincy, bench and chips without trusting the DecisionEngine implementation.
     proof_class: ALGORITHMIC_CERTIFICATE
     scope: decision
     required_evidence: [reference_transition, mechanics_reconciled]

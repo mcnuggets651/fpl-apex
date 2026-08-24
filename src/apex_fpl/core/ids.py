@@ -69,6 +69,10 @@ class PredictionBatchId(ApexId):
     kind = "prediction_batch_id"
 
 
+class CandidateUniverseId(ApexId):
+    kind = "candidate_universe_id"
+
+
 class DecisionWorldId(ApexId):
     kind = "decision_world_id"
 
@@ -81,8 +85,16 @@ class ScenarioSetId(ApexId):
     kind = "scenario_set_id"
 
 
+class DecisionPolicyId(ApexId):
+    kind = "decision_policy_id"
+
+
 class DecisionInputId(ApexId):
     kind = "decision_input_id"
+
+
+class DecisionId(ApexId):
+    kind = "decision_id"
 
 
 class BundleId(ApexId):
