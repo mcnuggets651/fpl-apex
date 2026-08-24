@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from itertools import combinations, product
-from typing import Iterable
 
 from apex_fpl.core.decision import (
     CandidatePlayer,
@@ -81,9 +80,15 @@ def _available_chips(state: ManagerState, *, ruleset: RuleSet) -> set[DecisionCh
     if state.gameweek in set(ruleset.value("FPL-WILDCARD-DISALLOWED-GWS-001")):
         available.discard(DecisionChip.WILDCARD)
     boundary = ruleset.mapping("FPL-FREE-HIT-CROSS-HALF-CONSECUTIVE-001")
-    if boundary.get("allowed") is False and state.gameweek == int(boundary["second_half_gw"]):
+    if (
+        boundary.get("allowed") is False
+        and state.gameweek == int(boundary["second_half_gw"])
+    ):
         first = int(boundary["first_half_gw"])
-        if any(row.chip == "FREE_HIT" and row.gameweek == first for row in state.chips_used):
+        if any(
+            row.chip == "FREE_HIT" and row.gameweek == first
+            for row in state.chips_used
+        ):
             available.discard(DecisionChip.FREE_HIT)
     return available
 
@@ -133,7 +138,9 @@ def _incoming_combinations(
     universe: CandidateUniverse,
     owned_ids: set[OfficialPlayerId],
 ):
-    counts: dict[str, int] = {position: 0 for position in ("GK", "DEF", "MID", "FWD")}
+    counts: dict[str, int] = {
+        position: 0 for position in ("GK", "DEF", "MID", "FWD")
+    }
     for row in outgoing:
         counts[row.position] += 1
     pools = {
@@ -145,11 +152,9 @@ def _incoming_combinations(
         for position in counts
     }
     position_choices = []
-    position_order = []
     for position in ("GK", "DEF", "MID", "FWD"):
         count = counts[position]
         if count:
-            position_order.append(position)
             position_choices.append(tuple(combinations(pools[position], count)))
     if not position_choices:
         yield ()
@@ -158,16 +163,27 @@ def _incoming_combinations(
         yield tuple(player for group in grouped for player in group)
 
 
-def _pair_transfers(outgoing: tuple, incoming: tuple[CandidatePlayer, ...]) -> tuple[TransferMove, ...]:
+def _pair_transfers(
+    outgoing: tuple,
+    incoming: tuple[CandidatePlayer, ...],
+) -> tuple[TransferMove, ...]:
     moves: list[TransferMove] = []
     for position in ("GK", "DEF", "MID", "FWD"):
-        outgoing_ids = sorted(row.player_id for row in outgoing if row.position == position)
-        incoming_ids = sorted(row.player_id for row in incoming if row.position == position)
+        outgoing_ids = sorted(
+            row.player_id for row in outgoing if row.position == position
+        )
+        incoming_ids = sorted(
+            row.player_id for row in incoming if row.position == position
+        )
         if len(outgoing_ids) != len(incoming_ids):
             raise ValueError("transfer position counts do not reconcile")
         moves.extend(
             TransferMove(out_player, in_player)
-            for out_player, in_player in zip(outgoing_ids, incoming_ids, strict=True)
+            for out_player, in_player in zip(
+                outgoing_ids,
+                incoming_ids,
+                strict=True,
+            )
         )
     return tuple(sorted(moves))
 
@@ -187,7 +203,9 @@ def _normal_squad_actions(
     for transfer_count in range(max_transfers + 1):
         for outgoing in combinations(state.squad, transfer_count):
             outgoing_ids = {row.player_id for row in outgoing}
-            retained = tuple(row for row in current if row.player_id not in outgoing_ids)
+            retained = tuple(
+                row for row in current if row.player_id not in outgoing_ids
+            )
             sale_value = sum(row.selling_price_tenths for row in outgoing)
             for incoming in _incoming_combinations(
                 outgoing,
@@ -198,7 +216,12 @@ def _normal_squad_actions(
                 bank_after = state.bank_tenths + sale_value - incoming_cost
                 if bank_after < 0:
                     continue
-                squad = tuple(sorted((*retained, *incoming), key=lambda row: int(row.player_id)))
+                squad = tuple(
+                    sorted(
+                        (*retained, *incoming),
+                        key=lambda row: int(row.player_id),
+                    )
+                )
                 if not _legal_squad(squad, ruleset=ruleset):
                     continue
                 yield _SquadAction(
@@ -206,7 +229,11 @@ def _normal_squad_actions(
                     transfers=_pair_transfers(outgoing, incoming),
                     squad=squad,
                     bank_after_tenths=bank_after,
-                    hit_points=_hit_points(transfer_count, state, ruleset=ruleset),
+                    hit_points=_hit_points(
+                        transfer_count,
+                        state,
+                        ruleset=ruleset,
+                    ),
                 )
 
 
@@ -217,12 +244,16 @@ def _full_rebuild_squads(
     chip: DecisionChip,
     ruleset: RuleSet,
 ):
-    counts_raw = ruleset.mapping("FPL-SQUAD-POSITION-COUNTS-001")
+    counts_raw = ruleset.mapping("FPL-SQUAD-POSITIONS-001")
     counts = {position: int(value) for position, value in counts_raw.items()}
     owned = {row.player_id: row for row in state.squad}
-    budget = state.bank_tenths + sum(row.selling_price_tenths for row in state.squad)
+    budget = state.bank_tenths + sum(
+        row.selling_price_tenths for row in state.squad
+    )
     by_position = {
-        position: tuple(row for row in universe.players if row.position == position)
+        position: tuple(
+            row for row in universe.players if row.position == position
+        )
         for position in ("GK", "DEF", "MID", "FWD")
     }
     choice_groups = [
@@ -240,7 +271,9 @@ def _full_rebuild_squads(
         club_counts: dict[int, int] = {}
         for player in squad:
             club_counts[player.team_id] = club_counts.get(player.team_id, 0) + 1
-        if max(club_counts.values(), default=0) > ruleset.integer("FPL-SQUAD-MAX-CLUB-001"):
+        if max(club_counts.values(), default=0) > ruleset.integer(
+            "FPL-SQUAD-MAX-CLUB-001"
+        ):
             continue
         cost = sum(
             owned[player.player_id].selling_price_tenths
@@ -253,11 +286,19 @@ def _full_rebuild_squads(
         if not _legal_squad(squad, ruleset=ruleset):
             continue
         selected_ids = {row.player_id for row in squad}
-        outgoing = tuple(row for row in state.squad if row.player_id not in selected_ids)
-        incoming = tuple(row for row in squad if row.player_id not in current_ids)
+        outgoing = tuple(
+            row for row in state.squad if row.player_id not in selected_ids
+        )
+        incoming = tuple(
+            row for row in squad if row.player_id not in current_ids
+        )
         transfers = _pair_transfers(outgoing, incoming)
         bank_during = budget - cost
-        bank_after = state.bank_tenths if chip is DecisionChip.FREE_HIT else bank_during
+        bank_after = (
+            state.bank_tenths
+            if chip is DecisionChip.FREE_HIT
+            else bank_during
+        )
         yield _SquadAction(
             chip=chip,
             transfers=transfers,
@@ -274,7 +315,9 @@ def _decision_action(
     ruleset: RuleSet,
 ) -> DecisionAction:
     squad_ids = tuple(row.player_id for row in squad_action.squad)
-    squad_values = {player_id: values[player_id] for player_id in squad_ids}
+    squad_values = {
+        player_id: values[player_id] for player_id in squad_ids
+    }
     submission = optimise_squad_submission(
         squad_action.squad,
         squad_values,
@@ -343,19 +386,31 @@ def optimise_current_gameweek(
         raise ValueError("DecisionEngine requires a positive current gameweek")
     if forecast.season != state.season or ruleset.season != state.season:
         raise ValueError("decision season mismatch")
-    if forecast.ruleset_id != ruleset.ruleset_id or state.ruleset_id != ruleset.ruleset_id:
+    if (
+        forecast.ruleset_id != ruleset.ruleset_id
+        or state.ruleset_id != ruleset.ruleset_id
+    ):
         raise ValueError("decision RuleSet identity mismatch")
     if universe.global_world_id != forecast.global_world_id:
         raise ValueError("candidate universe GlobalWorldId does not match Forecast")
     _validate_owned_against_universe(state, universe)
     if use_mode is DecisionUseMode.PRODUCTION:
-        if forecast.use_mode is not ForecastUseMode.PRODUCTION or not forecast.production_eligible:
-            raise ValueError("production decision requires a production-eligible Forecast")
+        if (
+            forecast.use_mode is not ForecastUseMode.PRODUCTION
+            or not forecast.production_eligible
+        ):
+            raise ValueError(
+                "production decision requires a production-eligible Forecast"
+            )
         if forecast.abstentions:
-            raise ValueError("production decision cannot consume Forecast abstentions")
+            raise ValueError(
+                "production decision cannot consume Forecast abstentions"
+            )
 
     available_chips = _available_chips(state, ruleset=ruleset)
-    considered = tuple(sorted(set(chips_considered), key=lambda chip: chip.value))
+    considered = tuple(
+        sorted(set(chips_considered), key=lambda chip: chip.value)
+    )
     decision_input = DecisionInput(
         manager_state_id=state.manager_state_id,
         forecast_id=forecast.forecast_id,
@@ -394,17 +449,25 @@ def optimise_current_gameweek(
             )
         for squad_action in squad_actions:
             legal_actions.append(
-                _decision_action(squad_action, values=values, ruleset=ruleset)
+                _decision_action(
+                    squad_action,
+                    values=values,
+                    ruleset=ruleset,
+                )
             )
     if not legal_actions:
-        raise ValueError("DecisionEngine found no legal actions in declared search surface")
+        raise ValueError(
+            "DecisionEngine found no legal actions in declared search surface"
+        )
 
     legal_actions.sort(
         key=lambda action: (_objective(action), _action_tie_key(action)),
         reverse=True,
     )
     selected = legal_actions[0]
-    alternatives = tuple(legal_actions[1 : 1 + max(0, alternatives_limit)])
+    alternatives = tuple(
+        legal_actions[1 : 1 + max(0, alternatives_limit)]
+    )
     action_surface_complete = _surface_complete(
         decision_input,
         available_chips=available_chips,
@@ -414,14 +477,19 @@ def optimise_current_gameweek(
         reasons.append("candidate universe is scoped rather than FULL_OFFICIAL")
     if not action_surface_complete:
         missing_chips = sorted(
-            chip.value for chip in available_chips - set(decision_input.chips_considered)
+            chip.value
+            for chip in available_chips - set(decision_input.chips_considered)
         )
         if decision_input.max_normal_transfers < 15:
             reasons.append(
-                f"normal transfer surface capped at {decision_input.max_normal_transfers}/15"
+                "normal transfer surface capped at "
+                f"{decision_input.max_normal_transfers}/15"
             )
         if missing_chips:
-            reasons.append("available chips omitted from action surface: " + ",".join(missing_chips))
+            reasons.append(
+                "available chips omitted from action surface: "
+                + ",".join(missing_chips)
+            )
     exactness = ExactnessClaim(
         universe_scope=universe.scope,
         action_surface_complete=action_surface_complete,
