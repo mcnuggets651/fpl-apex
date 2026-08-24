@@ -32,6 +32,17 @@ class ModelPromotionCertificate:
     def __post_init__(self) -> None:
         if self.schema_version != 2:
             raise ValueError("unsupported ModelPromotionCertificate schema_version")
+        id_contracts = (
+            (self.candidate_model_id, ModelArtifactId, "candidate_model_id"),
+            (self.incumbent_model_id, ModelArtifactId, "incumbent_model_id"),
+            (self.candidate_evaluation_id, ModelEvaluationId, "candidate_evaluation_id"),
+            (self.incumbent_evaluation_id, ModelEvaluationId, "incumbent_evaluation_id"),
+            (self.comparison_id, ModelComparisonId, "comparison_id"),
+            (self.policy_id, LearningPolicyId, "policy_id"),
+        )
+        for value, expected_type, label in id_contracts:
+            if not isinstance(value, expected_type):
+                raise ValueError(f"model promotion {label} must be typed")
         if self.candidate_model_id == self.incumbent_model_id:
             raise ValueError("promotion candidate cannot equal incumbent")
         if not isinstance(self.decision, ModelPromotionDecision):
@@ -86,6 +97,18 @@ class ModelRegistryGeneration:
     def __post_init__(self) -> None:
         if self.schema_version != 2:
             raise ValueError("unsupported ModelRegistryGeneration schema_version")
+        if self.parent_generation_id is not None and not isinstance(
+            self.parent_generation_id, ModelRegistryGenerationId
+        ):
+            raise ValueError("model registry parent_generation_id must be typed")
+        if any(not isinstance(item, ModelArtifactId) for item in self.registered_model_ids):
+            raise ValueError("model registry registered_model_ids must be typed")
+        if self.champion_model_id is not None and not isinstance(
+            self.champion_model_id, ModelArtifactId
+        ):
+            raise ValueError("model registry champion_model_id must be typed")
+        if self.promotion_id is not None and not isinstance(self.promotion_id, ModelPromotionId):
+            raise ValueError("model registry promotion_id must be typed")
         season = str(self.season).strip()
         if not season:
             raise ValueError("model registry generation requires season")
