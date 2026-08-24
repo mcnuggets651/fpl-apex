@@ -61,6 +61,14 @@ class FeatureSnapshotId(ApexId):
     kind = "feature_snapshot_id"
 
 
+class ModelArtifactId(ApexId):
+    kind = "model_artifact_id"
+
+
+class PredictionBatchId(ApexId):
+    kind = "prediction_batch_id"
+
+
 class DecisionWorldId(ApexId):
     kind = "decision_world_id"
 
