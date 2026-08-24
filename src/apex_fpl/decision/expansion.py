@@ -35,6 +35,7 @@ def _same_decision_policy(baseline: DecisionResult, expanded: DecisionResult) ->
         "manager_state_id",
         "forecast_id",
         "ruleset_id",
+        "decision_policy_id",
         "gameweek",
         "use_mode",
         "objective_model",
@@ -72,9 +73,15 @@ def certify_candidate_expansion(
 
     if baseline_universe.scope is not CandidateUniverseScope.SCOPED:
         raise ValueError("candidate expansion baseline must be SCOPED")
-    if baseline.decision_input.candidate_universe_id != baseline_universe.candidate_universe_id:
+    if (
+        baseline.decision_input.candidate_universe_id
+        != baseline_universe.candidate_universe_id
+    ):
         raise ValueError("baseline decision/universe identity mismatch")
-    if expanded.decision_input.candidate_universe_id != expanded_universe.candidate_universe_id:
+    if (
+        expanded.decision_input.candidate_universe_id
+        != expanded_universe.candidate_universe_id
+    ):
         raise ValueError("expanded decision/universe identity mismatch")
     if baseline_universe.global_world_id != expanded_universe.global_world_id:
         raise ValueError("candidate expansion must use the same GlobalWorld")
@@ -85,8 +92,13 @@ def certify_candidate_expansion(
     _same_decision_policy(baseline, expanded)
     if baseline.solver.status is not SolverStatus.OPTIMAL:
         raise ValueError("baseline expansion audit requires an OPTIMAL scoped solve")
-    if not baseline.exactness.search_complete or not baseline.exactness.action_surface_complete:
-        raise ValueError("baseline expansion audit requires complete scoped search/action surface")
+    if (
+        not baseline.exactness.search_complete
+        or not baseline.exactness.action_surface_complete
+    ):
+        raise ValueError(
+            "baseline expansion audit requires complete scoped search/action surface"
+        )
     if expanded.exactness.status is not ExactnessStatus.GLOBAL_OPTIMAL:
         raise ValueError("certifying expansion must itself be GLOBAL_OPTIMAL")
     if expanded_universe.scope is not CandidateUniverseScope.FULL_OFFICIAL:
