@@ -141,8 +141,16 @@ class EvaluationDatasetId(ApexId):
     kind = "evaluation_dataset_id"
 
 
+class EvaluationObservationSetId(ApexId):
+    kind = "evaluation_observation_set_id"
+
+
 class ModelEvaluationId(ApexId):
     kind = "model_evaluation_id"
+
+
+class ModelComparisonId(ApexId):
+    kind = "model_comparison_id"
 
 
 class ModelPromotionId(ApexId):
