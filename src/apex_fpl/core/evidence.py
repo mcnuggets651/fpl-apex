@@ -59,6 +59,18 @@ def _artifact_id(value: str) -> str:
     return text
 
 
+def _semantic_id(value: str, *, label: str) -> str:
+    text = str(value).strip()
+    algorithm, separator, digest = text.partition(":")
+    if algorithm != "sha256" or not separator or len(digest) != 64:
+        raise ValueError(f"{label} must be a canonical sha256 semantic ID")
+    try:
+        int(digest, 16)
+    except ValueError as exc:
+        raise ValueError(f"{label} digest is invalid") from exc
+    return text
+
+
 def _aware_iso(value: str, *, label: str) -> str:
     text = str(value).strip()
     if not text:
@@ -145,14 +157,11 @@ class EvidenceClaim:
             if _point(expires) <= _point(start):
                 raise ValueError("expires_at must be after evidence start")
         if self.supersedes_claim_id is not None:
-            supersedes = str(self.supersedes_claim_id).strip()
-            if len(supersedes) != 64:
-                raise ValueError("supersedes_claim_id must be a SHA-256 semantic claim ID")
-            try:
-                int(supersedes, 16)
-            except ValueError as exc:
-                raise ValueError("supersedes_claim_id digest is invalid") from exc
-            object.__setattr__(self, "supersedes_claim_id", supersedes)
+            object.__setattr__(
+                self,
+                "supersedes_claim_id",
+                _semantic_id(self.supersedes_claim_id, label="supersedes_claim_id"),
+            )
         object.__setattr__(self, "first_known_at", first_known)
         object.__setattr__(self, "observed_at", observed)
         object.__setattr__(self, "ingested_at", ingested)
