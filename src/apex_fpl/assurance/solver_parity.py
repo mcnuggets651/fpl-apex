@@ -111,8 +111,10 @@ def build_independent_assurance_report(
 
     Raw parity may be inspected with :func:`validate_reference_solver_parity`. A final
     assurance report can reach PASS only after the certificate is matched to retained
-    registry bytes proving the artifact-verified, season/horizon-valid qualified champion.
-    The resulting authorization artifact is part of report source lineage and is replayed.
+    registry authority proving the artifact-verified, season/horizon-valid qualified
+    champion. If no registry artifact is supplied, the exact in-memory registry authority
+    is first sealed as a canonical semantic snapshot. The resulting authorization artifact
+    is part of report source lineage and is replayable.
     """
 
     blockers: list[str] = []
@@ -152,8 +154,6 @@ def build_independent_assurance_report(
             missing_context = []
             if worker_registry is None:
                 missing_context.append("qualified reference solver registry")
-            if worker_registry_artifact_id is None:
-                missing_context.append("retained reference solver registry artifact")
             if season is None:
                 missing_context.append("decision season")
             if decision_cutoff is None:
