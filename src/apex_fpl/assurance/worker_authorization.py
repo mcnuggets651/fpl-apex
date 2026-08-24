@@ -55,7 +55,7 @@ def _registry_from_bytes(content: bytes) -> ReferenceSolverRegistry:
     try:
         payload = yaml.safe_load(content.decode("utf-8")) or {}
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
-        raise ValueError("retained reference solver registry is not valid UTF-8 YAML") from exc
+        raise ValueError("retained reference solver registry is not valid UTF-8 YAML/JSON") from exc
     if not isinstance(payload, dict):
         raise ValueError("retained reference solver registry must be object")
     if _strict_int(payload.get("schema_version"), label="registry schema_version") != 1:
@@ -105,20 +105,39 @@ def _registry_signature(registry: ReferenceSolverRegistry) -> tuple[object, ...]
     )
 
 
+def _registry_semantic_payload(registry: ReferenceSolverRegistry) -> dict[str, object]:
+    return {
+        "schema_name": "apex-reference-solver-registry-snapshot",
+        "schema_version": registry.schema_version,
+        "season": registry.season,
+        "workers": [worker.semantic_payload() for worker in registry.workers],
+        "champion_worker_id": (
+            None if registry.champion_worker_id is None else str(registry.champion_worker_id)
+        ),
+    }
+
+
 def create_reference_solver_authorization(
     certificate: ReferenceSolverCertificate,
     *,
     worker_registry: ReferenceSolverRegistry,
-    registry_artifact_id: str,
+    registry_artifact_id: str | None,
     store: ArtifactStore,
     season: str,
     decision_cutoff: str,
     horizon_gameweeks: int,
 ) -> StoredReferenceSolverAuthorization:
-    """Authorize one certificate against retained exact registry bytes and persist proof."""
+    """Authorize one certificate against retained exact registry authority and persist proof."""
 
-    registry_bytes = store.read_bytes(registry_artifact_id)
-    retained_registry = _registry_from_bytes(registry_bytes)
+    if registry_artifact_id is None:
+        registry_ref = store.put_bytes(
+            canonical_json_bytes(_registry_semantic_payload(worker_registry)),
+            media_type="application/json",
+            schema_name="apex-reference-solver-registry-snapshot",
+            schema_version="1",
+        )
+        registry_artifact_id = registry_ref.artifact_id
+    retained_registry = _registry_from_bytes(store.read_bytes(registry_artifact_id))
     if _registry_signature(retained_registry) != _registry_signature(worker_registry):
         raise ValueError("reference solver registry object does not match retained registry artifact")
     worker = retained_registry.verify_certificate_worker(
