@@ -129,7 +129,7 @@ requirements:
     proof_obligations: [PO-DECISION-SOLVER-EXACTNESS-001]
 
   - requirement_id: REQ-DECISION-POLICY-QUALIFICATION
-    requirement: Production max-EV-over-time requires the registered empirically qualified DecisionPolicy with explicit receding horizon, continuation value, chip option value, price policy, candidate policy and tie-breaking identity; tactical current-GW policy remains shadow-only.
+    requirement: Production max-EV-over-time requires the registered empirically qualified DecisionPolicy with explicit receding horizon, continuation value, chip option value, price policy, candidate policy and tie-breaking identity; tactical current-GW policy remains shadow-only and refuses unimplemented tie-break semantics.
     critical: true
     invariants: [INV-DECISION-POLICY-IDENTITY, INV-TACTICAL-NOT-PRODUCTION, INV-DECISION-POLICY-QUALIFIED, INV-EMPIRICAL-CLAIMS-QUALIFIED]
     implementation: [src/apex_fpl/core/decision_policy.py, src/apex_fpl/control/decision_policy_registry.py, config/decision_policies_v2.yaml]
@@ -137,11 +137,11 @@ requirements:
     proof_obligations: [PO-DECISION-POLICY-QUALIFICATION-001, PO-ARTIFACT-INTEGRITY-001]
 
   - requirement_id: REQ-CANDIDATE-EXACTNESS
-    requirement: Candidate filters are immutable and optimisation exactness states the searched universe and expansion evidence truthfully; a materially better expanded pool invalidates the narrow claim.
+    requirement: Candidate filters are immutable and optimisation exactness states the searched universe and expansion evidence truthfully; strict-superset expansion must be monotone, its result must reconcile exact objective delta versus materiality threshold, and a materially better expanded pool invalidates the narrow claim.
     critical: true
     invariants: [INV-CANDIDATE-FILTER-IMMUTABLE, INV-CANDIDATE-EXPANSION-FAILS-CLOSED, INV-NO-FALSE-GLOBAL-OPTIMALITY]
     implementation: [src/apex_fpl/core/decision.py, src/apex_fpl/decision/universe.py, src/apex_fpl/decision/expansion.py]
-    tests: [tests/test_v2_decision_expansion.py]
+    tests: [tests/test_v2_decision_expansion.py, tests/test_v2_decision_integrity.py]
     proof_obligations: [PO-CANDIDATE-UNIVERSE-001, PO-DECISION-SOLVER-EXACTNESS-001]
 
   - requirement_id: REQ-DECISION-REPLAY
