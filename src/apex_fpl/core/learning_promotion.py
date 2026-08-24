@@ -39,7 +39,14 @@ class ModelPromotionCertificate:
         reason = str(self.reason).strip()
         if not reason:
             raise ValueError("model promotion certificate requires reason")
-        sources = tuple(sorted({artifact_id(item, label="model promotion source artifact") for item in self.source_artifact_ids}))
+        sources = tuple(
+            sorted(
+                {
+                    artifact_id(item, label="model promotion source artifact")
+                    for item in self.source_artifact_ids
+                }
+            )
+        )
         if not sources:
             raise ValueError("model promotion certificate requires immutable source evidence")
         object.__setattr__(self, "reason", reason)
@@ -73,11 +80,12 @@ class ModelRegistryGeneration:
     registered_model_ids: tuple[ModelArtifactId, ...]
     champion_model_id: ModelArtifactId | None
     promotion_id: ModelPromotionId | None
+    promotion_artifact_id: str | None
     source_artifact_ids: tuple[str, ...]
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self) -> None:
-        if self.schema_version != 2:
+        if self.schema_version != 3:
             raise ValueError("unsupported ModelRegistryGeneration schema_version")
         season = str(self.season).strip()
         if not season:
@@ -90,19 +98,37 @@ class ModelRegistryGeneration:
             raise ValueError("first model registry generation cannot have parent")
         if generation > 1 and self.parent_generation_id is None:
             raise ValueError("later model registry generation requires parent identity")
+        promotion_artifact = self.promotion_artifact_id
+        if promotion_artifact is not None:
+            promotion_artifact = artifact_id(
+                promotion_artifact,
+                label="model registry promotion artifact",
+            )
         if self.champion_model_id is not None:
             if self.champion_model_id not in models:
                 raise ValueError("model registry champion must be registered")
-            if self.promotion_id is None:
-                raise ValueError("model registry champion requires promotion certificate identity")
-        elif self.promotion_id is not None:
-            raise ValueError("promotion certificate cannot exist without resulting champion")
-        sources = tuple(sorted({artifact_id(item, label="model registry generation source artifact") for item in self.source_artifact_ids}))
+            if self.promotion_id is None or promotion_artifact is None:
+                raise ValueError(
+                    "model registry champion requires promotion certificate identity and artifact"
+                )
+        elif self.promotion_id is not None or promotion_artifact is not None:
+            raise ValueError("promotion evidence cannot exist without resulting champion")
+        sources = tuple(
+            sorted(
+                {
+                    artifact_id(item, label="model registry generation source artifact")
+                    for item in self.source_artifact_ids
+                }
+            )
+        )
         if not sources:
             raise ValueError("model registry generation requires immutable source evidence")
+        if promotion_artifact is not None and promotion_artifact not in sources:
+            raise ValueError("model registry source lineage must include promotion artifact")
         object.__setattr__(self, "season", season)
         object.__setattr__(self, "generation", generation)
         object.__setattr__(self, "registered_model_ids", models)
+        object.__setattr__(self, "promotion_artifact_id", promotion_artifact)
         object.__setattr__(self, "source_artifact_ids", sources)
 
     def semantic_payload(self) -> dict[str, object]:
@@ -111,10 +137,15 @@ class ModelRegistryGeneration:
             "schema_version": self.schema_version,
             "season": self.season,
             "generation": self.generation,
-            "parent_generation_id": None if self.parent_generation_id is None else str(self.parent_generation_id),
+            "parent_generation_id": (
+                None if self.parent_generation_id is None else str(self.parent_generation_id)
+            ),
             "registered_model_ids": [str(item) for item in self.registered_model_ids],
-            "champion_model_id": None if self.champion_model_id is None else str(self.champion_model_id),
+            "champion_model_id": (
+                None if self.champion_model_id is None else str(self.champion_model_id)
+            ),
             "promotion_id": None if self.promotion_id is None else str(self.promotion_id),
+            "promotion_artifact_id": self.promotion_artifact_id,
             "source_artifact_ids": list(self.source_artifact_ids),
         }
 
