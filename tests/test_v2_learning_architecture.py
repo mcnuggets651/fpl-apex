@@ -7,7 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CORE_DIR = ROOT / "src" / "apex_fpl" / "core"
 CONTROL_DIR = ROOT / "src" / "apex_fpl" / "control"
 CORE_FILES = tuple(sorted(CORE_DIR.glob("learning_*.py")))
-CONTROL_FILES = tuple(sorted(CONTROL_DIR.glob("learning_*.py")))
+CONTROL_FILES = tuple(
+    sorted(
+        set(CONTROL_DIR.glob("learning_*.py"))
+        | {CONTROL_DIR / "outcome_truth_normalization.py"}
+    )
+)
 
 
 def _imports(path: Path) -> list[str]:
@@ -71,6 +76,7 @@ def test_learning_control_cannot_import_v1_replay_evaluation_or_network_runtime(
 def test_learning_path_is_explicitly_offline_and_has_no_deleted_monolith() -> None:
     assert CORE_FILES
     assert CONTROL_FILES
+    assert CONTROL_DIR / "outcome_truth_normalization.py" in CONTROL_FILES
     assert not (CORE_DIR / "learning.py").exists()
     combined = "\n".join(path.read_text(encoding="utf-8") for path in CORE_FILES + CONTROL_FILES)
     assert "ArtifactStore" in combined
