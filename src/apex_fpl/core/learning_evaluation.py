@@ -8,6 +8,7 @@ from .canonical import canonical_sha256
 from .ids import (
     EvaluationDatasetId,
     EvaluationObservationSetId,
+    EvaluationTruthSetId,
     LearningPolicyId,
     ModelArtifactId,
     ModelComparisonId,
@@ -54,7 +55,9 @@ class EvaluationMetricResult:
         if self.interval_lower is not None and self.interval_upper is not None:
             if self.interval_lower.as_fraction() > self.interval_upper.as_fraction():
                 raise ValueError("metric interval lower bound exceeds upper bound")
-        sources = tuple(sorted({artifact_id(item, label="metric source artifact") for item in self.source_artifact_ids}))
+        sources = tuple(
+            sorted({artifact_id(item, label="metric source artifact") for item in self.source_artifact_ids})
+        )
         if not sources:
             raise ValueError("evaluation metric requires immutable source evidence")
         object.__setattr__(self, "cohort", cohort)
@@ -67,7 +70,6 @@ class EvaluationMetricResult:
     def semantic_payload(self) -> dict[str, object]:
         def value_payload(value: ExactMetricValue | None) -> dict[str, int] | None:
             return None if value is None else value.semantic_payload()
-
         return {
             "metric": self.metric.value,
             "target": self.target.value,
@@ -86,6 +88,7 @@ class ModelEvaluationReport:
     candidate_model_id: ModelArtifactId
     training_run_id: TrainingRunId
     evaluation_dataset_id: EvaluationDatasetId
+    evaluation_truth_set_id: EvaluationTruthSetId
     observation_set_id: EvaluationObservationSetId
     policy_id: LearningPolicyId
     use_mode: LearningUseMode
@@ -93,20 +96,24 @@ class ModelEvaluationReport:
     status: LearningEvaluationStatus
     blockers: tuple[str, ...]
     source_artifact_ids: tuple[str, ...]
-    schema_version: int = 3
+    schema_version: int = 4
 
     def __post_init__(self) -> None:
-        if self.schema_version != 3:
+        if self.schema_version != 4:
             raise ValueError("unsupported ModelEvaluationReport schema_version")
         if not isinstance(self.use_mode, LearningUseMode):
             raise ValueError("model evaluation use_mode must be typed")
         if not isinstance(self.status, LearningEvaluationStatus):
             raise ValueError("model evaluation status must be typed")
-        metrics = tuple(sorted(self.metrics, key=lambda row: (row.metric.value, row.target.value, row.cohort)))
+        metrics = tuple(
+            sorted(self.metrics, key=lambda row: (row.metric.value, row.target.value, row.cohort))
+        )
         if len({row.key for row in metrics}) != len(metrics):
             raise ValueError("model evaluation contains duplicate metric/cohort rows")
         blockers = tuple(str(item).strip() for item in self.blockers if str(item).strip())
-        sources = tuple(sorted({artifact_id(item, label="model evaluation source artifact") for item in self.source_artifact_ids}))
+        sources = tuple(
+            sorted({artifact_id(item, label="model evaluation source artifact") for item in self.source_artifact_ids})
+        )
         metric_sources = {item for row in metrics for item in row.source_artifact_ids}
         if not metric_sources.issubset(set(sources)):
             raise ValueError("model evaluation lineage must include all metric source artifacts")
@@ -126,6 +133,7 @@ class ModelEvaluationReport:
             "candidate_model_id": str(self.candidate_model_id),
             "training_run_id": str(self.training_run_id),
             "evaluation_dataset_id": str(self.evaluation_dataset_id),
+            "evaluation_truth_set_id": str(self.evaluation_truth_set_id),
             "observation_set_id": str(self.observation_set_id),
             "policy_id": str(self.policy_id),
             "use_mode": self.use_mode.value,
@@ -192,26 +200,31 @@ class ModelComparisonReport:
     incumbent_model_id: ModelArtifactId
     candidate_evaluation_id: ModelEvaluationId
     incumbent_evaluation_id: ModelEvaluationId
+    evaluation_truth_set_id: EvaluationTruthSetId
     policy_id: LearningPolicyId
     use_mode: LearningUseMode
     comparisons: tuple[MetricComparisonResult, ...]
     status: LearningEvaluationStatus
     blockers: tuple[str, ...]
     source_artifact_ids: tuple[str, ...]
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self) -> None:
-        if self.schema_version != 2:
+        if self.schema_version != 3:
             raise ValueError("unsupported ModelComparisonReport schema_version")
         if self.candidate_model_id == self.incumbent_model_id:
             raise ValueError("comparison candidate cannot equal incumbent")
         if not isinstance(self.use_mode, LearningUseMode):
             raise ValueError("model comparison use_mode must be typed")
-        comparisons = tuple(sorted(self.comparisons, key=lambda row: (row.metric.value, row.target.value, row.cohort)))
+        comparisons = tuple(
+            sorted(self.comparisons, key=lambda row: (row.metric.value, row.target.value, row.cohort))
+        )
         if len({row.key for row in comparisons}) != len(comparisons):
             raise ValueError("model comparison contains duplicate metric/cohort rows")
         blockers = tuple(str(item).strip() for item in self.blockers if str(item).strip())
-        sources = tuple(sorted({artifact_id(item, label="model comparison source artifact") for item in self.source_artifact_ids}))
+        sources = tuple(
+            sorted({artifact_id(item, label="model comparison source artifact") for item in self.source_artifact_ids})
+        )
         if not sources:
             raise ValueError("model comparison requires immutable source evidence")
         if self.status is LearningEvaluationStatus.COMPLETE:
@@ -231,6 +244,7 @@ class ModelComparisonReport:
             "incumbent_model_id": str(self.incumbent_model_id),
             "candidate_evaluation_id": str(self.candidate_evaluation_id),
             "incumbent_evaluation_id": str(self.incumbent_evaluation_id),
+            "evaluation_truth_set_id": str(self.evaluation_truth_set_id),
             "policy_id": str(self.policy_id),
             "use_mode": self.use_mode.value,
             "comparisons": [row.semantic_payload() for row in self.comparisons],
