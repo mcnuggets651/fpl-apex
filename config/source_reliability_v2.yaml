@@ -1,0 +1,6 @@
+schema_version: 1
+
+# Intentionally empty at Slice 5 creation. Missing source x claim x horizon x recency
+# calibration resolves to ReliabilityQualification.UNKNOWN with no numeric coefficient.
+# Learning/replay slices may add QUALIFIED rows only with immutable qualification artifacts.
+contexts: []

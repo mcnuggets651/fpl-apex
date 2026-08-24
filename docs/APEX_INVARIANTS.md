@@ -24,6 +24,15 @@
 - **INV-DEADLINE-SNAPSHOT-NOT-CURRENT** — a public deadline snapshot cannot silently claim to be the manager's current private state between deadlines.
 - **INV-MANAGER-LEDGER-RECONCILED** — historical Official sale receipts reconcile ownership, bank, FT and hit history; live transfer events separately prove selling value from known current Official price and purchase basis.
 - **INV-FULL-OVERRIDE-ONLY** — a manual manager-state override is complete, attributable, scoped, expiring and content-addressed; partial patches cannot become current exact state.
+- **INV-SOURCE-HEALTH-MULTIDIMENSIONAL** — availability, freshness, coverage, integrity, schema validity, semantic validity and identity validity remain separate health dimensions; one green boolean cannot hide a failed dimension.
+- **INV-SHADOW-BEFORE-QUALIFIED** — a source capability cannot influence production until capability-specific shadow evidence and a registered qualification policy produce an immutable qualification certificate.
+- **INV-DEGRADATION-MUST-BE-QUALIFIED** — MODEL_REQUIRED or QUALITY_REQUIRED source failure can degrade only through a prequalified registered profile whose validation artifact verifies at runtime; otherwise the capability blocks.
+- **INV-DEADLINE-RELATIVE-FRESHNESS** — evidence freshness is evaluated from explicit source age and time-to-deadline under a qualified capability/criticality policy; missing policy is UNKNOWN, never implicitly fresh.
+- **INV-NO-FABRICATED-RELIABILITY** — source reliability is contextual by source × claim × horizon × recency; unqualified context has no numeric coefficient and cannot be weighted.
+- **INV-RAW-TEXT-IS-DATA** — retained internet/source text is opaque data, never executable instruction; only a constrained typed extraction may become evidence.
+- **INV-EVIDENCE-EXACT-ID-ATTACHMENT** — structured evidence attaches only to an exact current Official FPL player ID already present in the sealed identity registry.
+- **INV-SOURCE-PROVENANCE-HOST-BOUND** — a structured claim's source URL must match the registered host set for that source capability; labels cannot impersonate another source.
+- **INV-EVIDENCE-APPEND-ONLY** — evidence history is immutable and parent-linked; corrections supersede earlier same-source/same-player/same-claim facts without rewriting or deleting them.
 - **INV-LEGAL-CURRENT-ACTION** — every published action passes independent RuleSet/state-transition verification.
 - **INV-NO-FALSE-GLOBAL-OPTIMALITY** — optimisation exactness is scoped to the certified universe and solver state.
 - **INV-EMPIRICAL-CLAIMS-QUALIFIED** — predictive claims enter production only through registered qualification.

@@ -1,0 +1,6 @@
+schema_version: 1
+
+# Deliberately no production freshness thresholds are invented in Slice 5.
+# A capability/criticality pair without a qualified policy assesses freshness as UNKNOWN.
+# Later replay/learning work may register policies only with immutable qualification evidence.
+policies: []

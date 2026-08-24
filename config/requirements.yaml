@@ -64,6 +64,14 @@ requirements:
     tests: [tests/test_v2_manager_state.py, tests/test_v2_manager_state_adversarial.py, tests/test_v2_manager_state_reconstruction.py, tests/test_initial_manager_basis_and_sealed_reconstruction.py]
     proof_obligations: [PO-MANAGER-STATE-001, PO-MANAGER-PUBLIC-SEAL-001, PO-INITIAL-MANAGER-BASIS-001, PO-ARTIFACT-INTEGRITY-001]
 
+  - requirement_id: REQ-EVIDENCE-SOURCE-GOVERNANCE
+    requirement: Production evidence uses only capability-registered sources with multidimensional health, verified shadow admission, qualified degradation/freshness, exact Official-ID attachment, contextual reliability and append-only immutable provenance; raw source text is never executable authority.
+    critical: true
+    invariants: [INV-SOURCE-HEALTH-MULTIDIMENSIONAL, INV-SHADOW-BEFORE-QUALIFIED, INV-DEGRADATION-MUST-BE-QUALIFIED, INV-DEADLINE-RELATIVE-FRESHNESS, INV-NO-FABRICATED-RELIABILITY, INV-RAW-TEXT-IS-DATA, INV-EVIDENCE-EXACT-ID-ATTACHMENT, INV-SOURCE-PROVENANCE-HOST-BOUND, INV-EVIDENCE-APPEND-ONLY]
+    implementation: [src/apex_fpl/core/sources.py, src/apex_fpl/core/freshness.py, src/apex_fpl/core/reliability.py, src/apex_fpl/core/evidence.py, src/apex_fpl/control/source_registry.py, src/apex_fpl/control/source_admission.py, src/apex_fpl/control/source_runtime.py, src/apex_fpl/control/freshness_registry.py, src/apex_fpl/control/reliability_registry.py, src/apex_fpl/control/evidence_ingestion.py, src/apex_fpl/control/evidence_ledger_store.py, config/sources_v2.yaml, config/source_reliability_v2.yaml, config/evidence_freshness_v2.yaml]
+    tests: [tests/test_v2_evidence_source_governance.py]
+    proof_obligations: [PO-SOURCE-GOVERNANCE-001, PO-EVIDENCE-RELIABILITY-001, PO-EVIDENCE-LEDGER-001, PO-ARTIFACT-INTEGRITY-001, PO-OFFICIAL-PLAYER-IDENTITY-001]
+
   - requirement_id: REQ-LEGAL-ACTION
     requirement: Every published current action is independently legal under the sealed RuleSet.
     critical: true
