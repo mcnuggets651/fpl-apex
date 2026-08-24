@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from apex_fpl.assurance.worker_authorization import create_reference_solver_authorization
 from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.control.reference_solver_registry import ReferenceSolverRegistry
 from apex_fpl.core.assurance import (
@@ -100,6 +101,7 @@ def build_independent_assurance_report(
     store: ArtifactStore,
     solver: ReferenceSolverCertificate | None = None,
     worker_registry: ReferenceSolverRegistry | None = None,
+    worker_registry_artifact_id: str | None = None,
     season: str | None = None,
     decision_cutoff: str | None = None,
     horizon_gameweeks: int | None = None,
@@ -108,8 +110,9 @@ def build_independent_assurance_report(
     """Build publication-grade assurance without converting missing qualification to PASS.
 
     Raw parity may be inspected with :func:`validate_reference_solver_parity`. A final
-    assurance report can reach PASS only after the certificate is matched to the
-    registered, artifact-verified, season/horizon-valid qualified champion worker.
+    assurance report can reach PASS only after the certificate is matched to retained
+    registry bytes proving the artifact-verified, season/horizon-valid qualified champion.
+    The resulting authorization artifact is part of report source lineage and is replayed.
     """
 
     blockers: list[str] = []
@@ -140,15 +143,17 @@ def build_independent_assurance_report(
         )
         blockers.extend(solver_blockers)
         solver_id = solver.certificate_id
-        solver_artifacts = (
+        solver_artifact_list = [
             solver.solver_input_artifact_id,
             solver.solver_output_artifact_id,
             solver.worker_artifact_id,
-        )
+        ]
         if parity_status is AssuranceParityStatus.PASS:
             missing_context = []
             if worker_registry is None:
                 missing_context.append("qualified reference solver registry")
+            if worker_registry_artifact_id is None:
+                missing_context.append("retained reference solver registry artifact")
             if season is None:
                 missing_context.append("decision season")
             if decision_cutoff is None:
@@ -163,17 +168,30 @@ def build_independent_assurance_report(
                 )
             else:
                 try:
-                    worker_registry.verify_certificate_worker(
+                    authorization = create_reference_solver_authorization(
                         solver,
+                        worker_registry=worker_registry,
+                        registry_artifact_id=worker_registry_artifact_id,
                         store=store,
                         season=season,
-                        cutoff=decision_cutoff,
+                        decision_cutoff=decision_cutoff,
                         horizon_gameweeks=horizon_gameweeks,
-                        production=True,
                     )
                 except (FileNotFoundError, ValueError) as exc:
                     parity_status = AssuranceParityStatus.INCONCLUSIVE
-                    blockers.append(f"reference solver worker is not production-qualified: {exc}")
+                    blockers.append(
+                        f"reference solver worker is not production-qualified: {exc}"
+                    )
+                else:
+                    solver_artifact_list.extend(
+                        (
+                            authorization.artifact_id,
+                            authorization.authorization.registry_artifact_id,
+                            authorization.authorization.worker_code_artifact_id,
+                            authorization.authorization.qualification_artifact_id,
+                        )
+                    )
+        solver_artifacts = tuple(sorted(set(solver_artifact_list)))
 
     source_artifacts = tuple(sorted(set(mechanics.source_artifact_ids) | set(solver_artifacts)))
     return IndependentAssuranceReport(
