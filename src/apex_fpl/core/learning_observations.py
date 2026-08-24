@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from .canonical import canonical_sha256
 from .ids import EvaluationDatasetId, EvaluationObservationSetId
-from .learning import ExactMetricValue
+from .learning_common import ExactMetricValue
 from .outcome_truth import OutcomeTarget
 
 
@@ -28,9 +28,7 @@ class EvaluationObservation:
         if (self.interval_lower is None) != (self.interval_upper is None):
             raise ValueError("evaluation observation interval requires both bounds")
         if self.interval_lower is not None and self.interval_upper is not None:
-            lower = self.interval_lower.numerator * self.interval_upper.denominator
-            upper = self.interval_upper.numerator * self.interval_lower.denominator
-            if lower > upper:
+            if self.interval_lower.as_fraction() > self.interval_upper.as_fraction():
                 raise ValueError("evaluation observation lower interval exceeds upper")
         object.__setattr__(self, "case_id", case_id)
 
