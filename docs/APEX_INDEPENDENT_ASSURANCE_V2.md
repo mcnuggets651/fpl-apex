@@ -21,7 +21,7 @@ A missing route is not success. Missing, limited, errored or unqualified externa
 
 The assurance path is also barred from V1 optimisation/services, network clients, runtime RNG, pandas/numpy/scipy and mutable live data. It receives sealed objects and immutable artifacts only.
 
-This independence is an architectural property, not a comment: `tests/test_v2_independent_assurance_architecture.py` fails if prohibited imports re-enter the path.
+This independence is an architectural property, not a comment: `tests/test_v2_assurance_architecture.py` fails if prohibited imports re-enter the path.
 
 ## Reference mechanics certificate
 
@@ -56,6 +56,18 @@ A self-consistent but numerically tampered DecisionResult is therefore still det
 
 No worker is trusted merely because its file exists or because an older V1 workflow called it an independent solver.
 
+## Solver authorization provenance
+
+A runtime registry lookup is not sufficient historical proof by itself. When solver parity reaches PASS, Slice 10 creates a content-addressed `ReferenceSolverAuthorization` that binds the solver certificate to:
+
+- the exact champion `ReferenceSolverWorkerId`;
+- the worker code artifact;
+- the empirical qualification artifact;
+- the season, decision cutoff and horizon checked;
+- an immutable registry artifact.
+
+If the caller did not already retain registry bytes, Apex seals a canonical semantic snapshot of the exact registry object used for authorization. If retained registry bytes are supplied, they must reconstruct the same registry identity. The authorization artifact, registry artifact, code artifact and qualification artifact all become source lineage of the final assurance report.
+
 ## Parity semantics
 
 For a feasible Apex decision:
@@ -71,19 +83,21 @@ Solver termination states are never collapsed. Absence is never converted to pas
 
 ## Immutable replay
 
-Mechanics certificates, solver certificates and the final `IndependentAssuranceReport` are content-addressed. Replay reconstructs semantic objects, recomputes IDs, verifies referenced source artifacts and verifies cross-links between the report and its underlying certificates.
+Mechanics certificates, solver certificates, solver authorization and the final `IndependentAssuranceReport` are content-addressed. Raw report replay reconstructs semantic objects, recomputes IDs, verifies referenced source artifacts and verifies certificate cross-links.
 
-A declared ID mismatch, missing worker/input/output evidence, malformed typed field or foreign certificate blocks replay.
+Publication-grade replay adds a stronger gate through `verify_stored_independent_assurance()`: a PASS-looking report must contain exactly one replayable solver authorization. Replay reopens the retained registry artifact, proves the same worker is still the recorded qualified champion for that historical authorization, and re-verifies the code and qualification artifacts. A PASS report with missing authorization, missing qualification evidence, a foreign registry, or inconsistent champion identity is rejected before it can enter the `AssuranceCase`.
+
+A declared ID mismatch, missing worker/input/output/authorization evidence, malformed typed field or foreign certificate blocks replay.
 
 ## AssuranceCase integration
 
-Slice 10 maps independent evidence into the constitutional `AssuranceCase`:
+Slice 10 maps only **replay-verified** independent evidence into the constitutional `AssuranceCase`:
 
 - successful reference mechanics -> `PO-MECHANICS-RECONCILIATION-001 = PROVEN`;
 - failed reference mechanics -> `FAILED`;
-- qualified reference-solver parity PASS -> `PO-REFERENCE-SOLVER-PARITY-001 = PROVEN`;
+- replay-verified qualified reference-solver parity PASS -> `PO-REFERENCE-SOLVER-PARITY-001 = PROVEN`;
 - solver FAIL -> `FAILED`;
-- absent/limited/unqualified solver evidence -> `INCONCLUSIVE`.
+- absent/limited/unqualified/unverifiable solver evidence -> `INCONCLUSIVE`.
 
 Both proof obligations are release-blocking. The existing ReleaseCertificate logic therefore cannot authorise publication because the main optimiser is confident while independent evidence is missing or contradictory.
 
