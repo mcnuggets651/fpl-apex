@@ -210,8 +210,8 @@ def _universe(store: FileSystemArtifactStore) -> CandidateUniverse:
 
 def _independent_no_transfer_oracle(xp: dict[int, int]) -> int:
     ruleset = _ruleset()
-    minimum = ruleset.mapping("FPL-XI-POSITION-MIN-001")
-    maximum = ruleset.mapping("FPL-XI-POSITION-MAX-001")
+    minimum = ruleset.mapping("FPL-XI-MIN-POSITIONS-001")
+    maximum = ruleset.mapping("FPL-XI-MAX-POSITIONS-001")
     by_position = {
         position: tuple(
             player_id
