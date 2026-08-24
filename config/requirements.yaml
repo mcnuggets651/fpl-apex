@@ -115,17 +115,17 @@ requirements:
   - requirement_id: REQ-DECISION-MECHANICS
     requirement: Transfers, hit costs, legal XI, captain, vice, bench order and chips are integrated into the exact decision objective and in-season affordability uses realised selling resources.
     critical: true
-    invariants: [INV-MECHANICS-INTEGRATED, INV-NO-ARBITRARY-BENCH-WEIGHT, INV-LEGAL-CURRENT-ACTION, INV-MONEY-IN-TENTHS]
+    invariants: [INV-MECHANICS-INTEGRATED, INV-NO-ARBITRARY-BENCH-WEIGHT, INV-LEGAL-CURRENT-ACTION, INV-MONEY-IN-TENTHS, INV-DECISION-CERTIFICATE-RECONCILED]
     implementation: [src/apex_fpl/decision/engine.py, src/apex_fpl/decision/mechanics.py, src/apex_fpl/core/decision.py]
-    tests: [tests/test_v2_decision_engine.py, tests/test_v2_decision_mechanics_regressions.py]
+    tests: [tests/test_v2_decision_engine.py, tests/test_v2_decision_mechanics_regressions.py, tests/test_v2_decision_integrity.py]
     proof_obligations: [PO-FPL-LEGALITY-001, PO-DECISION-MECHANICS-001]
 
   - requirement_id: REQ-DECISION-SOLVER-EXACTNESS
     requirement: Decision solver outcomes preserve typed termination status, exactness scope, best bound, gap, candidate filter/expansion state and numeric error without laundering limits/errors into infeasibility or optimality.
     critical: true
-    invariants: [INV-SOLVER-STATUS-TYPED, INV-EXACTNESS-TYPED-SCOPED, INV-DECISION-RATIONAL-NUMERICS, INV-NO-FALSE-GLOBAL-OPTIMALITY]
+    invariants: [INV-SOLVER-STATUS-TYPED, INV-EXACTNESS-TYPED-SCOPED, INV-DECISION-RATIONAL-NUMERICS, INV-DECISION-CERTIFICATE-RECONCILED, INV-NO-FALSE-GLOBAL-OPTIMALITY]
     implementation: [src/apex_fpl/core/decision.py, src/apex_fpl/core/decision_search.py, src/apex_fpl/decision/engine.py]
-    tests: [tests/test_v2_decision_contracts.py, tests/test_v2_decision_search.py, tests/test_v2_decision_engine.py]
+    tests: [tests/test_v2_decision_contracts.py, tests/test_v2_decision_search.py, tests/test_v2_decision_engine.py, tests/test_v2_decision_integrity.py]
     proof_obligations: [PO-DECISION-SOLVER-EXACTNESS-001]
 
   - requirement_id: REQ-DECISION-POLICY-QUALIFICATION
@@ -147,9 +147,9 @@ requirements:
   - requirement_id: REQ-DECISION-REPLAY
     requirement: Candidate universes and DecisionResults are content-addressed, strict-typed and replayable offline with identical semantic IDs.
     critical: true
-    invariants: [INV-IMMUTABLE-RELEASE, INV-DECISION-POLICY-IDENTITY, INV-DECISION-SEALED-INPUTS]
+    invariants: [INV-IMMUTABLE-RELEASE, INV-DECISION-POLICY-IDENTITY, INV-DECISION-SEALED-INPUTS, INV-DECISION-CERTIFICATE-RECONCILED]
     implementation: [src/apex_fpl/decision/store.py, src/apex_fpl/core/decision.py]
-    tests: [tests/test_v2_decision_replay.py]
+    tests: [tests/test_v2_decision_replay.py, tests/test_v2_decision_integrity.py]
     proof_obligations: [PO-DECISION-REPLAY-001, PO-ARTIFACT-INTEGRITY-001]
 
   - requirement_id: REQ-LEGAL-ACTION
