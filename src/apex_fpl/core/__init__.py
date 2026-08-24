@@ -23,6 +23,7 @@ from .decision import (
     TransferMove,
 )
 from .decision_policy import (
+    TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
     DecisionEvaluationMode,
     DecisionObjectivePolicy,
     DecisionPolicy,
@@ -259,6 +260,7 @@ __all__ = [
     "SourceCapability",
     "SourceCriticality",
     "SourceHealth",
+    "TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID",
     "TransferLedgerEvent",
     "TransferMove",
     "TransferTransition",
