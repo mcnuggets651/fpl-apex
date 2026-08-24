@@ -317,6 +317,13 @@ def _rational_compare(left: RationalValue, right: RationalValue) -> int:
     return (delta > 0) - (delta < 0)
 
 
+def _rational_add(left: RationalValue, right: RationalValue) -> RationalValue:
+    return RationalValue(
+        left.numerator * right.denominator + right.numerator * left.denominator,
+        left.denominator * right.denominator,
+    )
+
+
 def _rational_subtract(left: RationalValue, right: RationalValue) -> RationalValue:
     return RationalValue(
         left.numerator * right.denominator - right.numerator * left.denominator,
@@ -417,6 +424,30 @@ class DecisionAction:
             raise ValueError(
                 "decision bank_after_tenths must be nonnegative integer"
             )
+        hit_value = RationalValue(self.mechanics.hit_points, 1)
+        expected_objective = _rational_subtract(
+            self.mechanics.points_before_hits,
+            hit_value,
+        )
+        if self.mechanics.objective_points != expected_objective:
+            raise ValueError("decision objective does not reconcile points before hits and hit cost")
+        if self.chip is DecisionChip.BENCH_BOOST:
+            if self.mechanics.autosub_points != RationalValue.zero():
+                raise ValueError("Bench Boost action cannot also claim autosub points")
+            expected_before_hits = _rational_add(
+                self.mechanics.squad_points_if_bench_boost,
+                self.mechanics.captain_bonus,
+            )
+        else:
+            expected_before_hits = _rational_add(
+                _rational_add(
+                    self.mechanics.xi_points,
+                    self.mechanics.autosub_points,
+                ),
+                self.mechanics.captain_bonus,
+            )
+        if self.mechanics.points_before_hits != expected_before_hits:
+            raise ValueError("decision points-before-hits do not reconcile submission mechanics")
         object.__setattr__(self, "transfers", transfers)
         object.__setattr__(self, "squad_ids", squad)
         object.__setattr__(self, "xi_ids", xi)
