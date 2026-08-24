@@ -116,6 +116,7 @@ class LearningEvaluationPolicy:
     qualification_artifact_id: str | None
     promotion_rule_artifact_id: str | None
     first_available_at: str
+    valid_seasons: tuple[str, ...]
     requirements: tuple[MetricRequirement, ...]
     promotion_rules: tuple[MetricPromotionRule, ...]
     schema_version: int = 2
@@ -131,6 +132,9 @@ class LearningEvaluationPolicy:
         if not isinstance(self.qualification_state, LearningPolicyQualification):
             raise ValueError("learning policy qualification must be typed")
         available = aware_iso(self.first_available_at, label="learning policy first_available_at")
+        seasons = tuple(sorted({str(item).strip() for item in self.valid_seasons if str(item).strip()}))
+        if not seasons:
+            raise ValueError("learning policy requires at least one valid season")
         requirements = tuple(sorted(self.requirements, key=lambda row: (row.metric.value, row.target.value, row.cohort)))
         rules = tuple(sorted(self.promotion_rules, key=lambda row: (row.metric.value, row.target.value, row.cohort)))
         if not requirements:
@@ -152,6 +156,7 @@ class LearningEvaluationPolicy:
             if {row.key for row in rules} != requirement_keys:
                 raise ValueError("qualified learning policy requires one promotion rule per metric requirement")
         object.__setattr__(self, "first_available_at", available)
+        object.__setattr__(self, "valid_seasons", seasons)
         object.__setattr__(self, "requirements", requirements)
         object.__setattr__(self, "promotion_rules", rules)
         object.__setattr__(self, "qualification_artifact_id", qualification)
@@ -176,6 +181,7 @@ class LearningEvaluationPolicy:
             "qualification_artifact_id": self.qualification_artifact_id,
             "promotion_rule_artifact_id": self.promotion_rule_artifact_id,
             "first_available_at": self.first_available_at,
+            "valid_seasons": list(self.valid_seasons),
             "requirements": [row.semantic_payload() for row in self.requirements],
             "promotion_rules": [row.semantic_payload() for row in self.promotion_rules],
         }
