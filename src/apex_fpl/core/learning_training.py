@@ -23,18 +23,35 @@ class ModelTrainingRun:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported ModelTrainingRun schema_version")
+        if not isinstance(self.model_artifact_id, ModelArtifactId):
+            raise ValueError("model training run model_artifact_id must be typed")
         cutoff = aware_iso(self.training_cutoff, label="training_cutoff")
         available = aware_iso(self.first_available_at, label="training first_available_at")
         if instant(cutoff) > instant(available):
             raise ValueError("model cannot be available before its training cutoff")
         datasets = tuple(
-            sorted({artifact_id(item, label="training dataset artifact") for item in self.training_dataset_artifact_ids})
+            sorted(
+                {
+                    artifact_id(item, label="training dataset artifact")
+                    for item in self.training_dataset_artifact_ids
+                }
+            )
         )
         parameters = tuple(
-            sorted({artifact_id(item, label="training parameter artifact") for item in self.parameter_artifact_ids})
+            sorted(
+                {
+                    artifact_id(item, label="training parameter artifact")
+                    for item in self.parameter_artifact_ids
+                }
+            )
         )
         sources = tuple(
-            sorted({artifact_id(item, label="training source artifact") for item in self.source_artifact_ids})
+            sorted(
+                {
+                    artifact_id(item, label="training source artifact")
+                    for item in self.source_artifact_ids
+                }
+            )
         )
         trainer = artifact_id(self.trainer_code_artifact_id, label="trainer code artifact")
         if not datasets or not parameters or not sources:
