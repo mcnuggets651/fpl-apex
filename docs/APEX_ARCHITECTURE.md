@@ -167,7 +167,21 @@ CVaR, correlated scenarios, regret and parity quantify fragility. They remain di
 
 ### Learning
 
-Pre-deadline forecasts and decisions are archived, then compared with later official outcomes. Future forecast/model promotions require no-hindsight/out-of-sample support plus decision-level validation.
+Learning is an offline, immutable and no-hindsight process. The sealed production runtime does not retrain itself and a live evaluation cannot mutate a champion.
+
+Each learning chain separates:
+
+1. an immutable `ModelTrainingRun` with training cutoff, first-available time, datasets, trainer code and parameter artifacts;
+2. an `EvaluationDataset` whose predictions were sealed before later post-event truth became available;
+3. an exact `EvaluationObservationSet` whose actual outcomes remain complete even when a model explicitly lacks a prediction;
+4. a truth-governed `ModelEvaluationReport` using only VERIFIED targets from `OutcomeTruthRegistry`;
+5. a candidate/incumbent `ModelComparisonReport` over the identical model-independent source truth set **and** identical normalized realized truth set;
+6. a separate `ModelPromotionCertificate` applying predeclared exact promotion rules under the registered qualified champion learning policy;
+7. an immutable parent-linked `ModelRegistryGeneration` changed only by a stale-writer-safe CAS transition.
+
+Durable learning metrics and thresholds use exact rational values. SHADOW and PRODUCTION learning evidence have different semantic identity. Unresolved targets remain INCONCLUSIVE; for example, START truth is not inferred from minutes. A valid but unrelated artifact cannot satisfy a learning dependency merely because its SHA exists: downstream learning stages replay exact object type, semantic identity and retained source/parent artifacts.
+
+The repository deliberately starts with no fabricated learning-policy champion. Model complexity or promotion is justified only by prospective no-hindsight evidence. See `docs/APEX_LEARNING_GOVERNANCE_V2.md` for the complete Slice 11 operating contract.
 
 ## User-facing contract
 
