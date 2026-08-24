@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
 from apex_fpl.core.decision import (
     CandidatePlayer,
@@ -30,6 +32,7 @@ from apex_fpl.core.ids import (
     RuleSetId,
 )
 from apex_fpl.decision.expansion import certify_candidate_expansion
+from apex_fpl.decision.store import store_decision_result
 
 
 def _player(player_id: int) -> CandidatePlayer:
@@ -153,6 +156,23 @@ def _result(
     )
 
 
+def _promoted_result(
+    store: FileSystemArtifactStore,
+) -> tuple[DecisionResult, str]:
+    baseline_universe, expanded_universe = _universes(store)
+    baseline = _result(baseline_universe, objective=100, global_exact=False)
+    expanded = _result(expanded_universe, objective=101, global_exact=True)
+    _certificate, artifact_id, promoted = certify_candidate_expansion(
+        baseline=baseline,
+        expanded=expanded,
+        baseline_universe=baseline_universe,
+        expanded_universe=expanded_universe,
+        materiality_threshold=RationalValue(2, 1),
+        store=store,
+    )
+    return promoted, artifact_id
+
+
 def test_materially_better_expanded_pool_invalidates_narrow_search_claim(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     baseline_universe, expanded_universe = _universes(store)
@@ -176,19 +196,20 @@ def test_full_official_expansion_without_material_improvement_certifies_scoped_p
     tmp_path: Path,
 ) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    baseline_universe, expanded_universe = _universes(store)
-    baseline = _result(baseline_universe, objective=100, global_exact=False)
-    expanded = _result(expanded_universe, objective=101, global_exact=True)
-    certificate, artifact_id, promoted = certify_candidate_expansion(
-        baseline=baseline,
-        expanded=expanded,
-        baseline_universe=baseline_universe,
-        expanded_universe=expanded_universe,
-        materiality_threshold=RationalValue(2, 1),
-        store=store,
-    )
-    assert certificate.result is ExpansionResult.NO_MATERIAL_IMPROVEMENT
-    assert certificate.certifies_baseline_universe is True
+    promoted, artifact_id = _promoted_result(store)
     assert promoted.exactness.status is ExactnessStatus.OPTIMAL_WITHIN_CERTIFIED_UNIVERSE
     assert promoted.exactness.expansion_certificate_id == artifact_id
     assert promoted.exactness.publication_exactness_eligible is True
+
+
+def test_promoted_scoped_decision_requires_verifying_expansion_artifact(
+    tmp_path: Path,
+) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    promoted, artifact_id = _promoted_result(store)
+    stored = store_decision_result(promoted, store=store)
+    assert stored.result.exactness.expansion_certificate_id == artifact_id
+
+    empty_store = FileSystemArtifactStore(tmp_path / "empty-artifacts")
+    with pytest.raises(FileNotFoundError):
+        store_decision_result(promoted, store=empty_store)
