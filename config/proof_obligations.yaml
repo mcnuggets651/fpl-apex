@@ -261,14 +261,14 @@ proof_obligations:
     owner: decision.store
 
   - proof_id: PO-SCENARIO-CONVERGENCE-001
-    claim: Robustness metrics used by policy have converged to governed tolerance.
+    claim: Robustness evidence comes only from one immutable joint scenario stream with explicit generator/RNG/seed/weight/order identity; all compared submitted actions use common nested prefixes, exact realised FPL mechanics, complete Forecast xP reconciliation and governed convergence tolerances, and any nonconvergence remains INCONCLUSIVE with no robustness-preferred action.
     proof_class: EMPIRICAL_QUALIFICATION
     scope: scenario_set
-    required_evidence: [ScenarioSet, convergence_trace, xp_reconciliation]
-    required_tests: [test_nonconverged_scenarios_are_inconclusive]
-    failure_consequence: Mark robustness INCONCLUSIVE and block policy requiring it.
+    required_evidence: [ScenarioSetId, ScenarioGeneratorId, ScenarioPolicyId, source_artifacts, common_nested_prefixes, RobustnessReportId, convergence_checkpoints, exact_weighted_mean, exact_lower_CVaR, tail_quantile, xp_reconciliation, max_ev_regret_tolerance, offline_replay]
+    required_tests: [test_scenario_policy_has_historical_floor_and_registry_has_no_fabricated_champion, test_fixed_action_scenario_scoring_applies_autosub_and_vice_without_hindsight, test_common_nested_stream_converges_and_preserves_ev_anchor, test_robustness_preference_cannot_leave_governed_ev_regret_band, test_nonconverged_stream_is_inconclusive_not_stable, test_future_convergence_policy_cannot_retroactively_govern_forecast, test_missing_forecast_reconciliation_target_fails_closed, test_scenario_and_robustness_replay_preserve_semantic_identity, test_qualified_registry_requires_real_artifacts_and_champions, test_v2_scenario_path_uses_only_sealed_joint_artifacts_not_runtime_rng_or_marginal_labels]
+    failure_consequence: Mark robustness INCONCLUSIVE or withhold robustness evidence; never treat a 256-scenario run, a missing/corrupt worker artifact, marginal scenario labels or an unqualified/future policy as stable joint robustness evidence.
     release_policy: REQUIRED
-    owner: decision.scenarios
+    owner: decision.robustness
 
   - proof_id: PO-MECHANICS-RECONCILIATION-001
     claim: Independent assurance reproduces transfers, hits, XI, captaincy, bench and chips without trusting the DecisionEngine implementation.

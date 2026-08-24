@@ -81,8 +81,20 @@ class ForecastId(ApexId):
     kind = "forecast_id"
 
 
+class ScenarioGeneratorId(ApexId):
+    kind = "scenario_generator_id"
+
+
+class ScenarioPolicyId(ApexId):
+    kind = "scenario_policy_id"
+
+
 class ScenarioSetId(ApexId):
     kind = "scenario_set_id"
+
+
+class RobustnessReportId(ApexId):
+    kind = "robustness_report_id"
 
 
 class DecisionPolicyId(ApexId):

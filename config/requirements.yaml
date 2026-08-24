@@ -161,9 +161,9 @@ requirements:
     proof_obligations: [PO-FPL-LEGALITY-001, PO-MECHANICS-RECONCILIATION-001]
 
   - requirement_id: REQ-SCENARIO-CONVERGENCE
-    requirement: Robustness metrics cannot be treated as stable before governed convergence.
+    requirement: Robustness evidence uses one immutable worker-produced joint scenario stream with explicit generator/RNG/seed/weight/order identity; every compared submitted action is scored unchanged on common nested prefixes with exact FPL mechanics, complete Forecast xP reconciliation, governed convergence tolerances and a bounded EV-regret diagnostic band. A 256-scenario run is a floor, not proof of convergence; nonconvergence or missing evidence is never actionable.
     critical: true
-    invariants: [INV-NONCONVERGENCE-INCONCLUSIVE]
-    implementation: [slice-9-scenario-convergence]
-    tests: [test_nonconverged_scenarios_are_inconclusive]
-    proof_obligations: [PO-SCENARIO-CONVERGENCE-001]
+    invariants: [INV-NONCONVERGENCE-INCONCLUSIVE, INV-DECISION-SEALED-INPUTS, INV-DECISION-CERTIFICATE-RECONCILED, INV-EMPIRICAL-CLAIMS-QUALIFIED]
+    implementation: [src/apex_fpl/core/scenarios.py, src/apex_fpl/control/scenario_registry.py, src/apex_fpl/decision/robustness.py, src/apex_fpl/decision/scenario_store.py, config/scenario_governance_v2.yaml]
+    tests: [tests/test_v2_scenario_convergence.py, tests/test_v2_architecture_boundaries.py]
+    proof_obligations: [PO-SCENARIO-CONVERGENCE-001, PO-ARTIFACT-INTEGRITY-001, PO-FORECAST-LINEAGE-001]

@@ -37,6 +37,11 @@ DECISION_V2 = (
     ROOT / "src" / "apex_fpl" / "decision" / "expansion.py",
     ROOT / "src" / "apex_fpl" / "decision" / "store.py",
 )
+SCENARIO_V2 = (
+    ROOT / "src" / "apex_fpl" / "control" / "scenario_registry.py",
+    ROOT / "src" / "apex_fpl" / "decision" / "robustness.py",
+    ROOT / "src" / "apex_fpl" / "decision" / "scenario_store.py",
+)
 
 
 def _absolute_imports(path: Path) -> list[str]:
@@ -187,6 +192,36 @@ def test_v2_decision_path_has_no_network_dataframe_v1_optimizer_or_runtime_defau
             "fillna(1.0)",
             "bench_weight",
             "shortlist_bench_weight",
+            "candidate_regret_fraction",
+        ):
+            if forbidden_symbol in text:
+                violations.append(f"{path.name}: {forbidden_symbol}")
+    assert violations == []
+
+
+def test_v2_scenario_path_uses_only_sealed_joint_artifacts_not_runtime_rng_or_marginal_labels() -> None:
+    forbidden_modules = {
+        "apex_fpl.data",
+        "apex_fpl.services",
+        "apex_fpl.models",
+        "apex_fpl.optimisation",
+        "pandas",
+        "numpy",
+        "scipy",
+        "requests",
+        "httpx",
+        "random",
+    }
+    violations = _forbidden_imports(SCENARIO_V2, forbidden_modules)
+    for path in SCENARIO_V2:
+        text = path.read_text(encoding="utf-8")
+        for forbidden_symbol in (
+            "CachedHttp",
+            "datetime.now(",
+            "datetime.utcnow(",
+            "PlayerFixtureScenario",
+            "np.random",
+            "random.",
             "candidate_regret_fraction",
         ):
             if forbidden_symbol in text:

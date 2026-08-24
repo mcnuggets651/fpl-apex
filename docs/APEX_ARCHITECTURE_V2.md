@@ -6,7 +6,7 @@ The 23 August 2026 architecture-freeze directive is the governing design contrac
 
 `core -> ports <- adapters -> world -> forecast -> decision -> assurance -> control`
 
-Learning is offline and interfaces invoke qualified capabilities. Network access ends at the world seal. Independent/untrusted workers such as AIrsenal and the reference solver execute outside the core runtime dependency graph.
+Learning is offline and interfaces invoke qualified capabilities. Network access ends at the world seal. Independent/untrusted workers such as AIrsenal, joint-scenario generators and the reference solver execute outside the core runtime dependency graph.
 
 ## Change control
 
@@ -19,3 +19,7 @@ A release is not authorised by ad-hoc booleans. A machine-readable ProofObligati
 ## Semantic identity
 
 Execution IDs and semantic IDs are separate. Durable semantic content uses the documented restricted canonical JSON profile and SHA-256. Floats cannot silently enter semantic identity; governed numerical values must first pass NumericPolicy quantisation/encoding.
+
+## Scenario robustness
+
+Joint dependence is produced only by an explicitly governed external worker and enters the decision layer as a sealed immutable `ScenarioSet`. Slice 7 marginal scenario labels never establish cross-player correlation. Every compared submitted action is scored unchanged on common nested prefixes with exact FPL realization mechanics. The historical 256-scenario count is a minimum floor rather than a convergence certificate; stability requires governed broader-prefix reconciliation and canonical Forecast xP reconciliation. Nonconvergence remains `INCONCLUSIVE`, exposes no robustness-preferred action, and cannot silently replace the expected-value decision objective. See `docs/APEX_SCENARIO_CONVERGENCE_V2.md`.
