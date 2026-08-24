@@ -32,6 +32,15 @@ class EvaluationCase:
     outcome_artifact_id: str
 
     def __post_init__(self) -> None:
+        id_contracts = (
+            (self.forecast_id, ForecastId, "forecast_id"),
+            (self.feature_snapshot_id, FeatureSnapshotId, "feature_snapshot_id"),
+            (self.model_artifact_id, ModelArtifactId, "model_artifact_id"),
+            (self.player_id, OfficialPlayerId, "player_id"),
+        )
+        for value, expected_type, label in id_contracts:
+            if not isinstance(value, expected_type):
+                raise ValueError(f"evaluation case {label} must be typed")
         if not isinstance(self.target, OutcomeTarget):
             raise ValueError("evaluation target must be typed OutcomeTarget")
         positive_int(self.gameweek, label="evaluation gameweek")
@@ -88,6 +97,10 @@ class EvaluationDataset:
     def __post_init__(self) -> None:
         if self.schema_version != 2:
             raise ValueError("unsupported EvaluationDataset schema_version")
+        if not isinstance(self.truth_registry_id, OutcomeTruthRegistryId):
+            raise ValueError("evaluation dataset truth_registry_id must be typed")
+        if any(not isinstance(row, EvaluationCase) for row in self.cases):
+            raise ValueError("evaluation dataset cases must be typed EvaluationCase rows")
         season = str(self.season).strip()
         if not season:
             raise ValueError("evaluation dataset requires season")
