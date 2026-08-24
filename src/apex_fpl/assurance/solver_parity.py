@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.reference_solver_registry import ReferenceSolverRegistry
 from apex_fpl.core.assurance import (
     AssuranceParityStatus,
     IndependentAssuranceReport,
@@ -98,9 +99,18 @@ def build_independent_assurance_report(
     *,
     store: ArtifactStore,
     solver: ReferenceSolverCertificate | None = None,
+    worker_registry: ReferenceSolverRegistry | None = None,
+    season: str | None = None,
+    decision_cutoff: str | None = None,
+    horizon_gameweeks: int | None = None,
     expected_tie_break_policy_id: str | None = None,
 ) -> IndependentAssuranceReport:
-    """Combine mechanics and optional solver evidence without converting absence to PASS."""
+    """Build publication-grade assurance without converting missing qualification to PASS.
+
+    Raw parity may be inspected with :func:`validate_reference_solver_parity`. A final
+    assurance report can reach PASS only after the certificate is matched to the
+    registered, artifact-verified, season/horizon-valid qualified champion worker.
+    """
 
     blockers: list[str] = []
     if mechanics.decision_id != result.decision_id:
@@ -135,6 +145,35 @@ def build_independent_assurance_report(
             solver.solver_output_artifact_id,
             solver.worker_artifact_id,
         )
+        if parity_status is AssuranceParityStatus.PASS:
+            missing_context = []
+            if worker_registry is None:
+                missing_context.append("qualified reference solver registry")
+            if season is None:
+                missing_context.append("decision season")
+            if decision_cutoff is None:
+                missing_context.append("decision cutoff")
+            if horizon_gameweeks is None:
+                missing_context.append("decision horizon")
+            if missing_context:
+                parity_status = AssuranceParityStatus.INCONCLUSIVE
+                blockers.append(
+                    "reference solver parity lacks production worker qualification context: "
+                    + ", ".join(missing_context)
+                )
+            else:
+                try:
+                    worker_registry.verify_certificate_worker(
+                        solver,
+                        store=store,
+                        season=season,
+                        cutoff=decision_cutoff,
+                        horizon_gameweeks=horizon_gameweeks,
+                        production=True,
+                    )
+                except (FileNotFoundError, ValueError) as exc:
+                    parity_status = AssuranceParityStatus.INCONCLUSIVE
+                    blockers.append(f"reference solver worker is not production-qualified: {exc}")
 
     source_artifacts = tuple(sorted(set(mechanics.source_artifact_ids) | set(solver_artifacts)))
     return IndependentAssuranceReport(
