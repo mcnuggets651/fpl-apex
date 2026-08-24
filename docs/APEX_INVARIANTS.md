@@ -48,6 +48,17 @@
 - **INV-FORECAST-CHAMPION-QUALIFIED** — production forecast compilation requires the registered champion model, immutable parameters and a verifying empirical qualification artifact; repository configuration has no fabricated fallback champion.
 - **INV-FORECAST-ABSTENTION-EXPLICIT** — inability to forecast a target is represented as an explicit abstention; production cannot silently drop or neutral-fill an abstained Official target.
 - **INV-STRUCTURAL-ZERO-ONLY-CERTAINTY** — a degenerate future prediction is permitted only for a structurally certain zero-minute state such as official suspension/ineligibility; ordinary future minutes/performance cannot be presented as deterministic.
+- **INV-DECISION-SEALED-INPUTS** — DecisionEngine consumes only exact ManagerState, sealed Forecast, sealed RuleSet, immutable candidate universe and versioned DecisionPolicy identities; it has no live retrieval path.
+- **INV-DECISION-POLICY-IDENTITY** — horizon, continuation/terminal value, chip option value, price/candidate policy, numeric policy and tie-breaking are versioned decision semantics; changing policy changes decision identity.
+- **INV-TACTICAL-NOT-PRODUCTION** — a one-Gameweek tactical EV solve is shadow/reference analysis only and cannot be relabelled as production max-EV-over-time for persistent transfers or long-lived chips.
+- **INV-DECISION-POLICY-QUALIFIED** — production optimisation requires the registered qualified receding-horizon DecisionPolicy and verifying continuation/chip-option/qualification artifacts; repository configuration has no fabricated production policy champion.
+- **INV-SOLVER-STATUS-TYPED** — OPTIMAL, FEASIBLE, INFEASIBLE, UNBOUNDED, SOLVER_LIMIT, ERROR and INVALID_INPUT remain distinct; timeout/limit/error can never be rewritten as infeasible.
+- **INV-EXACTNESS-TYPED-SCOPED** — exactness records candidate universe, solver status, best bound, gap, filter identity, expansion result and numeric error bound using the governed exactness status taxonomy.
+- **INV-CANDIDATE-FILTER-IMMUTABLE** — any scoped candidate prefilter is deterministic, hashable and retained as an immutable artifact; FULL_OFFICIAL carries no hidden prefilter.
+- **INV-CANDIDATE-EXPANSION-FAILS-CLOSED** — a materially better strict pool expansion invalidates the narrow search claim; a scoped optimum can be certified only by a successful full-Official expansion under identical decision policy.
+- **INV-DECISION-RATIONAL-NUMERICS** — reference DecisionEngine money is integer tenths and objective/probability mechanics use exact rational arithmetic with explicit zero numeric-error certificate; no binary-float tie tolerance is hidden in decision identity.
+- **INV-MECHANICS-INTEGRATED** — XI, captain, vice, bench goalkeeper and outfield bench order are integrated RuleSet-constrained decision variables; manual post-solve captain/bench edits are not authoritative.
+- **INV-NO-ARBITRARY-BENCH-WEIGHT** — bench value arises from appearance/autosub/formation mechanics or governed scenario policy; arbitrary flat bench weights and shortlist approximations are not V2 decision authority.
 - **INV-LEGAL-CURRENT-ACTION** — every published action passes independent RuleSet/state-transition verification.
 - **INV-NO-FALSE-GLOBAL-OPTIMALITY** — optimisation exactness is scoped to the certified universe and solver state.
 - **INV-EMPIRICAL-CLAIMS-QUALIFIED** — predictive claims enter production only through registered qualification.
