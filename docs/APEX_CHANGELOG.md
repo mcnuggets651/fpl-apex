@@ -2,6 +2,15 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-24 — V2 Slice 9 sealed scenario convergence
+- Replaced legacy scenario/CVaR authority with dependency-free constitutional joint-scenario contracts and immutable `ScenarioSet` / `RobustnessReport` identities.
+- Required external worker-produced joint streams with explicit generator, RNG, seed, ordering, weights, player/Gameweek outcomes and retained source artifacts; runtime RNG and inference of correlation from marginal forecast labels are prohibited.
+- Added common-random-number nested-prefix convergence, exact weighted mean/lower-CVaR/tail metrics and player/Gameweek reconciliation to canonical Forecast xP.
+- Added exact realized submitted-action scoring for captain/vice fallback, autosubs, chips and hits without scenario-specific hindsight optimization.
+- Kept expected value as the anchor and constrained any converged robustness preference to an explicit EV-regret band; inconclusive reports expose no preferred action.
+- Added fail-closed generator/policy registry with no fabricated production champions, strict offline replay and architecture/proof/requirements traceability.
+- The historical 256-scenario count is now explicitly a minimum floor rather than a convergence certificate.
+
 ## 2026-08-11 — Decision-grade evidence ingestion candidate
 - Added structured official-article publication/body extraction and bounded same-host
   HTTPS hydration for official HTML news indexes.
