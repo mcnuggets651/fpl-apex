@@ -1,0 +1,84 @@
+schema_version: 1
+
+# V2 evidence/news admission registry.
+# Existing V1 feeds are intentionally SHADOW here until capability-specific V2
+# qualification artifacts exist. Reachability or reputation alone is not qualification.
+sources:
+  - source_id: premier_league_news
+    capability: football_news
+    criticality: QUALITY_REQUIRED
+    admission_state: SHADOW
+    adapter_schema: html_article_index
+    adapter_version: "1"
+    retention_understood: true
+    licensing_understood: true
+    failure_semantics: Missing official-league news reduces corroboration but cannot alter Official FPL identity, price or rules.
+    reliability_rationale: Official league channel; capability-specific predictive reliability is not yet V2-qualified.
+
+  - source_id: bbc_sport_football
+    capability: football_news
+    criticality: QUALITY_REQUIRED
+    admission_state: SHADOW
+    adapter_schema: rss
+    adapter_version: "1"
+    retention_understood: true
+    licensing_understood: true
+    failure_semantics: Missing trusted-media corroboration is visible and may degrade evidence coverage only through a qualified profile.
+    reliability_rationale: Trusted-media source; no universal reliability coefficient is assumed.
+
+  - source_id: sky_sports_football
+    capability: football_news
+    criticality: QUALITY_REQUIRED
+    admission_state: SHADOW
+    adapter_schema: rss
+    adapter_version: "1"
+    retention_understood: true
+    licensing_understood: true
+    failure_semantics: Missing trusted-media corroboration is visible and may degrade evidence coverage only through a qualified profile.
+    reliability_rationale: Trusted-media source; no universal reliability coefficient is assumed.
+
+  - source_id: fantasy_football_scout
+    capability: predicted_lineup
+    criticality: ADVISORY
+    admission_state: SHADOW
+    adapter_schema: governed_web_extract
+    adapter_version: "1"
+    retention_understood: true
+    licensing_understood: true
+    failure_semantics: Predicted-lineup evidence is diagnostic until V2 reliability is qualified.
+    reliability_rationale: FPL specialist source retained for shadow calibration by claim, horizon and recency.
+
+  - source_id: allaboutfpl
+    capability: predicted_lineup
+    criticality: ADVISORY
+    admission_state: SHADOW
+    adapter_schema: governed_web_extract
+    adapter_version: "1"
+    retention_understood: true
+    licensing_understood: true
+    failure_semantics: Predicted-lineup evidence is diagnostic until V2 reliability is qualified.
+    reliability_rationale: FPL specialist source retained for shadow calibration by claim, horizon and recency.
+
+  - source_id: onefpl
+    capability: predicted_lineup
+    criticality: ADVISORY
+    admission_state: SHADOW
+    adapter_schema: governed_web_extract
+    adapter_version: "1"
+    retention_understood: true
+    licensing_understood: true
+    failure_semantics: Predicted-lineup evidence is diagnostic until V2 reliability is qualified.
+    reliability_rationale: FPL specialist source retained for shadow calibration by claim, horizon and recency.
+
+  - source_id: fabrizio_romano
+    capability: transfer_intelligence
+    criticality: ADVISORY
+    admission_state: SHADOW
+    adapter_schema: governed_channel_extract
+    adapter_version: "1"
+    retention_understood: true
+    licensing_understood: true
+    failure_semantics: Transfer reports cannot rewrite Official club identity, availability, role or xP before governed confirmation.
+    reliability_rationale: Transfer specialist retained for shadow calibration; no cross-claim reliability assumption.
+
+degradation_profiles: []
