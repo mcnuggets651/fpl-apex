@@ -8,6 +8,7 @@ import json
 from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.core.canonical import canonical_json_bytes
 from apex_fpl.core.decision import (
+    CandidateExpansionCertificate,
     CandidatePlayer,
     CandidateUniverse,
     CandidateUniverseScope,
@@ -324,11 +325,67 @@ def _exactness(raw: object) -> ExactnessClaim:
     )
 
 
+def _candidate_expansion_certificate(
+    artifact_id: str,
+    *,
+    store: ArtifactStore,
+) -> CandidateExpansionCertificate:
+    raw = _json_object(
+        store.read_bytes(artifact_id),
+        label="candidate expansion certificate",
+    )
+    if raw.get("schema_name") != "apex-candidate-expansion-certificate":
+        raise ValueError("not an Apex candidate expansion certificate")
+    if _exact_int(
+        raw.get("schema_version"),
+        label="candidate expansion certificate schema_version",
+    ) != 1:
+        raise ValueError("unsupported candidate expansion certificate schema")
+    certificate = CandidateExpansionCertificate(
+        baseline_universe_id=CandidateUniverseId(str(raw["baseline_universe_id"])),
+        expanded_universe_id=CandidateUniverseId(str(raw["expanded_universe_id"])),
+        expanded_universe_scope=CandidateUniverseScope(str(raw["expanded_universe_scope"])),
+        baseline_objective=_rv(raw["baseline_objective"]),
+        expanded_objective=_rv(raw["expanded_objective"]),
+        materiality_threshold=_rv(raw["materiality_threshold"]),
+        result=ExpansionResult(str(raw["result"])),
+        expanded_exactness_status=ExactnessStatus(str(raw["expanded_exactness_status"])),
+        source_artifact_id=str(raw["source_artifact_id"]),
+    )
+    if certificate.certificate_id != artifact_id:
+        raise ValueError("candidate expansion certificate semantic identity mismatch")
+    store.read_bytes(certificate.source_artifact_id)
+    return certificate
+
+
+def _validate_expansion_reference(
+    result: DecisionResult,
+    *,
+    store: ArtifactStore,
+) -> None:
+    artifact_id = result.exactness.expansion_certificate_id
+    if artifact_id is None:
+        return
+    certificate = _candidate_expansion_certificate(artifact_id, store=store)
+    if certificate.baseline_universe_id != result.decision_input.candidate_universe_id:
+        raise ValueError("candidate expansion certificate baseline does not match decision universe")
+    if certificate.baseline_objective != result.selected_action.mechanics.objective_points:
+        raise ValueError("candidate expansion certificate baseline objective does not match decision")
+    if certificate.result is not result.exactness.expansion_result:
+        raise ValueError("candidate expansion certificate result does not match exactness claim")
+    if (
+        result.exactness.status is ExactnessStatus.OPTIMAL_WITHIN_CERTIFIED_UNIVERSE
+        and not certificate.certifies_baseline_universe
+    ):
+        raise ValueError("candidate expansion certificate does not certify scoped optimum")
+
+
 def store_decision_result(
     result: DecisionResult,
     *,
     store: ArtifactStore,
 ) -> StoredDecisionResult:
+    _validate_expansion_reference(result, store=store)
     envelope = {
         "schema_name": "apex-stored-decision-result",
         "schema_version": 1,
@@ -378,4 +435,5 @@ def load_decision_result(
     )
     if str(result.decision_id) != str(envelope.get("decision_id")):
         raise ValueError("decision semantic identity mismatch during replay")
+    _validate_expansion_reference(result, store=store)
     return StoredDecisionResult(result=result, artifact_id=artifact_id)
