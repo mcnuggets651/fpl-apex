@@ -93,8 +93,11 @@ from .ids import (
     PredictionBatchId,
     RawCaptureId,
     ReleaseId,
+    RobustnessReportId,
     RuleSetId,
     RunId,
+    ScenarioGeneratorId,
+    ScenarioPolicyId,
     ScenarioSetId,
 )
 from .manager_state import (
@@ -137,6 +140,19 @@ from .proofs import (
 )
 from .reliability import ReliabilityContext, ReliabilityQualification
 from .rules import OfficialRuleSource, RuleDefinition, RuleSet
+from .scenarios import (
+    HISTORICAL_SCENARIO_FLOOR,
+    ActionRobustnessMetrics,
+    JointPlayerGameweekOutcome,
+    JointScenario,
+    RobustnessReport,
+    ScenarioConvergenceCheckpoint,
+    ScenarioConvergencePolicy,
+    ScenarioConvergenceStatus,
+    ScenarioGeneratorArtifact,
+    ScenarioQualificationState,
+    ScenarioSet,
+)
 from .sources import (
     DegradationDecision,
     DegradationProfile,
@@ -150,6 +166,7 @@ from .sources import (
 from .world import GlobalWorld, WorldSource
 
 __all__ = [
+    "ActionRobustnessMetrics",
     "AssuranceCase",
     "AssuranceClaim",
     "BundleId",
@@ -205,6 +222,7 @@ __all__ = [
     "FreshnessBand",
     "GlobalWorld",
     "GlobalWorldId",
+    "HISTORICAL_SCENARIO_FLOOR",
     "HealthState",
     "HistoricalMinutesSample",
     "IdentityIntegrityError",
@@ -213,6 +231,8 @@ __all__ = [
     "IdentityResolutionState",
     "IdentityWitness",
     "InitialManagerBasisId",
+    "JointPlayerGameweekOutcome",
+    "JointScenario",
     "ManagerPublicSnapshotId",
     "ManagerState",
     "ManagerStateId",
@@ -249,10 +269,20 @@ __all__ = [
     "ReleasePolicy",
     "ReliabilityContext",
     "ReliabilityQualification",
+    "RobustnessReport",
+    "RobustnessReportId",
     "RuleDefinition",
     "RuleSet",
     "RuleSetId",
     "RunId",
+    "ScenarioConvergenceCheckpoint",
+    "ScenarioConvergencePolicy",
+    "ScenarioConvergenceStatus",
+    "ScenarioGeneratorArtifact",
+    "ScenarioGeneratorId",
+    "ScenarioPolicyId",
+    "ScenarioQualificationState",
+    "ScenarioSet",
     "ScenarioSetId",
     "SolverCertificate",
     "SolverStatus",
