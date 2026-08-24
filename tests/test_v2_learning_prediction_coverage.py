@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
@@ -34,6 +35,25 @@ SEASON = "2026-2027"
 
 def _put(store: FileSystemArtifactStore, value: str) -> str:
     return store.put_bytes(value.encode("utf-8")).artifact_id
+
+
+def _minutes_truth(store: FileSystemArtifactStore, *, player_id: int, minutes: int) -> str:
+    payload = {
+        "elements": [
+            {
+                "id": player_id,
+                "stats": {
+                    "minutes": minutes,
+                    "total_points": 0,
+                    "goals_scored": 0,
+                    "assists": 0,
+                },
+            }
+        ]
+    }
+    return store.put_bytes(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).artifact_id
 
 
 def test_prediction_coverage_keeps_complete_realized_truth_with_explicit_missing_prediction(
@@ -101,8 +121,8 @@ def test_prediction_coverage_keeps_complete_realized_truth_with_explicit_missing
     )
     training_artifact = store_learning_object(training, store=store).artifact_id
 
-    outcome_a = _put(store, "coverage-outcome-a")
-    outcome_b = _put(store, "coverage-outcome-b")
+    outcome_a = _minutes_truth(store, player_id=1, minutes=61)
+    outcome_b = _minutes_truth(store, player_id=2, minutes=72)
     prediction_a = _put(store, "coverage-prediction-a")
     prediction_b = _put(store, "coverage-prediction-missing-marker")
     cases = (
