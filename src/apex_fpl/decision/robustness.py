@@ -283,6 +283,11 @@ def _forecast_gameweek_xp(
         for row in forecast.rows
         if row.target.gameweek == gameweek and row.target.player_id == player_id
     ]
+    if not rows:
+        raise ValueError(
+            "Forecast misses scenario reconciliation target "
+            f"gw={gameweek} player={int(player_id)}"
+        )
     return sum(
         (
             Fraction(row.expected_points_numerator, PROBABILITY_DENOMINATOR)
@@ -396,6 +401,15 @@ def evaluate_decision_robustness(
         raise ValueError("candidate universe does not match DecisionResult")
     if ruleset.ruleset_id != result.decision_input.ruleset_id:
         raise ValueError("RuleSet does not match DecisionResult")
+    if scenario_set.season != forecast.season or policy.season != forecast.season:
+        raise ValueError("scenario/forecast/policy season mismatch")
+    if ruleset.season != forecast.season:
+        raise ValueError("scenario robustness RuleSet season mismatch")
+    policy.require_available_for(
+        season=forecast.season,
+        cutoff=forecast.feature_cutoff,
+        production=False,
+    )
     if result.decision_input.gameweek not in scenario_set.gameweeks:
         raise ValueError("ScenarioSet does not cover decision gameweek")
     if scenario_set.rng_algorithm.strip() == "":
@@ -449,16 +463,39 @@ def evaluate_decision_robustness(
         xp_reconciled = not xp_failures
         blockers.extend(xp_failures[:20])
 
+    status = (
+        ScenarioConvergenceStatus.CONVERGED
+        if len(checkpoints) >= 2 and xp_reconciled and not blockers
+        else ScenarioConvergenceStatus.INCONCLUSIVE
+    )
+    ev_anchor = result.selected_action.action_id
+    robust_preferred = None
+    robust_regret = None
     final_metrics = (
         {row.action_id: row for row in checkpoints[-1].metrics}
         if checkpoints
         else {}
     )
-    robust_preferred = None
-    robust_regret = None
-    if final_metrics:
+    if status is ScenarioConvergenceStatus.CONVERGED and final_metrics:
+        objective_by_id = {
+            action.action_id: _fraction(action.mechanics.objective_points)
+            for action in actions
+        }
+        anchor_objective = objective_by_id[ev_anchor]
+        regret_limit = _fraction(policy.max_ev_regret_tolerance)
+        eligible_metrics: list[ActionRobustnessMetrics] = []
+        regret_by_id: dict[str, Fraction] = {}
+        for action_id, metrics in final_metrics.items():
+            regret = anchor_objective - objective_by_id[action_id]
+            if regret < 0:
+                raise ValueError("robust alternative cannot beat certified EV anchor objective")
+            regret_by_id[action_id] = regret
+            if regret <= regret_limit:
+                eligible_metrics.append(metrics)
+        if not eligible_metrics:
+            raise ValueError("EV anchor must remain inside its own robustness regret band")
         robust_preferred = max(
-            final_metrics.values(),
+            eligible_metrics,
             key=lambda row: (
                 _fraction(row.lower_cvar_points),
                 _fraction(row.mean_points),
@@ -466,23 +503,8 @@ def evaluate_decision_robustness(
                 row.action_id,
             ),
         ).action_id
-        objective_by_id = {
-            action.action_id: _fraction(action.mechanics.objective_points)
-            for action in actions
-        }
-        ev_anchor = result.selected_action.action_id
-        robust_regret_fraction = objective_by_id[ev_anchor] - objective_by_id[robust_preferred]
-        if robust_regret_fraction < 0:
-            raise ValueError("robust alternative cannot beat certified EV anchor objective")
-        robust_regret = _rational(robust_regret_fraction)
-    else:
-        ev_anchor = result.selected_action.action_id
+        robust_regret = _rational(regret_by_id[robust_preferred])
 
-    status = (
-        ScenarioConvergenceStatus.CONVERGED
-        if len(checkpoints) >= 2 and xp_reconciled and not blockers
-        else ScenarioConvergenceStatus.INCONCLUSIVE
-    )
     return RobustnessReport(
         decision_id=result.decision_id,
         forecast_id=forecast.forecast_id,
