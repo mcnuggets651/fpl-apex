@@ -2,8 +2,8 @@
 
 A tactical one-Gameweek EV solve is useful for reference/shadow analysis, but it cannot
 become the production policy for persistent transfers or long-lived chips. Production
-policy must explicitly account for horizon/continuation and chip option value and must
-be empirically qualified before use.
+policy must explicitly account for horizon/continuation, chip option value, price policy
+and candidate-universe policy, and must be empirically qualified before use.
 """
 
 from __future__ import annotations
@@ -159,6 +159,8 @@ class DecisionPolicy:
             and self.evaluation_mode is DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION
             and self.continuation_value_artifact_id is not None
             and self.chip_option_value_artifact_id is not None
+            and self.price_policy_artifact_id is not None
+            and self.candidate_policy_artifact_id is not None
         )
 
     def require_available_for(self, *, season: str, decision_cutoff: str) -> None:
