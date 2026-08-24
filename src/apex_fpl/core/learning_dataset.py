@@ -49,7 +49,6 @@ class EvaluationCase:
         object.__setattr__(self, "outcome_artifact_id", outcome_artifact)
 
     def truth_payload(self) -> dict[str, object]:
-        """Outcome-side identity shared by every model evaluated on the same truth case."""
         return {
             "target": self.target.value,
             "player_id": int(self.player_id),
@@ -58,11 +57,16 @@ class EvaluationCase:
             "outcome_artifact_id": self.outcome_artifact_id,
         }
 
+    @property
+    def truth_case_id(self) -> str:
+        return canonical_sha256({"schema_name": "apex-evaluation-truth-case", **self.truth_payload()})
+
     def semantic_payload(self) -> dict[str, object]:
         return {
             "forecast_id": str(self.forecast_id),
             "feature_snapshot_id": str(self.feature_snapshot_id),
             "model_artifact_id": str(self.model_artifact_id),
+            "truth_case_id": self.truth_case_id,
             **self.truth_payload(),
             "prediction_sealed_at": self.prediction_sealed_at,
             "prediction_artifact_id": self.prediction_artifact_id,
@@ -95,11 +99,9 @@ class EvaluationDataset:
         )
         if not cases:
             raise ValueError("evaluation dataset requires at least one case")
-        case_ids = [row.case_id for row in cases]
-        if len(case_ids) != len(set(case_ids)):
+        if len({row.case_id for row in cases}) != len(cases):
             raise ValueError("evaluation dataset contains duplicate cases")
-        truth_keys = [canonical_sha256(row.truth_payload()) for row in cases]
-        if len(truth_keys) != len(set(truth_keys)):
+        if len({row.truth_case_id for row in cases}) != len(cases):
             raise ValueError("evaluation dataset contains duplicate model-independent truth cases")
         if len({row.model_artifact_id for row in cases}) != 1:
             raise ValueError("one evaluation dataset must evaluate one exact model artifact")
