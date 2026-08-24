@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from itertools import combinations
 from pathlib import Path
 
@@ -280,6 +281,7 @@ def test_small_universe_decision_matches_independent_bruteforce_true_optimum(
     objective = result.selected_action.mechanics.objective_points
     assert objective.denominator == 1
     assert objective.numerator == _independent_no_transfer_oracle(xp)
+    assert result.selected_action.captain_id == OfficialPlayerId(13)
 
 
 def test_one_free_transfer_is_selected_without_hit_and_uses_exact_selling_resource(
@@ -327,6 +329,85 @@ def test_second_transfer_is_exactly_one_four_point_hit_not_double_counted(tmp_pa
     assert result.selected_action.mechanics.hit_points == 4
 
 
+def test_zero_transfer_state_is_preserved_when_no_move_beats_hold(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    forecast = _forecast(xp={16: -20, 17: -20})
+    result = optimise_current_gameweek(
+        state=_state(store, free_transfers=1),
+        forecast=forecast,
+        universe=_universe(store),
+        ruleset=_ruleset(),
+        policy=_policy(),
+        use_mode=DecisionUseMode.SHADOW,
+        max_normal_transfers=2,
+        chips_considered=(DecisionChip.NONE,),
+    )
+    assert result.selected_action.transfers == ()
+    assert result.selected_action.mechanics.hit_points == 0
+
+
+def test_tied_transfer_does_not_create_deterministic_churn(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    forecast = _forecast(xp={8: 5, 16: 5, 13: 5, 17: 5})
+    result = optimise_current_gameweek(
+        state=_state(store, free_transfers=1),
+        forecast=forecast,
+        universe=_universe(store),
+        ruleset=_ruleset(),
+        policy=_policy(),
+        use_mode=DecisionUseMode.SHADOW,
+        max_normal_transfers=1,
+        chips_considered=(DecisionChip.NONE,),
+    )
+    assert result.selected_action.transfers == ()
+
+
+def test_inseason_budget_uses_realised_selling_value_not_fresh_market_value(
+    tmp_path: Path,
+) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    base_state = _state(store, free_transfers=1)
+    repriced_squad = tuple(
+        replace(
+            row,
+            current_price_tenths=60,
+            selling_price_tenths=55,
+        )
+        if row.player_id == OfficialPlayerId(8)
+        else row
+        for row in base_state.squad
+    )
+    state = replace(base_state, squad=repriced_squad)
+    state.require_decision_safe(ruleset=_ruleset())
+
+    base_universe = _universe(store)
+    repriced_players = tuple(
+        replace(row, current_price_tenths=60)
+        if row.player_id == OfficialPlayerId(8)
+        else replace(row, current_price_tenths=58)
+        if row.player_id == OfficialPlayerId(16)
+        else row
+        for row in base_universe.players
+    )
+    universe = replace(base_universe, players=repriced_players)
+    forecast = _forecast(xp={8: -20, 16: 30, 17: -20})
+
+    result = optimise_current_gameweek(
+        state=state,
+        forecast=forecast,
+        universe=universe,
+        ruleset=_ruleset(),
+        policy=_policy(),
+        use_mode=DecisionUseMode.SHADOW,
+        max_normal_transfers=1,
+        chips_considered=(DecisionChip.NONE,),
+    )
+    assert result.selected_action.transfers == ()
+    assert state.player(OfficialPlayerId(8)).current_price_tenths == 60
+    assert state.player(OfficialPlayerId(8)).selling_price_tenths == 55
+    assert universe.player(OfficialPlayerId(16)).current_price_tenths == 58
+
+
 def test_negative_expected_points_remain_negative_in_decision_values(tmp_path: Path) -> None:
     FileSystemArtifactStore(tmp_path / "artifacts")
     values = build_gameweek_values(
@@ -359,6 +440,29 @@ def test_wildcard_and_free_hit_rebuild_paths_use_verified_ruleset_keys(tmp_path:
     assert wildcard.selected_action.chip is DecisionChip.WILDCARD
     assert free_hit.selected_action.chip is DecisionChip.FREE_HIT
     assert free_hit.selected_action.bank_after_tenths == common["state"].bank_tenths
+
+
+def test_triple_captain_and_bench_boost_are_integrated_action_choices(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    common = dict(
+        state=_state(store, free_transfers=1),
+        forecast=_forecast(),
+        universe=_universe(store),
+        ruleset=_ruleset(),
+        policy=_policy(),
+        use_mode=DecisionUseMode.SHADOW,
+        max_normal_transfers=0,
+    )
+    triple = optimise_current_gameweek(
+        **common,
+        chips_considered=(DecisionChip.NONE, DecisionChip.TRIPLE_CAPTAIN),
+    )
+    bench_boost = optimise_current_gameweek(
+        **common,
+        chips_considered=(DecisionChip.NONE, DecisionChip.BENCH_BOOST),
+    )
+    assert triple.selected_action.chip is DecisionChip.TRIPLE_CAPTAIN
+    assert bench_boost.selected_action.chip is DecisionChip.BENCH_BOOST
 
 
 def test_tactical_engine_refuses_production_even_with_full_universe(tmp_path: Path) -> None:
