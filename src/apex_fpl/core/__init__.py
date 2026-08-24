@@ -1,6 +1,14 @@
 """Dependency-free constitutional core for Apex V2."""
 
 from .canonical import canonical_json_bytes, canonical_sha256
+from .evidence import (
+    EvidenceClaim,
+    EvidenceClaimType,
+    EvidenceConflictState,
+    EvidenceLedger,
+    EvidencePolarity,
+)
+from .freshness import DeadlineFreshnessPolicy, FreshnessBand
 from .identity import (
     IdentityIntegrityError,
     IdentityRegistry,
@@ -52,7 +60,18 @@ from .proofs import (
     ReleaseCertificate,
     ReleasePolicy,
 )
+from .reliability import ReliabilityContext, ReliabilityQualification
 from .rules import OfficialRuleSource, RuleDefinition, RuleSet
+from .sources import (
+    DegradationDecision,
+    DegradationProfile,
+    HealthState,
+    SourceAdmissionState,
+    SourceCapability,
+    SourceCriticality,
+    SourceHealth,
+    evaluate_source_runtime,
+)
 from .world import GlobalWorld, WorldSource
 
 __all__ = [
@@ -61,11 +80,21 @@ __all__ = [
     "BundleId",
     "ChipUse",
     "CurrentStateAttestation",
+    "DeadlineFreshnessPolicy",
     "DecisionInputId",
     "DecisionWorldId",
+    "DegradationDecision",
+    "DegradationProfile",
+    "EvidenceClaim",
+    "EvidenceClaimType",
+    "EvidenceConflictState",
+    "EvidenceLedger",
+    "EvidencePolarity",
     "ForecastId",
+    "FreshnessBand",
     "GlobalWorld",
     "GlobalWorldId",
+    "HealthState",
     "IdentityIntegrityError",
     "IdentityRegistry",
     "IdentityResolution",
@@ -90,11 +119,17 @@ __all__ = [
     "ReleaseCertificate",
     "ReleaseId",
     "ReleasePolicy",
+    "ReliabilityContext",
+    "ReliabilityQualification",
     "RuleDefinition",
     "RuleSet",
     "RuleSetId",
     "RunId",
     "ScenarioSetId",
+    "SourceAdmissionState",
+    "SourceCapability",
+    "SourceCriticality",
+    "SourceHealth",
     "TransferLedgerEvent",
     "TransferTransition",
     "WorldSource",
@@ -104,6 +139,7 @@ __all__ = [
     "calculate_selling_price_tenths",
     "canonical_json_bytes",
     "canonical_sha256",
+    "evaluate_source_runtime",
     "owned_player_from_official",
     "reprice_manager_state",
 ]
