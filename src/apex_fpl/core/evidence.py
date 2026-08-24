@@ -1,9 +1,9 @@
-"""Dependency-free evidence contracts for Apex V2.
+"""Dependency-free structured evidence and append-only supersession contracts.
 
-Internet text is never executable authority. It may only become a structured claim with
-explicit identity, time, provenance, confidence, reliability context and supersession.
-All probability-like values are integer basis points so semantic identity never depends
-on uncontrolled binary floating point.
+External text is data, never executable instruction.  A fact may enter Apex only as a
+constrained claim tied to an exact Official FPL player ID, immutable raw evidence,
+bitemporal timestamps and contextual reliability.  Unqualified reliability remains
+UNKNOWN and cannot be converted into a guessed coefficient.
 """
 
 from __future__ import annotations
@@ -11,9 +11,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from urllib.parse import urlparse
 
 from .canonical import canonical_sha256
 from .identity import OfficialPlayerId
+from .reliability import ReliabilityContext
 
 
 class EvidenceClaimType(str, Enum):
@@ -43,7 +45,6 @@ class EvidenceConflictState(str, Enum):
     NONE = "NONE"
     CORROBORATED = "CORROBORATED"
     CONFLICTING = "CONFLICTING"
-    SUPERSEDED = "SUPERSEDED"
 
 
 def _artifact_id(value: str) -> str:
@@ -71,64 +72,18 @@ def _aware_iso(value: str, *, label: str) -> str:
     return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _optional_aware_iso(value: str | None, *, label: str) -> str | None:
-    if value is None:
-        return None
-    return _aware_iso(value, label=label)
+def _optional_time(value: str | None, *, label: str) -> str | None:
+    return None if value is None else _aware_iso(value, label=label)
+
+
+def _point(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _bps(value: int, *, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10_000:
         raise ValueError(f"{label} must be integer basis points in [0, 10000]")
     return value
-
-
-@dataclass(frozen=True, slots=True)
-class ReliabilityContext:
-    source_id: str
-    claim_type: EvidenceClaimType
-    horizon_gameweeks: int
-    recency_bucket: str
-    reliability_bps: int
-    sample_count: int
-    qualification_artifact_id: str
-
-    def __post_init__(self) -> None:
-        source_id = str(self.source_id).strip()
-        recency_bucket = str(self.recency_bucket).strip()
-        if not source_id or not recency_bucket:
-            raise ValueError("reliability source_id and recency_bucket cannot be empty")
-        if (
-            isinstance(self.horizon_gameweeks, bool)
-            or not isinstance(self.horizon_gameweeks, int)
-            or self.horizon_gameweeks <= 0
-        ):
-            raise ValueError("horizon_gameweeks must be a positive integer")
-        if (
-            isinstance(self.sample_count, bool)
-            or not isinstance(self.sample_count, int)
-            or self.sample_count < 0
-        ):
-            raise ValueError("sample_count must be a nonnegative integer")
-        object.__setattr__(self, "source_id", source_id)
-        object.__setattr__(self, "recency_bucket", recency_bucket)
-        object.__setattr__(self, "reliability_bps", _bps(self.reliability_bps, label="reliability_bps"))
-        object.__setattr__(
-            self,
-            "qualification_artifact_id",
-            _artifact_id(self.qualification_artifact_id),
-        )
-
-    def semantic_payload(self) -> dict[str, object]:
-        return {
-            "source_id": self.source_id,
-            "claim_type": self.claim_type.value,
-            "horizon_gameweeks": self.horizon_gameweeks,
-            "recency_bucket": self.recency_bucket,
-            "reliability_bps": self.reliability_bps,
-            "sample_count": self.sample_count,
-            "qualification_artifact_id": self.qualification_artifact_id,
-        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,32 +111,39 @@ class EvidenceClaim:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported EvidenceClaim schema_version")
-        for label in ("source_id", "source_capability", "statement", "source_url"):
+        for label in ("source_id", "source_capability", "statement"):
             value = str(getattr(self, label)).strip()
             if not value:
                 raise ValueError(f"{label} cannot be empty")
             object.__setattr__(self, label, value)
+        source_url = str(self.source_url).strip()
+        parsed_url = urlparse(source_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise ValueError("source_url must be an absolute HTTP(S) URL")
+        object.__setattr__(self, "source_url", source_url)
         if self.reliability.source_id != self.source_id:
             raise ValueError("evidence reliability source does not match claim source")
-        if self.reliability.claim_type is not self.claim_type:
+        if self.reliability.claim_type != self.claim_type.value:
             raise ValueError("evidence reliability claim type does not match claim type")
         object.__setattr__(self, "confidence_bps", _bps(self.confidence_bps, label="confidence_bps"))
         object.__setattr__(self, "raw_artifact_id", _artifact_id(self.raw_artifact_id))
+
         first_known = _aware_iso(self.first_known_at, label="first_known_at")
         observed = _aware_iso(self.observed_at, label="observed_at")
         ingested = _aware_iso(self.ingested_at, label="ingested_at")
-        source_event = _optional_aware_iso(self.source_event_at, label="source_event_at")
-        effective = _optional_aware_iso(self.effective_from, label="effective_from")
-        expires = _optional_aware_iso(self.expires_at, label="expires_at")
-        if datetime.fromisoformat(first_known.replace("Z", "+00:00")) > datetime.fromisoformat(
-            ingested.replace("Z", "+00:00")
-        ):
+        source_event = _optional_time(self.source_event_at, label="source_event_at")
+        effective = _optional_time(self.effective_from, label="effective_from")
+        expires = _optional_time(self.expires_at, label="expires_at")
+        if _point(observed) > _point(ingested):
+            raise ValueError("observed_at cannot be after ingested_at")
+        if _point(first_known) > _point(ingested):
             raise ValueError("first_known_at cannot be after ingested_at")
-        if expires is not None and effective is not None:
-            if datetime.fromisoformat(expires.replace("Z", "+00:00")) <= datetime.fromisoformat(
-                effective.replace("Z", "+00:00")
-            ):
-                raise ValueError("expires_at must be after effective_from")
+        if source_event is not None and _point(source_event) > _point(observed):
+            raise ValueError("source_event_at cannot be after observed_at")
+        if expires is not None:
+            start = effective or first_known
+            if _point(expires) <= _point(start):
+                raise ValueError("expires_at must be after evidence start")
         if self.supersedes_claim_id is not None:
             supersedes = str(self.supersedes_claim_id).strip()
             if len(supersedes) != 64:
@@ -226,26 +188,23 @@ class EvidenceClaim:
     def claim_id(self) -> str:
         return canonical_sha256(self.semantic_payload())
 
+    @property
+    def eligible_for_weighting(self) -> bool:
+        return self.reliability.usable_for_weighting
+
     def known_by(self, cutoff: str) -> bool:
-        cutoff_iso = _aware_iso(cutoff, label="cutoff")
-        return datetime.fromisoformat(self.first_known_at.replace("Z", "+00:00")) <= datetime.fromisoformat(
-            cutoff_iso.replace("Z", "+00:00")
-        )
+        return _point(self.first_known_at) <= _point(_aware_iso(cutoff, label="cutoff"))
 
     def active_at(self, cutoff: str) -> bool:
         cutoff_iso = _aware_iso(cutoff, label="cutoff")
-        point = datetime.fromisoformat(cutoff_iso.replace("Z", "+00:00"))
+        point = _point(cutoff_iso)
         if not self.known_by(cutoff_iso):
             return False
-        if self.effective_from is not None and point < datetime.fromisoformat(
-            self.effective_from.replace("Z", "+00:00")
-        ):
+        if self.effective_from is not None and point < _point(self.effective_from):
             return False
-        if self.expires_at is not None and point >= datetime.fromisoformat(
-            self.expires_at.replace("Z", "+00:00")
-        ):
+        if self.expires_at is not None and point >= _point(self.expires_at):
             return False
-        return self.conflict_state is not EvidenceConflictState.SUPERSEDED
+        return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,14 +216,23 @@ class EvidenceLedger:
         if self.schema_version != 1:
             raise ValueError("unsupported EvidenceLedger schema_version")
         claims = tuple(self.claims)
-        claim_ids = [claim.claim_id for claim in claims]
-        if len(claim_ids) != len(set(claim_ids)):
-            raise ValueError("EvidenceLedger cannot contain duplicate semantic claims")
-        seen: set[str] = set()
+        by_id: dict[str, EvidenceClaim] = {}
         for claim in claims:
-            if claim.supersedes_claim_id is not None and claim.supersedes_claim_id not in seen:
-                raise ValueError("evidence correction may supersede only an earlier ledger claim")
-            seen.add(claim.claim_id)
+            if claim.claim_id in by_id:
+                raise ValueError("EvidenceLedger cannot contain duplicate semantic claims")
+            if claim.supersedes_claim_id is not None:
+                prior = by_id.get(claim.supersedes_claim_id)
+                if prior is None:
+                    raise ValueError("evidence correction may supersede only an earlier ledger claim")
+                if (
+                    prior.player_id != claim.player_id
+                    or prior.claim_type is not claim.claim_type
+                    or prior.source_id != claim.source_id
+                ):
+                    raise ValueError("evidence supersession must correct the same source/player/claim type")
+                if _point(claim.first_known_at) < _point(prior.first_known_at):
+                    raise ValueError("evidence correction cannot become known before the claim it supersedes")
+            by_id[claim.claim_id] = claim
         object.__setattr__(self, "claims", claims)
 
     @property
@@ -278,8 +246,6 @@ class EvidenceLedger:
         )
 
     def append(self, claim: EvidenceClaim) -> "EvidenceLedger":
-        """Return a new ledger; history is never overwritten in place."""
-
         return EvidenceLedger(self.claims + (claim,), schema_version=self.schema_version)
 
     def active_claims(self, cutoff: str) -> tuple[EvidenceClaim, ...]:
