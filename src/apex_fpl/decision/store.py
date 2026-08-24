@@ -29,6 +29,7 @@ from apex_fpl.core.decision import (
 from apex_fpl.core.identity import OfficialPlayerId
 from apex_fpl.core.ids import (
     CandidateUniverseId,
+    DecisionPolicyId,
     ForecastId,
     GlobalWorldId,
     ManagerStateId,
@@ -58,10 +59,40 @@ def _json_object(content: bytes, *, label: str) -> dict[str, object]:
     return raw
 
 
+def _exact_int(value: object, *, label: str, minimum: int | None = None) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{label} must be an exact integer")
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{label} must be >= {minimum}")
+    return value
+
+
+def _exact_bool(value: object, *, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be boolean")
+    return value
+
+
+def _list(value: object, *, label: str) -> list[object]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be a list")
+    return value
+
+
+def _dict_rows(value: object, *, label: str) -> list[dict[str, object]]:
+    rows = _list(value, label=label)
+    if any(not isinstance(row, dict) for row in rows):
+        raise ValueError(f"{label} must contain objects only")
+    return [row for row in rows if isinstance(row, dict)]
+
+
 def _rv(raw: object) -> RationalValue:
     if not isinstance(raw, dict):
         raise ValueError("rational value must be an object")
-    return RationalValue(int(raw["numerator"]), int(raw["denominator"]))
+    return RationalValue(
+        _exact_int(raw.get("numerator"), label="rational numerator"),
+        _exact_int(raw.get("denominator"), label="rational denominator", minimum=1),
+    )
 
 
 def store_candidate_universe(
@@ -97,30 +128,45 @@ def load_candidate_universe(
     )
     if envelope.get("schema_name") != "apex-stored-candidate-universe":
         raise ValueError("not an Apex stored candidate universe")
-    if int(envelope.get("schema_version", -1)) != 1:
+    if _exact_int(
+        envelope.get("schema_version"),
+        label="stored candidate universe schema_version",
+    ) != 1:
         raise ValueError("unsupported stored candidate universe schema")
     raw = envelope.get("candidate_universe")
     if not isinstance(raw, dict):
         raise ValueError("stored candidate universe payload is missing")
-    player_rows = raw.get("players")
-    source_rows = raw.get("source_artifact_ids")
-    if not isinstance(player_rows, list) or not isinstance(source_rows, list):
-        raise ValueError("stored candidate universe is incomplete")
+    player_rows = _dict_rows(raw.get("players"), label="candidate universe players")
+    source_rows = _list(
+        raw.get("source_artifact_ids"),
+        label="candidate universe source artifacts",
+    )
+    if any(not isinstance(item, str) for item in source_rows):
+        raise ValueError("candidate universe source artifacts must be strings")
     universe = CandidateUniverse(
         global_world_id=GlobalWorldId(str(raw["global_world_id"])),
         scope=CandidateUniverseScope(str(raw["scope"])),
         players=tuple(
             CandidatePlayer(
-                player_id=OfficialPlayerId(int(row["player_id"])),
-                team_id=int(row["team_id"]),
+                player_id=OfficialPlayerId(
+                    _exact_int(row.get("player_id"), label="candidate player_id", minimum=1)
+                ),
+                team_id=_exact_int(row.get("team_id"), label="candidate team_id", minimum=1),
                 position=str(row["position"]),
-                current_price_tenths=int(row["current_price_tenths"]),
+                current_price_tenths=_exact_int(
+                    row.get("current_price_tenths"),
+                    label="candidate current_price_tenths",
+                    minimum=1,
+                ),
             )
             for row in player_rows
-            if isinstance(row, dict)
         ),
-        official_player_count=int(raw["official_player_count"]),
-        source_artifact_ids=tuple(str(item) for item in source_rows),
+        official_player_count=_exact_int(
+            raw.get("official_player_count"),
+            label="candidate official_player_count",
+            minimum=1,
+        ),
+        source_artifact_ids=tuple(source_rows),
         filter_artifact_id=(
             None
             if raw.get("filter_artifact_id") is None
@@ -137,21 +183,24 @@ def load_candidate_universe(
 def _decision_input(raw: object) -> DecisionInput:
     if not isinstance(raw, dict):
         raise ValueError("DecisionInput payload must be an object")
-    chips = raw.get("chips_considered")
-    if not isinstance(chips, list):
-        raise ValueError("DecisionInput chips_considered must be a list")
+    chips = _list(raw.get("chips_considered"), label="DecisionInput chips_considered")
+    if any(not isinstance(item, str) for item in chips):
+        raise ValueError("DecisionInput chip names must be strings")
     return DecisionInput(
         manager_state_id=ManagerStateId(str(raw["manager_state_id"])),
         forecast_id=ForecastId(str(raw["forecast_id"])),
         ruleset_id=RuleSetId(str(raw["ruleset_id"])),
-        candidate_universe_id=CandidateUniverseId(
-            str(raw["candidate_universe_id"])
-        ),
-        gameweek=int(raw["gameweek"]),
+        candidate_universe_id=CandidateUniverseId(str(raw["candidate_universe_id"])),
+        decision_policy_id=DecisionPolicyId(str(raw["decision_policy_id"])),
+        gameweek=_exact_int(raw.get("gameweek"), label="DecisionInput gameweek", minimum=1),
         use_mode=DecisionUseMode(str(raw["use_mode"])),
         objective_model=DecisionObjectiveModel(str(raw["objective_model"])),
-        max_normal_transfers=int(raw["max_normal_transfers"]),
-        chips_considered=tuple(DecisionChip(str(item)) for item in chips),
+        max_normal_transfers=_exact_int(
+            raw.get("max_normal_transfers"),
+            label="DecisionInput max_normal_transfers",
+            minimum=0,
+        ),
+        chips_considered=tuple(DecisionChip(item) for item in chips),
         numeric_policy_id=str(raw["numeric_policy_id"]),
     )
 
@@ -165,39 +214,64 @@ def _mechanics(raw: object) -> DecisionMechanics:
         captain_bonus=_rv(raw["captain_bonus"]),
         squad_points_if_bench_boost=_rv(raw["squad_points_if_bench_boost"]),
         points_before_hits=_rv(raw["points_before_hits"]),
-        hit_points=int(raw["hit_points"]),
+        hit_points=_exact_int(raw.get("hit_points"), label="decision hit_points", minimum=0),
         objective_points=_rv(raw["objective_points"]),
+    )
+
+
+def _official_ids(value: object, *, label: str) -> tuple[OfficialPlayerId, ...]:
+    rows = _list(value, label=label)
+    return tuple(
+        OfficialPlayerId(_exact_int(item, label=f"{label} player_id", minimum=1))
+        for item in rows
     )
 
 
 def _action(raw: object) -> DecisionAction:
     if not isinstance(raw, dict):
         raise ValueError("DecisionAction payload must be an object")
-    transfer_rows = raw.get("transfers")
-    squad_rows = raw.get("squad_ids")
-    xi_rows = raw.get("xi_ids")
-    bench_rows = raw.get("outfield_bench_order")
-    if not all(isinstance(row, list) for row in (transfer_rows, squad_rows, xi_rows, bench_rows)):
-        raise ValueError("DecisionAction list fields are malformed")
+    transfer_rows = _dict_rows(raw.get("transfers"), label="DecisionAction transfers")
     return DecisionAction(
         chip=DecisionChip(str(raw["chip"])),
         transfers=tuple(
             TransferMove(
-                OfficialPlayerId(int(row["outgoing_player_id"])),
-                OfficialPlayerId(int(row["incoming_player_id"])),
+                OfficialPlayerId(
+                    _exact_int(
+                        row.get("outgoing_player_id"),
+                        label="transfer outgoing_player_id",
+                        minimum=1,
+                    )
+                ),
+                OfficialPlayerId(
+                    _exact_int(
+                        row.get("incoming_player_id"),
+                        label="transfer incoming_player_id",
+                        minimum=1,
+                    )
+                ),
             )
             for row in transfer_rows
-            if isinstance(row, dict)
         ),
-        squad_ids=tuple(OfficialPlayerId(int(item)) for item in squad_rows),
-        xi_ids=tuple(OfficialPlayerId(int(item)) for item in xi_rows),
-        captain_id=OfficialPlayerId(int(raw["captain_id"])),
-        vice_captain_id=OfficialPlayerId(int(raw["vice_captain_id"])),
-        bench_gk_id=OfficialPlayerId(int(raw["bench_gk_id"])),
-        outfield_bench_order=tuple(
-            OfficialPlayerId(int(item)) for item in bench_rows
+        squad_ids=_official_ids(raw.get("squad_ids"), label="DecisionAction squad_ids"),
+        xi_ids=_official_ids(raw.get("xi_ids"), label="DecisionAction xi_ids"),
+        captain_id=OfficialPlayerId(
+            _exact_int(raw.get("captain_id"), label="DecisionAction captain_id", minimum=1)
         ),
-        bank_after_tenths=int(raw["bank_after_tenths"]),
+        vice_captain_id=OfficialPlayerId(
+            _exact_int(raw.get("vice_captain_id"), label="DecisionAction vice_captain_id", minimum=1)
+        ),
+        bench_gk_id=OfficialPlayerId(
+            _exact_int(raw.get("bench_gk_id"), label="DecisionAction bench_gk_id", minimum=1)
+        ),
+        outfield_bench_order=_official_ids(
+            raw.get("outfield_bench_order"),
+            label="DecisionAction outfield_bench_order",
+        ),
+        bank_after_tenths=_exact_int(
+            raw.get("bank_after_tenths"),
+            label="DecisionAction bank_after_tenths",
+            minimum=0,
+        ),
         mechanics=_mechanics(raw["mechanics"]),
     )
 
@@ -208,11 +282,9 @@ def _solver(raw: object) -> SolverCertificate:
     return SolverCertificate(
         status=SolverStatus(str(raw["status"])),
         incumbent_objective=(
-            None
-            if raw.get("incumbent_objective") is None
-            else _rv(raw["incumbent_objective"])
+            None if raw.get("incumbent_objective") is None else _rv(raw["incumbent_objective"])
         ),
-        best_bound=(None if raw.get("best_bound") is None else _rv(raw["best_bound"])),
+        best_bound=None if raw.get("best_bound") is None else _rv(raw["best_bound"]),
         gap=None if raw.get("gap") is None else _rv(raw["gap"]),
         numeric_error_bound=_rv(raw["numeric_error_bound"]),
         message=str(raw["message"]),
@@ -222,16 +294,23 @@ def _solver(raw: object) -> SolverCertificate:
 def _exactness(raw: object) -> ExactnessClaim:
     if not isinstance(raw, dict):
         raise ValueError("ExactnessClaim payload must be an object")
+    reasons = _list(raw.get("reasons", []), label="ExactnessClaim reasons")
+    if any(not isinstance(item, str) for item in reasons):
+        raise ValueError("ExactnessClaim reasons must be strings")
     return ExactnessClaim(
         status=ExactnessStatus(str(raw["status"])),
-        candidate_universe_id=CandidateUniverseId(
-            str(raw["candidate_universe_id"])
-        ),
+        candidate_universe_id=CandidateUniverseId(str(raw["candidate_universe_id"])),
         universe_scope=CandidateUniverseScope(str(raw["universe_scope"])),
         solver_status=SolverStatus(str(raw["solver_status"])),
-        action_surface_complete=bool(raw["action_surface_complete"]),
-        search_complete=bool(raw["search_complete"]),
-        best_bound=(None if raw.get("best_bound") is None else _rv(raw["best_bound"])),
+        action_surface_complete=_exact_bool(
+            raw.get("action_surface_complete"),
+            label="ExactnessClaim action_surface_complete",
+        ),
+        search_complete=_exact_bool(
+            raw.get("search_complete"),
+            label="ExactnessClaim search_complete",
+        ),
+        best_bound=None if raw.get("best_bound") is None else _rv(raw["best_bound"]),
         gap=None if raw.get("gap") is None else _rv(raw["gap"]),
         filter_identity=str(raw["filter_identity"]),
         expansion_result=ExpansionResult(str(raw["expansion_result"])),
@@ -241,7 +320,7 @@ def _exactness(raw: object) -> ExactnessClaim:
             else str(raw["expansion_certificate_id"])
         ),
         numeric_error_bound=_rv(raw["numeric_error_bound"]),
-        reasons=tuple(str(item) for item in raw.get("reasons", [])),
+        reasons=tuple(reasons),
     )
 
 
@@ -276,21 +355,26 @@ def load_decision_result(
     )
     if envelope.get("schema_name") != "apex-stored-decision-result":
         raise ValueError("not an Apex stored decision result")
-    if int(envelope.get("schema_version", -1)) != 1:
+    if _exact_int(
+        envelope.get("schema_version"),
+        label="stored decision result schema_version",
+    ) != 1:
         raise ValueError("unsupported stored decision result schema")
     raw = envelope.get("decision_result")
     if not isinstance(raw, dict):
         raise ValueError("stored decision result payload is missing")
-    alternatives = raw.get("alternatives")
-    if not isinstance(alternatives, list):
-        raise ValueError("stored decision alternatives must be a list")
+    alternatives = _list(raw.get("alternatives"), label="stored decision alternatives")
     result = DecisionResult(
         decision_input=_decision_input(raw["decision_input"]),
         selected_action=_action(raw["selected_action"]),
         alternatives=tuple(_action(item) for item in alternatives),
         solver=_solver(raw["solver"]),
         exactness=_exactness(raw["exactness"]),
-        enumerated_actions=int(raw["enumerated_actions"]),
+        enumerated_actions=_exact_int(
+            raw.get("enumerated_actions"),
+            label="decision enumerated_actions",
+            minimum=1,
+        ),
     )
     if str(result.decision_id) != str(envelope.get("decision_id")):
         raise ValueError("decision semantic identity mismatch during replay")
