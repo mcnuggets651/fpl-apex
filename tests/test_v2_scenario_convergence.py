@@ -252,27 +252,35 @@ def _scenarios(
     forecast: Forecast,
     *,
     unstable_second_half: bool = False,
+    captain_volatility: bool = False,
 ) -> ScenarioSet:
     source = store.put_bytes(b"sealed-joint-scenario-worker-output").artifact_id
     rows = []
     for ordinal in range(1, 513):
         if unstable_second_half and ordinal > 256:
-            points = 10
+            base_points = 10
         else:
-            points = 4 if ordinal % 2 else 6
+            base_points = 4 if ordinal % 2 else 6
+        outcomes = []
+        for player_id in range(1, 16):
+            points = base_points
+            if captain_volatility and player_id == 13:
+                points = 0 if ordinal % 2 else 10
+            elif captain_volatility and player_id == 14:
+                points = 5
+            outcomes.append(
+                JointPlayerGameweekOutcome(
+                    player_id=OfficialPlayerId(player_id),
+                    gameweek=2,
+                    appeared=True,
+                    points=points,
+                )
+            )
         rows.append(
             JointScenario(
                 ordinal=ordinal,
                 weight=1,
-                outcomes=tuple(
-                    JointPlayerGameweekOutcome(
-                        player_id=OfficialPlayerId(player_id),
-                        gameweek=2,
-                        appeared=True,
-                        points=points,
-                    )
-                    for player_id in range(1, 16)
-                ),
+                outcomes=tuple(outcomes),
             )
         )
     return ScenarioSet(
@@ -383,6 +391,25 @@ def test_common_nested_stream_converges_and_preserves_ev_anchor(tmp_path: Path) 
     }
 
 
+def test_robustness_preference_cannot_leave_governed_ev_regret_band(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    forecast = _forecast()
+    universe = _universe(store)
+    decision = _decision(forecast, universe)
+    report = evaluate_decision_robustness(
+        decision,
+        _scenarios(store, forecast, captain_volatility=True),
+        forecast,
+        universe,
+        _ruleset(),
+        replace(_policy(), max_ev_regret_tolerance=RationalValue.zero()),
+    )
+    assert report.status is ScenarioConvergenceStatus.CONVERGED
+    assert report.checkpoints[-1].cvar_ranking[0] == decision.alternatives[0].action_id
+    assert report.robust_preferred_action_id == decision.selected_action.action_id
+    assert report.robust_preferred_ev_regret == RationalValue.zero()
+
+
 def test_nonconverged_stream_is_inconclusive_not_stable(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     forecast = _forecast()
@@ -398,6 +425,43 @@ def test_nonconverged_stream_is_inconclusive_not_stable(tmp_path: Path) -> None:
     assert report.status is ScenarioConvergenceStatus.INCONCLUSIVE
     assert any("did not converge" in blocker for blocker in report.blockers)
     assert report.xp_reconciled is False
+    assert report.robust_preferred_action_id is None
+    assert report.robust_preferred_ev_regret is None
+
+
+def test_future_convergence_policy_cannot_retroactively_govern_forecast(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    forecast = _forecast()
+    universe = _universe(store)
+    future_policy = replace(
+        _policy(),
+        first_available_at="2026-08-25T00:00:00Z",
+    )
+    with pytest.raises(ValueError, match="not available at cutoff"):
+        evaluate_decision_robustness(
+            _decision(forecast, universe),
+            _scenarios(store, forecast),
+            forecast,
+            universe,
+            _ruleset(),
+            future_policy,
+        )
+
+
+def test_missing_forecast_reconciliation_target_fails_closed(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    full = _forecast()
+    incomplete = replace(full, rows=full.rows[:-1])
+    universe = _universe(store)
+    with pytest.raises(ValueError, match="Forecast misses scenario reconciliation target"):
+        evaluate_decision_robustness(
+            _decision(incomplete, universe),
+            _scenarios(store, incomplete),
+            incomplete,
+            universe,
+            _ruleset(),
+            _policy(),
+        )
 
 
 def test_scenario_and_robustness_replay_preserve_semantic_identity(tmp_path: Path) -> None:
