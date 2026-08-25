@@ -35,9 +35,60 @@ SEASON = "2026-2027"
 ENTRY = 63984
 GAMEWEEK = 2
 SCOPE = f"{SEASON}:{ENTRY}:{GAMEWEEK}:production"
+CREATED_AT = "2026-08-25T06:00:00Z"
+VALID_UNTIL = "2026-08-29T10:00:00Z"
 
 
-def _artifact(store: FileSystemArtifactStore, value: str) -> str:
+class _DurableArtifactStore:
+    """Test double for a separately qualified durable shared ArtifactStore adapter."""
+
+    backend_id = "test.production.durable-artifact-store.v1"
+
+    def __init__(self, root: Path):
+        self.delegate = FileSystemArtifactStore(root)
+
+    def put_bytes(self, content: bytes, **kwargs):
+        return self.delegate.put_bytes(content, **kwargs)
+
+    def read_bytes(self, artifact_id: str) -> bytes:
+        return self.delegate.read_bytes(artifact_id)
+
+    def verify(self, artifact_id: str) -> bool:
+        return self.delegate.verify(artifact_id)
+
+
+class _DurableReleaseRegistry:
+    """Test double for a separately qualified durable shared ReleaseRegistry adapter."""
+
+    backend_id = "test.production.durable-release-registry.v1"
+
+    def __init__(self, root: Path):
+        self.delegate = FileSystemReleaseRegistry(root)
+
+    def append(self, record):
+        return self.delegate.append(record)
+
+    def read_release(self, release_id: str):
+        return self.delegate.read_release(release_id)
+
+    def current_release_id(self, key: ReleaseKey) -> str | None:
+        return self.delegate.current_release_id(key)
+
+    def compare_and_swap_current(
+        self,
+        key: ReleaseKey,
+        *,
+        expected_release_id: str | None,
+        new_release_id: str,
+    ) -> None:
+        self.delegate.compare_and_swap_current(
+            key,
+            expected_release_id=expected_release_id,
+            new_release_id=new_release_id,
+        )
+
+
+def _artifact(store, value: str) -> str:
     return store.put_bytes(value.encode("utf-8")).artifact_id
 
 
@@ -45,7 +96,7 @@ def _obligations() -> tuple[ProofObligation, ...]:
     return tuple(
         ProofObligation(
             proof_id=proof_id,
-            claim=f"synthetic production proof for {proof_id}",
+            claim=f"synthetic pre-publication production proof for {proof_id}",
             proof_class=ProofClass.FORMAL_INVARIANT,
             scope="production-test",
             required_evidence=("synthetic-evidence",),
@@ -85,13 +136,10 @@ def _case(
     return AssuranceCase(release_scope=scope, claims=tuple(claims))
 
 
-def _backend(
-    store: FileSystemArtifactStore,
-    *,
-    qualified: bool = True,
-    scope: str = SCOPE,
-) -> ProductionBackendQualification:
+def _backend(store, registry, *, qualified: bool = True, scope: str = SCOPE):
     return ProductionBackendQualification(
+        artifact_store_backend_id=store.backend_id,
+        release_registry_backend_id=registry.backend_id,
         artifact_store_qualification_artifact_id=_artifact(store, "artifact-store-qualified"),
         release_registry_qualification_artifact_id=_artifact(store, "registry-qualified"),
         durable_shared_artifact_store=qualified,
@@ -108,12 +156,14 @@ def _execute(
     case: AssuranceCase | None = None,
     obligations: tuple[ProofObligation, ...] | None = None,
     backend: ProductionBackendQualification | None = None,
-    registry: FileSystemReleaseRegistry | None = None,
+    store=None,
+    registry=None,
+    valid_until: str | None = VALID_UNTIL,
 ):
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    store = store or _DurableArtifactStore(tmp_path / "artifacts")
+    registry = registry or _DurableReleaseRegistry(tmp_path / "production")
     manifest = _artifact(store, "manifest")
     claim_artifact = _artifact(store, "claim")
-    registry = registry or FileSystemReleaseRegistry(tmp_path / "production")
     return store, registry, execute_production_cutover(
         season=SEASON,
         entry=ENTRY,
@@ -121,12 +171,12 @@ def _execute(
         bundle_id=BundleId("bundle-v2"),
         world_id=GlobalWorldId("world-v2"),
         runtime_digest="sha256:v2-runtime",
-        created_at="2026-08-25T06:00:00Z",
-        valid_until="2026-08-29T10:00:00Z",
+        created_at=CREATED_AT,
+        valid_until=valid_until,
         artifact_manifest_id=manifest,
         assurance_case=case or _case(claim_artifact),
         obligations=obligations or _obligations(),
-        backend_qualification=backend or _backend(store),
+        backend_qualification=backend or _backend(store, registry),
         artifact_store=store,
         production_registry=registry,
     )
@@ -145,6 +195,7 @@ def test_production_cutover_publishes_only_after_complete_pass_and_exact_cas(tmp
     assert outcome.release_record.status is ReleaseStatus.PUBLISHED
     assert outcome.release_record.ready_to_act is True
     assert outcome.release_record.safe_to_act is True
+    assert outcome.release_record.valid_until == VALID_UNTIL
     assert registry.current_release_id(key) == outcome.release_record.release_id
     assert registry.read_release(outcome.release_record.release_id or "") == outcome.release_record
     replayed = load_production_cutover_report(
@@ -158,10 +209,10 @@ def test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_writ
     tmp_path: Path,
 ) -> None:
     obligations = _obligations()[1:]
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
-    registry = FileSystemReleaseRegistry(tmp_path / "production")
     with pytest.raises(ValueError, match="proof surface is incomplete"):
         execute_production_cutover(
             season=SEASON,
@@ -170,12 +221,12 @@ def test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_writ
             bundle_id=BundleId("bundle-v2"),
             world_id=GlobalWorldId("world-v2"),
             runtime_digest="sha256:v2-runtime",
-            created_at="2026-08-25T06:00:00Z",
-            valid_until=None,
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
             artifact_manifest_id=manifest,
             assurance_case=_case(claim),
             obligations=obligations,
-            backend_qualification=_backend(store),
+            backend_qualification=_backend(store, registry),
             artifact_store=store,
             production_registry=registry,
         )
@@ -183,10 +234,10 @@ def test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_writ
 
 
 def test_missing_required_proof_withholds_and_never_moves_production_pointer(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
-    registry = FileSystemReleaseRegistry(tmp_path / "production")
     missing = sorted(MANDATORY_PRODUCTION_PROOF_IDS)[0]
     outcome = execute_production_cutover(
         season=SEASON,
@@ -195,12 +246,12 @@ def test_missing_required_proof_withholds_and_never_moves_production_pointer(tmp
         bundle_id=BundleId("bundle-v2"),
         world_id=GlobalWorldId("world-v2"),
         runtime_digest="sha256:v2-runtime",
-        created_at="2026-08-25T06:00:00Z",
-        valid_until=None,
+        created_at=CREATED_AT,
+        valid_until=VALID_UNTIL,
         artifact_manifest_id=manifest,
         assurance_case=_case(claim, missing=missing),
         obligations=_obligations(),
-        backend_qualification=_backend(store),
+        backend_qualification=_backend(store, registry),
         artifact_store=store,
         production_registry=registry,
     )
@@ -215,10 +266,10 @@ def test_missing_required_proof_withholds_and_never_moves_production_pointer(tmp
 
 
 def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
-    registry = FileSystemReleaseRegistry(tmp_path / "production")
     outcome = execute_production_cutover(
         season=SEASON,
         entry=ENTRY,
@@ -226,12 +277,12 @@ def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_
         bundle_id=BundleId("bundle-v2"),
         world_id=GlobalWorldId("world-v2"),
         runtime_digest="sha256:v2-runtime",
-        created_at="2026-08-25T06:00:00Z",
-        valid_until=None,
+        created_at=CREATED_AT,
+        valid_until=VALID_UNTIL,
         artifact_manifest_id=manifest,
         assurance_case=_case(claim),
         obligations=_obligations(),
-        backend_qualification=_backend(store, qualified=False),
+        backend_qualification=_backend(store, registry, qualified=False),
         artifact_store=store,
         production_registry=registry,
     )
@@ -244,16 +295,91 @@ def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_
     assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 
 
-class _StaleRegistry(FileSystemReleaseRegistry):
+def test_reference_filesystem_backends_cannot_be_qualified_by_green_booleans(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    registry = FileSystemReleaseRegistry(tmp_path / "production")
+    manifest = _artifact(store, "manifest")
+    claim = _artifact(store, "claim")
+    backend = _backend(store, registry, qualified=True)
+    assert backend.qualified is False
+
+    outcome = execute_production_cutover(
+        season=SEASON,
+        entry=ENTRY,
+        gameweek=GAMEWEEK,
+        bundle_id=BundleId("bundle-v2"),
+        world_id=GlobalWorldId("world-v2"),
+        runtime_digest="sha256:v2-runtime",
+        created_at=CREATED_AT,
+        valid_until=VALID_UNTIL,
+        artifact_manifest_id=manifest,
+        assurance_case=_case(claim),
+        obligations=_obligations(),
+        backend_qualification=backend,
+        artifact_store=store,
+        production_registry=registry,
+    )
+    assert outcome.report.status is ProductionCutoverStatus.WITHHELD
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
+def test_backend_qualification_must_match_actual_adapter_identities(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    registry = FileSystemReleaseRegistry(tmp_path / "production")
+    manifest = _artifact(store, "manifest")
+    claim = _artifact(store, "claim")
+    backend = ProductionBackendQualification(
+        artifact_store_backend_id="some.other.artifact-store",
+        release_registry_backend_id="some.other.release-registry",
+        artifact_store_qualification_artifact_id=_artifact(store, "store-q"),
+        release_registry_qualification_artifact_id=_artifact(store, "registry-q"),
+        durable_shared_artifact_store=True,
+        durable_shared_release_registry=True,
+        atomic_compare_and_swap=True,
+        immutable_release_history=True,
+        qualification_scope=SCOPE,
+    )
+    with pytest.raises(ValueError, match="backend identity does not match qualification"):
+        execute_production_cutover(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=BundleId("bundle-v2"),
+            world_id=GlobalWorldId("world-v2"),
+            runtime_digest="sha256:v2-runtime",
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
+            artifact_manifest_id=manifest,
+            assurance_case=_case(claim),
+            obligations=_obligations(),
+            backend_qualification=backend,
+            artifact_store=store,
+            production_registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
+def test_missing_or_invalid_validity_horizon_withholds(tmp_path: Path) -> None:
+    for index, valid_until in enumerate((None, CREATED_AT), start=1):
+        root = tmp_path / str(index)
+        _, registry, outcome = _execute(root, valid_until=valid_until)
+        assert outcome.report.status is ProductionCutoverStatus.WITHHELD
+        assert outcome.report.ready_to_act is False
+        assert outcome.release_record.status is ReleaseStatus.WITHHELD
+        assert outcome.report.cutover_blockers
+        assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
+class _StaleRegistry(_DurableReleaseRegistry):
     def compare_and_swap_current(self, key, *, expected_release_id, new_release_id):
         raise CompareAndSwapConflict("synthetic stale production writer")
 
 
 def test_stale_writer_fails_closed_and_cannot_become_current(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _StaleRegistry(tmp_path / "production")
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
-    registry = _StaleRegistry(tmp_path / "production")
     with pytest.raises(CompareAndSwapConflict, match="stale production"):
         execute_production_cutover(
             season=SEASON,
@@ -262,12 +388,12 @@ def test_stale_writer_fails_closed_and_cannot_become_current(tmp_path: Path) -> 
             bundle_id=BundleId("bundle-v2"),
             world_id=GlobalWorldId("world-v2"),
             runtime_digest="sha256:v2-runtime",
-            created_at="2026-08-25T06:00:00Z",
-            valid_until=None,
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
             artifact_manifest_id=manifest,
             assurance_case=_case(claim),
             obligations=_obligations(),
-            backend_qualification=_backend(store),
+            backend_qualification=_backend(store, registry),
             artifact_store=store,
             production_registry=registry,
         )
@@ -278,7 +404,9 @@ def test_production_replay_rejects_lost_or_corrupt_source_evidence(tmp_path: Pat
     store, _, outcome = _execute(tmp_path)
     source_id = outcome.report.backend_qualification_artifact_ids[0]
     digest = source_id.split(":", 1)[1]
-    object_path = tmp_path / "artifacts" / "objects" / "sha256" / digest[:2] / digest
+    object_path = (
+        tmp_path / "artifacts" / "objects" / "sha256" / digest[:2] / digest
+    )
     object_path.write_bytes(b"corrupt")
     with pytest.raises(ValueError, match="production replay source"):
         load_production_cutover_report(
