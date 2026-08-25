@@ -7,6 +7,9 @@ on:
       - "src/apex_fpl/control/shadow_production.py"
       - "tests/test_v2_shadow_*.py"
       - "docs/APEX_SHADOW_PRODUCTION_V2.md"
+      - "docs/APEX_INVARIANTS.md"
+      - "config/proof_obligations.yaml"
+      - "config/requirements.yaml"
       - ".github/workflows/v2-shadow-production.yml"
   workflow_dispatch:
 
@@ -28,6 +31,6 @@ jobs:
           .venv/bin/python -m pip install --no-deps -r requirements.lock
           .venv/bin/python -m pip install --no-deps --no-build-isolation -e .
       - name: Run shadow production contract tests
-        run: .venv/bin/python -m pytest -q tests/test_v2_shadow_production.py tests/test_v2_shadow_architecture.py
+        run: .venv/bin/python -m pytest -q tests/test_v2_shadow_production.py tests/test_v2_shadow_architecture.py tests/test_v2_shadow_traceability.py
       - name: Run Ruff on shadow production surface
-        run: .venv/bin/ruff check src/apex_fpl/core/shadow.py src/apex_fpl/control/shadow_production.py tests/test_v2_shadow_production.py tests/test_v2_shadow_architecture.py
+        run: .venv/bin/ruff check src/apex_fpl/core/shadow.py src/apex_fpl/control/shadow_production.py tests/test_v2_shadow_production.py tests/test_v2_shadow_architecture.py tests/test_v2_shadow_traceability.py
