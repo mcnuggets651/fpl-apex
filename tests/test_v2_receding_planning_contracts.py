@@ -6,7 +6,6 @@ import pytest
 
 from apex_fpl.core.canonical import canonical_sha256
 from apex_fpl.core.decision import (
-    CandidateUniverseId,
     DecisionAction,
     DecisionChip,
     DecisionInput,
@@ -17,6 +16,7 @@ from apex_fpl.core.decision import (
 )
 from apex_fpl.core.identity import OfficialPlayerId
 from apex_fpl.core.ids import (
+    CandidateUniverseId,
     DecisionPolicyId,
     ForecastId,
     GlobalWorldId,
@@ -141,7 +141,7 @@ def _trajectory(*, first_points: int, future_points: int, captain: int) -> Plann
         action=first,
         state_after_id=state1,
         gameweek_points=first.mechanics.objective_points,
-        continuation_weight=RationalValue.one(),
+        continuation_weight=RationalValue(1, 1),
         weighted_points=first.mechanics.objective_points,
     )
     weighted_future = RationalValue(future_points, 2)
@@ -199,7 +199,7 @@ def test_planning_step_reconciles_exact_action_points_and_weight() -> None:
             action=action,
             state_after_id=PlanningStateId("after"),
             gameweek_points=RationalValue(9, 1),
-            continuation_weight=RationalValue.one(),
+            continuation_weight=RationalValue(1, 1),
             weighted_points=RationalValue(9, 1),
         )
     with pytest.raises(ValueError, match="weighted points do not reconcile"):
