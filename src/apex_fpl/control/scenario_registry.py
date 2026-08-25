@@ -8,6 +8,9 @@ from pathlib import Path
 import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.empirical_qualification_admission import (
+    verify_typed_empirical_qualification,
+)
 from apex_fpl.core.decision import RationalValue
 from apex_fpl.core.forecast import Forecast
 from apex_fpl.core.ids import ScenarioGeneratorId, ScenarioPolicyId
@@ -99,6 +102,7 @@ class ScenarioGovernanceRegistry:
         *,
         store: ArtifactStore,
         production: bool,
+        as_of: str | None = None,
     ) -> None:
         if self.generator(generator.scenario_generator_id) != generator:
             raise ValueError("scenario generator is not registered under semantic identity")
@@ -111,6 +115,17 @@ class ScenarioGovernanceRegistry:
                 raise ValueError("production scenario generator is not QUALIFIED")
             if self.champion_generator_id != generator.scenario_generator_id:
                 raise ValueError("production scenario generator is not registered champion")
+            if as_of is None:
+                raise ValueError("production scenario generator verification requires explicit as_of")
+            verify_typed_empirical_qualification(
+                qualification_artifact_id=generator.qualification_artifact_id,
+                subject_payload=generator.semantic_payload(),
+                subject_kind="apex.scenario-generator",
+                proof_id="PO-SCENARIO-CONVERGENCE-001",
+                season=self.season,
+                as_of=as_of,
+                store=store,
+            )
 
     def verify_policy_artifacts(
         self,
@@ -118,6 +133,7 @@ class ScenarioGovernanceRegistry:
         *,
         store: ArtifactStore,
         production: bool,
+        as_of: str | None = None,
     ) -> None:
         if self.policy(policy.scenario_policy_id) != policy:
             raise ValueError("scenario convergence policy is not registered under semantic identity")
@@ -128,6 +144,17 @@ class ScenarioGovernanceRegistry:
                 raise ValueError("production scenario convergence policy is not QUALIFIED")
             if self.champion_policy_id != policy.scenario_policy_id:
                 raise ValueError("production scenario convergence policy is not registered champion")
+            if as_of is None:
+                raise ValueError("production scenario policy verification requires explicit as_of")
+            verify_typed_empirical_qualification(
+                qualification_artifact_id=policy.qualification_artifact_id,
+                subject_payload=policy.semantic_payload(),
+                subject_kind="apex.scenario-policy",
+                proof_id="PO-SCENARIO-CONVERGENCE-001",
+                season=self.season,
+                as_of=as_of,
+                store=store,
+            )
 
     def verify_runtime_contract(
         self,
@@ -164,8 +191,18 @@ class ScenarioGovernanceRegistry:
             cutoff=forecast.feature_cutoff,
             production=production,
         )
-        self.verify_generator_artifacts(generator, store=store, production=production)
-        self.verify_policy_artifacts(policy, store=store, production=production)
+        self.verify_generator_artifacts(
+            generator,
+            store=store,
+            production=production,
+            as_of=forecast.feature_cutoff,
+        )
+        self.verify_policy_artifacts(
+            policy,
+            store=store,
+            production=production,
+            as_of=forecast.feature_cutoff,
+        )
         for artifact_id in scenario_set.source_artifact_ids:
             store.read_bytes(artifact_id)
 
