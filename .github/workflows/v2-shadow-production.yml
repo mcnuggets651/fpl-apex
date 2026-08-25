@@ -31,6 +31,6 @@ jobs:
           .venv/bin/python -m pip install --no-deps -r requirements.lock
           .venv/bin/python -m pip install --no-deps --no-build-isolation -e .
       - name: Run shadow production contract tests
-        run: .venv/bin/python -m pytest -q tests/test_v2_shadow_production.py tests/test_v2_shadow_architecture.py tests/test_v2_shadow_traceability.py
+        run: .venv/bin/python -m pytest -q tests/test_v2_shadow_*.py
       - name: Run Ruff on shadow production surface
-        run: .venv/bin/ruff check src/apex_fpl/core/shadow.py src/apex_fpl/control/shadow_production.py tests/test_v2_shadow_production.py tests/test_v2_shadow_architecture.py tests/test_v2_shadow_traceability.py
+        run: .venv/bin/ruff check src/apex_fpl/core/shadow.py src/apex_fpl/control/shadow_production.py tests/test_v2_shadow_*.py
