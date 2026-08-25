@@ -72,6 +72,7 @@ def _seal_release_policy(
             {
                 "schema_name": "apex-shadow-assurance-case-snapshot",
                 "schema_version": 1,
+                "assurance_case_id": case.case_id,
                 "assurance_case": case.semantic_payload(),
             }
         ),
@@ -248,8 +249,9 @@ def _replay_assurance_case(
         schema_name="apex-shadow-assurance-case-snapshot",
     )
     payload = raw.get("assurance_case")
-    if not isinstance(payload, dict):
-        raise ValueError("shadow AssuranceCase snapshot payload must be object")
+    declared = raw.get("assurance_case_id")
+    if not isinstance(payload, dict) or not isinstance(declared, str):
+        raise ValueError("shadow AssuranceCase snapshot payload/identity is invalid")
     claim_rows = payload.get("claims")
     if not isinstance(claim_rows, list) or any(not isinstance(row, dict) for row in claim_rows):
         raise ValueError("shadow AssuranceCase claims must be object array")
@@ -268,8 +270,7 @@ def _replay_assurance_case(
         claims=claims,
         schema_version=1,
     )
-    declared = payload.get("assurance_case_id")
-    if not isinstance(declared, str) or declared != case.case_id:
+    if declared != case.case_id:
         raise ValueError("shadow AssuranceCase snapshot semantic identity mismatch")
     return case
 
