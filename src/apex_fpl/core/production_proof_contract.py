@@ -1,9 +1,9 @@
-"""Canonical Apex V2 production proof-class contract.
+"""Canonical Apex V2 production proof contract.
 
 A release caller may supply the proof-obligation snapshot being certified, but it may not
-change the constitutional meaning of a mandatory proof ID.  In particular an empirical
-qualification cannot be relabelled as a formal or algorithmic proof merely to obtain a
-PASS ReleaseCertificate.
+change the constitutional meaning of a mandatory proof ID. Empirical production proofs
+also bind to explicit subject kinds so a valid qualification for one object cannot launder
+a different composite claim.
 """
 
 from __future__ import annotations
@@ -55,3 +55,29 @@ EMPIRICAL_PRODUCTION_PROOF_IDS = frozenset(
     for proof_id, proof_class in PRODUCTION_PROOF_CLASSES.items()
     if proof_class is ProofClass.EMPIRICAL_QUALIFICATION
 )
+
+_EMPIRICAL_PRODUCTION_SUBJECT_KINDS = {
+    "PO-FORECAST-QUALIFICATION-001": frozenset({"apex.forecast-model"}),
+    "PO-DECISION-POLICY-QUALIFICATION-001": frozenset({"apex.decision-policy"}),
+    "PO-SCENARIO-CONVERGENCE-001": frozenset(
+        {
+            "apex.scenario-generator",
+            "apex.scenario-policy",
+            "apex.scenario-convergence",
+        }
+    ),
+    "PO-MODEL-EVALUATION-001": frozenset(
+        {
+            "apex.learning-policy",
+            "apex.model-evaluation",
+        }
+    ),
+    "PO-MODEL-PROMOTION-001": frozenset({"apex.model-promotion"}),
+}
+
+PRODUCTION_EMPIRICAL_SUBJECT_KINDS = MappingProxyType(
+    _EMPIRICAL_PRODUCTION_SUBJECT_KINDS
+)
+
+if set(PRODUCTION_EMPIRICAL_SUBJECT_KINDS) != set(EMPIRICAL_PRODUCTION_PROOF_IDS):
+    raise RuntimeError("empirical production subject-kind contract is incomplete")
