@@ -16,6 +16,19 @@ The production release registry is exposed to the shadow runner through the read
 
 Shadow writes use a distinct `FileSystemReleaseRegistry` root/namespace supplied by the caller. Only that shadow registry receives `append` and `compare_and_swap_current` calls.
 
+## Independent reference-solver boundary
+
+A replay-valid algorithmic qualification for an isolated reference-solver worker is independent assurance evidence only. It does not elevate a shadow release, mutate the production current pointer, set `ready_to_act`/`safe_to_act`, or create user-facing recommendation authority.
+
+Reference-solver qualification and shadow production therefore fail closed independently:
+
+- shadow rehearsal cannot substitute for a missing qualified reference-solver champion;
+- a qualified worker cannot substitute for a production `ReleaseCertificate` or publication authorization;
+- a tactical current-Gameweek worker cannot certify a receding-horizon production DecisionPolicy merely because its tactical parity corpus passes;
+- any solver authorization consumed by publication-grade assurance must still replay its exact worker, registry and qualification evidence under the production release path.
+
+This separation prevents engineering evidence from being promoted into production authority by implication.
+
 ## Release semantics
 
 The supplied `AssuranceCase` derives its `ReleaseCertificate` from the supplied proof obligations. Proof obligations are canonicalized by `proof_id` before both derivation and sealing, and duplicate proof IDs fail before any release is staged.
