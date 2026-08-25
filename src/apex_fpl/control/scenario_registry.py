@@ -9,6 +9,8 @@ import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.control.empirical_qualification_admission import (
+    SCENARIO_GENERATOR_QUALIFICATION_ID,
+    SCENARIO_POLICY_QUALIFICATION_ID,
     verify_typed_empirical_qualification,
 )
 from apex_fpl.core.decision import RationalValue
@@ -121,7 +123,7 @@ class ScenarioGovernanceRegistry:
                 qualification_artifact_id=generator.qualification_artifact_id,
                 subject_payload=generator.semantic_payload(),
                 subject_kind="apex.scenario-generator",
-                proof_id="PO-SCENARIO-CONVERGENCE-001",
+                proof_id=SCENARIO_GENERATOR_QUALIFICATION_ID,
                 season=self.season,
                 as_of=as_of,
                 store=store,
@@ -150,7 +152,7 @@ class ScenarioGovernanceRegistry:
                 qualification_artifact_id=policy.qualification_artifact_id,
                 subject_payload=policy.semantic_payload(),
                 subject_kind="apex.scenario-policy",
-                proof_id="PO-SCENARIO-CONVERGENCE-001",
+                proof_id=SCENARIO_POLICY_QUALIFICATION_ID,
                 season=self.season,
                 as_of=as_of,
                 store=store,
