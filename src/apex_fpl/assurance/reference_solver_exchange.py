@@ -11,6 +11,7 @@ from apex_fpl.core.canonical import canonical_json_bytes
 from apex_fpl.core.decision import CandidateUniverse, DecisionInput, RationalValue
 from apex_fpl.core.decision_policy import DecisionPolicy
 from apex_fpl.core.forecast import Forecast
+from apex_fpl.core.ids import CandidateUniverseId, DecisionInputId, DecisionPolicyId
 from apex_fpl.core.manager_state import ManagerState
 from apex_fpl.core.reference_solver_io import (
     ExactSolverValue,
@@ -217,9 +218,9 @@ def build_reference_solver_certificate(
     if not store.verify(worker_code_artifact_id):
         raise ValueError("reference solver worker code artifact is missing/corrupt")
     return ReferenceSolverCertificate(
-        decision_input_id=request.decision_input_id,
-        candidate_universe_id=request.candidate_universe_id,
-        decision_policy_id=request.decision_policy_id,
+        decision_input_id=DecisionInputId(request.decision_input_id),
+        candidate_universe_id=CandidateUniverseId(request.candidate_universe_id),
+        decision_policy_id=DecisionPolicyId(request.decision_policy_id),
         worker_name=worker_name,
         worker_version=worker_version,
         solver_status=_STATUS[run.solver_status],
