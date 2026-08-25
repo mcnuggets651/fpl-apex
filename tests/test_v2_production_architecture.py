@@ -16,9 +16,11 @@ CORE_FILES = (
     ROOT / "src" / "apex_fpl" / "core" / "production_authority.py",
     ROOT / "src" / "apex_fpl" / "core" / "production_proof_contract.py",
     ROOT / "src" / "apex_fpl" / "core" / "experiments.py",
+    ROOT / "src" / "apex_fpl" / "core" / "production_bundle.py",
 )
 CUTOVER = ROOT / "src" / "apex_fpl" / "control" / "production_cutover.py"
 AUTHORITY = ROOT / "src" / "apex_fpl" / "control" / "production_authority.py"
+PLANNING_BUNDLE = ROOT / "src" / "apex_fpl" / "control" / "production_planning_bundle.py"
 BACKEND_QUALIFICATION = (
     ROOT / "src" / "apex_fpl" / "control" / "production_backend_qualification.py"
 )
@@ -98,6 +100,18 @@ def test_production_cutover_has_no_network_v1_runtime_or_filesystem_backend_shor
     assert "_validate_backend_binding" in text
     assert "PRODUCTION_PROOF_CLASSES" in text
     assert "load_empirical_qualification_certificate" in text
+
+
+def test_production_cutover_requires_schema_v2_planning_bundle_authority() -> None:
+    cutover = CUTOVER.read_text(encoding="utf-8")
+    planning = PLANNING_BUNDLE.read_text(encoding="utf-8")
+    assert "load_production_planning_bundle" in cutover
+    assert "VerifiedProductionPlanningBundle" in cutover
+    assert "load_production_decision_bundle" not in cutover
+    assert "production authority requires schema-v2 planning bundle" in planning
+    assert "PlanningSolverStatus.OPTIMAL" in planning
+    assert "complete zero-gap optimal planner" in planning
+    assert "CandidateUniverseScope.FULL_OFFICIAL" in planning
 
 
 def test_empirical_qualification_control_plane_has_no_network_or_v1_runtime_dependency() -> None:
