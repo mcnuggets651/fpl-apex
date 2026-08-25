@@ -50,6 +50,13 @@ MANDATORY_PRODUCTION_PROOF_IDS = frozenset(
     }
 )
 
+REFERENCE_PRODUCTION_BACKEND_IDS = frozenset(
+    {
+        "apex.reference.filesystem-artifact-store.v1",
+        "apex.reference.filesystem-release-registry.v1",
+    }
+)
+
 
 class ProductionCutoverStatus(StrEnum):
     """Outcome of one explicit production publication attempt."""
@@ -62,11 +69,13 @@ class ProductionCutoverStatus(StrEnum):
 class ProductionBackendQualification:
     """Operational qualification for the production control plane.
 
-    There is deliberately no default or filesystem shortcut. Production requires retained
-    evidence that immutable artifact storage and the current-pointer registry are durable,
-    shared and provide the atomicity/history semantics required by the frozen architecture.
+    Qualification is bound to the exact backend adapter identities. Reference/local
+    filesystem adapters are structurally non-production even if a caller supplies green
+    capability booleans.
     """
 
+    artifact_store_backend_id: str
+    release_registry_backend_id: str
     artifact_store_qualification_artifact_id: str
     release_registry_qualification_artifact_id: str
     durable_shared_artifact_store: bool
@@ -79,29 +88,54 @@ class ProductionBackendQualification:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported ProductionBackendQualification schema_version")
+        artifact_backend = str(self.artifact_store_backend_id).strip()
+        registry_backend = str(self.release_registry_backend_id).strip()
+        artifact_qualification = str(self.artifact_store_qualification_artifact_id).strip()
+        registry_qualification = str(self.release_registry_qualification_artifact_id).strip()
+        scope = str(self.qualification_scope).strip()
         for label, value in (
-            ("artifact store qualification", self.artifact_store_qualification_artifact_id),
-            ("release registry qualification", self.release_registry_qualification_artifact_id),
-            ("qualification scope", self.qualification_scope),
+            ("artifact store backend identity", artifact_backend),
+            ("release registry backend identity", registry_backend),
+            ("artifact store qualification", artifact_qualification),
+            ("release registry qualification", registry_qualification),
+            ("qualification scope", scope),
         ):
-            if not str(value).strip():
+            if not value:
                 raise ValueError(f"production {label} is required")
+        object.__setattr__(self, "artifact_store_backend_id", artifact_backend)
+        object.__setattr__(self, "release_registry_backend_id", registry_backend)
+        object.__setattr__(
+            self,
+            "artifact_store_qualification_artifact_id",
+            artifact_qualification,
+        )
+        object.__setattr__(
+            self,
+            "release_registry_qualification_artifact_id",
+            registry_qualification,
+        )
+        object.__setattr__(self, "qualification_scope", scope)
 
     @property
     def qualified(self) -> bool:
-        return all(
-            (
-                self.durable_shared_artifact_store,
-                self.durable_shared_release_registry,
-                self.atomic_compare_and_swap,
-                self.immutable_release_history,
-            )
+        backend_ids = {
+            self.artifact_store_backend_id,
+            self.release_registry_backend_id,
+        }
+        return (
+            backend_ids.isdisjoint(REFERENCE_PRODUCTION_BACKEND_IDS)
+            and self.durable_shared_artifact_store
+            and self.durable_shared_release_registry
+            and self.atomic_compare_and_swap
+            and self.immutable_release_history
         )
 
     def semantic_payload(self) -> dict[str, object]:
         return {
             "schema_name": "apex-production-backend-qualification",
             "schema_version": self.schema_version,
+            "artifact_store_backend_id": self.artifact_store_backend_id,
+            "release_registry_backend_id": self.release_registry_backend_id,
             "artifact_store_qualification_artifact_id": self.artifact_store_qualification_artifact_id,
             "release_registry_qualification_artifact_id": self.release_registry_qualification_artifact_id,
             "durable_shared_artifact_store": self.durable_shared_artifact_store,
@@ -120,10 +154,9 @@ class ProductionBackendQualification:
 class ProductionPublicationAuthorization:
     """Immutable proof-derived authorization embedded in every V2 production release.
 
-    This artifact exists before a ReleaseRecord is constructed, so the record can bind to
-    it without an identity cycle. It is not sufficient on its own: publication still
-    requires the later CAS transition. Conversely, a PUBLISHED-looking record without an
-    exact verifying authorization can never become user-facing authority.
+    The authorization binds release scope, decision/runtime identity, exact validity window,
+    proof surface and production backend qualification before a ReleaseRecord is constructed.
+    It is necessary but not sufficient: publication still requires the later atomic CAS.
     """
 
     season: str
@@ -132,6 +165,8 @@ class ProductionPublicationAuthorization:
     bundle_id: BundleId | None
     world_id: GlobalWorldId | None
     runtime_digest: str
+    created_at: str
+    valid_until: str | None
     artifact_manifest_id: str
     assurance_case_id: str
     assurance_case_artifact_id: str
@@ -149,14 +184,18 @@ class ProductionPublicationAuthorization:
             raise ValueError("unsupported ProductionPublicationAuthorization schema_version")
         season = str(self.season).strip()
         runtime_digest = str(self.runtime_digest).strip()
+        created_at = str(self.created_at).strip()
+        valid_until = None if self.valid_until is None else str(self.valid_until).strip()
         manifest_id = str(self.artifact_manifest_id).strip()
         case_id = str(self.assurance_case_id).strip()
         case_artifact = str(self.assurance_case_artifact_id).strip()
         proof_artifact = str(self.proof_obligations_artifact_id).strip()
         backend_id = str(self.backend_qualification_id).strip()
         backend_snapshot = str(self.backend_qualification_snapshot_artifact_id).strip()
-        if not season or not runtime_digest or not manifest_id:
-            raise ValueError("production authorization requires season/runtime/manifest")
+        if not season or not runtime_digest or not created_at or not manifest_id:
+            raise ValueError("production authorization requires season/runtime/time/manifest")
+        if self.valid_until is not None and not valid_until:
+            raise ValueError("production authorization valid_until cannot be empty")
         if isinstance(self.entry, bool) or not isinstance(self.entry, int) or self.entry <= 0:
             raise ValueError("production authorization entry must be positive integer")
         if isinstance(self.gameweek, bool) or not isinstance(self.gameweek, int) or self.gameweek <= 0:
@@ -190,6 +229,8 @@ class ProductionPublicationAuthorization:
             raise ValueError("FAIL production authorization requires certificate blockers")
         object.__setattr__(self, "season", season)
         object.__setattr__(self, "runtime_digest", runtime_digest)
+        object.__setattr__(self, "created_at", created_at)
+        object.__setattr__(self, "valid_until", valid_until)
         object.__setattr__(self, "artifact_manifest_id", manifest_id)
         object.__setattr__(self, "assurance_case_id", case_id)
         object.__setattr__(self, "assurance_case_artifact_id", case_artifact)
@@ -208,6 +249,7 @@ class ProductionPublicationAuthorization:
             and not self.cutover_blockers
             and self.bundle_id is not None
             and self.world_id is not None
+            and self.valid_until is not None
         )
 
     def semantic_payload(self) -> dict[str, object]:
@@ -220,6 +262,8 @@ class ProductionPublicationAuthorization:
             "bundle_id": None if self.bundle_id is None else str(self.bundle_id),
             "world_id": None if self.world_id is None else str(self.world_id),
             "runtime_digest": self.runtime_digest,
+            "created_at": self.created_at,
+            "valid_until": self.valid_until,
             "artifact_manifest_id": self.artifact_manifest_id,
             "assurance_case_id": self.assurance_case_id,
             "assurance_case_artifact_id": self.assurance_case_artifact_id,
@@ -306,7 +350,9 @@ class ProductionCutoverReport:
                 str(self.attempt_release_id).strip(),
             )
         ):
-            raise ValueError("production cutover report requires complete authorization/proof/backend/release identities")
+            raise ValueError(
+                "production cutover report requires complete authorization/proof/backend/release identities"
+            )
         if self.release_certificate_status not in {"PASS", "FAIL"}:
             raise ValueError("production ReleaseCertificate status must be PASS or FAIL")
 
@@ -354,7 +400,9 @@ class ProductionCutoverReport:
 
         if self.status is ProductionCutoverStatus.PUBLISHED:
             if self.release_certificate_status != "PASS" or certificate_blockers:
-                raise ValueError("PUBLISHED production cutover requires blocker-free PASS ReleaseCertificate")
+                raise ValueError(
+                    "PUBLISHED production cutover requires blocker-free PASS ReleaseCertificate"
+                )
             if cutover_blockers:
                 raise ValueError("PUBLISHED production cutover cannot retain cutover blockers")
             if self.bundle_id is None or self.world_id is None:
