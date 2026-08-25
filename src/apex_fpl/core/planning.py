@@ -138,6 +138,8 @@ class PlanningState:
             raise ValueError("PlanningState cannot use multiple chips in one gameweek")
         if len({(row.chip, row.set_number) for row in chips}) != len(chips):
             raise ValueError("PlanningState cannot use the same chip twice in one set")
+        if any(row.gameweek >= self.gameweek for row in chips):
+            raise ValueError("PlanningState chip history cannot contain current/future gameweeks")
         paired = (self.parent_state_id is None, self.parent_action_id is None)
         if paired[0] != paired[1]:
             raise ValueError("PlanningState parent state/action lineage must be paired")
