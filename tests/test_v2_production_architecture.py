@@ -21,6 +21,9 @@ CORE_FILES = (
 CUTOVER = ROOT / "src" / "apex_fpl" / "control" / "production_cutover.py"
 AUTHORITY = ROOT / "src" / "apex_fpl" / "control" / "production_authority.py"
 PLANNING_BUNDLE = ROOT / "src" / "apex_fpl" / "control" / "production_planning_bundle.py"
+REFERENCE_SOLVER_BINDING = (
+    ROOT / "src" / "apex_fpl" / "control" / "production_reference_solver_binding.py"
+)
 BACKEND_QUALIFICATION = (
     ROOT / "src" / "apex_fpl" / "control" / "production_backend_qualification.py"
 )
@@ -114,6 +117,23 @@ def test_production_cutover_requires_schema_v2_planning_bundle_authority() -> No
     assert "CandidateUniverseScope.FULL_OFFICIAL" in planning
 
 
+def test_production_reference_solver_proof_is_planning_bound_and_replay_validated() -> None:
+    assert _forbidden_imports(REFERENCE_SOLVER_BINDING) == []
+    cutover = CUTOVER.read_text(encoding="utf-8")
+    binding = REFERENCE_SOLVER_BINDING.read_text(encoding="utf-8")
+    assert "claim_has_matching_planning_reference_solver_parity" in cutover
+    assert "REFERENCE_SOLVER_PARITY_PROOF_ID" in cutover
+    assert "load_planning_reference_solver_certificate" in binding
+    assert "validate_planning_reference_solver_parity" in binding
+    assert "load_reference_solver_authorization" in binding
+    assert "planning_result_id" in binding
+    assert "decision_cutoff" in binding
+    assert "horizon_gameweeks" in binding
+    assert "load_production_decision_bundle" not in binding
+    assert "datetime.now(" not in binding
+    assert "datetime.utcnow(" not in binding
+
+
 def test_empirical_qualification_control_plane_has_no_network_or_v1_runtime_dependency() -> None:
     for path in (EMPIRICAL_ADMISSION, EXPERIMENT_REGISTRY):
         assert _forbidden_imports(path) == []
@@ -193,7 +213,7 @@ def test_production_authorization_binds_release_validity_window() -> None:
 
 
 def test_production_authority_does_not_import_legacy_answer_surface() -> None:
-    for path in (CUTOVER, AUTHORITY, BACKEND_QUALIFICATION):
+    for path in (CUTOVER, AUTHORITY, BACKEND_QUALIFICATION, REFERENCE_SOLVER_BINDING):
         text = path.read_text(encoding="utf-8")
         assert "apex_fpl.services.answer_context" not in text
         assert "apex_answer_context.json" not in text
