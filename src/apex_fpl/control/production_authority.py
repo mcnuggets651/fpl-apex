@@ -9,6 +9,7 @@ from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.control.production_backend_qualification import (
     load_production_backend_qualification,
 )
+from apex_fpl.control.production_bundle import load_production_decision_bundle
 from apex_fpl.control.production_cutover import load_production_publication_authorization
 from apex_fpl.control.release_registry import ReleaseKey, ReleaseRecord, ReleaseStatus
 from apex_fpl.core.ids import BundleId, GlobalWorldId, ReleaseId
@@ -154,6 +155,23 @@ def resolve_production_answer_authority(
         return _unavailable(key, "publication authorization validity does not match ReleaseRecord")
     if authorization.artifact_manifest_id != record.artifact_manifest_id:
         return _unavailable(key, "publication authorization manifest does not match ReleaseRecord")
+
+    try:
+        verified_bundle = load_production_decision_bundle(
+            BundleId(record.bundle_id),
+            store=artifact_store,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        return _unavailable(key, f"current V2 production decision bundle is invalid: {exc}")
+    bundle = verified_bundle.bundle
+    if (
+        bundle.season != record.season
+        or bundle.entry != record.entry
+        or bundle.gameweek != record.gameweek
+    ):
+        return _unavailable(key, "production decision bundle scope does not match ReleaseRecord")
+    if str(bundle.world_id) != record.world_id:
+        return _unavailable(key, "production decision bundle world does not match ReleaseRecord")
 
     try:
         qualification = load_production_backend_qualification(
