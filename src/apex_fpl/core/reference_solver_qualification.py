@@ -6,10 +6,22 @@ from dataclasses import dataclass
 
 from .canonical import canonical_sha256
 from .experiments import qualification_subject_id
-from .reference_solver_io import ExactSolverValue, REFERENCE_SOLVER_CONTRACT
+from .reference_solver_io import REFERENCE_SOLVER_CONTRACT
 
 
 QUALIFICATION_REPLAY_ALGORITHM_ID = "reference-solver-algorithmic-qualification-v1"
+REFERENCE_SOLVER_REQUIRED_COVERAGE = (
+    "BENCH_BOOST_SURFACE",
+    "DOUBLE_GAMEWEEK",
+    "FREE_HIT_SURFACE",
+    "PAID_HIT",
+    "PROBABILISTIC_AUTOSUB",
+    "SELLING_PRICE_RESOURCE",
+    "TIE_BREAK_PARITY",
+    "TRANSFER_FINANCE",
+    "TRIPLE_CAPTAIN_SURFACE",
+    "WILDCARD_SURFACE",
+)
 
 
 def _artifact_id(value: str, *, label: str) -> str:
@@ -129,6 +141,7 @@ class ReferenceSolverAlgorithmicQualificationCertificate:
     corpus_artifact_id: str
     corpus_id: str
     passed_case_count: int
+    coverage_tags: tuple[str, ...]
     replay_algorithm_id: str = QUALIFICATION_REPLAY_ALGORITHM_ID
     schema_version: int = 1
 
@@ -158,12 +171,23 @@ class ReferenceSolverAlgorithmicQualificationCertificate:
             or self.passed_case_count <= 0
         ):
             raise ValueError("qualification certificate requires positive passed case count")
+        coverage = tuple(sorted({_nonempty(item, label="qualification coverage tag") for item in self.coverage_tags}))
+        required = set(REFERENCE_SOLVER_REQUIRED_COVERAGE)
+        actual = set(coverage)
+        if actual != required:
+            missing = sorted(required - actual)
+            extra = sorted(actual - required)
+            raise ValueError(
+                "qualification certificate lacks mandatory derived coverage "
+                f"missing={missing} extra={extra}"
+            )
         if self.replay_algorithm_id != QUALIFICATION_REPLAY_ALGORITHM_ID:
             raise ValueError("unsupported reference solver qualification replay algorithm")
         object.__setattr__(self, "worker_subject_id", subject)
         object.__setattr__(self, "worker_code_artifact_id", code)
         object.__setattr__(self, "corpus_artifact_id", corpus_artifact)
         object.__setattr__(self, "corpus_id", corpus_id)
+        object.__setattr__(self, "coverage_tags", coverage)
 
     def semantic_payload(self) -> dict[str, object]:
         return {
@@ -179,6 +203,7 @@ class ReferenceSolverAlgorithmicQualificationCertificate:
             "corpus_artifact_id": self.corpus_artifact_id,
             "corpus_id": self.corpus_id,
             "passed_case_count": self.passed_case_count,
+            "coverage_tags": list(self.coverage_tags),
             "replay_algorithm_id": self.replay_algorithm_id,
         }
 
