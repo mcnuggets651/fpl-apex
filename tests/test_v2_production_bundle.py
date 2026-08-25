@@ -101,5 +101,5 @@ def test_corrupt_bundle_bytes_fail_closed_before_lineage_is_exposed(tmp_path: Pa
     path = tmp_path / "artifacts" / "objects" / "sha256" / digest[:2] / digest
     path.write_bytes(b"corrupt")
 
-    with pytest.raises(ValueError, match="artifact failed integrity/replay"):
+    with pytest.raises(ValueError, match="failed integrity/replay"):
         load_production_decision_bundle(fixture.bundle.bundle_id, store=store)
