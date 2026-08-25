@@ -4,9 +4,28 @@ Slice 13 is the only explicit transition by which V2 may become the current prod
 
 ## Two distinct proof phases
 
-`PO-PRODUCTION-CUTOVER-001` is a REQUIRED **pre-publication mechanism proof**. It certifies that the exact executing build, identified by immutable build/runtime provenance, passed the production-control-plane contract tests that enforce certificate-only publication, constitutional proof-class pinning, typed empirical qualification admission, actual-backend identity binding, reference-filesystem exclusion, time-bounded authority, replay and stale-writer-safe CAS.
+`PO-PRODUCTION-CUTOVER-001` is a REQUIRED **pre-publication mechanism proof**. It certifies that the exact executing build, identified by immutable build/runtime provenance, passed the production-control-plane contract tests that enforce certificate-only publication, constitutional proof-class pinning, typed empirical qualification admission, schema-v2 planning lineage replay, qualified reference-solver parity, actual-backend identity binding, reference-filesystem exclusion, time-bounded authority, replay and stale-writer-safe CAS.
 
 A specific runtime attempt then produces `ProductionPublicationAuthorization`, an immutable `ReleaseRecord`, a CAS result and `ProductionCutoverReport`. Those artifacts audit what happened in that attempt. They do not circularly authorize the same attempt that creates them.
+
+## Schema-v2 planning lineage before publication
+
+Authoritative production cutover accepts only `ProductionPlanningBundle` schema v2. Legacy schema-v1 tactical bundles remain replayable historical/mechanism evidence but cannot move the V2 production pointer.
+
+The schema-v2 bundle is content-addressed and binds the exact retained:
+
+- current `ManagerState` and self-addressing manager-state artifact;
+- `RuleSet` and self-addressing RuleSet artifact;
+- `Forecast` and exact `ForecastModelArtifact`;
+- qualified receding-horizon `DecisionPolicy` and its continuation-value, chip-option-value, price and candidate-policy support artifacts;
+- full-Official `CandidateUniverse`;
+- replay-derived `RecedingHorizonDecisionResult` / `PlanningResultId`;
+- `ScenarioSet`; and
+- converged `RobustnessReport`.
+
+Bundle replay re-executes the planning lineage from retained current manager truth and retained RuleSet. Production rejects a planning result unless its solver status is `OPTIMAL`, search is complete, its best bound reconciles, its exact gap is zero and every retained hypothetical state/trajectory transition replays. `SOLVER_LIMIT`, missing state/rules bytes, tactical-only policy semantics, non-full candidate scope, non-converged robustness or swapped model/policy/world lineage fail closed.
+
+See `docs/APEX_RECEDING_HORIZON_PLANNER_V2.md`.
 
 ## Typed empirical admission before publication
 
@@ -24,38 +43,65 @@ Scenario-generator, scenario-policy and learning-policy registry qualification u
 
 The qualification certificate is independently replayed at the release's explicit `created_at`. It is unavailable before its retained result availability and expired at `valid_until`. Random artifacts, certificates for another proof/subject/season, future evidence and expired certificates fail closed. See `docs/APEX_EMPIRICAL_QUALIFICATION_V2.md`.
 
+## Qualified planning reference-solver parity
+
+`PO-REFERENCE-SOLVER-PARITY-001` is a mandatory algorithmic proof on the production planning path. Generic artifact existence cannot satisfy it.
+
+A satisfying claim must bind the exact schema-v2 bundle's `PlanningResultId` to a replay-derived `PlanningReferenceSolverCertificate` and replay-valid `ReferenceSolverAuthorization`. Production independently verifies that:
+
+- retained solver request/output bytes re-derive the certificate;
+- request identities match the exact DecisionInput, full CandidateUniverse and DecisionPolicy used by the planning bundle;
+- the independent worker returned `OPTIMAL`, complete, exact zero-gap search;
+- the independent best horizon objective equals the Apex planning selection objective;
+- the exact selected current root action and entire selected trajectory identities match;
+- the tie-break policy is the exact implemented policy;
+- the retained registry snapshot names the exact certificate worker as champion;
+- the champion code artifact and planning-v2 algorithmic qualification replay successfully;
+- the worker qualification covers the exact release season and horizon; and
+- authorization cutoff equals the exact Forecast feature cutoff.
+
+The planning qualification corpus derives its required coverage from retained cases. It must actually exercise full-Official search, multi-Gameweek objective, free-transfer banking, nontrivial transfer finance, non-zero terminal chip reserve, Triple Captain, Bench Boost, Wildcard persistence, Free Hit reversal, root-action parity, trajectory parity and zero-gap completion. Caller-authored coverage labels cannot promote a worker.
+
+A random algorithmic artifact, a valid certificate for another planning result, an unauthorized certificate, a tactical-v1 worker/certificate, a non-champion worker, missing qualification, solver limit/error, objective disagreement or trajectory disagreement fails production parity.
+
+The same parity chain is replayed when `ProductionPublicationAuthorization` is later loaded. Evidence that was valid only at initial write time is insufficient.
+
 ## Publication sequence
 
 1. Resolve one exact season / entry / Gameweek release scope and exact executing runtime identity.
 2. Verify the immutable ArtifactManifest and every retained artifact referenced by the AssuranceCase, including the exact-build production-control-plane mechanism-certification evidence.
 3. Validate that the supplied proof registry contains the complete constitutional REQUIRED production proof surface, and that every mandatory proof retains its pinned constitutional ProofClass. A narrowed, downgraded or reclassified proof set is invalid input.
-4. For every satisfying mandatory empirical claim, replay its typed empirical qualification evidence at the explicit release time and reconcile proof ID, canonical release subject, stable subject identity, experiment identity and season.
-5. Derive the ReleaseCertificate from the machine-readable AssuranceCase. There is no second readiness gate that can override this result.
-6. Verify retained production control-plane qualification evidence **and bind it to the actual adapters being used**. ArtifactStore and ReleaseRegistry expose stable backend identities; those identities must exactly match the qualification. Both backends must be durable, shared, immutable/history-preserving and CAS-capable. `FileSystemArtifactStore` and `FileSystemReleaseRegistry` carry explicit `apex.reference.*` backend identities and remain structurally non-production even if a caller supplies green capability booleans.
-7. Validate an explicit timezone-aware `created_at` and non-null `valid_until` with `valid_until > created_at`.
-8. Seal a `ProductionPublicationAuthorization` containing the exact scope, bundle/world/runtime/manifest identities, exact `created_at`/`valid_until`, AssuranceCase snapshot, proof-registry snapshot, ReleaseCertificate result and the content identity of the backend-qualification snapshot.
-9. Construct exactly one immutable `ReleaseRecord` bound to that authorization artifact and the identical validity window. Its `ready_to_act` and `safe_to_act` fields are derived from authorization; they are never caller inputs.
-10. If authorization is WITHHELD, retain immutable attempt evidence and require the production current pointer to remain unchanged.
-11. If authorization is eligible, append and replay the exact immutable PUBLISHED ReleaseRecord, then compare-and-swap the current pointer from the observed predecessor to that exact release ID. A stale writer fails closed.
-12. The answer surface resolves only the current PUBLISHED V2 ReleaseRecord and independently replays its publication authorization, manifest, AssuranceCase proof surface, empirical qualifications and authorization-bound backend qualification. The backend identities in that qualification must match the actual store/registry serving the answer. The caller supplies an explicit timezone-aware `as_of`; hidden wall-clock time is forbidden. Authority is withheld before `created_at` and at or after `valid_until`.
-13. Immediately before returning authority, re-read the current pointer. Concurrent pointer drift withholds the answer rather than exposing the superseded release.
-14. Persist the `ProductionCutoverReport` and CAS lineage as post-attempt immutable audit evidence.
+4. Load and independently replay the exact schema-v2 `ProductionPlanningBundle`; reconcile season, entry, Gameweek, GlobalWorld and every retained decision-lineage identity; reject tactical schema v1 as production authority.
+5. For every satisfying mandatory empirical claim, replay its typed empirical qualification evidence at the explicit release time and reconcile proof ID, canonical release subject, stable subject identity, experiment identity and season. Direct forecast/policy/scenario empirical proofs must bind the exact subjects carried by the replayed planning bundle.
+6. For `PO-REFERENCE-SOLVER-PARITY-001`, replay the exact planning solver certificate, exact champion authorization/registry and the planning-v2 algorithmic worker qualification; reconcile the exact bundle planning result, objective, root action, trajectory, horizon, cutoff and tie-break policy.
+7. Derive the ReleaseCertificate from the machine-readable AssuranceCase. There is no second readiness gate that can override this result.
+8. Verify retained production control-plane qualification evidence **and bind it to the actual adapters being used**. ArtifactStore and ReleaseRegistry expose stable backend identities; those identities must exactly match the qualification. Both backends must be durable, shared, immutable/history-preserving and CAS-capable. `FileSystemArtifactStore` and `FileSystemReleaseRegistry` carry explicit `apex.reference.*` backend identities and remain structurally non-production even if a caller supplies green capability booleans.
+9. Validate an explicit timezone-aware `created_at` and non-null `valid_until` with `valid_until > created_at`.
+10. Seal a `ProductionPublicationAuthorization` containing the exact scope, bundle/world/runtime/manifest identities, exact `created_at`/`valid_until`, AssuranceCase snapshot, proof-registry snapshot, ReleaseCertificate result and the content identity of the backend-qualification snapshot.
+11. Construct exactly one immutable `ReleaseRecord` bound to that authorization artifact and the identical validity window. Its `ready_to_act` and `safe_to_act` fields are derived from authorization; they are never caller inputs.
+12. If authorization is WITHHELD, retain immutable attempt evidence and require the production current pointer to remain unchanged.
+13. If authorization is eligible, append and replay the exact immutable PUBLISHED ReleaseRecord, then compare-and-swap the current pointer from the observed predecessor to that exact release ID. A stale writer fails closed.
+14. The answer surface resolves only the current PUBLISHED V2 ReleaseRecord and independently replays its publication authorization, schema-v2 planning bundle, planning-solver parity chain, manifest, AssuranceCase proof surface, empirical qualifications and authorization-bound backend qualification. The backend identities in that qualification must match the actual store/registry serving the answer. The caller supplies an explicit timezone-aware `as_of`; hidden wall-clock time is forbidden. Authority is withheld before `created_at` and at or after `valid_until`.
+15. Immediately before returning authority, re-read the current pointer. Concurrent pointer drift withholds the answer rather than exposing the superseded release.
+16. Persist the `ProductionCutoverReport` and CAS lineage as post-attempt immutable audit evidence.
 
-A PUBLISHED-looking ReleaseRecord is not sufficient authority. V1 records, shadow records, CERTIFIED-only records, forged `ready=true` records, proof-class laundering, arbitrary empirical artifacts, wrong release subjects, reference-filesystem publication attempts, cross-backend authorization replay, missing or mismatched backend identities, missing/expired validity windows, corrupt authorization, corrupt manifests, pointer drift and stale publication attempts are non-actionable.
+A PUBLISHED-looking ReleaseRecord is not sufficient authority. V1 records, shadow records, CERTIFIED-only records, forged `ready=true` records, tactical schema-v1 bundles, incomplete/limited planning results, proof-class laundering, arbitrary empirical artifacts, wrong release subjects, unrelated/random solver artifacts, unqualified/non-champion solver workers, reference-filesystem publication attempts, cross-backend authorization replay, missing or mismatched backend identities, missing/expired validity windows, corrupt authorization, corrupt bundles/manifests, pointer drift and stale publication attempts are non-actionable.
 
 ## Status versus actionability
 
 `WITHHELD` is a successful fail-closed outcome when evidence is incomplete. It never moves the production pointer and derives both readiness flags as false.
 
-`PUBLISHED` is possible only after a blocker-free ReleaseCertificate, complete typed proof lineage, identity-bound qualified production backend evidence, a valid explicit publication horizon and successful exact CAS. Only then do `ready_to_act` and `safe_to_act` derive true, and only until the retained `valid_until` horizon.
+`PUBLISHED` is possible only after a blocker-free ReleaseCertificate, exact schema-v2 planning lineage, replay-valid qualified planning-reference parity, complete typed proof lineage, identity-bound qualified production backend evidence, a valid explicit publication horizon and successful exact CAS. Only then do `ready_to_act` and `safe_to_act` derive true, and only until the retained `valid_until` horizon.
 
 A green production-control-plane code/test implementation is therefore not itself a production cutover. Runtime publication remains correctly WITHHELD until the real production evidence is qualified.
 
 ## Current 2026/27 cutover blockers
 
-The repository deliberately does not fabricate default production authorities. At empirical-qualification-plane implementation time the registered V2 forecast-model, DecisionPolicy, scenario/dependence, reference-solver and learning-policy champion slots remain empty, and `config/experiments_v2.yaml` intentionally contains no production experiments. Existing retained calibration material does not authorize those promotions. In addition, the filesystem ArtifactStore and ReleaseRegistry are reference/local adapters; retained qualification evidence for a real durable shared production control plane is required before live cutover.
+The repository deliberately does not fabricate default production authorities. The registered V2 forecast-model, DecisionPolicy, scenario/dependence, reference-solver and learning-policy champion slots remain empty, and `config/experiments_v2.yaml` intentionally contains no retrospective production experiments. Existing retained calibration material does not authorize those promotions. In addition, the filesystem ArtifactStore and ReleaseRegistry are reference/local adapters; retained qualification evidence for a real durable shared production control plane is required before live cutover.
 
-Those conditions are expected to keep a real production AssuranceCase/cutover WITHHELD until genuine no-hindsight qualification work supplies evidence. Tests use synthetic experiments and non-reference durable backend doubles only to prove the transition algorithm; their synthetic identities, thresholds and evidence are never production qualification artifacts.
+The receding-horizon planner and planning-v2 reference-solver mechanisms use synthetic worlds/workers in tests only. Passing those tests proves the mechanism and failure modes, not that a real 2026/27 policy/model/worker is qualified. No synthetic registry champion, qualification corpus or backend double may be copied into production configuration.
+
+Those conditions are expected to keep a real production AssuranceCase/cutover WITHHELD until genuine no-hindsight qualification work supplies evidence.
 
 ## Immutable history and rollback
 
@@ -72,22 +118,39 @@ Slice 14 may begin only after a genuine production cutover is certified. Slice 1
 - `src/apex_fpl/core/production.py`
 - `src/apex_fpl/core/production_proof_contract.py`
 - `src/apex_fpl/core/experiments.py`
+- `src/apex_fpl/core/production_bundle.py`
+- `src/apex_fpl/core/planning.py`
+- `src/apex_fpl/core/reference_solver_planning_io.py`
+- `src/apex_fpl/core/reference_solver_planning_assurance.py`
+- `src/apex_fpl/core/reference_solver_planning_qualification.py`
 - `src/apex_fpl/control/artifact_store.py`
 - `src/apex_fpl/control/experiment_registry.py`
 - `src/apex_fpl/control/empirical_qualification_admission.py`
 - `src/apex_fpl/control/production_backend_qualification.py`
 - `src/apex_fpl/control/production_cutover.py`
+- `src/apex_fpl/control/production_planning_bundle.py`
+- `src/apex_fpl/control/production_reference_solver_binding.py`
+- `src/apex_fpl/control/reference_solver_planning_qualification.py`
 - `src/apex_fpl/core/production_authority.py`
 - `src/apex_fpl/control/production_authority.py`
 - `src/apex_fpl/control/release_registry.py`
+- `src/apex_fpl/assurance/reference_solver_planning_exchange.py`
+- `src/apex_fpl/assurance/planning_solver_parity.py`
+- `src/apex_fpl/assurance/worker_authorization.py`
+- `src/apex_fpl/workers/reference_solver_planning.py`
 - `config/experiments_v2.yaml`
-- `config/proof_obligations.yaml` — empirical REQUIRED proofs and `PO-PRODUCTION-CUTOVER-001`
-- `config/requirements.yaml` — `REQ-V2-EMPIRICAL-QUALIFICATION` and `REQ-V2-PRODUCTION-CUTOVER`
+- `config/reference_solvers_v2.yaml`
+- `config/proof_obligations.yaml` — empirical REQUIRED proofs, planning solver parity and `PO-PRODUCTION-CUTOVER-001`
+- `config/requirements.yaml` — empirical qualification, decision assurance and production cutover traceability
 - `docs/APEX_INVARIANTS.md`
 - `docs/APEX_EMPIRICAL_QUALIFICATION_V2.md`
+- `docs/APEX_RECEDING_HORIZON_PLANNER_V2.md`
 - `tests/test_v2_empirical_qualification_plane.py`
 - `tests/test_v2_empirical_qualification_edges.py`
 - `tests/test_v2_empirical_qualification_traceability.py`
+- `tests/test_v2_reference_solver_planning.py`
+- `tests/test_v2_reference_solver_planning_qualification.py`
+- `tests/test_v2_production_planning_bundle.py`
 - `tests/test_v2_production_cutover.py`
 - `tests/test_v2_production_authority.py`
 - `tests/test_v2_production_architecture.py`
