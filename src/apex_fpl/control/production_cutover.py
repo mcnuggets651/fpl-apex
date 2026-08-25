@@ -8,6 +8,7 @@ import json
 from typing import Iterable, Protocol
 
 from apex_fpl.control.artifact_store import ArtifactIntegrityError, ArtifactStore
+from apex_fpl.control.experiment_registry import load_empirical_qualification_certificate
 from apex_fpl.control.release_registry import ReleaseKey, ReleaseRecord, ReleaseStatus
 from apex_fpl.core.canonical import canonical_json_bytes
 from apex_fpl.core.ids import BundleId, GlobalWorldId, ReleaseId
@@ -17,6 +18,10 @@ from apex_fpl.core.production import (
     ProductionCutoverReport,
     ProductionCutoverStatus,
     ProductionPublicationAuthorization,
+)
+from apex_fpl.core.production_proof_contract import (
+    EMPIRICAL_PRODUCTION_PROOF_IDS,
+    PRODUCTION_PROOF_CLASSES,
 )
 from apex_fpl.core.proofs import (
     AssuranceCase,
@@ -65,6 +70,8 @@ def _verify_artifact(store: ArtifactStore, artifact_id: str, *, label: str) -> s
 
 
 def _validate_proof_surface(obligations: tuple[ProofObligation, ...]) -> None:
+    if set(PRODUCTION_PROOF_CLASSES) != set(MANDATORY_PRODUCTION_PROOF_IDS):
+        raise ValueError("production proof-class contract drifted from mandatory proof surface")
     proof_ids = [item.proof_id for item in obligations]
     if len(proof_ids) != len(set(proof_ids)):
         raise ValueError("production proof-obligation set contains duplicate proof_id")
@@ -79,6 +86,13 @@ def _validate_proof_surface(obligations: tuple[ProofObligation, ...]) -> None:
     )
     if downgraded:
         raise ValueError(f"mandatory production proofs are not REQUIRED: {downgraded}")
+    reclassified = sorted(
+        proof_id
+        for proof_id in MANDATORY_PRODUCTION_PROOF_IDS
+        if registry[proof_id].proof_class is not PRODUCTION_PROOF_CLASSES[proof_id]
+    )
+    if reclassified:
+        raise ValueError(f"mandatory production proof class drifted: {reclassified}")
 
 
 def _backend_id(value: object, *, label: str) -> str:
@@ -109,10 +123,42 @@ def _validate_backend_binding(
         )
 
 
+def _claim_has_matching_empirical_qualification(
+    *,
+    claim: AssuranceClaim,
+    proof_id: str,
+    season: str,
+    as_of: str,
+    store: ArtifactStore,
+) -> bool:
+    evidence_ids = set(claim.evidence_ids)
+    for artifact_id in claim.artifact_ids:
+        try:
+            qualification = load_empirical_qualification_certificate(
+                artifact_id,
+                store=store,
+                as_of=as_of,
+            )
+        except ValueError:
+            continue
+        if (
+            qualification.supported
+            and qualification.proof_id == proof_id
+            and qualification.season == season
+            and qualification.subject_id in evidence_ids
+            and qualification.experiment_id in evidence_ids
+        ):
+            return True
+    return False
+
+
 def _claim_artifacts(
     case: AssuranceCase,
     obligations: tuple[ProofObligation, ...],
     store: ArtifactStore,
+    *,
+    season: str,
+    as_of: str,
 ) -> tuple[str, ...]:
     """Verify retained evidence behind every satisfying mandatory proof claim."""
 
@@ -137,6 +183,21 @@ def _claim_artifacts(
         if satisfying and not claim.artifact_ids:
             raise ValueError(
                 f"mandatory satisfying production proof lacks immutable artifact evidence: {proof_id}"
+            )
+        if (
+            satisfying
+            and proof_id in EMPIRICAL_PRODUCTION_PROOF_IDS
+            and not _claim_has_matching_empirical_qualification(
+                claim=claim,
+                proof_id=proof_id,
+                season=season,
+                as_of=as_of,
+                store=store,
+            )
+        ):
+            raise ValueError(
+                "mandatory empirical production proof lacks matching typed "
+                f"qualification evidence: {proof_id}"
             )
     artifact_ids = tuple(
         sorted({artifact for claim in case.claims for artifact in claim.artifact_ids})
@@ -348,7 +409,13 @@ def execute_production_cutover(
     manifest_id = _verify_artifact(
         artifact_store, artifact_manifest_id, label="production artifact manifest"
     )
-    claim_artifacts = _claim_artifacts(assurance_case, obligations_tuple, artifact_store)
+    claim_artifacts = _claim_artifacts(
+        assurance_case,
+        obligations_tuple,
+        artifact_store,
+        season=season,
+        as_of=created_at,
+    )
     backend_artifacts = (
         _verify_artifact(
             artifact_store,
@@ -723,7 +790,13 @@ def load_production_publication_authorization(
     obligations = _replay_obligations(
         authorization.proof_obligations_artifact_id, artifact_store=artifact_store
     )
-    _claim_artifacts(case, obligations, artifact_store)
+    _claim_artifacts(
+        case,
+        obligations,
+        artifact_store,
+        season=authorization.season,
+        as_of=authorization.created_at,
+    )
     certificate = case.derive_release_certificate(obligations)
     if certificate.assurance_case_id != authorization.assurance_case_id:
         raise ValueError("authorization AssuranceCase identity does not reconcile")
