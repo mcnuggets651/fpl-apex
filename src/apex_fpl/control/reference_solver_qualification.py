@@ -10,6 +10,7 @@ from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.core.canonical import canonical_json_bytes
 from apex_fpl.core.reference_solver_io import ReferenceSolverRunStatus
 from apex_fpl.core.reference_solver_qualification import (
+    REFERENCE_SOLVER_REQUIRED_COVERAGE,
     ReferenceSolverAlgorithmicQualificationCertificate,
     ReferenceSolverQualificationCase,
     ReferenceSolverQualificationCorpus,
@@ -124,13 +125,106 @@ def _shadow_subject(worker: ReferenceSolverWorkerArtifact) -> ReferenceSolverWor
     )
 
 
+def _rows(value: object, *, label: str) -> list[dict[str, object]]:
+    if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
+        raise ValueError(f"{label} must be an array of objects")
+    return [dict(row) for row in value]
+
+
+def _derived_case_coverage(request, expected) -> set[str]:
+    """Derive exercised solver semantics from retained request/result bytes only."""
+
+    coverage: set[str] = set()
+    selected = expected.selected_action
+    selected_xi = {int(player_id) for player_id in selected.xi_ids}
+
+    forecast_rows = _rows(request.forecast.get("rows"), label="qualification forecast rows")
+    selected_fixture_counts: dict[tuple[int, int], int] = {}
+    for row in forecast_rows:
+        target = row.get("target")
+        distribution = row.get("minutes_distribution")
+        if not isinstance(target, dict) or not isinstance(distribution, list):
+            raise ValueError("qualification forecast row is structurally invalid")
+        player_id = target.get("player_id")
+        gameweek = target.get("gameweek")
+        if isinstance(player_id, bool) or not isinstance(player_id, int):
+            raise ValueError("qualification forecast player_id must be integer")
+        if isinstance(gameweek, bool) or not isinstance(gameweek, int):
+            raise ValueError("qualification forecast gameweek must be integer")
+        if player_id not in selected_xi:
+            continue
+        key = (gameweek, player_id)
+        selected_fixture_counts[key] = selected_fixture_counts.get(key, 0) + 1
+        for support in distribution:
+            if (
+                isinstance(support, list)
+                and len(support) == 2
+                and support[0] == 0
+                and isinstance(support[1], int)
+                and not isinstance(support[1], bool)
+                and support[1] > 0
+            ):
+                coverage.add("PROBABILISTIC_AUTOSUB")
+                break
+    if any(count > 1 for count in selected_fixture_counts.values()):
+        coverage.add("DOUBLE_GAMEWEEK")
+
+    if selected.transfers:
+        coverage.add("TRANSFER_FINANCE")
+        outgoing_ids = {int(move.outgoing_player_id) for move in selected.transfers}
+        squad_rows = _rows(request.manager_state.get("squad"), label="qualification manager squad")
+        for row in squad_rows:
+            player_id = row.get("player_id")
+            if player_id not in outgoing_ids:
+                continue
+            purchase = row.get("purchase_basis_tenths")
+            current = row.get("current_price_tenths")
+            selling = row.get("selling_price_tenths")
+            if (
+                isinstance(purchase, int)
+                and not isinstance(purchase, bool)
+                and isinstance(current, int)
+                and not isinstance(current, bool)
+                and isinstance(selling, int)
+                and not isinstance(selling, bool)
+                and purchase != current
+                and selling != current
+            ):
+                coverage.add("SELLING_PRICE_RESOURCE")
+                break
+    if selected.mechanics.hit_points > 0:
+        coverage.add("PAID_HIT")
+
+    chips = request.decision_input.get("chips_considered")
+    if not isinstance(chips, list) or any(not isinstance(item, str) for item in chips):
+        raise ValueError("qualification DecisionInput chips_considered must be strings")
+    chip_tags = {
+        "TRIPLE_CAPTAIN": "TRIPLE_CAPTAIN_SURFACE",
+        "BENCH_BOOST": "BENCH_BOOST_SURFACE",
+        "WILDCARD": "WILDCARD_SURFACE",
+        "FREE_HIT": "FREE_HIT_SURFACE",
+    }
+    for chip, tag in chip_tags.items():
+        if chip in chips:
+            coverage.add(tag)
+
+    selected_objective = selected.mechanics.objective_points
+    if any(
+        alternative.action_id != selected.action_id
+        and alternative.mechanics.objective_points == selected_objective
+        for alternative in expected.alternatives
+    ):
+        coverage.add("TIE_BREAK_PARITY")
+    return coverage
+
+
 def derive_reference_solver_algorithmic_qualification(
     worker: ReferenceSolverWorkerArtifact,
     *,
     corpus_artifact_id: str,
     store: ArtifactStore,
 ) -> ReferenceSolverAlgorithmicQualificationCertificate:
-    """Replay every sealed corpus case through the isolated worker and require exact parity."""
+    """Replay every sealed corpus case and require exact parity plus mandatory coverage."""
 
     if not store.verify(worker.code_artifact_id):
         raise ValueError("reference solver worker code artifact is missing/corrupt")
@@ -143,6 +237,7 @@ def derive_reference_solver_algorithmic_qualification(
         raise ValueError("reference solver qualification corpus horizon outside worker scope")
 
     passed = 0
+    coverage: set[str] = set()
     for case_artifact_id in corpus.case_artifact_ids:
         case = load_reference_solver_qualification_case(case_artifact_id, store=store)
         request = load_reference_solver_request(case.request_artifact_id, store=store).request
@@ -173,7 +268,16 @@ def derive_reference_solver_algorithmic_qualification(
             raise ValueError("reference solver qualification objective parity failed")
         if run.selected_action_id != expected.selected_action.action_id:
             raise ValueError("reference solver qualification action parity failed")
+        coverage.update(_derived_case_coverage(request, expected))
         passed += 1
+
+    required = set(REFERENCE_SOLVER_REQUIRED_COVERAGE)
+    missing = sorted(required - coverage)
+    if missing:
+        raise ValueError(
+            "reference solver qualification corpus lacks mandatory derived coverage: "
+            + ",".join(missing)
+        )
 
     subject = _shadow_subject(worker)
     return ReferenceSolverAlgorithmicQualificationCertificate(
@@ -187,6 +291,7 @@ def derive_reference_solver_algorithmic_qualification(
         corpus_artifact_id=corpus_artifact_id,
         corpus_id=corpus.corpus_id,
         passed_case_count=passed,
+        coverage_tags=tuple(sorted(coverage)),
     )
 
 
@@ -218,6 +323,9 @@ def _load_certificate(
         raise ValueError("not a reference solver algorithmic qualification certificate")
     if payload.get("schema_version") != 1:
         raise ValueError("unsupported reference solver qualification certificate schema")
+    coverage = payload.get("coverage_tags")
+    if not isinstance(coverage, list) or any(not isinstance(item, str) for item in coverage):
+        raise ValueError("reference solver qualification coverage_tags must be strings")
     certificate = ReferenceSolverAlgorithmicQualificationCertificate(
         worker_subject_id=str(payload.get("worker_subject_id") or ""),
         worker_name=str(payload.get("worker_name") or ""),
@@ -229,6 +337,7 @@ def _load_certificate(
         corpus_artifact_id=str(payload.get("corpus_artifact_id") or ""),
         corpus_id=str(payload.get("corpus_id") or ""),
         passed_case_count=payload.get("passed_case_count"),  # type: ignore[arg-type]
+        coverage_tags=tuple(coverage),
         replay_algorithm_id=str(payload.get("replay_algorithm_id") or ""),
     )
     if certificate.certificate_id != artifact_id:
