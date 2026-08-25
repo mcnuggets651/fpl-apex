@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
@@ -22,11 +21,17 @@ from apex_fpl.core.reference_solver_worker import ReferenceSolverWorkerQualifica
 from reference_solver_qualification_helpers import build_qualified_reference_solver_bundle
 
 
+@pytest.fixture(scope="module")
+def qualified_bundle(tmp_path_factory):
+    root = tmp_path_factory.mktemp("reference-solver-qualification")
+    store = FileSystemArtifactStore(root / "artifacts")
+    return store, build_qualified_reference_solver_bundle(store)
+
+
 def test_algorithmic_qualification_replays_exact_corpus_and_authorizes_registry(
-    tmp_path: Path,
+    qualified_bundle,
 ) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    bundle = build_qualified_reference_solver_bundle(store)
+    store, bundle = qualified_bundle
     certificate = verify_reference_solver_algorithmic_qualification(
         bundle.worker,
         qualification_artifact_id=bundle.qualification_artifact_id,
@@ -47,9 +52,10 @@ def test_algorithmic_qualification_replays_exact_corpus_and_authorizes_registry(
     assert verified.worker_id == bundle.worker.worker_id
 
 
-def test_qualification_stable_subject_ignores_only_qualification_fields(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    bundle = build_qualified_reference_solver_bundle(store)
+def test_qualification_stable_subject_ignores_only_qualification_fields(
+    qualified_bundle,
+) -> None:
+    store, bundle = qualified_bundle
     shadow = replace(
         bundle.worker,
         qualification_state=ReferenceSolverWorkerQualification.SHADOW,
@@ -65,9 +71,10 @@ def test_qualification_stable_subject_ignores_only_qualification_fields(tmp_path
     )
 
 
-def test_random_sha_cannot_replace_replay_derived_qualification(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    bundle = build_qualified_reference_solver_bundle(store)
+def test_random_sha_cannot_replace_replay_derived_qualification(
+    qualified_bundle,
+) -> None:
+    store, bundle = qualified_bundle
     fake = store.put_bytes(b"not-an-algorithmic-qualification").artifact_id
     forged = replace(bundle.worker, qualification_artifact_id=fake)
     with pytest.raises(ValueError, match="qualification"):
@@ -85,9 +92,10 @@ def test_random_sha_cannot_replace_replay_derived_qualification(tmp_path: Path) 
         )
 
 
-def test_qualification_scope_cannot_be_stretched_beyond_corpus(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    bundle = build_qualified_reference_solver_bundle(store)
+def test_qualification_scope_cannot_be_stretched_beyond_corpus(
+    qualified_bundle,
+) -> None:
+    store, bundle = qualified_bundle
     with pytest.raises(ValueError, match="horizon"):
         verify_reference_solver_algorithmic_qualification(
             bundle.worker,
@@ -98,9 +106,10 @@ def test_qualification_scope_cannot_be_stretched_beyond_corpus(tmp_path: Path) -
         )
 
 
-def test_qualification_corpus_is_reexecuted_not_merely_hash_checked(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    bundle = build_qualified_reference_solver_bundle(store)
+def test_qualification_corpus_is_reexecuted_not_merely_hash_checked(
+    qualified_bundle,
+) -> None:
+    store, bundle = qualified_bundle
     other_code = store.put_bytes(b"different-code-artifact").artifact_id
     changed_worker = replace(
         bundle.worker,
@@ -119,9 +128,8 @@ def test_qualification_corpus_is_reexecuted_not_merely_hash_checked(tmp_path: Pa
     assert derived.worker_code_artifact_id == other_code
 
 
-def test_trivial_replayable_corpus_cannot_self_qualify(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    bundle = build_qualified_reference_solver_bundle(store)
+def test_trivial_replayable_corpus_cannot_self_qualify(qualified_bundle) -> None:
+    store, bundle = qualified_bundle
     full = load_reference_solver_qualification_corpus(
         bundle.corpus_artifact_id,
         store=store,
