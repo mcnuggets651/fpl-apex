@@ -319,3 +319,13 @@ proof_obligations:
     failure_consequence: Retain the incumbent or mark promotion INCONCLUSIVE; evaluation alone cannot mutate the champion and stale/unrelated evidence cannot authorize a transition.
     release_policy: REQUIRED
     owner: control.learning_promotion
+
+  - proof_id: PO-SHADOW-PRODUCTION-001
+    claim: Slice 12 rehearses the real V2 release contract in an isolated shadow registry, derives release eligibility only from AssuranceCase, never changes the production current pointer, never becomes actionable, and replays from immutable retained evidence.
+    proof_class: ALGORITHMIC_CERTIFICATE
+    scope: shadow_release
+    required_evidence: [ShadowProductionReport, ReleaseCertificate, ReleaseRecord, production_pointer_before, production_pointer_after, shadow_CAS_result, artifact_manifest_id, assurance_claim_artifacts, offline_replay]
+    required_tests: [test_passing_shadow_rehearsal_is_certified_but_never_actionable, test_missing_required_proof_produces_withheld_non_actionable_shadow_release, test_missing_or_corrupt_assurance_artifact_fails_before_shadow_release, test_shadow_pointer_update_uses_cas_and_stale_writer_fails_closed, test_shadow_report_refuses_to_claim_success_if_production_pointer_changes_concurrently, test_shadow_replay_rejects_lost_source_evidence, test_shadow_runner_has_no_network_v1_or_production_write_surface]
+    failure_consequence: Withhold V2 cutover; a shadow run that cannot prove release semantics, non-actionability, production-pointer isolation and immutable replay cannot satisfy the pre-cutover gate.
+    release_policy: REQUIRED
+    owner: control.shadow_production
