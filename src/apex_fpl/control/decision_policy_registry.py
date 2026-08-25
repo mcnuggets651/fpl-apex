@@ -8,6 +8,12 @@ from pathlib import Path
 import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.decision_policy_support import (
+    load_candidate_policy,
+    load_chip_option_value_policy,
+    load_continuation_value_policy,
+    load_price_policy,
+)
 from apex_fpl.control.empirical_qualification_admission import (
     verify_typed_empirical_qualification,
 )
@@ -18,6 +24,7 @@ from apex_fpl.core.decision_policy import (
     DecisionPolicyQualificationState,
 )
 from apex_fpl.core.ids import DecisionPolicyId
+from apex_fpl.core.numeric_policy import DECISION_NUMERIC_POLICY_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +62,51 @@ class DecisionPolicyRegistry:
             return None
         return self.get(self.champion_policy_id)
 
+    def _verify_receding_supports(
+        self,
+        policy: DecisionPolicy,
+        *,
+        store: ArtifactStore,
+    ) -> None:
+        if policy.evaluation_mode is not DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION:
+            return
+        support_ids = (
+            policy.continuation_value_artifact_id,
+            policy.chip_option_value_artifact_id,
+            policy.price_policy_artifact_id,
+            policy.candidate_policy_artifact_id,
+        )
+        if any(artifact_id is None for artifact_id in support_ids):
+            raise ValueError("receding-horizon DecisionPolicy lacks complete support artifacts")
+
+        continuation = load_continuation_value_policy(
+            policy.continuation_value_artifact_id,  # type: ignore[arg-type]
+            store=store,
+            as_of=policy.first_available_at,
+        )
+        chip_option = load_chip_option_value_policy(
+            policy.chip_option_value_artifact_id,  # type: ignore[arg-type]
+            store=store,
+            as_of=policy.first_available_at,
+        )
+        price = load_price_policy(
+            policy.price_policy_artifact_id,  # type: ignore[arg-type]
+            store=store,
+            as_of=policy.first_available_at,
+        )
+        candidate = load_candidate_policy(
+            policy.candidate_policy_artifact_id,  # type: ignore[arg-type]
+            store=store,
+            as_of=policy.first_available_at,
+        )
+        supports = (continuation, chip_option, price, candidate)
+        if any(support.season != policy.season for support in supports):
+            raise ValueError("DecisionPolicy support artifact season mismatch")
+        if continuation.horizon_gameweeks != policy.horizon_gameweeks:
+            raise ValueError("DecisionPolicy continuation-value horizon mismatch")
+        if chip_option.horizon_gameweeks != policy.horizon_gameweeks:
+            raise ValueError("DecisionPolicy chip-option horizon mismatch")
+
     def verify_policy_artifacts(
         self,
         policy: DecisionPolicy,
@@ -65,16 +117,9 @@ class DecisionPolicyRegistry:
     ) -> None:
         if self.get(policy.decision_policy_id) != policy:
             raise ValueError("DecisionPolicy is not registered under its semantic identity")
-        artifact_ids = (
-            policy.qualification_artifact_id,
-            policy.continuation_value_artifact_id,
-            policy.chip_option_value_artifact_id,
-            policy.price_policy_artifact_id,
-            policy.candidate_policy_artifact_id,
-        )
-        for artifact_id in artifact_ids:
-            if artifact_id is not None:
-                store.read_bytes(artifact_id)
+        if policy.qualification_artifact_id is not None:
+            store.read_bytes(policy.qualification_artifact_id)
+        self._verify_receding_supports(policy, store=store)
         if production:
             if not policy.production_qualified:
                 raise ValueError("production requires a qualified receding-horizon DecisionPolicy")
@@ -144,6 +189,9 @@ def load_decision_policy_registry(path: str | Path) -> DecisionPolicyRegistry:
                     else str(row["candidate_policy_artifact_id"])
                 ),
                 tie_break_policy=str(row["tie_break_policy"]),
+                numeric_policy_id=str(
+                    row.get("numeric_policy_id") or DECISION_NUMERIC_POLICY_ID
+                ),
             )
         )
     champion_raw = raw.get("champion_policy_id")
