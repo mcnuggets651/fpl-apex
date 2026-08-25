@@ -9,9 +9,9 @@ from typing import Iterable, Protocol
 
 from apex_fpl.control.artifact_store import ArtifactIntegrityError, ArtifactStore
 from apex_fpl.control.experiment_registry import load_empirical_qualification_certificate
-from apex_fpl.control.production_bundle import (
-    VerifiedProductionDecisionBundle,
-    load_production_decision_bundle,
+from apex_fpl.control.production_planning_bundle import (
+    VerifiedProductionPlanningBundle,
+    load_production_planning_bundle,
 )
 from apex_fpl.control.release_registry import ReleaseKey, ReleaseRecord, ReleaseStatus
 from apex_fpl.core.canonical import canonical_json_bytes
@@ -137,7 +137,7 @@ def _validate_backend_binding(
 
 
 def _bundle_empirical_bindings(
-    verified: VerifiedProductionDecisionBundle | None,
+    verified: VerifiedProductionPlanningBundle | None,
 ) -> dict[str, _EmpiricalReleaseBinding]:
     if verified is None:
         return {}
@@ -172,10 +172,10 @@ def _verified_bundle_for_release(
     entry: int,
     gameweek: int,
     store: ArtifactStore,
-) -> VerifiedProductionDecisionBundle | None:
+) -> VerifiedProductionPlanningBundle | None:
     if bundle_id is None:
         return None
-    verified = load_production_decision_bundle(bundle_id, store=store)
+    verified = load_production_planning_bundle(bundle_id, store=store)
     bundle = verified.bundle
     if bundle.season != season:
         raise ValueError("production bundle season does not match release scope")
