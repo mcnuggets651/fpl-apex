@@ -1,25 +1,27 @@
 """Exact hypothetical FPL transitions for the receding-horizon planner.
 
 These functions intentionally operate on :class:`PlanningState`, never by mutating or
-relabeling a future state as ``ManagerState.CURRENT_EXACT``.  Transfer finance is atomic:
+relabeling a future state as ``ManagerState.CURRENT_EXACT``. Transfer finance is atomic:
 all outgoing realised selling resources and all incoming Official-current costs reconcile
 as one FPL action, avoiding artificial intermediate-budget or club-limit constraints.
 """
 
 from __future__ import annotations
 
-from apex_fpl.core.decision import CandidateUniverse, DecisionAction, DecisionChip
+from apex_fpl.core.decision import (
+    CandidatePlayer,
+    CandidateUniverse,
+    DecisionAction,
+    DecisionChip,
+)
 from apex_fpl.core.identity import OfficialPlayerId
-from apex_fpl.core.manager_state import ManagerState, OwnedPlayer, calculate_selling_price_tenths
+from apex_fpl.core.manager_state import (
+    ManagerState,
+    OwnedPlayer,
+    calculate_selling_price_tenths,
+)
 from apex_fpl.core.planning import PlanningChipUse, PlanningState
 from apex_fpl.core.rules import RuleSet
-
-
-_PERMANENT_NORMAL_CHIPS = {
-    DecisionChip.NONE,
-    DecisionChip.TRIPLE_CAPTAIN,
-    DecisionChip.BENCH_BOOST,
-}
 
 
 def _chip_set(gameweek: int, *, ruleset: RuleSet) -> int:
@@ -44,12 +46,20 @@ def _chip_ledger_name(chip: DecisionChip) -> str:
     return mapping[chip]
 
 
-def _validate_chip_available(state: PlanningState, chip: DecisionChip, *, ruleset: RuleSet) -> None:
+def _validate_chip_available(
+    state: PlanningState,
+    chip: DecisionChip,
+    *,
+    ruleset: RuleSet,
+) -> None:
     if chip is DecisionChip.NONE:
         return
     set_number = _chip_set(state.gameweek, ruleset=ruleset)
     ledger_name = _chip_ledger_name(chip)
-    if any(row.chip == ledger_name and row.set_number == set_number for row in state.chips_used):
+    if any(
+        row.chip == ledger_name and row.set_number == set_number
+        for row in state.chips_used
+    ):
         raise ValueError(f"planning chip {ledger_name} already used in set {set_number}")
     if chip is DecisionChip.FREE_HIT:
         if state.gameweek in set(ruleset.value("FPL-FREE-HIT-DISALLOWED-GWS-001")):
@@ -76,7 +86,7 @@ def _validate_state_surface(
     universe: CandidateUniverse,
     *,
     ruleset: RuleSet,
-) -> dict[OfficialPlayerId, object]:
+) -> dict[OfficialPlayerId, CandidatePlayer]:
     if state.season != ruleset.season:
         raise ValueError("PlanningState season does not match RuleSet")
     if state.ruleset_id != ruleset.ruleset_id:
@@ -113,8 +123,6 @@ def planning_state_from_manager_state(
     """Seal one hypothetical planning root from current exact manager truth."""
 
     state.require_decision_safe(ruleset=ruleset)
-    if state.gameweek <= 0:
-        raise ValueError("planning root requires positive current gameweek")
     provisional = PlanningState(
         origin_manager_state_id=state.manager_state_id,
         price_world_id=universe.global_world_id,
@@ -137,7 +145,7 @@ def planning_state_from_manager_state(
 def _validate_action_transfer_identity(
     state: PlanningState,
     action: DecisionAction,
-    candidates: dict[OfficialPlayerId, object],
+    candidates: dict[OfficialPlayerId, CandidatePlayer],
 ) -> tuple[set[OfficialPlayerId], set[OfficialPlayerId]]:
     current_ids = set(state.player_ids)
     result_ids = set(action.squad_ids)
@@ -145,24 +153,19 @@ def _validate_action_transfer_identity(
     incoming_ids = result_ids - current_ids
     declared_out = {row.outgoing_player_id for row in action.transfers}
     declared_in = {row.incoming_player_id for row in action.transfers}
-    if (
-        outgoing_ids != declared_out
-        or incoming_ids != declared_in
-        or len(action.transfers) != len(outgoing_ids) != len(incoming_ids)
+    if not (
+        outgoing_ids == declared_out
+        and incoming_ids == declared_in
+        and len(action.transfers) == len(outgoing_ids) == len(incoming_ids)
     ):
-        # The chained comparison above is deliberately followed by the explicit equality
-        # below; retain a single fail-closed message for any set/cardinality mismatch.
-        if not (
-            outgoing_ids == declared_out
-            and incoming_ids == declared_in
-            and len(action.transfers) == len(outgoing_ids) == len(incoming_ids)
-        ):
-            raise ValueError("planning transfer set does not reconcile squad delta")
+        raise ValueError("planning transfer set does not reconcile squad delta")
     for move in action.transfers:
         outgoing = state.player(move.outgoing_player_id)
         incoming = candidates.get(move.incoming_player_id)
         if incoming is None:
-            raise ValueError(f"planning incoming player {move.incoming_player_id} is outside universe")
+            raise ValueError(
+                f"planning incoming player {move.incoming_player_id} is outside universe"
+            )
         if outgoing.position != incoming.position:
             raise ValueError("planning transfer must preserve exact FPL position")
     return outgoing_ids, incoming_ids
@@ -170,10 +173,10 @@ def _validate_action_transfer_identity(
 
 def _legal_action_squad(
     action: DecisionAction,
-    candidates: dict[OfficialPlayerId, object],
+    candidates: dict[OfficialPlayerId, CandidatePlayer],
     *,
     ruleset: RuleSet,
-) -> tuple[object, ...]:
+) -> tuple[CandidatePlayer, ...]:
     try:
         squad = tuple(candidates[player_id] for player_id in action.squad_ids)
     except KeyError as exc:
@@ -225,7 +228,7 @@ def _next_free_transfers(
 def _permanent_squad_after_action(
     state: PlanningState,
     action: DecisionAction,
-    candidates: dict[OfficialPlayerId, object],
+    candidates: dict[OfficialPlayerId, CandidatePlayer],
     *,
     ruleset: RuleSet,
 ) -> tuple[OwnedPlayer, ...]:
@@ -250,8 +253,7 @@ def _permanent_squad_after_action(
             )
         )
     permanent = tuple(sorted(rows, key=lambda row: int(row.player_id)))
-    # Recompute retained sale values under the sealed Official-current price policy.
-    recomputed = tuple(
+    return tuple(
         OwnedPlayer(
             player_id=row.player_id,
             team_id=row.team_id,
@@ -266,7 +268,6 @@ def _permanent_squad_after_action(
         )
         for row in permanent
     )
-    return recomputed
 
 
 def apply_planning_action(
@@ -283,12 +284,18 @@ def apply_planning_action(
     _legal_action_squad(action, candidates, ruleset=ruleset)
     outgoing_ids, incoming_ids = _validate_action_transfer_identity(state, action, candidates)
 
-    sale_value = sum(state.player(player_id).selling_price_tenths for player_id in outgoing_ids)
-    incoming_cost = sum(candidates[player_id].current_price_tenths for player_id in incoming_ids)
+    sale_value = sum(
+        state.player(player_id).selling_price_tenths for player_id in outgoing_ids
+    )
+    incoming_cost = sum(
+        candidates[player_id].current_price_tenths for player_id in incoming_ids
+    )
     temporary_bank = state.bank_tenths + sale_value - incoming_cost
     if temporary_bank < 0:
         raise ValueError("planning action is unaffordable under exact selling resources")
-    expected_bank = state.bank_tenths if action.chip is DecisionChip.FREE_HIT else temporary_bank
+    expected_bank = (
+        state.bank_tenths if action.chip is DecisionChip.FREE_HIT else temporary_bank
+    )
     if action.bank_after_tenths != expected_bank:
         raise ValueError(
             "planning action bank does not reconcile exact simultaneous transfer finance"
@@ -319,7 +326,9 @@ def apply_planning_action(
         candidates,
         ruleset=ruleset,
     )
-    next_bank = state.bank_tenths if action.chip is DecisionChip.FREE_HIT else expected_bank
+    next_bank = (
+        state.bank_tenths if action.chip is DecisionChip.FREE_HIT else expected_bank
+    )
     next_state = PlanningState(
         origin_manager_state_id=state.origin_manager_state_id,
         price_world_id=state.price_world_id,
