@@ -6,6 +6,7 @@ from pathlib import Path
 from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.control.decision_policy_store import store_decision_policy
 from apex_fpl.control.decision_policy_support import store_decision_policy_support
+from apex_fpl.control.experiment_registry import load_empirical_qualification_certificate
 from apex_fpl.control.forecast_model_store import store_forecast_model
 from apex_fpl.control.manager_state_store import store_manager_state
 from apex_fpl.control.production_planning_bundle import store_production_planning_bundle
@@ -92,9 +93,35 @@ POSITIONS = {
 
 
 @dataclass(frozen=True, slots=True)
+class DirectQualificationMaterial:
+    artifact_id: str
+    subject_id: str
+    experiment_id: str
+    semantic_evidence_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class SyntheticPlanningBundleFixture:
     bundle: ProductionPlanningBundle
     manager_state: ManagerState
+    direct_qualifications: dict[str, DirectQualificationMaterial]
+
+
+def _qualification_material(
+    *,
+    store: ArtifactStore,
+    artifact_id: str,
+    semantic_evidence_id: str,
+) -> DirectQualificationMaterial:
+    certificate = load_empirical_qualification_certificate(artifact_id, store=store)
+    if not certificate.supported:
+        raise ValueError("synthetic direct qualification must replay as supported")
+    return DirectQualificationMaterial(
+        artifact_id=artifact_id,
+        subject_id=certificate.subject_id,
+        experiment_id=certificate.experiment_id,
+        semantic_evidence_id=semantic_evidence_id,
+    )
 
 
 def synthetic_production_planning_bundle(
@@ -398,6 +425,13 @@ def synthetic_production_planning_bundle(
         blockers=(),
     )
     stored_report = store_robustness_report(report, store=store)
+    scenario_qualification = synthetic_supported_qualification_artifact(
+        store=store,
+        subject_payload=report.semantic_payload(),
+        subject_kind="apex.scenario-convergence",
+        proof_id="PO-SCENARIO-CONVERGENCE-001",
+        season=season,
+    )
 
     bundle = ProductionPlanningBundle(
         season=season,
@@ -424,4 +458,26 @@ def synthetic_production_planning_bundle(
         robustness_report_artifact_id=stored_report.artifact_id,
     )
     store_production_planning_bundle(bundle, store=store)
-    return SyntheticPlanningBundleFixture(bundle=bundle, manager_state=manager_state)
+
+    direct = {
+        "PO-FORECAST-QUALIFICATION-001": _qualification_material(
+            store=store,
+            artifact_id=model_qualification,
+            semantic_evidence_id=str(model.model_artifact_id),
+        ),
+        "PO-DECISION-POLICY-QUALIFICATION-001": _qualification_material(
+            store=store,
+            artifact_id=policy_qualification,
+            semantic_evidence_id=str(policy.decision_policy_id),
+        ),
+        "PO-SCENARIO-CONVERGENCE-001": _qualification_material(
+            store=store,
+            artifact_id=scenario_qualification,
+            semantic_evidence_id=str(report.robustness_report_id),
+        ),
+    }
+    return SyntheticPlanningBundleFixture(
+        bundle=bundle,
+        manager_state=manager_state,
+        direct_qualifications=direct,
+    )
