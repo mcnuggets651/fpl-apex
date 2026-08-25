@@ -16,14 +16,15 @@ A specific runtime attempt then produces `ProductionPublicationAuthorization`, a
 4. Derive the ReleaseCertificate from the machine-readable AssuranceCase. There is no second readiness gate that can override this result.
 5. Verify retained production control-plane qualification evidence **and bind it to the actual adapters being used**. ArtifactStore and ReleaseRegistry expose stable backend identities; those identities must exactly match the qualification. Both backends must be durable, shared, immutable/history-preserving and CAS-capable. `FileSystemArtifactStore` and `FileSystemReleaseRegistry` carry explicit `apex.reference.*` backend identities and remain structurally non-production even if a caller supplies green capability booleans.
 6. Validate an explicit timezone-aware `created_at` and non-null `valid_until` with `valid_until > created_at`.
-7. Seal a `ProductionPublicationAuthorization` containing the exact scope, bundle/world/runtime/manifest identities, exact `created_at`/`valid_until`, AssuranceCase snapshot, proof-registry snapshot, ReleaseCertificate result and backend-qualification lineage.
+7. Seal a `ProductionPublicationAuthorization` containing the exact scope, bundle/world/runtime/manifest identities, exact `created_at`/`valid_until`, AssuranceCase snapshot, proof-registry snapshot, ReleaseCertificate result and the content identity of the backend-qualification snapshot.
 8. Construct exactly one immutable `ReleaseRecord` bound to that authorization artifact and the identical validity window. Its `ready_to_act` and `safe_to_act` fields are derived from authorization; they are never caller inputs.
 9. If authorization is WITHHELD, retain immutable attempt evidence and require the production current pointer to remain unchanged.
 10. If authorization is eligible, append and replay the exact immutable PUBLISHED ReleaseRecord, then compare-and-swap the current pointer from the observed predecessor to that exact release ID. A stale writer fails closed.
-11. The answer surface resolves only the current PUBLISHED V2 ReleaseRecord and independently replays its publication authorization and manifest before exposing its bundle identity. The caller supplies an explicit timezone-aware `as_of`; hidden wall-clock time is forbidden. Authority is withheld before `created_at` and at or after `valid_until`.
-12. Persist the `ProductionCutoverReport` and CAS lineage as post-attempt immutable audit evidence.
+11. The answer surface resolves only the current PUBLISHED V2 ReleaseRecord and independently replays its publication authorization, manifest and authorization-bound backend qualification. The backend identities in that qualification must match the actual store/registry serving the answer. The caller supplies an explicit timezone-aware `as_of`; hidden wall-clock time is forbidden. Authority is withheld before `created_at` and at or after `valid_until`.
+12. Immediately before returning authority, re-read the current pointer. Concurrent pointer drift withholds the answer rather than exposing the superseded release.
+13. Persist the `ProductionCutoverReport` and CAS lineage as post-attempt immutable audit evidence.
 
-A PUBLISHED-looking ReleaseRecord is not sufficient authority. V1 records, shadow records, CERTIFIED-only records, forged `ready=true` records, reference-filesystem publication attempts, missing or mismatched backend identities, missing/expired validity windows, corrupt authorization, corrupt manifests and stale publication attempts are non-actionable.
+A PUBLISHED-looking ReleaseRecord is not sufficient authority. V1 records, shadow records, CERTIFIED-only records, forged `ready=true` records, reference-filesystem publication attempts, cross-backend authorization replay, missing or mismatched backend identities, missing/expired validity windows, corrupt authorization, corrupt manifests, pointer drift and stale publication attempts are non-actionable.
 
 ## Status versus actionability
 
@@ -53,6 +54,7 @@ Slice 14 may begin only after a genuine Slice 13 production cutover is certified
 
 - `src/apex_fpl/core/production.py`
 - `src/apex_fpl/control/artifact_store.py`
+- `src/apex_fpl/control/production_backend_qualification.py`
 - `src/apex_fpl/control/production_cutover.py`
 - `src/apex_fpl/core/production_authority.py`
 - `src/apex_fpl/control/production_authority.py`
