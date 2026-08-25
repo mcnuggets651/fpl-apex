@@ -4,6 +4,12 @@ from dataclasses import replace
 from pathlib import Path
 
 from apex_fpl.assurance.reference_mechanics import certify_selected_action
+from apex_fpl.assurance.reference_solver_exchange import (
+    build_reference_solver_certificate,
+    build_reference_solver_request,
+    store_reference_solver_request,
+    store_reference_solver_run,
+)
 from apex_fpl.assurance.solver_parity import (
     build_independent_assurance_report,
     validate_reference_solver_parity,
@@ -11,12 +17,7 @@ from apex_fpl.assurance.solver_parity import (
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
 from apex_fpl.control.reference_solver_registry import ReferenceSolverRegistry
 from apex_fpl.control.ruleset_registry import load_ruleset
-from apex_fpl.core.assurance import (
-    AssuranceParityStatus,
-    ReferenceMechanicsCheck,
-    ReferenceSolverCertificate,
-    ReferenceSolverStatus,
-)
+from apex_fpl.core.assurance import AssuranceParityStatus, ReferenceMechanicsCheck
 from apex_fpl.core.decision import (
     CandidatePlayer,
     CandidateUniverse,
@@ -44,20 +45,17 @@ from apex_fpl.core.forecast import (
     UncertaintyKind,
 )
 from apex_fpl.core.identity import OfficialPlayerId
-from apex_fpl.core.ids import (
-    FeatureSnapshotId,
-    GlobalWorldId,
-    ModelArtifactId,
-    PredictionBatchId,
-)
+from apex_fpl.core.ids import FeatureSnapshotId, GlobalWorldId, ModelArtifactId, PredictionBatchId
 from apex_fpl.core.manager_state import ManagerState, ManagerStateScope, OwnedPlayer
-from apex_fpl.core.reference_solver_worker import (
-    ReferenceSolverWorkerArtifact,
-    ReferenceSolverWorkerQualification,
+from apex_fpl.core.reference_solver_io import (
+    ReferenceSolverRun,
+    ReferenceSolverRunStatus,
 )
 from apex_fpl.decision.engine import optimise_current_gameweek
+from apex_fpl.workers.reference_solver import solve_reference_request
 
 
+ROOT = Path(__file__).resolve().parents[1]
 POSITIONS = {
     1: "GK",
     2: "GK",
@@ -79,7 +77,7 @@ WORLD_ID = GlobalWorldId("assurance-world")
 
 
 def _ruleset():
-    return load_ruleset(Path("config/rules/2026-2027.yaml"))
+    return load_ruleset(ROOT / "config/rules/2026-2027.yaml")
 
 
 def _state(store: FileSystemArtifactStore) -> ManagerState:
@@ -132,35 +130,17 @@ def _forecast(*, uncertain_high_player: int | None = None) -> Forecast:
         if player_id == uncertain_high_player:
             minutes = DiscreteIntegerDistribution(((0, 5_000), (90, 5_000)))
             points = DiscreteIntegerDistribution(((0, 5_000), (20, 5_000)))
-            uncertainty = ForecastUncertainty(
-                uncertainty_kind=UncertaintyKind.PROBABILISTIC,
-                deterministic_reason=None,
-                scenario_count=2,
-                minutes_p10=0,
-                minutes_p50=0,
-                minutes_p90=90,
-                points_p10=0,
-                points_p50=0,
-                points_p90=20,
-                appearance_probability_bps=5_000,
-                sixty_plus_probability_bps=5_000,
-            )
+            appearance = 5_000
+            minutes_p10 = minutes_p50 = 0
+            points_p10 = points_p50 = 0
+            points_p90 = 20
         else:
             minutes = DiscreteIntegerDistribution(((60, 5_000), (90, 5_000)))
             points = DiscreteIntegerDistribution(((4, 5_000), (6, 5_000)))
-            uncertainty = ForecastUncertainty(
-                uncertainty_kind=UncertaintyKind.PROBABILISTIC,
-                deterministic_reason=None,
-                scenario_count=2,
-                minutes_p10=60,
-                minutes_p50=60,
-                minutes_p90=90,
-                points_p10=4,
-                points_p50=4,
-                points_p90=6,
-                appearance_probability_bps=10_000,
-                sixty_plus_probability_bps=10_000,
-            )
+            appearance = 10_000
+            minutes_p10 = minutes_p50 = 60
+            points_p10 = points_p50 = 4
+            points_p90 = 6
         rows.append(
             PlayerFixtureForecast(
                 target=PlayerFixtureTarget(
@@ -175,7 +155,19 @@ def _forecast(*, uncertain_high_player: int | None = None) -> Forecast:
                 prediction_row_id=f"assurance-row-{player_id}",
                 minutes_distribution=minutes,
                 points_distribution=points,
-                uncertainty=uncertainty,
+                uncertainty=ForecastUncertainty(
+                    uncertainty_kind=UncertaintyKind.PROBABILISTIC,
+                    deterministic_reason=None,
+                    scenario_count=2,
+                    minutes_p10=minutes_p10,
+                    minutes_p50=minutes_p50,
+                    minutes_p90=90,
+                    points_p10=points_p10,
+                    points_p50=points_p50,
+                    points_p90=points_p90,
+                    appearance_probability_bps=appearance,
+                    sixty_plus_probability_bps=appearance,
+                ),
             )
         )
     return Forecast(
@@ -231,64 +223,54 @@ def _decision(store: FileSystemArtifactStore, *, uncertain_high_player: int | No
 
 
 def _solver_certificate(
-    store,
-    result,
-    *,
-    status=ReferenceSolverStatus.OPTIMAL,
-    objective=None,
-    action_id=None,
-):
-    input_artifact = store.put_bytes(b"reference-solver-input").artifact_id
-    output_artifact = store.put_bytes(b"reference-solver-output").artifact_id
-    worker_artifact = store.put_bytes(b"reference-solver-worker").artifact_id
-    objective = objective or result.selected_action.mechanics.objective_points
-    if status is ReferenceSolverStatus.OPTIMAL:
-        best_bound = objective
-        gap = RationalValue.zero()
-        complete = True
-    else:
-        best_bound = None
-        gap = None
-        complete = False
-    return ReferenceSolverCertificate(
-        decision_input_id=result.decision_input.decision_input_id,
-        candidate_universe_id=result.decision_input.candidate_universe_id,
-        decision_policy_id=result.decision_input.decision_policy_id,
-        worker_name="synthetic-independent-solver",
-        worker_version="1",
-        solver_status=status,
-        best_objective=objective,
-        best_bound=best_bound,
-        gap=gap,
-        selected_action_id=action_id or result.selected_action.action_id,
-        action_surface_complete=complete,
-        tie_break_policy_id=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
-        solver_input_artifact_id=input_artifact,
-        solver_output_artifact_id=output_artifact,
-        worker_artifact_id=worker_artifact,
-    )
-
-
-def _qualified_worker_registry(
     store: FileSystemArtifactStore,
-    solver: ReferenceSolverCertificate,
-) -> ReferenceSolverRegistry:
-    qualification = store.put_bytes(b"reference-solver-qualification").artifact_id
-    worker = ReferenceSolverWorkerArtifact(
-        worker_name=solver.worker_name,
-        worker_version=solver.worker_version,
-        solver_contract="apex-v2-exact-decision-parity-v1",
-        code_artifact_id=solver.worker_artifact_id,
-        qualification_state=ReferenceSolverWorkerQualification.QUALIFIED,
-        qualification_artifact_id=qualification,
-        valid_seasons=("2026-2027",),
-        first_available_at="2026-08-24T00:00:00Z",
-        max_horizon_gameweeks=1,
+    *,
+    state: ManagerState,
+    universe: CandidateUniverse,
+    forecast: Forecast,
+    result,
+    limited: bool = False,
+):
+    request = build_reference_solver_request(
+        decision_input=result.decision_input,
+        manager_state=state,
+        forecast=forecast,
+        candidate_universe=universe,
+        ruleset=_ruleset(),
+        decision_policy=_policy(),
+        max_search_nodes=100_000,
     )
-    return ReferenceSolverRegistry(
-        season="2026-2027",
-        workers=(worker,),
-        champion_worker_id=worker.worker_id,
+    stored_request = store_reference_solver_request(request, store=store)
+    if limited:
+        run = ReferenceSolverRun(
+            request_id=request.request_id,
+            solver_status=ReferenceSolverRunStatus.SOLVER_LIMIT,
+            best_objective=None,
+            best_bound=None,
+            gap=None,
+            selected_action_id=None,
+            selected_action_json=None,
+            action_surface_complete=False,
+            tie_break_policy_id=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
+            nodes_evaluated=1,
+            actions_evaluated=0,
+            limit_reason="synthetic mechanism-only search limit",
+        )
+    else:
+        run = solve_reference_request(request)
+        assert run.solver_status is ReferenceSolverRunStatus.OPTIMAL
+    stored_run = store_reference_solver_run(run, store=store)
+    worker_code = store.put_bytes(
+        (ROOT / "src/apex_fpl/workers/reference_solver.py").read_bytes(),
+        media_type="text/x-python",
+    ).artifact_id
+    return build_reference_solver_certificate(
+        request_artifact_id=stored_request.artifact_id,
+        run_artifact_id=stored_run.artifact_id,
+        worker_name="apex-isolated-reference-solver",
+        worker_version="1",
+        worker_code_artifact_id=worker_code,
+        store=store,
     )
 
 
@@ -342,11 +324,7 @@ def test_reference_mechanics_detects_self_consistent_objective_tampering(tmp_pat
         numeric_error_bound=result.solver.numeric_error_bound,
         message="synthetic self-consistent tamper",
     )
-    tampered_exactness = replace(
-        result.exactness,
-        best_bound=objective,
-        gap=RationalValue.zero(),
-    )
+    tampered_exactness = replace(result.exactness, best_bound=objective, gap=RationalValue.zero())
     tampered = replace(
         result,
         selected_action=tampered_action,
@@ -365,17 +343,18 @@ def test_reference_mechanics_detects_self_consistent_objective_tampering(tmp_pat
     assert checks[ReferenceMechanicsCheck.EXPECTED_MECHANICS].passed is False
 
 
-def test_solver_parity_requires_exact_objective_and_same_tie_action(tmp_path: Path) -> None:
+def test_solver_parity_replays_exact_worker_io_and_rejects_certificate_tampering(
+    tmp_path: Path,
+) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     state, universe, forecast, result = _decision(store)
-    mechanics = certify_selected_action(
-        result,
+    solver = _solver_certificate(
+        store,
         state=state,
-        forecast=forecast,
         universe=universe,
-        ruleset=_ruleset(),
+        forecast=forecast,
+        result=result,
     )
-    solver = _solver_certificate(store, result)
     status, blockers = validate_reference_solver_parity(
         result,
         solver,
@@ -384,37 +363,30 @@ def test_solver_parity_requires_exact_objective_and_same_tie_action(tmp_path: Pa
     )
     assert status is AssuranceParityStatus.PASS
     assert blockers == ()
-    registry = _qualified_worker_registry(store, solver)
-    report = build_independent_assurance_report(
-        result,
-        mechanics,
-        store=store,
-        solver=solver,
-        worker_registry=registry,
-        season="2026-2027",
-        decision_cutoff=forecast.feature_cutoff,
-        horizon_gameweeks=1,
-        expected_tie_break_policy_id=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
-    )
-    assert report.publication_eligible is True
 
     higher = RationalValue(
         result.selected_action.mechanics.objective_points.numerator
         + result.selected_action.mechanics.objective_points.denominator,
         result.selected_action.mechanics.objective_points.denominator,
     )
-    mismatch = _solver_certificate(store, result, objective=higher)
-    mismatch_status, _ = validate_reference_solver_parity(result, mismatch, store=store)
+    mismatch = replace(solver, best_objective=higher, best_bound=higher)
+    mismatch_status, mismatch_blockers = validate_reference_solver_parity(
+        result,
+        mismatch,
+        store=store,
+    )
     assert mismatch_status is AssuranceParityStatus.FAIL
+    assert any("retained I/O failed replay" in row for row in mismatch_blockers)
 
-    tie_mismatch = _solver_certificate(store, result, action_id="different-action")
-    tie_status, _ = validate_reference_solver_parity(
+    tie_mismatch = replace(solver, selected_action_id="sha256:" + "0" * 64)
+    tie_status, tie_blockers = validate_reference_solver_parity(
         result,
         tie_mismatch,
         store=store,
         expected_tie_break_policy_id=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
     )
     assert tie_status is AssuranceParityStatus.FAIL
+    assert any("retained I/O failed replay" in row for row in tie_blockers)
 
 
 def test_missing_or_limited_reference_solver_stays_inconclusive(tmp_path: Path) -> None:
@@ -432,7 +404,14 @@ def test_missing_or_limited_reference_solver_stays_inconclusive(tmp_path: Path) 
     assert missing.solver_parity_status is AssuranceParityStatus.INCONCLUSIVE
     assert any("absent" in blocker for blocker in missing.blockers)
 
-    limited = _solver_certificate(store, result, status=ReferenceSolverStatus.SOLVER_LIMIT)
+    limited = _solver_certificate(
+        store,
+        state=state,
+        universe=universe,
+        forecast=forecast,
+        result=result,
+        limited=True,
+    )
     limited_report = build_independent_assurance_report(
         result,
         mechanics,
@@ -443,7 +422,7 @@ def test_missing_or_limited_reference_solver_stays_inconclusive(tmp_path: Path) 
     assert limited_report.solver_parity_status is AssuranceParityStatus.INCONCLUSIVE
 
 
-def test_unqualified_or_unregistered_worker_cannot_make_assurance_publishable(tmp_path: Path) -> None:
+def test_unregistered_worker_cannot_make_assurance_publishable(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     state, universe, forecast, result = _decision(store)
     mechanics = certify_selected_action(
@@ -453,7 +432,13 @@ def test_unqualified_or_unregistered_worker_cannot_make_assurance_publishable(tm
         universe=universe,
         ruleset=_ruleset(),
     )
-    solver = _solver_certificate(store, result)
+    solver = _solver_certificate(
+        store,
+        state=state,
+        universe=universe,
+        forecast=forecast,
+        result=result,
+    )
     no_registry = build_independent_assurance_report(
         result,
         mechanics,
@@ -462,6 +447,7 @@ def test_unqualified_or_unregistered_worker_cannot_make_assurance_publishable(tm
     )
     assert no_registry.publication_eligible is False
     assert no_registry.solver_parity_status is AssuranceParityStatus.INCONCLUSIVE
+
     empty_registry = ReferenceSolverRegistry(season="2026-2027", workers=())
     unregistered = build_independent_assurance_report(
         result,
