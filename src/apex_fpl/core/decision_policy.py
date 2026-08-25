@@ -2,8 +2,9 @@
 
 A tactical one-Gameweek EV solve is useful for reference/shadow analysis, but it cannot
 become the production policy for persistent transfers or long-lived chips. Production
-policy must explicitly account for horizon/continuation, chip option value, price policy
-and candidate-universe policy, and must be empirically qualified before use.
+policy must explicitly account for horizon/continuation, chip option value, price policy,
+candidate-universe policy, numeric policy and tie-break semantics, and must be empirically
+qualified before use.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from enum import Enum
 
 from .canonical import canonical_sha256
 from .ids import DecisionPolicyId
+from .numeric_policy import DECISION_NUMERIC_POLICY_ID, require_decision_numeric_policy
 
 
 TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID = "lexicographic-official-id-v1"
@@ -79,6 +81,7 @@ class DecisionPolicy:
     price_policy_artifact_id: str | None
     candidate_policy_artifact_id: str | None
     tie_break_policy: str
+    numeric_policy_id: str = DECISION_NUMERIC_POLICY_ID
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -89,20 +92,22 @@ class DecisionPolicy:
             if not value:
                 raise ValueError(f"DecisionPolicy {label} cannot be empty")
             object.__setattr__(self, label, value)
+        numeric_policy = require_decision_numeric_policy(self.numeric_policy_id)
+        object.__setattr__(self, "numeric_policy_id", numeric_policy)
         if (
             isinstance(self.horizon_gameweeks, bool)
             or not isinstance(self.horizon_gameweeks, int)
             or self.horizon_gameweeks <= 0
         ):
             raise ValueError("DecisionPolicy horizon_gameweeks must be positive integer")
+        if self.tie_break_policy != TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID:
+            raise ValueError(
+                "DecisionPolicy requests unimplemented tie-break semantics: "
+                f"{self.tie_break_policy!r}"
+            )
         if self.evaluation_mode is DecisionEvaluationMode.TACTICAL_CURRENT_GAMEWEEK:
             if self.horizon_gameweeks != 1:
                 raise ValueError("tactical DecisionPolicy requires horizon_gameweeks == 1")
-            if self.tie_break_policy != TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID:
-                raise ValueError(
-                    "tactical DecisionPolicy requests unimplemented tie-break semantics: "
-                    f"{self.tie_break_policy!r}"
-                )
             unused = {
                 "continuation-value": self.continuation_value_artifact_id,
                 "chip-option-value": self.chip_option_value_artifact_id,
@@ -140,10 +145,18 @@ class DecisionPolicy:
         if self.evaluation_mode is DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION:
             if self.horizon_gameweeks < 2:
                 raise ValueError("receding-horizon DecisionPolicy requires horizon >= 2")
-            if continuation is None:
-                raise ValueError("receding-horizon DecisionPolicy requires continuation-value artifact")
-            if chip_option is None:
-                raise ValueError("receding-horizon DecisionPolicy requires chip-option-value artifact")
+            required = {
+                "continuation-value": continuation,
+                "chip-option-value": chip_option,
+                "price-policy": price,
+                "candidate-policy": candidate,
+            }
+            missing = sorted(label for label, value in required.items() if value is None)
+            if missing:
+                raise ValueError(
+                    "receding-horizon DecisionPolicy requires policy artifacts: "
+                    + ", ".join(missing)
+                )
         object.__setattr__(self, "qualification_artifact_id", qualification)
         object.__setattr__(self, "continuation_value_artifact_id", continuation)
         object.__setattr__(self, "chip_option_value_artifact_id", chip_option)
@@ -169,6 +182,7 @@ class DecisionPolicy:
             "price_policy_artifact_id": self.price_policy_artifact_id,
             "candidate_policy_artifact_id": self.candidate_policy_artifact_id,
             "tie_break_policy": self.tie_break_policy,
+            "numeric_policy_id": self.numeric_policy_id,
         }
 
     @property
@@ -184,6 +198,8 @@ class DecisionPolicy:
             and self.chip_option_value_artifact_id is not None
             and self.price_policy_artifact_id is not None
             and self.candidate_policy_artifact_id is not None
+            and self.numeric_policy_id == DECISION_NUMERIC_POLICY_ID
+            and self.tie_break_policy == TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID
         )
 
     def require_available_for(self, *, season: str, decision_cutoff: str) -> None:
