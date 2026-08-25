@@ -2,9 +2,9 @@
 
 Schema v1 retains the certified tactical bundle for historical/mechanism replay. Schema
 v2 is the production receding-horizon contract: it additionally binds retained current
-ManagerState truth and the replay-derived PlanningResult that selected the user-facing
-action. Production authority must migrate explicitly to v2 rather than silently widening
-v1 semantics.
+ManagerState truth, the exact RuleSet, and the replay-derived PlanningResult that selected
+the user-facing action. Production authority must migrate explicitly to v2 rather than
+silently widening v1 semantics.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from .ids import (
     ModelArtifactId,
     PlanningResultId,
     RobustnessReportId,
+    RuleSetId,
     ScenarioSetId,
 )
 
@@ -140,6 +141,8 @@ class ProductionPlanningBundle:
     world_id: GlobalWorldId
     manager_state_id: ManagerStateId
     manager_state_artifact_id: str
+    ruleset_id: RuleSetId
+    ruleset_artifact_id: str
     forecast_id: ForecastId
     forecast_artifact_id: str
     forecast_model_id: ModelArtifactId
@@ -167,6 +170,7 @@ class ProductionPlanningBundle:
         typed_ids = (
             (self.world_id, "production planning bundle world_id"),
             (self.manager_state_id, "production planning bundle manager_state_id"),
+            (self.ruleset_id, "production planning bundle ruleset_id"),
             (self.forecast_id, "production planning bundle forecast_id"),
             (self.forecast_model_id, "production planning bundle forecast_model_id"),
             (self.decision_policy_id, "production planning bundle decision_policy_id"),
@@ -183,6 +187,7 @@ class ProductionPlanningBundle:
             raise ValueError("production planning DecisionId must equal PlanningResultId")
         artifact_fields = (
             "manager_state_artifact_id",
+            "ruleset_artifact_id",
             "forecast_artifact_id",
             "candidate_universe_artifact_id",
             "planning_result_artifact_id",
@@ -197,6 +202,8 @@ class ProductionPlanningBundle:
             object.__setattr__(self, field, normalized)
         if self.manager_state_artifact_id != str(self.manager_state_id):
             raise ValueError("production planning ManagerState artifact must be self-addressing")
+        if self.ruleset_artifact_id != str(self.ruleset_id):
+            raise ValueError("production planning RuleSet artifact must be self-addressing")
         if self.planning_result_artifact_id != str(self.planning_result_id):
             raise ValueError("production planning result artifact must be self-addressing")
         object.__setattr__(self, "season", season)
@@ -211,6 +218,8 @@ class ProductionPlanningBundle:
             "world_id": str(self.world_id),
             "manager_state_id": str(self.manager_state_id),
             "manager_state_artifact_id": self.manager_state_artifact_id,
+            "ruleset_id": str(self.ruleset_id),
+            "ruleset_artifact_id": self.ruleset_artifact_id,
             "forecast_id": str(self.forecast_id),
             "forecast_artifact_id": self.forecast_artifact_id,
             "forecast_model_id": str(self.forecast_model_id),
