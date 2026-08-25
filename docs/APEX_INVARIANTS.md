@@ -63,6 +63,11 @@
 - **INV-LEGAL-CURRENT-ACTION** — every published action passes independent RuleSet/state-transition verification.
 - **INV-NO-FALSE-GLOBAL-OPTIMALITY** — optimisation exactness is scoped to the certified universe and solver state.
 - **INV-EMPIRICAL-CLAIMS-QUALIFIED** — predictive claims enter production only through registered qualification.
+- **INV-EMPIRICAL-QUALIFICATION-TYPED** — a satisfying empirical production claim requires a replay-derived immutable EmpiricalQualificationCertificate for the exact proof, season and subject; arbitrary artifact existence, a certificate for another proof/subject, or a caller-authored green flag cannot satisfy it.
+- **INV-EMPIRICAL-PREDECLARED-NO-HINDSIGHT** — empirical qualification policy, evaluator, thresholds, subject and evaluation window are content-addressed before the evaluation window begins; qualification is unavailable before retained result time and expires at its finite validity horizon under explicit `as_of` replay.
+- **INV-EMPIRICAL-QUALIFICATION-IDENTITY** — the stable pre-qualification subject identity removes only qualification attachment fields (`qualification_state`, `qualification_artifact_id`); every other candidate semantic change requires new empirical qualification.
+- **INV-EMPIRICAL-RELEASE-SUBJECT-BOUND** — every constitutional empirical production proof has exactly one canonical release subject kind; lower-level scenario-generator, scenario-policy and learning-policy qualifications use separate internal qualification IDs and cannot impersonate realised convergence, model-evaluation or model-promotion release evidence.
+- **INV-PRODUCTION-PROOF-CLASS-PINNED** — every mandatory production proof ID retains its constitutional ProofClass and REQUIRED release policy; a caller cannot relabel an empirical proof as formal/algorithmic or downgrade it to bypass empirical admission.
 - **INV-NONCONVERGENCE-INCONCLUSIVE** — scenario instability cannot be relabelled as convergence.
 - **INV-NO-FUTURE-CERTAINTY** — future injuries, minutes and football events remain probabilistic.
 - **INV-ASSURANCE-DERIVES-RELEASE** — no independent readiness flag can bypass the AssuranceCase.

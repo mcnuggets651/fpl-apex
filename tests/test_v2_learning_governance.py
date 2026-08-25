@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest
 import yaml
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.empirical_qualification_admission import LEARNING_POLICY_QUALIFICATION_ID
 from apex_fpl.control.learning_evaluator import evaluate_model
 from apex_fpl.control.learning_policy_registry import (
     LearningPolicyRegistry,
@@ -44,6 +46,8 @@ from apex_fpl.core.learning_policy import (
 from apex_fpl.core.learning_promotion import ModelRegistryGeneration
 from apex_fpl.core.learning_training import ModelTrainingRun
 from apex_fpl.core.outcome_truth import OutcomeTarget
+
+from empirical_qualification_helpers import synthetic_supported_qualification_artifact
 
 ROOT = Path(__file__).resolve().parents[1]
 SEASON = "2026-2027"
@@ -114,7 +118,6 @@ def _policy_bundle(
     require_interval_superiority: bool = False,
     champion: bool = True,
 ):
-    qualification = _put(store, f"qualification-{metric.value}-{target.value}-{minimum_cases}")
     rule_artifact = _put(store, f"promotion-rules-{metric.value}-{target.value}-{minimum_cases}")
     requirement = MetricRequirement(
         metric=metric,
@@ -135,13 +138,24 @@ def _policy_bundle(
         policy_name="synthetic-learning-policy",
         policy_version=f"1-{metric.value}-{target.value}-{minimum_cases}",
         qualification_state=LearningPolicyQualification.QUALIFIED,
-        qualification_artifact_id=qualification,
+        qualification_artifact_id=_put(
+            store,
+            f"qualification-placeholder-{metric.value}-{target.value}-{minimum_cases}",
+        ),
         promotion_rule_artifact_id=rule_artifact,
         first_available_at=first_available_at,
         valid_seasons=(SEASON,),
         requirements=(requirement,),
         promotion_rules=(rule,),
     )
+    qualification = synthetic_supported_qualification_artifact(
+        store=store,
+        subject_payload=policy.semantic_payload(),
+        subject_kind="apex.learning-policy",
+        proof_id=LEARNING_POLICY_QUALIFICATION_ID,
+        season=SEASON,
+    )
+    policy = replace(policy, qualification_artifact_id=qualification)
     stored_policy = store_learning_object(policy, store=store)
     registry = LearningPolicyRegistry(
         season=SEASON,

@@ -8,6 +8,10 @@ from pathlib import Path
 import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.empirical_qualification_admission import (
+    LEARNING_POLICY_QUALIFICATION_ID,
+    verify_typed_empirical_qualification,
+)
 from apex_fpl.core.ids import LearningPolicyId
 from apex_fpl.core.learning_common import (
     EvaluationMetric,
@@ -95,6 +99,15 @@ class LearningPolicyRegistry:
                 raise ValueError("production learning requires qualified policy")
             if self.champion_policy_id != policy.policy_id:
                 raise ValueError("production learning policy is not registered champion")
+            verify_typed_empirical_qualification(
+                qualification_artifact_id=policy.qualification_artifact_id,
+                subject_payload=policy.semantic_payload(),
+                subject_kind="apex.learning-policy",
+                proof_id=LEARNING_POLICY_QUALIFICATION_ID,
+                season=season,
+                as_of=cutoff,
+                store=store,
+            )
 
 
 def _strict_int(value: object, *, label: str) -> int:

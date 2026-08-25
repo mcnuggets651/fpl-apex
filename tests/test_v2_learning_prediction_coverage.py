@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 
 import yaml
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.empirical_qualification_admission import LEARNING_POLICY_QUALIFICATION_ID
 from apex_fpl.control.learning_evaluator import evaluate_model
 from apex_fpl.control.learning_policy_registry import LearningPolicyRegistry
 from apex_fpl.control.learning_store import store_learning_object
@@ -28,6 +30,8 @@ from apex_fpl.core.learning_policy import (
 )
 from apex_fpl.core.learning_training import ModelTrainingRun
 from apex_fpl.core.outcome_truth import OutcomeTarget
+
+from empirical_qualification_helpers import synthetic_supported_qualification_artifact
 
 ROOT = Path(__file__).resolve().parents[1]
 SEASON = "2026-2027"
@@ -64,7 +68,6 @@ def test_prediction_coverage_keeps_complete_realized_truth_with_explicit_missing
     truth_artifact = store.put_bytes(truth_bytes).artifact_id
     truth_registry = load_outcome_truth_registry_bytes(truth_bytes)
 
-    qualification = _put(store, "coverage-policy-qualification")
     rule_artifact = _put(store, "coverage-policy-rules")
     requirement = MetricRequirement(
         metric=EvaluationMetric.PREDICTION_COVERAGE,
@@ -83,12 +86,22 @@ def test_prediction_coverage_keeps_complete_realized_truth_with_explicit_missing
         policy_name="coverage-policy",
         policy_version="v1",
         qualification_state=LearningPolicyQualification.QUALIFIED,
-        qualification_artifact_id=qualification,
+        qualification_artifact_id=_put(store, "coverage-policy-qualification-placeholder"),
         promotion_rule_artifact_id=rule_artifact,
         first_available_at="2026-08-01T00:00:00Z",
         valid_seasons=(SEASON,),
         requirements=(requirement,),
         promotion_rules=(rule,),
+    )
+    policy = replace(
+        policy,
+        qualification_artifact_id=synthetic_supported_qualification_artifact(
+            store=store,
+            subject_payload=policy.semantic_payload(),
+            subject_kind="apex.learning-policy",
+            proof_id=LEARNING_POLICY_QUALIFICATION_ID,
+            season=SEASON,
+        ),
     )
     policy_artifact = store_learning_object(policy, store=store).artifact_id
     registry = LearningPolicyRegistry(

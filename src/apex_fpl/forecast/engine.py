@@ -49,7 +49,13 @@ def compile_sealed_forecast(
     if model is None:
         raise ValueError("prediction batch references an unregistered forecast model")
     production = use_mode is ForecastUseMode.PRODUCTION
-    model_registry.verify_model_artifacts(model, store=store, production=production)
+    model_registry.verify_model_artifacts(
+        model,
+        store=store,
+        production=production,
+        season=batch.season,
+        as_of=batch.feature_cutoff,
+    )
     horizon_span = max(batch.gameweeks) - min(batch.gameweeks) + 1
     model.require_valid_for(
         season=batch.season,
