@@ -24,7 +24,6 @@ from apex_fpl.core.decision_policy import (
     DecisionPolicyQualificationState,
 )
 from apex_fpl.core.ids import DecisionPolicyId
-from apex_fpl.core.numeric_policy import DECISION_NUMERIC_POLICY_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,9 +188,7 @@ def load_decision_policy_registry(path: str | Path) -> DecisionPolicyRegistry:
                     else str(row["candidate_policy_artifact_id"])
                 ),
                 tie_break_policy=str(row["tie_break_policy"]),
-                numeric_policy_id=str(
-                    row.get("numeric_policy_id") or DECISION_NUMERIC_POLICY_ID
-                ),
+                numeric_policy_id=str(row["numeric_policy_id"]),
             )
         )
     champion_raw = raw.get("champion_policy_id")
