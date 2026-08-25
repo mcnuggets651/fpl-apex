@@ -51,9 +51,10 @@ from apex_fpl.core.proofs import (
     ReleasePolicy,
 )
 
-from production_bundle_helpers import (
+from production_bundle_helpers import synthetic_production_bundle
+from production_planning_bundle_helpers import (
     DirectQualificationMaterial,
-    synthetic_production_bundle,
+    synthetic_production_planning_bundle,
 )
 
 
@@ -119,7 +120,7 @@ def _artifact(store, value: str) -> str:
 
 
 def _fixture(store):
-    return synthetic_production_bundle(
+    return synthetic_production_planning_bundle(
         store=store,
         season=SEASON,
         entry=ENTRY,
@@ -336,6 +337,38 @@ def test_production_cutover_publishes_only_after_complete_pass_and_exact_cas(tmp
         artifact_store=store,
     )
     assert replayed.report_id == outcome.report.report_id
+
+
+def test_legacy_v1_bundle_is_rejected_before_pointer_write(tmp_path: Path) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    legacy = synthetic_production_bundle(
+        store=store,
+        season=SEASON,
+        entry=ENTRY,
+        gameweek=GAMEWEEK,
+    )
+    manifest = _artifact(store, "manifest")
+    claim = _artifact(store, "claim")
+
+    with pytest.raises(ValueError, match="schema-v2 planning bundle"):
+        execute_production_cutover(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=legacy.bundle.bundle_id,
+            world_id=legacy.bundle.world_id,
+            runtime_digest="sha256:v2-runtime",
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
+            artifact_manifest_id=manifest,
+            assurance_case=_case(store, claim),
+            obligations=_obligations(),
+            backend_qualification=_backend(store, registry),
+            artifact_store=store,
+            production_registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 
 
 def test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_write(
