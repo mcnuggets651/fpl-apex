@@ -255,20 +255,25 @@ def _replay_assurance_case(
     claim_rows = payload.get("claims")
     if not isinstance(claim_rows, list) or any(not isinstance(row, dict) for row in claim_rows):
         raise ValueError("shadow AssuranceCase claims must be object array")
-    claims = tuple(
-        AssuranceClaim(
-            proof_id=str(row.get("proof_id") or ""),
-            status=ProofStatus(str(row.get("status") or "")),
-            evidence_ids=_string_tuple(row.get("evidence_ids"), label="evidence_ids"),
-            test_ids=_string_tuple(row.get("test_ids"), label="test_ids"),
-            artifact_ids=_string_tuple(row.get("artifact_ids"), label="artifact_ids"),
+
+    claims: list[AssuranceClaim] = []
+    for row in claim_rows:
+        reason = row.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            raise ValueError("shadow AssuranceClaim reason must be string or null")
+        claims.append(
+            AssuranceClaim(
+                proof_id=str(row.get("proof_id") or ""),
+                status=ProofStatus(str(row.get("status") or "")),
+                evidence_ids=_string_tuple(row.get("evidence_ids"), label="evidence_ids"),
+                test_ids=_string_tuple(row.get("test_ids"), label="test_ids"),
+                artifact_ids=_string_tuple(row.get("artifact_ids"), label="artifact_ids"),
+                reason=reason,
+            )
         )
-        for row in claim_rows
-    )
     case = AssuranceCase(
         release_scope=str(payload.get("release_scope") or ""),
-        claims=claims,
-        schema_version=1,
+        claims=tuple(claims),
     )
     if declared != case.case_id:
         raise ValueError("shadow AssuranceCase snapshot semantic identity mismatch")
@@ -309,7 +314,7 @@ def _replay_obligations(
     ids = [item.proof_id for item in obligations]
     if len(ids) != len(set(ids)):
         raise ValueError("replayed shadow proof snapshot contains duplicate proof_id")
-    return obligations
+    return tuple(sorted(obligations, key=lambda item: item.proof_id))
 
 
 def load_shadow_production_report(
