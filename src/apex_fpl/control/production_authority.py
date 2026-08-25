@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from apex_fpl.control.artifact_store import ArtifactStore
@@ -35,17 +36,38 @@ def _unavailable(key: ReleaseKey, blocker: str) -> ProductionAnswerAuthority:
     )
 
 
+def _parse_timestamp(value: str, *, label: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label} is not valid ISO-8601") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{label} must be timezone-aware")
+    return parsed
+
+
 def resolve_production_answer_authority(
     *,
     season: str,
     entry: int,
     gameweek: int,
+    as_of: str,
     artifact_store: ArtifactStore,
     production_registry: ProductionCurrentReader,
 ) -> ProductionAnswerAuthority:
-    """Resolve only the exact current proof-authorized PUBLISHED V2 release."""
+    """Resolve only the exact current, unexpired, proof-authorized PUBLISHED V2 release.
+
+    ``as_of`` is explicit so answer authority never depends on a hidden wall clock and can be
+    replayed exactly. A current pointer is not sufficient once its validity horizon has
+    expired or before its declared creation time.
+    """
 
     key = ReleaseKey(season, entry, gameweek)
+    try:
+        evaluation_time = _parse_timestamp(as_of, label="production authority as_of")
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+
     release_id = production_registry.current_release_id(key)
     if release_id is None:
         return _unavailable(key, "no current V2 production release")
@@ -69,6 +91,24 @@ def resolve_production_answer_authority(
         return _unavailable(key, "current PUBLISHED ReleaseRecord lacks bundle/world identity")
     if not str(record.runtime_digest).strip():
         return _unavailable(key, "current PUBLISHED ReleaseRecord lacks runtime identity")
+
+    try:
+        created_at = _parse_timestamp(record.created_at, label="current release created_at")
+    except ValueError as exc:
+        return _unavailable(key, str(exc))
+    if record.valid_until is None:
+        return _unavailable(key, "current PUBLISHED release has no validity horizon")
+    try:
+        valid_until = _parse_timestamp(record.valid_until, label="current release valid_until")
+    except ValueError as exc:
+        return _unavailable(key, str(exc))
+    if valid_until <= created_at:
+        return _unavailable(key, "current release validity horizon is not after creation")
+    if evaluation_time < created_at:
+        return _unavailable(key, "current PUBLISHED release is not yet valid")
+    if evaluation_time >= valid_until:
+        return _unavailable(key, "current PUBLISHED release has expired")
+
     manifest_id = str(record.artifact_manifest_id).strip()
     if not manifest_id or not artifact_store.verify(manifest_id):
         return _unavailable(key, "current PUBLISHED release manifest is missing or corrupt")
@@ -99,6 +139,10 @@ def resolve_production_answer_authority(
         return _unavailable(key, "publication authorization world does not match ReleaseRecord")
     if authorization.runtime_digest != record.runtime_digest:
         return _unavailable(key, "publication authorization runtime does not match ReleaseRecord")
+    if authorization.created_at != record.created_at:
+        return _unavailable(key, "publication authorization creation time does not match ReleaseRecord")
+    if authorization.valid_until != record.valid_until:
+        return _unavailable(key, "publication authorization validity does not match ReleaseRecord")
     if authorization.artifact_manifest_id != record.artifact_manifest_id:
         return _unavailable(key, "publication authorization manifest does not match ReleaseRecord")
 
