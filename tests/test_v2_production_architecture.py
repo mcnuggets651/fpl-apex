@@ -14,12 +14,19 @@ ROOT = Path(__file__).resolve().parents[1]
 CORE_FILES = (
     ROOT / "src" / "apex_fpl" / "core" / "production.py",
     ROOT / "src" / "apex_fpl" / "core" / "production_authority.py",
+    ROOT / "src" / "apex_fpl" / "core" / "production_proof_contract.py",
+    ROOT / "src" / "apex_fpl" / "core" / "experiments.py",
 )
 CUTOVER = ROOT / "src" / "apex_fpl" / "control" / "production_cutover.py"
 AUTHORITY = ROOT / "src" / "apex_fpl" / "control" / "production_authority.py"
 BACKEND_QUALIFICATION = (
     ROOT / "src" / "apex_fpl" / "control" / "production_backend_qualification.py"
 )
+EMPIRICAL_ADMISSION = (
+    ROOT / "src" / "apex_fpl" / "control" / "empirical_qualification_admission.py"
+)
+EXPERIMENT_REGISTRY = ROOT / "src" / "apex_fpl" / "control" / "experiment_registry.py"
+REFERENCE_SOLVER_REGISTRY = ROOT / "src" / "apex_fpl" / "control" / "reference_solver_registry.py"
 
 
 def _imports(path: Path) -> list[str]:
@@ -89,6 +96,24 @@ def test_production_cutover_has_no_network_v1_runtime_or_filesystem_backend_shor
     assert "production_registry.compare_and_swap_current" in text
     assert "ProductionPublicationAuthorization" in text
     assert "_validate_backend_binding" in text
+    assert "PRODUCTION_PROOF_CLASSES" in text
+    assert "load_empirical_qualification_certificate" in text
+
+
+def test_empirical_qualification_control_plane_has_no_network_or_v1_runtime_dependency() -> None:
+    for path in (EMPIRICAL_ADMISSION, EXPERIMENT_REGISTRY):
+        assert _forbidden_imports(path) == []
+        text = path.read_text(encoding="utf-8")
+        assert "datetime.now(" not in text
+        assert "datetime.utcnow(" not in text
+        assert "apex_fpl.services.answer_context" not in text
+        assert "apex_answer_context.json" not in text
+
+
+def test_reference_solver_parity_remains_algorithmic_not_empirical_admission() -> None:
+    text = REFERENCE_SOLVER_REGISTRY.read_text(encoding="utf-8")
+    assert "empirical_qualification_admission" not in text
+    assert "ReferenceSolverCertificate" in text or "ReferenceSolverWorker" in text
 
 
 def test_filesystem_control_plane_is_structurally_reference_only() -> None:
