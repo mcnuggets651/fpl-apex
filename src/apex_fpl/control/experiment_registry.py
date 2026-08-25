@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Iterable
 
 import yaml
 
@@ -39,6 +39,17 @@ def _string_tuple(value: object, *, label: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
         raise ValueError(f"{label} must be string array")
     return tuple(value)
+
+
+def _aware_instant(value: str, *, label: str) -> datetime:
+    text = _string(value, label=label)
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label} must be ISO-8601") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{label} must be timezone-aware")
+    return parsed.astimezone(timezone.utc)
 
 
 def _read_json_object(
@@ -541,16 +552,16 @@ def load_empirical_qualification_certificate(
         if not store.verify(source_id):
             raise ValueError("empirical qualification source artifact missing/corrupt")
 
-    registry_ids = []
+    replayable_registries = []
     for source_id in certificate.source_artifact_ids:
         try:
             registry = load_experiment_registry_artifact(source_id, store=store)
         except ValueError:
             continue
-        registry_ids.append((source_id, registry))
-    if len(registry_ids) != 1:
+        replayable_registries.append((source_id, registry))
+    if len(replayable_registries) != 1:
         raise ValueError("empirical qualification must retain exactly one replayable ExperimentRegistry")
-    registry_artifact_id, _ = registry_ids[0]
+    registry_artifact_id, _ = replayable_registries[0]
     derived = derive_empirical_qualification_certificate(
         definition_artifact_id=certificate.experiment_definition_artifact_id,
         result_artifact_id=certificate.result_artifact_id,
@@ -560,34 +571,12 @@ def load_empirical_qualification_certificate(
     if derived.semantic_payload() != certificate.semantic_payload():
         raise ValueError("empirical qualification certificate does not re-derive from retained evidence")
     if as_of is not None:
-        point = ExperimentDefinition(
-            proof_id=certificate.proof_id,
-            subject_kind=certificate.subject_kind,
-            subject_id=certificate.subject_id,
-            season=certificate.season,
-            evaluator_artifact_id=certificate.experiment_definition_artifact_id,
-            policy_artifact_id=certificate.result_artifact_id,
-            declared_at=certificate.first_available_at,
-            evaluation_window_start=certificate.first_available_at,
-            evaluation_window_end=certificate.valid_until,
-            minimum_sample_size=1,
-            metric_rules=(
-                QualificationMetricRule(
-                    "clock",
-                    QualificationMetricDirection.AT_LEAST,
-                    ExactQualificationValue(0, 1),
-                ),
-            ),
-            valid_until=certificate.valid_until,
+        current = _aware_instant(as_of, label="qualification as_of")
+        first = _aware_instant(
+            certificate.first_available_at,
+            label="qualification first_available_at",
         )
-        del point
-        from datetime import datetime
-
-        current = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
-        first = datetime.fromisoformat(certificate.first_available_at.replace("Z", "+00:00"))
-        expiry = datetime.fromisoformat(certificate.valid_until.replace("Z", "+00:00"))
-        if current.tzinfo is None or current.utcoffset() is None:
-            raise ValueError("qualification as_of must be timezone-aware")
+        expiry = _aware_instant(certificate.valid_until, label="qualification valid_until")
         if current < first:
             raise ValueError("empirical qualification was not yet available at as_of")
         if current > expiry:
