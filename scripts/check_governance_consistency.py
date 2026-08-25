@@ -33,6 +33,7 @@ ACTIVE_WORKFLOWS = {
     "refresh-core-pin.yml",
     "team-strength-validation.yml",
     "understat-player-production-ab.yml",
+    "v2-shadow-production.yml",
 }
 ARCHIVED_WORKFLOWS = {
     "bootstrap-publish.yml",
