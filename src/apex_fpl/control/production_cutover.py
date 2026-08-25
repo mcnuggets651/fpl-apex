@@ -13,6 +13,10 @@ from apex_fpl.control.production_planning_bundle import (
     VerifiedProductionPlanningBundle,
     load_production_planning_bundle,
 )
+from apex_fpl.control.production_reference_solver_binding import (
+    REFERENCE_SOLVER_PARITY_PROOF_ID,
+    claim_has_matching_planning_reference_solver_parity,
+)
 from apex_fpl.control.release_registry import ReleaseKey, ReleaseRecord, ReleaseStatus
 from apex_fpl.core.canonical import canonical_json_bytes
 from apex_fpl.core.experiments import qualification_subject_id
@@ -237,6 +241,7 @@ def _claim_artifacts(
     season: str,
     as_of: str,
     empirical_bindings: dict[str, _EmpiricalReleaseBinding] | None = None,
+    verified_bundle: VerifiedProductionPlanningBundle | None = None,
 ) -> tuple[str, ...]:
     """Verify retained evidence behind every satisfying mandatory proof claim."""
 
@@ -279,6 +284,16 @@ def _claim_artifacts(
                 "mandatory empirical production proof lacks matching typed "
                 f"qualification evidence: {proof_id}"
             )
+        if satisfying and proof_id == REFERENCE_SOLVER_PARITY_PROOF_ID:
+            if verified_bundle is None or not claim_has_matching_planning_reference_solver_parity(
+                claim,
+                verified_bundle=verified_bundle,
+                store=store,
+            ):
+                raise ValueError(
+                    "mandatory reference-solver production proof lacks replay-valid "
+                    "planning parity and qualified-champion authorization"
+                )
     artifact_ids = tuple(
         sorted({artifact for claim in case.claims for artifact in claim.artifact_ids})
     )
@@ -505,6 +520,7 @@ def execute_production_cutover(
         season=season,
         as_of=created_at,
         empirical_bindings=empirical_bindings,
+        verified_bundle=verified_bundle,
     )
     backend_artifacts = (
         _verify_artifact(
@@ -900,6 +916,7 @@ def load_production_publication_authorization(
         season=authorization.season,
         as_of=authorization.created_at,
         empirical_bindings=empirical_bindings,
+        verified_bundle=verified_bundle,
     )
     certificate = case.derive_release_certificate(obligations)
     if certificate.assurance_case_id != authorization.assurance_case_id:
