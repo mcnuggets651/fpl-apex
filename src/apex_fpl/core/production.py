@@ -9,6 +9,47 @@ from .canonical import canonical_sha256
 from .ids import BundleId, GlobalWorldId, ReleaseId
 
 
+# Production may not obtain a PASS certificate by handing the AssuranceCase a narrowed
+# proof registry. This closed constitutional surface is intentionally redundant with the
+# machine-readable registry and traceability tests keep the two synchronized.
+MANDATORY_PRODUCTION_PROOF_IDS = frozenset(
+    {
+        "PO-RUNTIME-IDENTITY-001",
+        "PO-ARTIFACT-INTEGRITY-001",
+        "PO-RELEASE-CAS-001",
+        "PO-GLOBAL-WORLD-SEAL-001",
+        "PO-OFFICIAL-PLAYER-IDENTITY-001",
+        "PO-RULESET-PROVENANCE-001",
+        "PO-MANAGER-PUBLIC-SEAL-001",
+        "PO-INITIAL-MANAGER-BASIS-001",
+        "PO-MANAGER-STATE-001",
+        "PO-SOURCE-GOVERNANCE-001",
+        "PO-EVIDENCE-LEDGER-001",
+        "PO-FEATURE-TIME-TRAVEL-001",
+        "PO-OUTCOME-TRUTH-001",
+        "PO-MINUTES-FEATURE-INPUT-001",
+        "PO-FORECAST-LINEAGE-001",
+        "PO-FORECAST-SCORING-001",
+        "PO-FORECAST-COVERAGE-001",
+        "PO-FORECAST-QUALIFICATION-001",
+        "PO-FOOTBALL-UNCERTAINTY-001",
+        "PO-FPL-LEGALITY-001",
+        "PO-DECISION-MECHANICS-001",
+        "PO-DECISION-SOLVER-EXACTNESS-001",
+        "PO-DECISION-POLICY-QUALIFICATION-001",
+        "PO-CANDIDATE-UNIVERSE-001",
+        "PO-DECISION-REPLAY-001",
+        "PO-SCENARIO-CONVERGENCE-001",
+        "PO-MECHANICS-RECONCILIATION-001",
+        "PO-REFERENCE-SOLVER-PARITY-001",
+        "PO-LEARNING-NO-HINDSIGHT-001",
+        "PO-MODEL-EVALUATION-001",
+        "PO-MODEL-PROMOTION-001",
+        "PO-SHADOW-PRODUCTION-001",
+    }
+)
+
+
 class ProductionCutoverStatus(StrEnum):
     """Outcome of one explicit production publication attempt."""
 
