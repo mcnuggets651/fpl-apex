@@ -9,8 +9,13 @@ from typing import Iterable, Protocol
 
 from apex_fpl.control.artifact_store import ArtifactIntegrityError, ArtifactStore
 from apex_fpl.control.experiment_registry import load_empirical_qualification_certificate
+from apex_fpl.control.production_bundle import (
+    VerifiedProductionDecisionBundle,
+    load_production_decision_bundle,
+)
 from apex_fpl.control.release_registry import ReleaseKey, ReleaseRecord, ReleaseStatus
 from apex_fpl.core.canonical import canonical_json_bytes
+from apex_fpl.core.experiments import qualification_subject_id
 from apex_fpl.core.ids import BundleId, GlobalWorldId, ReleaseId
 from apex_fpl.core.production import (
     MANDATORY_PRODUCTION_PROOF_IDS,
@@ -21,6 +26,7 @@ from apex_fpl.core.production import (
 )
 from apex_fpl.core.production_proof_contract import (
     EMPIRICAL_PRODUCTION_PROOF_IDS,
+    PRODUCTION_EMPIRICAL_SUBJECT_KIND,
     PRODUCTION_PROOF_CLASSES,
 )
 from apex_fpl.core.proofs import (
@@ -58,6 +64,13 @@ class ProductionCutoverOutcome:
     report: ProductionCutoverReport
     report_artifact_id: str
     release_record: ReleaseRecord
+
+
+@dataclass(frozen=True, slots=True)
+class _EmpiricalReleaseBinding:
+    subject_id: str
+    semantic_evidence_id: str
+    qualification_artifact_id: str | None = None
 
 
 def _verify_artifact(store: ArtifactStore, artifact_id: str, *, label: str) -> str:
@@ -123,6 +136,58 @@ def _validate_backend_binding(
         )
 
 
+def _bundle_empirical_bindings(
+    verified: VerifiedProductionDecisionBundle | None,
+) -> dict[str, _EmpiricalReleaseBinding]:
+    if verified is None:
+        return {}
+    model = verified.forecast_model
+    policy = verified.decision_policy
+    report = verified.robustness_report
+    if model.qualification_artifact_id is None or policy.qualification_artifact_id is None:
+        raise ValueError("production bundle direct empirical subjects lack qualification artifacts")
+    return {
+        "PO-FORECAST-QUALIFICATION-001": _EmpiricalReleaseBinding(
+            subject_id=qualification_subject_id(model.semantic_payload()),
+            semantic_evidence_id=str(model.model_artifact_id),
+            qualification_artifact_id=model.qualification_artifact_id,
+        ),
+        "PO-DECISION-POLICY-QUALIFICATION-001": _EmpiricalReleaseBinding(
+            subject_id=qualification_subject_id(policy.semantic_payload()),
+            semantic_evidence_id=str(policy.decision_policy_id),
+            qualification_artifact_id=policy.qualification_artifact_id,
+        ),
+        "PO-SCENARIO-CONVERGENCE-001": _EmpiricalReleaseBinding(
+            subject_id=qualification_subject_id(report.semantic_payload()),
+            semantic_evidence_id=str(report.robustness_report_id),
+        ),
+    }
+
+
+def _verified_bundle_for_release(
+    *,
+    bundle_id: BundleId | None,
+    world_id: GlobalWorldId | None,
+    season: str,
+    entry: int,
+    gameweek: int,
+    store: ArtifactStore,
+) -> VerifiedProductionDecisionBundle | None:
+    if bundle_id is None:
+        return None
+    verified = load_production_decision_bundle(bundle_id, store=store)
+    bundle = verified.bundle
+    if bundle.season != season:
+        raise ValueError("production bundle season does not match release scope")
+    if bundle.entry != entry:
+        raise ValueError("production bundle entry does not match release scope")
+    if bundle.gameweek != gameweek:
+        raise ValueError("production bundle gameweek does not match release scope")
+    if world_id is not None and bundle.world_id != world_id:
+        raise ValueError("production bundle world does not match release world")
+    return verified
+
+
 def _claim_has_matching_empirical_qualification(
     *,
     claim: AssuranceClaim,
@@ -130,9 +195,14 @@ def _claim_has_matching_empirical_qualification(
     season: str,
     as_of: str,
     store: ArtifactStore,
+    binding: _EmpiricalReleaseBinding | None,
 ) -> bool:
     evidence_ids = set(claim.evidence_ids)
+    expected_kind = PRODUCTION_EMPIRICAL_SUBJECT_KIND[proof_id]
     for artifact_id in claim.artifact_ids:
+        if binding is not None and binding.qualification_artifact_id is not None:
+            if artifact_id != binding.qualification_artifact_id:
+                continue
         try:
             qualification = load_empirical_qualification_certificate(
                 artifact_id,
@@ -142,13 +212,20 @@ def _claim_has_matching_empirical_qualification(
         except ValueError:
             continue
         if (
-            qualification.supported
-            and qualification.proof_id == proof_id
-            and qualification.season == season
-            and qualification.subject_id in evidence_ids
-            and qualification.experiment_id in evidence_ids
+            not qualification.supported
+            or qualification.proof_id != proof_id
+            or qualification.subject_kind != expected_kind
+            or qualification.season != season
+            or qualification.subject_id not in evidence_ids
+            or qualification.experiment_id not in evidence_ids
         ):
-            return True
+            continue
+        if binding is not None and (
+            qualification.subject_id != binding.subject_id
+            or binding.semantic_evidence_id not in evidence_ids
+        ):
+            continue
+        return True
     return False
 
 
@@ -159,9 +236,11 @@ def _claim_artifacts(
     *,
     season: str,
     as_of: str,
+    empirical_bindings: dict[str, _EmpiricalReleaseBinding] | None = None,
 ) -> tuple[str, ...]:
     """Verify retained evidence behind every satisfying mandatory proof claim."""
 
+    bindings = empirical_bindings or {}
     registry = {item.proof_id: item for item in obligations}
     claim_map = {claim.proof_id: claim for claim in case.claims}
     for proof_id in sorted(MANDATORY_PRODUCTION_PROOF_IDS):
@@ -193,6 +272,7 @@ def _claim_artifacts(
                 season=season,
                 as_of=as_of,
                 store=store,
+                binding=bindings.get(proof_id),
             )
         ):
             raise ValueError(
@@ -406,6 +486,15 @@ def execute_production_cutover(
         production_registry=production_registry,
         qualification=backend_qualification,
     )
+    verified_bundle = _verified_bundle_for_release(
+        bundle_id=bundle_id,
+        world_id=world_id,
+        season=season,
+        entry=entry,
+        gameweek=gameweek,
+        store=artifact_store,
+    )
+    empirical_bindings = _bundle_empirical_bindings(verified_bundle)
     manifest_id = _verify_artifact(
         artifact_store, artifact_manifest_id, label="production artifact manifest"
     )
@@ -415,6 +504,7 @@ def execute_production_cutover(
         artifact_store,
         season=season,
         as_of=created_at,
+        empirical_bindings=empirical_bindings,
     )
     backend_artifacts = (
         _verify_artifact(
@@ -522,6 +612,7 @@ def execute_production_cutover(
                 backend_snapshot_id,
                 authorization_artifact_id,
                 release_record_artifact_id,
+                *((str(bundle_id),) if bundle_id is not None else ()),
                 *backend_artifacts,
                 *claim_artifacts,
             }
@@ -595,7 +686,7 @@ def _load_json_object(
 ) -> dict[str, object]:
     try:
         raw = json.loads(artifact_store.read_bytes(artifact_id).decode("utf-8"))
-    except ArtifactIntegrityError as exc:
+    except (FileNotFoundError, ArtifactIntegrityError) as exc:
         raise ValueError(f"{schema_name} artifact failed integrity verification") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"{schema_name} artifact is not valid UTF-8 JSON") from exc
@@ -758,7 +849,8 @@ def load_production_publication_authorization(
         proof_obligations_artifact_id=str(payload.get("proof_obligations_artifact_id") or ""),
         release_certificate_status=str(payload.get("release_certificate_status") or ""),
         release_certificate_blockers=_string_tuple(
-            payload.get("release_certificate_blockers"), label="authorization certificate blockers"
+            payload.get("release_certificate_blockers"),
+            label="authorization certificate blockers",
         ),
         cutover_blockers=_string_tuple(
             payload.get("cutover_blockers"), label="authorization cutover blockers"
@@ -776,7 +868,9 @@ def load_production_publication_authorization(
     if authorization.authorization_id != declared:
         raise ValueError("production publication authorization semantic identity mismatch")
     _verify_artifact(
-        artifact_store, authorization.artifact_manifest_id, label="production authorization manifest"
+        artifact_store,
+        authorization.artifact_manifest_id,
+        label="production authorization manifest",
     )
     for backend_artifact in authorization.backend_qualification_artifact_ids:
         _verify_artifact(
@@ -784,6 +878,15 @@ def load_production_publication_authorization(
             backend_artifact,
             label="production authorization backend qualification",
         )
+    verified_bundle = _verified_bundle_for_release(
+        bundle_id=authorization.bundle_id,
+        world_id=authorization.world_id,
+        season=authorization.season,
+        entry=authorization.entry,
+        gameweek=authorization.gameweek,
+        store=artifact_store,
+    )
+    empirical_bindings = _bundle_empirical_bindings(verified_bundle)
     case = _replay_assurance_case(
         authorization.assurance_case_artifact_id, artifact_store=artifact_store
     )
@@ -796,6 +899,7 @@ def load_production_publication_authorization(
         artifact_store,
         season=authorization.season,
         as_of=authorization.created_at,
+        empirical_bindings=empirical_bindings,
     )
     certificate = case.derive_release_certificate(obligations)
     if certificate.assurance_case_id != authorization.assurance_case_id:
