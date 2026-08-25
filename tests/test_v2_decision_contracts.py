@@ -10,6 +10,7 @@ from apex_fpl.control.decision_policy_registry import (
     DecisionPolicyRegistry,
     load_decision_policy_registry,
 )
+from apex_fpl.control.decision_policy_support import store_decision_policy_support
 from apex_fpl.control.experiment_registry import (
     ExperimentRegistration,
     ExperimentRegistry,
@@ -38,6 +39,13 @@ from apex_fpl.core.decision_policy import (
     DecisionObjectivePolicy,
     DecisionPolicy,
     DecisionPolicyQualificationState,
+)
+from apex_fpl.core.decision_policy_support import (
+    CandidatePolicy,
+    ChipOptionValuePolicy,
+    ContinuationValuePolicy,
+    ExactPolicyValue,
+    PricePolicy,
 )
 from apex_fpl.core.experiments import (
     ExactQualificationValue,
@@ -82,6 +90,39 @@ def _shadow_policy() -> DecisionPolicy:
         candidate_policy_artifact_id=None,
         tie_break_policy=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
     )
+
+
+def _typed_support_ids(
+    store: FileSystemArtifactStore,
+    *,
+    horizon_gameweeks: int = 6,
+) -> tuple[str, str, str, str]:
+    available = "2026-08-23T00:00:00Z"
+    supports = (
+        ContinuationValuePolicy(
+            season=SEASON,
+            horizon_gameweeks=horizon_gameweeks,
+            first_available_at=available,
+            gameweek_weights=tuple(
+                ExactPolicyValue.one() if index == 0 else ExactPolicyValue(1, 2)
+                for index in range(horizon_gameweeks)
+            ),
+        ),
+        ChipOptionValuePolicy(
+            season=SEASON,
+            horizon_gameweeks=horizon_gameweeks,
+            first_available_at=available,
+            option_values=(
+                ("BENCH_BOOST", ExactPolicyValue(4, 1)),
+                ("FREE_HIT", ExactPolicyValue(3, 1)),
+                ("TRIPLE_CAPTAIN", ExactPolicyValue(5, 1)),
+                ("WILDCARD", ExactPolicyValue(6, 1)),
+            ),
+        ),
+        PricePolicy(season=SEASON, first_available_at=available),
+        CandidatePolicy(season=SEASON, first_available_at=available),
+    )
+    return tuple(store_decision_policy_support(item, store=store) for item in supports)  # type: ignore[return-value]
 
 
 def _decision_input(policy_id: DecisionPolicyId) -> DecisionInput:
@@ -202,30 +243,31 @@ def test_tactical_policy_rejects_semantic_artifacts_it_does_not_execute() -> Non
             replace(_shadow_policy(), **{field: artifact})
 
 
-def test_receding_policy_tie_break_is_semantic_identity() -> None:
+def test_receding_policy_refuses_unimplemented_tie_break_semantics(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    continuation, chip_option, price, candidate = _typed_support_ids(store)
+    with pytest.raises(ValueError, match="unimplemented tie-break semantics"):
+        DecisionPolicy(
+            policy_name="receding-shadow",
+            policy_version="1",
+            season=SEASON,
+            qualification_state=DecisionPolicyQualificationState.SHADOW,
+            qualification_artifact_id=None,
+            first_available_at="2026-08-24T00:00:00Z",
+            evaluation_mode=DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION,
+            objective_policy=DecisionObjectivePolicy.MAX_EXPECTED_FPL_POINTS_OVER_TIME,
+            horizon_gameweeks=6,
+            continuation_value_artifact_id=continuation,
+            chip_option_value_artifact_id=chip_option,
+            price_policy_artifact_id=price,
+            candidate_policy_artifact_id=candidate,
+            tie_break_policy="future-policy-v1",
+        )
+
+
+def test_receding_horizon_policy_requires_complete_support_surface() -> None:
     artifact = "sha256:" + "a" * 64
-    first = DecisionPolicy(
-        policy_name="receding-shadow",
-        policy_version="1",
-        season=SEASON,
-        qualification_state=DecisionPolicyQualificationState.SHADOW,
-        qualification_artifact_id=None,
-        first_available_at="2026-08-24T00:00:00Z",
-        evaluation_mode=DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION,
-        objective_policy=DecisionObjectivePolicy.MAX_EXPECTED_FPL_POINTS_OVER_TIME,
-        horizon_gameweeks=6,
-        continuation_value_artifact_id=artifact,
-        chip_option_value_artifact_id=artifact,
-        price_policy_artifact_id=None,
-        candidate_policy_artifact_id=None,
-        tie_break_policy="future-policy-v1",
-    )
-    second = replace(first, tie_break_policy="future-policy-v2")
-    assert first.decision_policy_id != second.decision_policy_id
-
-
-def test_receding_horizon_policy_requires_continuation_and_chip_option_artifacts() -> None:
-    with pytest.raises(ValueError, match="continuation-value artifact"):
+    with pytest.raises(ValueError, match="requires policy artifacts"):
         DecisionPolicy(
             policy_name="bad-receding",
             policy_version="1",
@@ -236,51 +278,42 @@ def test_receding_horizon_policy_requires_continuation_and_chip_option_artifacts
             evaluation_mode=DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION,
             objective_policy=DecisionObjectivePolicy.MAX_EXPECTED_FPL_POINTS_OVER_TIME,
             horizon_gameweeks=6,
-            continuation_value_artifact_id=None,
-            chip_option_value_artifact_id=None,
+            continuation_value_artifact_id=artifact,
+            chip_option_value_artifact_id=artifact,
             price_policy_artifact_id=None,
             candidate_policy_artifact_id=None,
-            tie_break_policy="v1",
+            tie_break_policy=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
         )
 
 
-def test_qualified_policy_without_price_and_candidate_policy_is_not_production_qualified(
+def test_qualified_policy_without_price_and_candidate_policy_cannot_be_constructed(
     tmp_path: Path,
 ) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    policy = DecisionPolicy(
-        policy_name="incomplete-over-time",
-        policy_version="1",
-        season=SEASON,
-        qualification_state=DecisionPolicyQualificationState.QUALIFIED,
-        qualification_artifact_id=_artifact(store, b"qualification"),
-        first_available_at="2026-08-24T00:00:00Z",
-        evaluation_mode=DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION,
-        objective_policy=DecisionObjectivePolicy.MAX_EXPECTED_FPL_POINTS_OVER_TIME,
-        horizon_gameweeks=6,
-        continuation_value_artifact_id=_artifact(store, b"continuation"),
-        chip_option_value_artifact_id=_artifact(store, b"chip-option"),
-        price_policy_artifact_id=None,
-        candidate_policy_artifact_id=None,
-        tie_break_policy="v1",
-    )
-    assert policy.production_qualified is False
-    with pytest.raises(ValueError, match="champion must be production qualified"):
-        DecisionPolicyRegistry(
+    with pytest.raises(ValueError, match="requires policy artifacts"):
+        DecisionPolicy(
+            policy_name="incomplete-over-time",
+            policy_version="1",
             season=SEASON,
-            policies=(policy,),
-            champion_policy_id=policy.decision_policy_id,
+            qualification_state=DecisionPolicyQualificationState.QUALIFIED,
+            qualification_artifact_id=_artifact(store, b"qualification"),
+            first_available_at="2026-08-24T00:00:00Z",
+            evaluation_mode=DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION,
+            objective_policy=DecisionObjectivePolicy.MAX_EXPECTED_FPL_POINTS_OVER_TIME,
+            horizon_gameweeks=6,
+            continuation_value_artifact_id=_artifact(store, b"continuation"),
+            chip_option_value_artifact_id=_artifact(store, b"chip-option"),
+            price_policy_artifact_id=None,
+            candidate_policy_artifact_id=None,
+            tie_break_policy=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
         )
 
 
-def test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified(
+def test_qualified_policy_supports_must_replay_and_champion_must_be_qualified(
     tmp_path: Path,
 ) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    continuation = _artifact(store, b"continuation")
-    chip_option = _artifact(store, b"chip-option")
-    price_policy = _artifact(store, b"price-policy")
-    candidate_policy = _artifact(store, b"candidate-policy")
+    continuation, chip_option, price_policy, candidate_policy = _typed_support_ids(store)
     policy = DecisionPolicy(
         policy_name="qualified-over-time",
         policy_version="1",
@@ -295,7 +328,7 @@ def test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified(
         chip_option_value_artifact_id=chip_option,
         price_policy_artifact_id=price_policy,
         candidate_policy_artifact_id=candidate_policy,
-        tie_break_policy="v1",
+        tie_break_policy=TACTICAL_REFERENCE_TIE_BREAK_POLICY_ID,
     )
     policy = _attach_decision_policy_qualification(store, policy)
     assert policy.production_qualified is True
@@ -312,7 +345,7 @@ def test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified(
     )
 
     other_store = FileSystemArtifactStore(tmp_path / "other")
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ValueError, match="artifact failed integrity"):
         registry.verify_policy_artifacts(
             policy,
             store=other_store,
