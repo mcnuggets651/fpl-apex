@@ -73,7 +73,7 @@ from apex_fpl.forecast.forecast_store import store_forecast
 from empirical_qualification_helpers import synthetic_supported_qualification_artifact
 
 
-POSITIONS = {
+OWNED_POSITIONS = {
     1: "GK",
     2: "GK",
     3: "DEF",
@@ -90,6 +90,7 @@ POSITIONS = {
     14: "FWD",
     15: "FWD",
 }
+CANDIDATE_POSITIONS = {**OWNED_POSITIONS, 16: "MID"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,7 +132,13 @@ def synthetic_production_planning_bundle(
     entry: int = 63984,
     gameweek: int = 2,
 ) -> SyntheticPlanningBundleFixture:
-    """Build mechanism-only schema-v2 lineage; never real production evidence."""
+    """Build mechanism-only schema-v2 lineage; never real production evidence.
+
+    The synthetic world intentionally contains one affordable non-owned midfielder whose
+    value arrives in the second planning Gameweek. Exact trajectory tie-breaking therefore
+    prefers banking the first free transfer and executing a real financed transfer later.
+    Positive chip option values also force a non-zero retained terminal reserve.
+    """
 
     ruleset = load_ruleset(Path("config/rules/2026-2027.yaml"))
     ruleset_artifact = store_ruleset(ruleset, store=store)
@@ -155,11 +162,11 @@ def synthetic_production_planning_bundle(
                 player_id=OfficialPlayerId(player_id),
                 team_id=player_id,
                 position=position,
-                current_price_tenths=50,
+                current_price_tenths=51 if player_id == 16 else 50,
             )
-            for player_id, position in POSITIONS.items()
+            for player_id, position in CANDIDATE_POSITIONS.items()
         ),
-        official_player_count=15,
+        official_player_count=len(CANDIDATE_POSITIONS),
         source_artifact_ids=(universe_source,),
     )
     stored_universe = store_candidate_universe(universe, store=store)
@@ -171,7 +178,7 @@ def synthetic_production_planning_bundle(
         gameweek=gameweek,
         ruleset_id=ruleset.ruleset_id,
         scope=ManagerStateScope.CURRENT_EXACT,
-        bank_tenths=0,
+        bank_tenths=1,
         free_transfers=1,
         squad=tuple(
             OwnedPlayer(
@@ -182,7 +189,7 @@ def synthetic_production_planning_bundle(
                 current_price_tenths=50,
                 selling_price_tenths=50,
             )
-            for player_id, position in POSITIONS.items()
+            for player_id, position in OWNED_POSITIONS.items()
         ),
         provenance_artifact_ids=(manager_source,),
     )
@@ -219,10 +226,12 @@ def synthetic_production_planning_bundle(
 
     rows = []
     for target_gw in (gameweek, gameweek + 1):
-        for player_id, position in POSITIONS.items():
+        for player_id, position in CANDIDATE_POSITIONS.items():
             points = 3
             if player_id == 8 and target_gw == gameweek + 1:
                 points = 10
+            if player_id == 16:
+                points = 0 if target_gw == gameweek else 12
             target = PlayerFixtureTarget(
                 fixture_id=target_gw * 1000 + player_id,
                 gameweek=target_gw,
@@ -262,14 +271,18 @@ def synthetic_production_planning_bundle(
     forecast = Forecast(
         season=season,
         feature_snapshot_id=FeatureSnapshotId(
-            canonical_sha256({"schema_name": "synthetic-planning-feature", "world": str(world_id)})
+            canonical_sha256(
+                {"schema_name": "synthetic-planning-feature", "world": str(world_id)}
+            )
         ),
         feature_cutoff="2026-08-24T06:00:00Z",
         global_world_id=world_id,
         ruleset_id=ruleset.ruleset_id,
         model_artifact_id=model.model_artifact_id,
         prediction_batch_id=PredictionBatchId(
-            canonical_sha256({"schema_name": "synthetic-planning-batch", "world": str(world_id)})
+            canonical_sha256(
+                {"schema_name": "synthetic-planning-batch", "world": str(world_id)}
+            )
         ),
         use_mode=ForecastUseMode.PRODUCTION,
         model_qualification_state=ModelQualificationState.QUALIFIED,
@@ -289,7 +302,7 @@ def synthetic_production_planning_bundle(
         horizon_gameweeks=2,
         first_available_at="2026-08-01T00:00:00Z",
         option_values=tuple(
-            (chip, ExactPolicyValue.zero())
+            (chip, ExactPolicyValue.one())
             for chip in ("BENCH_BOOST", "FREE_HIT", "TRIPLE_CAPTAIN", "WILDCARD")
         ),
     )
@@ -340,7 +353,7 @@ def synthetic_production_planning_bundle(
         price_policy=price,
         candidate_policy=candidate,
         use_mode=DecisionUseMode.PRODUCTION,
-        max_search_nodes=500,
+        max_search_nodes=5_000,
         alternatives_limit=0,
     )
     stored_decision = store_planning_result(
@@ -363,9 +376,9 @@ def synthetic_production_planning_bundle(
                     player_id=OfficialPlayerId(player_id),
                     gameweek=gameweek,
                     appeared=True,
-                    points=3,
+                    points=0 if player_id == 16 else 3,
                 )
-                for player_id in POSITIONS
+                for player_id in CANDIDATE_POSITIONS
             ),
         )
         for ordinal in range(1, 513)
@@ -374,12 +387,16 @@ def synthetic_production_planning_bundle(
         season=season,
         forecast_id=forecast.forecast_id,
         scenario_generator_id=ScenarioGeneratorId(
-            canonical_sha256({"schema_name": "synthetic-planning-generator", "season": season})
+            canonical_sha256(
+                {"schema_name": "synthetic-planning-generator", "season": season}
+            )
         ),
         rng_algorithm="synthetic-planning-counter-v1",
         seed=1,
         gameweeks=(gameweek,),
-        player_ids=tuple(OfficialPlayerId(player_id) for player_id in POSITIONS),
+        player_ids=tuple(
+            OfficialPlayerId(player_id) for player_id in CANDIDATE_POSITIONS
+        ),
         scenarios=scenarios,
         source_artifact_ids=(scenario_source,),
     )
@@ -399,7 +416,9 @@ def synthetic_production_planning_bundle(
         forecast_id=forecast.forecast_id,
         scenario_set_id=scenario_set.scenario_set_id,
         scenario_policy_id=ScenarioPolicyId(
-            canonical_sha256({"schema_name": "synthetic-planning-scenario-policy", "season": season})
+            canonical_sha256(
+                {"schema_name": "synthetic-planning-scenario-policy", "season": season}
+            )
         ),
         ev_anchor_action_id=action_id,
         robust_preferred_action_id=action_id,
