@@ -28,15 +28,63 @@ SEASON = "2026-2027"
 ENTRY = 63984
 GAMEWEEK = 2
 SCOPE = f"{SEASON}:{ENTRY}:{GAMEWEEK}:production"
+CREATED_AT = "2026-08-25T06:00:00Z"
+VALID_UNTIL = "2026-08-29T10:00:00Z"
+AS_OF = "2026-08-25T07:00:00Z"
 
 
-def _artifact(store: FileSystemArtifactStore, text: str) -> str:
+class _DurableArtifactStore:
+    backend_id = "test.production.durable-artifact-store.v1"
+
+    def __init__(self, root: Path):
+        self.delegate = FileSystemArtifactStore(root)
+
+    def put_bytes(self, content: bytes, **kwargs):
+        return self.delegate.put_bytes(content, **kwargs)
+
+    def read_bytes(self, artifact_id: str) -> bytes:
+        return self.delegate.read_bytes(artifact_id)
+
+    def verify(self, artifact_id: str) -> bool:
+        return self.delegate.verify(artifact_id)
+
+
+class _DurableReleaseRegistry:
+    backend_id = "test.production.durable-release-registry.v1"
+
+    def __init__(self, root: Path):
+        self.delegate = FileSystemReleaseRegistry(root)
+
+    def append(self, record):
+        return self.delegate.append(record)
+
+    def read_release(self, release_id: str):
+        return self.delegate.read_release(release_id)
+
+    def current_release_id(self, key: ReleaseKey) -> str | None:
+        return self.delegate.current_release_id(key)
+
+    def compare_and_swap_current(
+        self,
+        key: ReleaseKey,
+        *,
+        expected_release_id: str | None,
+        new_release_id: str,
+    ) -> None:
+        self.delegate.compare_and_swap_current(
+            key,
+            expected_release_id=expected_release_id,
+            new_release_id=new_release_id,
+        )
+
+
+def _artifact(store, text: str) -> str:
     return store.put_bytes(text.encode("utf-8")).artifact_id
 
 
 def _qualified_cutover(tmp_path: Path):
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    registry = FileSystemReleaseRegistry(tmp_path / "production")
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
     evidence = _artifact(store, "proof-evidence")
     manifest = _artifact(store, "manifest")
     store_q = _artifact(store, "store-qualified")
@@ -44,7 +92,7 @@ def _qualified_cutover(tmp_path: Path):
     obligations = tuple(
         ProofObligation(
             proof_id=proof_id,
-            claim=f"qualified {proof_id}",
+            claim=f"pre-publication mechanism proof {proof_id}",
             proof_class=ProofClass.FORMAL_INVARIANT,
             scope="production-test",
             required_evidence=("artifact",),
@@ -69,6 +117,8 @@ def _qualified_cutover(tmp_path: Path):
         ),
     )
     backend = ProductionBackendQualification(
+        artifact_store_backend_id=store.backend_id,
+        release_registry_backend_id=registry.backend_id,
         artifact_store_qualification_artifact_id=store_q,
         release_registry_qualification_artifact_id=registry_q,
         durable_shared_artifact_store=True,
@@ -84,8 +134,8 @@ def _qualified_cutover(tmp_path: Path):
         bundle_id=BundleId("bundle-v2"),
         world_id=GlobalWorldId("world-v2"),
         runtime_digest="sha256:runtime-v2",
-        created_at="2026-08-25T06:00:00Z",
-        valid_until="2026-08-29T10:00:00Z",
+        created_at=CREATED_AT,
+        valid_until=VALID_UNTIL,
         artifact_manifest_id=manifest,
         assurance_case=case,
         obligations=obligations,
@@ -96,16 +146,21 @@ def _qualified_cutover(tmp_path: Path):
     return store, registry, outcome
 
 
-def test_no_current_pointer_is_non_actionable_and_exposes_no_bundle(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    registry = FileSystemReleaseRegistry(tmp_path / "production")
-    authority = resolve_production_answer_authority(
+def _resolve(store, registry, *, as_of: str = AS_OF):
+    return resolve_production_answer_authority(
         season=SEASON,
         entry=ENTRY,
         gameweek=GAMEWEEK,
+        as_of=as_of,
         artifact_store=store,
         production_registry=registry,
     )
+
+
+def test_no_current_pointer_is_non_actionable_and_exposes_no_bundle(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    registry = FileSystemReleaseRegistry(tmp_path / "production")
+    authority = _resolve(store, registry)
     assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
     assert authority.ready_to_act is False
     assert authority.safe_to_act is False
@@ -114,13 +169,7 @@ def test_no_current_pointer_is_non_actionable_and_exposes_no_bundle(tmp_path: Pa
 
 def test_exact_current_proof_authorized_release_is_only_actionable_authority(tmp_path: Path) -> None:
     store, registry, outcome = _qualified_cutover(tmp_path)
-    authority = resolve_production_answer_authority(
-        season=SEASON,
-        entry=ENTRY,
-        gameweek=GAMEWEEK,
-        artifact_store=store,
-        production_registry=registry,
-    )
+    authority = _resolve(store, registry)
     assert authority.status is ProductionAuthorityStatus.CURRENT
     assert authority.ready_to_act is True
     assert authority.safe_to_act is True
@@ -131,14 +180,16 @@ def test_exact_current_proof_authorized_release_is_only_actionable_authority(tmp
 
 def _make_current_record(
     *,
-    store: FileSystemArtifactStore,
-    registry: FileSystemReleaseRegistry,
+    store,
+    registry,
     status: ReleaseStatus,
     ready: bool,
     safe: bool,
     authorization_artifact_id: str | None = None,
+    expected_release_id: str | None = None,
+    valid_until: str | None = VALID_UNTIL,
 ) -> ReleaseRecord:
-    manifest = _artifact(store, f"manifest-{status.value}")
+    manifest = _artifact(store, f"manifest-{status.value}-{authorization_artifact_id}")
     record = registry.append(
         ReleaseRecord(
             season=SEASON,
@@ -147,8 +198,8 @@ def _make_current_record(
             bundle_id="forged-bundle",
             world_id="forged-world",
             runtime_digest="sha256:forged-runtime",
-            created_at="2026-08-25T06:00:00Z",
-            valid_until=None,
+            created_at=CREATED_AT,
+            valid_until=valid_until,
             status=status,
             ready_to_act=ready,
             safe_to_act=safe,
@@ -159,7 +210,7 @@ def _make_current_record(
     assert record.release_id is not None
     registry.compare_and_swap_current(
         ReleaseKey(SEASON, ENTRY, GAMEWEEK),
-        expected_release_id=None,
+        expected_release_id=expected_release_id,
         new_release_id=record.release_id,
     )
     return record
@@ -175,13 +226,7 @@ def test_forged_published_ready_record_without_authorization_is_rejected(tmp_pat
         ready=True,
         safe=True,
     )
-    authority = resolve_production_answer_authority(
-        season=SEASON,
-        entry=ENTRY,
-        gameweek=GAMEWEEK,
-        artifact_store=store,
-        production_registry=registry,
-    )
+    authority = _resolve(store, registry)
     assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
     assert "lacks proof-derived authorization" in authority.blockers[0]
     assert authority.production_result_bundle_id is None
@@ -199,13 +244,7 @@ def test_v1_and_certified_records_cannot_become_v2_answer_authority(tmp_path: Pa
             ready=status is ReleaseStatus.V1_ACTIONABLE,
             safe=status is ReleaseStatus.V1_ACTIONABLE,
         )
-        authority = resolve_production_answer_authority(
-            season=SEASON,
-            entry=ENTRY,
-            gameweek=GAMEWEEK,
-            artifact_store=store,
-            production_registry=registry,
-        )
+        authority = _resolve(store, registry)
         assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
         assert authority.production_result_bundle_id is None
         assert "not V2 PUBLISHED" in authority.blockers[0]
@@ -218,13 +257,59 @@ def test_corrupt_publication_authorization_withholds_current_answer(tmp_path: Pa
     digest = artifact_id.split(":", 1)[1]
     path = tmp_path / "artifacts" / "objects" / "sha256" / digest[:2] / digest
     path.write_bytes(b"corrupt")
-    authority = resolve_production_answer_authority(
-        season=SEASON,
-        entry=ENTRY,
-        gameweek=GAMEWEEK,
-        artifact_store=store,
-        production_registry=registry,
-    )
+    authority = _resolve(store, registry)
     assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
     assert authority.production_result_bundle_id is None
     assert "publication authorization is invalid" in authority.blockers[0]
+
+
+def test_expired_current_release_is_non_actionable_even_when_pointer_is_current(tmp_path: Path) -> None:
+    store, registry, _ = _qualified_cutover(tmp_path)
+    authority = _resolve(store, registry, as_of=VALID_UNTIL)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "has expired" in authority.blockers[0]
+
+
+def test_current_release_cannot_be_used_before_declared_creation_time(tmp_path: Path) -> None:
+    store, registry, _ = _qualified_cutover(tmp_path)
+    authority = _resolve(store, registry, as_of="2026-08-25T05:59:59Z")
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "not yet valid" in authority.blockers[0]
+
+
+def test_publication_authorization_validity_must_match_release_record(tmp_path: Path) -> None:
+    store, registry, outcome = _qualified_cutover(tmp_path)
+    current_id = outcome.release_record.release_id
+    assert current_id is not None
+    authorization_id = outcome.release_record.publication_authorization_artifact_id
+    assert authorization_id is not None
+
+    forged = registry.append(
+        ReleaseRecord(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=outcome.release_record.bundle_id,
+            world_id=outcome.release_record.world_id,
+            runtime_digest=outcome.release_record.runtime_digest,
+            created_at=outcome.release_record.created_at,
+            valid_until="2026-08-30T10:00:00Z",
+            status=ReleaseStatus.PUBLISHED,
+            ready_to_act=True,
+            safe_to_act=True,
+            artifact_manifest_id=outcome.release_record.artifact_manifest_id,
+            publication_authorization_artifact_id=authorization_id,
+        )
+    )
+    assert forged.release_id is not None
+    registry.compare_and_swap_current(
+        ReleaseKey(SEASON, ENTRY, GAMEWEEK),
+        expected_release_id=current_id,
+        new_release_id=forged.release_id,
+    )
+    authority = _resolve(store, registry)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "validity does not match" in authority.blockers[0]
