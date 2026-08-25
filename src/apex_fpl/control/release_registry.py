@@ -145,11 +145,12 @@ def _release_record_from_payload(payload: object, *, expected_release_id: str) -
 class FileSystemReleaseRegistry:
     """Filesystem adapter implementing immutable records and atomic CAS pointers.
 
-    This adapter is intentionally backend-neutral domain infrastructure. It is suitable
-    for tests, local recovery and a single shared POSIX volume. V2 production cutover
-    must bind the same contract to a durable shared backend selected from operational
-    evidence.
+    This adapter is suitable for tests, local recovery and a single shared POSIX volume.
+    Its stable reference backend ID prevents Slice 13 from treating it as a qualified
+    durable shared production registry by configuration alone.
     """
+
+    backend_id = "apex.reference.filesystem-release-registry.v1"
 
     def __init__(self, root: str | Path, *, lock_timeout_seconds: float = 5.0):
         self.root = Path(root)
