@@ -146,7 +146,19 @@ def _shadow_subject(worker: ReferenceSolverWorkerArtifact) -> ReferenceSolverWor
 
 
 def _ratio_nonzero(value: object) -> bool:
-    return isinstance(value, dict) and isinstance(value.get("numerator"), int) and value["numerator"] != 0
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("numerator"), int)
+        and value["numerator"] != 0
+    )
+
+
+def _rules(request) -> dict[str, object]:
+    return {
+        row.get("rule_id"): row.get("value")
+        for row in request.ruleset.get("rules", [])
+        if isinstance(row, dict)
+    }
 
 
 def _all_chips_available(request) -> bool:
@@ -154,7 +166,7 @@ def _all_chips_available(request) -> bool:
     gameweek = manager.get("gameweek")
     if isinstance(gameweek, bool) or not isinstance(gameweek, int):
         return False
-    rules = {row.get("rule_id"): row.get("value") for row in request.ruleset.get("rules", []) if isinstance(row, dict)}
+    rules = _rules(request)
     first_last = rules.get("FPL-CHIP-FIRST-SET-LAST-GW-001")
     second_first = rules.get("FPL-CHIP-SECOND-SET-FIRST-GW-001")
     if not isinstance(first_last, int) or not isinstance(second_first, int):
@@ -170,7 +182,10 @@ def _all_chips_available(request) -> bool:
         for row in used_rows
         if isinstance(row, dict)
     }
-    if any((chip, set_number) in used for chip in ("TRIPLE_CAPTAIN", "BENCH_BOOST", "WILDCARD", "FREE_HIT")):
+    if any(
+        (chip, set_number) in used
+        for chip in ("TRIPLE_CAPTAIN", "BENCH_BOOST", "WILDCARD", "FREE_HIT")
+    ):
         return False
     fh_disallowed = rules.get("FPL-FREE-HIT-DISALLOWED-GWS-001")
     wc_disallowed = rules.get("FPL-WILDCARD-DISALLOWED-GWS-001")
@@ -182,32 +197,108 @@ def _all_chips_available(request) -> bool:
     )
 
 
-def _derived_case_coverage(request, expected, run) -> set[str]:
-    coverage = {
-        "FULL_OFFICIAL_ACTION_SURFACE",
-        "MULTI_GAMEWEEK_OBJECTIVE",
-        "ROOT_ACTION_PARITY",
-        "SUPPORT_POLICY_BINDING",
-        "TRAJECTORY_PARITY",
-        "ZERO_GAP_COMPLETENESS",
+def _full_official_surface(request) -> bool:
+    decision_input = request.decision_input
+    universe = request.candidate_universe
+    chips = decision_input.get("chips_considered")
+    return (
+        universe.get("scope") == "FULL_OFFICIAL"
+        and decision_input.get("max_normal_transfers") == 15
+        and isinstance(chips, list)
+        and set(chips)
+        == {"NONE", "TRIPLE_CAPTAIN", "BENCH_BOOST", "WILDCARD", "FREE_HIT"}
+    )
+
+
+def _banking_exercised(request, expected) -> bool:
+    steps = expected.selected_trajectory.steps
+    if len(steps) < 2:
+        return False
+    first = steps[0].action
+    if first.transfers or first.chip.value in {"WILDCARD", "FREE_HIT"}:
+        return False
+    rules = _rules(request)
+    grant = rules.get("FPL-FREE-TRANSFER-GRANT-001")
+    bank_max = rules.get("FPL-FREE-TRANSFER-BANK-MAX-001")
+    initial = request.manager_state.get("free_transfers")
+    return (
+        isinstance(grant, int)
+        and not isinstance(grant, bool)
+        and grant > 0
+        and isinstance(bank_max, int)
+        and not isinstance(bank_max, bool)
+        and isinstance(initial, int)
+        and not isinstance(initial, bool)
+        and initial < bank_max
+    )
+
+
+def _transfer_finance_exercised(request, expected) -> bool:
+    candidates = request.candidate_universe.get("players")
+    manager_rows = request.manager_state.get("squad")
+    if not isinstance(candidates, list) or not isinstance(manager_rows, list):
+        return False
+    candidate_prices = {
+        row.get("player_id"): row.get("current_price_tenths")
+        for row in candidates
+        if isinstance(row, dict)
     }
+    owned_sales = {
+        row.get("player_id"): row.get("selling_price_tenths")
+        for row in manager_rows
+        if isinstance(row, dict)
+    }
+    for step in expected.selected_trajectory.steps:
+        if not step.action.transfers:
+            continue
+        for move in step.action.transfers:
+            sale = owned_sales.get(int(move.outgoing_player_id))
+            cost = candidate_prices.get(int(move.incoming_player_id))
+            if (
+                isinstance(sale, int)
+                and not isinstance(sale, bool)
+                and isinstance(cost, int)
+                and not isinstance(cost, bool)
+                and sale != cost
+            ):
+                return True
+    return False
+
+
+def _derived_case_coverage(request, expected, run) -> set[str]:
+    coverage = {"SUPPORT_POLICY_BINDING"}
+    if _full_official_surface(request):
+        coverage.add("FULL_OFFICIAL_ACTION_SURFACE")
+    if (
+        request.horizon_gameweeks >= 2
+        and len(expected.selected_trajectory.steps) == request.horizon_gameweeks
+    ):
+        coverage.add("MULTI_GAMEWEEK_OBJECTIVE")
+
     option_rows = request.chip_option_policy.get("option_values")
-    if isinstance(option_rows, list) and any(
-        isinstance(row, dict) and _ratio_nonzero(row.get("value")) for row in option_rows
+    if (
+        isinstance(option_rows, list)
+        and any(
+            isinstance(row, dict) and _ratio_nonzero(row.get("value"))
+            for row in option_rows
+        )
+        and expected.selected_trajectory.terminal_chip_reserve.numerator != 0
     ):
         coverage.add("TERMINAL_CHIP_RESERVE")
-    rules = {row.get("rule_id"): row.get("value") for row in request.ruleset.get("rules", []) if isinstance(row, dict)}
-    if (
-        isinstance(rules.get("FPL-FREE-TRANSFER-GRANT-001"), int)
-        and rules.get("FPL-FREE-TRANSFER-GRANT-001", 0) > 0
-        and request.horizon_gameweeks >= 2
-    ):
+    if _banking_exercised(request, expected):
         coverage.add("FT_BANKING_SURFACE")
-    players = request.candidate_universe.get("players")
-    manager_squad = request.manager_state.get("squad")
-    if isinstance(players, list) and isinstance(manager_squad, list) and len(players) > len(manager_squad):
+    if _transfer_finance_exercised(request, expected):
         coverage.add("TRANSFER_FINANCE_SURFACE")
-    if _all_chips_available(request):
+
+    certifying_complete = (
+        run.solver_status is PlanningReferenceSolverStatus.OPTIMAL
+        and run.search_complete
+        and run.gap is not None
+        and run.gap.numerator == 0
+        and expected.solver.gap is not None
+        and expected.solver.gap.numerator == 0
+    )
+    if _all_chips_available(request) and certifying_complete:
         coverage.update(
             {
                 "BENCH_BOOST_SURFACE",
@@ -216,25 +307,20 @@ def _derived_case_coverage(request, expected, run) -> set[str]:
                 "WILDCARD_PERSISTENCE_SURFACE",
             }
         )
-    if run.selected_action_id != expected.selected_action.action_id:
-        coverage.discard("ROOT_ACTION_PARITY")
-    if run.selected_trajectory_id != expected.selected_trajectory.trajectory_id:
-        coverage.discard("TRAJECTORY_PARITY")
-    if (
-        run.solver_status is not PlanningReferenceSolverStatus.OPTIMAL
-        or not run.search_complete
-        or run.gap is None
-        or run.gap.numerator != 0
-        or expected.solver.gap is None
-        or expected.solver.gap.numerator != 0
-    ):
-        coverage.discard("ZERO_GAP_COMPLETENESS")
+    if run.selected_action_id == expected.selected_action.action_id:
+        coverage.add("ROOT_ACTION_PARITY")
+    if run.selected_trajectory_id == expected.selected_trajectory.trajectory_id:
+        coverage.add("TRAJECTORY_PARITY")
+    if certifying_complete:
+        coverage.add("ZERO_GAP_COMPLETENESS")
     return coverage
 
 
 def _replay_expected(case, request, *, store: ArtifactStore):
     universe = load_candidate_universe(case.candidate_universe_artifact_id, store=store).universe
-    if canonical_sha256(universe.semantic_payload()) != canonical_sha256(request.candidate_universe):
+    if canonical_sha256(universe.semantic_payload()) != canonical_sha256(
+        request.candidate_universe
+    ):
         raise ValueError("planning qualification CandidateUniverse differs from sealed request")
     manager_id = ManagerStateId(canonical_sha256(request.manager_state))
     ruleset_id = RuleSetId(canonical_sha256(request.ruleset))
@@ -265,7 +351,10 @@ def derive_planning_reference_solver_algorithmic_qualification(
         raise ValueError("planning reference worker code artifact is missing/corrupt")
     if worker.solver_contract != REFERENCE_SOLVER_PLANNING_CONTRACT:
         raise ValueError("worker does not implement planning reference solver contract")
-    corpus = load_planning_reference_solver_qualification_corpus(corpus_artifact_id, store=store)
+    corpus = load_planning_reference_solver_qualification_corpus(
+        corpus_artifact_id,
+        store=store,
+    )
     if worker.solver_contract != corpus.solver_contract:
         raise ValueError("planning worker/corpus solver contract mismatch")
     if corpus.season not in worker.valid_seasons:
@@ -277,11 +366,16 @@ def derive_planning_reference_solver_algorithmic_qualification(
     passed = 0
     for case_id in corpus.case_artifact_ids:
         case = load_planning_reference_solver_qualification_case(case_id, store=store)
-        request = load_planning_reference_solver_request(case.request_artifact_id, store=store).request
+        request = load_planning_reference_solver_request(
+            case.request_artifact_id,
+            store=store,
+        ).request
         if request.horizon_gameweeks > corpus.max_horizon_gameweeks:
             raise ValueError("planning qualification case horizon exceeds corpus scope")
         expected = _replay_expected(case, request, store=store)
-        if canonical_sha256(expected.decision_input.semantic_payload()) != canonical_sha256(request.decision_input):
+        if canonical_sha256(expected.decision_input.semantic_payload()) != canonical_sha256(
+            request.decision_input
+        ):
             raise ValueError("planning qualification expected DecisionInput differs from request")
         run = solve_planning_reference_request(request)
         if run.solver_status is not PlanningReferenceSolverStatus.OPTIMAL:
@@ -331,7 +425,10 @@ def store_planning_reference_solver_algorithmic_qualification(
     store: ArtifactStore,
 ) -> str:
     store.read_bytes(certificate.worker_code_artifact_id)
-    load_planning_reference_solver_qualification_corpus(certificate.corpus_artifact_id, store=store)
+    load_planning_reference_solver_qualification_corpus(
+        certificate.corpus_artifact_id,
+        store=store,
+    )
     return store.put_bytes(
         canonical_json_bytes(certificate.semantic_payload()),
         media_type="application/json",
@@ -349,7 +446,10 @@ def _load_certificate(
         store.read_bytes(artifact_id),
         label="planning reference algorithmic qualification certificate",
     )
-    if payload.get("schema_name") != "apex-planning-reference-solver-algorithmic-qualification-certificate":
+    if (
+        payload.get("schema_name")
+        != "apex-planning-reference-solver-algorithmic-qualification-certificate"
+    ):
         raise ValueError("not a planning reference solver qualification certificate")
     if payload.get("schema_version") != 1:
         raise ValueError("unsupported planning reference qualification certificate schema")
