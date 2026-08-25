@@ -8,6 +8,9 @@ from pathlib import Path
 import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.empirical_qualification_admission import (
+    verify_typed_empirical_qualification,
+)
 from apex_fpl.core.forecast import ForecastModelArtifact, ModelQualificationState
 from apex_fpl.core.ids import ModelArtifactId
 
@@ -48,6 +51,8 @@ class ForecastModelRegistry:
         *,
         store: ArtifactStore,
         production: bool,
+        season: str | None = None,
+        as_of: str | None = None,
     ) -> None:
         if self.get(model.model_artifact_id) is None:
             raise ValueError("forecast model is not registered")
@@ -64,6 +69,21 @@ class ForecastModelRegistry:
                 raise ValueError("production forecast model has no qualification artifact")
             if self.champion_model_id != model.model_artifact_id:
                 raise ValueError("production forecast model is not the registered champion")
+            if season is None or as_of is None:
+                raise ValueError(
+                    "production forecast model verification requires explicit season and as_of"
+                )
+            if season not in model.valid_seasons:
+                raise ValueError("production forecast model is not valid for requested season")
+            verify_typed_empirical_qualification(
+                qualification_artifact_id=qualification,
+                subject_payload=model.semantic_payload(),
+                subject_kind="apex.forecast-model",
+                proof_id="PO-FORECAST-QUALIFICATION-001",
+                season=season,
+                as_of=as_of,
+                store=store,
+            )
 
 
 def _models(value: object) -> list[dict[str, object]]:
