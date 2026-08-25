@@ -3,6 +3,7 @@ name: V2 Shadow Production
 on:
   pull_request:
     paths:
+      - "src/apex_fpl/core/proofs.py"
       - "src/apex_fpl/core/shadow.py"
       - "src/apex_fpl/control/shadow_production.py"
       - "tests/test_v2_shadow_*.py"
@@ -33,4 +34,4 @@ jobs:
       - name: Run shadow production contract tests
         run: .venv/bin/python -m pytest -q tests/test_v2_shadow_*.py
       - name: Run Ruff on shadow production surface
-        run: .venv/bin/ruff check src/apex_fpl/core/shadow.py src/apex_fpl/control/shadow_production.py tests/test_v2_shadow_*.py
+        run: .venv/bin/ruff check src/apex_fpl/core/proofs.py src/apex_fpl/core/shadow.py src/apex_fpl/control/shadow_production.py tests/test_v2_shadow_*.py
