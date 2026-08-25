@@ -8,6 +8,9 @@ from pathlib import Path
 import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.empirical_qualification_admission import (
+    verify_typed_empirical_qualification,
+)
 from apex_fpl.core.decision_policy import (
     DecisionEvaluationMode,
     DecisionObjectivePolicy,
@@ -58,6 +61,7 @@ class DecisionPolicyRegistry:
         *,
         store: ArtifactStore,
         production: bool,
+        as_of: str | None = None,
     ) -> None:
         if self.get(policy.decision_policy_id) != policy:
             raise ValueError("DecisionPolicy is not registered under its semantic identity")
@@ -76,6 +80,18 @@ class DecisionPolicyRegistry:
                 raise ValueError("production requires a qualified receding-horizon DecisionPolicy")
             if self.champion_policy_id != policy.decision_policy_id:
                 raise ValueError("production DecisionPolicy must be the registered champion")
+            if as_of is None:
+                raise ValueError("production DecisionPolicy verification requires explicit as_of")
+            policy.require_available_for(season=self.season, decision_cutoff=as_of)
+            verify_typed_empirical_qualification(
+                qualification_artifact_id=policy.qualification_artifact_id,
+                subject_payload=policy.semantic_payload(),
+                subject_kind="apex.decision-policy",
+                proof_id="PO-DECISION-POLICY-QUALIFICATION-001",
+                season=self.season,
+                as_of=as_of,
+                store=store,
+            )
 
 
 def load_decision_policy_registry(path: str | Path) -> DecisionPolicyRegistry:
