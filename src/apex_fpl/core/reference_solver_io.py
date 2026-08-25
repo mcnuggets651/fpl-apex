@@ -7,6 +7,7 @@ from enum import StrEnum
 import json
 
 from .canonical import canonical_json_bytes, canonical_sha256
+from .numeric_policy import DECISION_NUMERIC_POLICY_ID
 
 
 REFERENCE_SOLVER_CONTRACT = "apex-v2-exact-decision-parity-v1"
@@ -179,6 +180,12 @@ class ReferenceSolverRequest:
             raise ValueError(
                 "reference solver v1 accepts only tactical current-Gameweek DecisionPolicy"
             )
+        if decision_input.get("numeric_policy_id") != DECISION_NUMERIC_POLICY_ID:
+            raise ValueError("reference solver DecisionInput numeric policy is unsupported")
+        if policy.get("numeric_policy_id") != DECISION_NUMERIC_POLICY_ID:
+            raise ValueError("reference solver DecisionPolicy numeric policy is unsupported")
+        if decision_input.get("numeric_policy_id") != policy.get("numeric_policy_id"):
+            raise ValueError("reference solver DecisionInput/DecisionPolicy numeric policy mismatch")
         if decision_input.get("decision_policy_id") != canonical_sha256(policy):
             raise ValueError("reference solver DecisionPolicy identity mismatch")
         object.__setattr__(self, "solver_contract", contract)

@@ -32,7 +32,6 @@ from apex_fpl.core.experiments import (
     QualificationMetricResult,
     QualificationMetricRule,
 )
-from apex_fpl.core.ids import BundleId, GlobalWorldId
 from apex_fpl.core.production import (
     MANDATORY_PRODUCTION_PROOF_IDS,
     ProductionBackendQualification,
@@ -50,6 +49,11 @@ from apex_fpl.core.proofs import (
     ProofObligation,
     ProofStatus,
     ReleasePolicy,
+)
+
+from production_bundle_helpers import (
+    DirectQualificationMaterial,
+    synthetic_production_bundle,
 )
 
 
@@ -112,6 +116,15 @@ class _DurableReleaseRegistry:
 
 def _artifact(store, value: str) -> str:
     return store.put_bytes(value.encode("utf-8")).artifact_id
+
+
+def _fixture(store):
+    return synthetic_production_bundle(
+        store=store,
+        season=SEASON,
+        entry=ENTRY,
+        gameweek=GAMEWEEK,
+    )
 
 
 def _obligations() -> tuple[ProofObligation, ...]:
@@ -198,6 +211,15 @@ def _empirical_qualification(store, proof_id: str) -> tuple[str, str, str]:
     return certificate_ref.artifact_id, subject_id, definition.experiment_id
 
 
+def _direct_claim_evidence(material: DirectQualificationMaterial):
+    return (
+        material.artifact_id,
+        material.subject_id,
+        material.experiment_id,
+        material.semantic_evidence_id,
+    )
+
+
 def _case(
     store,
     claim_artifact: str,
@@ -206,6 +228,7 @@ def _case(
     inconclusive: str | None = None,
     scope: str = SCOPE,
 ) -> AssuranceCase:
+    direct = _fixture(store).direct_qualifications
     claims = []
     for proof_id in sorted(MANDATORY_PRODUCTION_PROOF_IDS):
         if proof_id == missing:
@@ -214,12 +237,19 @@ def _case(
         artifact_ids = [claim_artifact]
         evidence_ids = ["synthetic-evidence"]
         if empirical and proof_id != inconclusive:
-            qualification_artifact, subject_id, experiment_id = _empirical_qualification(
-                store,
-                proof_id,
-            )
-            artifact_ids.append(qualification_artifact)
-            evidence_ids.extend((subject_id, experiment_id))
+            if proof_id in direct:
+                qualification_artifact, subject_id, experiment_id, semantic_id = (
+                    _direct_claim_evidence(direct[proof_id])
+                )
+                artifact_ids.append(qualification_artifact)
+                evidence_ids.extend((subject_id, experiment_id, semantic_id))
+            else:
+                qualification_artifact, subject_id, experiment_id = _empirical_qualification(
+                    store,
+                    proof_id,
+                )
+                artifact_ids.append(qualification_artifact)
+                evidence_ids.extend((subject_id, experiment_id))
         claims.append(
             AssuranceClaim(
                 proof_id=proof_id,
@@ -264,14 +294,15 @@ def _execute(
 ):
     store = store or _DurableArtifactStore(tmp_path / "artifacts")
     registry = registry or _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim_artifact = _artifact(store, "claim")
     return store, registry, execute_production_cutover(
         season=SEASON,
         entry=ENTRY,
         gameweek=GAMEWEEK,
-        bundle_id=BundleId("bundle-v2"),
-        world_id=GlobalWorldId("world-v2"),
+        bundle_id=fixture.bundle.bundle_id,
+        world_id=fixture.bundle.world_id,
         runtime_digest="sha256:v2-runtime",
         created_at=CREATED_AT,
         valid_until=valid_until,
@@ -313,6 +344,7 @@ def test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_writ
     obligations = _obligations()[1:]
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
     with pytest.raises(ValueError, match="proof surface is incomplete"):
@@ -320,8 +352,8 @@ def test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_writ
             season=SEASON,
             entry=ENTRY,
             gameweek=GAMEWEEK,
-            bundle_id=BundleId("bundle-v2"),
-            world_id=GlobalWorldId("world-v2"),
+            bundle_id=fixture.bundle.bundle_id,
+            world_id=fixture.bundle.world_id,
             runtime_digest="sha256:v2-runtime",
             created_at=CREATED_AT,
             valid_until=VALID_UNTIL,
@@ -338,6 +370,7 @@ def test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_writ
 def test_proof_class_laundering_is_rejected_before_pointer_write(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
     target = sorted(EMPIRICAL_PRODUCTION_PROOF_IDS)[0]
@@ -362,8 +395,8 @@ def test_proof_class_laundering_is_rejected_before_pointer_write(tmp_path: Path)
             season=SEASON,
             entry=ENTRY,
             gameweek=GAMEWEEK,
-            bundle_id=BundleId("bundle-v2"),
-            world_id=GlobalWorldId("world-v2"),
+            bundle_id=fixture.bundle.bundle_id,
+            world_id=fixture.bundle.world_id,
             runtime_digest="sha256:v2-runtime",
             created_at=CREATED_AT,
             valid_until=VALID_UNTIL,
@@ -380,6 +413,7 @@ def test_proof_class_laundering_is_rejected_before_pointer_write(tmp_path: Path)
 def test_random_artifact_cannot_satisfy_empirical_production_proof(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     random_artifact = _artifact(store, "this-is-not-a-qualification-certificate")
     target = sorted(EMPIRICAL_PRODUCTION_PROOF_IDS)[0]
@@ -403,8 +437,8 @@ def test_random_artifact_cannot_satisfy_empirical_production_proof(tmp_path: Pat
             season=SEASON,
             entry=ENTRY,
             gameweek=GAMEWEEK,
-            bundle_id=BundleId("bundle-v2"),
-            world_id=GlobalWorldId("world-v2"),
+            bundle_id=fixture.bundle.bundle_id,
+            world_id=fixture.bundle.world_id,
             runtime_digest="sha256:v2-runtime",
             created_at=CREATED_AT,
             valid_until=VALID_UNTIL,
@@ -418,9 +452,62 @@ def test_random_artifact_cannot_satisfy_empirical_production_proof(tmp_path: Pat
     assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 
 
+def test_direct_policy_qualification_cannot_authorize_different_bundle_policy(tmp_path: Path) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
+    manifest = _artifact(store, "manifest")
+    good_case = _case(store, _artifact(store, "claim"))
+    policy_claim = next(
+        claim
+        for claim in good_case.claims
+        if claim.proof_id == "PO-DECISION-POLICY-QUALIFICATION-001"
+    )
+    unrelated_artifact, unrelated_subject, unrelated_experiment = _empirical_qualification(
+        store,
+        "PO-DECISION-POLICY-QUALIFICATION-001",
+    )
+    claims = tuple(
+        AssuranceClaim(
+            proof_id=claim.proof_id,
+            status=claim.status,
+            evidence_ids=(
+                "synthetic-evidence",
+                unrelated_subject,
+                unrelated_experiment,
+                policy_claim.evidence_ids[-1],
+            ),
+            test_ids=claim.test_ids,
+            artifact_ids=(claim.artifact_ids[0], unrelated_artifact),
+        )
+        if claim.proof_id == "PO-DECISION-POLICY-QUALIFICATION-001"
+        else claim
+        for claim in good_case.claims
+    )
+    with pytest.raises(ValueError, match="PO-DECISION-POLICY-QUALIFICATION-001"):
+        execute_production_cutover(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=fixture.bundle.bundle_id,
+            world_id=fixture.bundle.world_id,
+            runtime_digest="sha256:v2-runtime",
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
+            artifact_manifest_id=manifest,
+            assurance_case=AssuranceCase(release_scope=SCOPE, claims=claims),
+            obligations=_obligations(),
+            backend_qualification=_backend(store, registry),
+            artifact_store=store,
+            production_registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
 def test_missing_required_proof_withholds_and_never_moves_production_pointer(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
     missing = sorted(MANDATORY_PRODUCTION_PROOF_IDS)[0]
@@ -428,8 +515,8 @@ def test_missing_required_proof_withholds_and_never_moves_production_pointer(tmp
         season=SEASON,
         entry=ENTRY,
         gameweek=GAMEWEEK,
-        bundle_id=BundleId("bundle-v2"),
-        world_id=GlobalWorldId("world-v2"),
+        bundle_id=fixture.bundle.bundle_id,
+        world_id=fixture.bundle.world_id,
         runtime_digest="sha256:v2-runtime",
         created_at=CREATED_AT,
         valid_until=VALID_UNTIL,
@@ -453,14 +540,15 @@ def test_missing_required_proof_withholds_and_never_moves_production_pointer(tmp
 def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
     outcome = execute_production_cutover(
         season=SEASON,
         entry=ENTRY,
         gameweek=GAMEWEEK,
-        bundle_id=BundleId("bundle-v2"),
-        world_id=GlobalWorldId("world-v2"),
+        bundle_id=fixture.bundle.bundle_id,
+        world_id=fixture.bundle.world_id,
         runtime_digest="sha256:v2-runtime",
         created_at=CREATED_AT,
         valid_until=VALID_UNTIL,
@@ -483,6 +571,7 @@ def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_
 def test_reference_filesystem_backends_cannot_be_qualified_by_green_booleans(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     registry = FileSystemReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
     backend = _backend(store, registry, qualified=True)
@@ -492,8 +581,8 @@ def test_reference_filesystem_backends_cannot_be_qualified_by_green_booleans(tmp
         season=SEASON,
         entry=ENTRY,
         gameweek=GAMEWEEK,
-        bundle_id=BundleId("bundle-v2"),
-        world_id=GlobalWorldId("world-v2"),
+        bundle_id=fixture.bundle.bundle_id,
+        world_id=fixture.bundle.world_id,
         runtime_digest="sha256:v2-runtime",
         created_at=CREATED_AT,
         valid_until=VALID_UNTIL,
@@ -511,6 +600,7 @@ def test_reference_filesystem_backends_cannot_be_qualified_by_green_booleans(tmp
 def test_backend_qualification_must_match_actual_adapter_identities(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     registry = FileSystemReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
     backend = ProductionBackendQualification(
@@ -529,8 +619,8 @@ def test_backend_qualification_must_match_actual_adapter_identities(tmp_path: Pa
             season=SEASON,
             entry=ENTRY,
             gameweek=GAMEWEEK,
-            bundle_id=BundleId("bundle-v2"),
-            world_id=GlobalWorldId("world-v2"),
+            bundle_id=fixture.bundle.bundle_id,
+            world_id=fixture.bundle.world_id,
             runtime_digest="sha256:v2-runtime",
             created_at=CREATED_AT,
             valid_until=VALID_UNTIL,
@@ -563,6 +653,7 @@ class _StaleRegistry(_DurableReleaseRegistry):
 def test_stale_writer_fails_closed_and_cannot_become_current(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _StaleRegistry(tmp_path / "production")
+    fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
     with pytest.raises(CompareAndSwapConflict, match="stale production"):
@@ -570,8 +661,8 @@ def test_stale_writer_fails_closed_and_cannot_become_current(tmp_path: Path) -> 
             season=SEASON,
             entry=ENTRY,
             gameweek=GAMEWEEK,
-            bundle_id=BundleId("bundle-v2"),
-            world_id=GlobalWorldId("world-v2"),
+            bundle_id=fixture.bundle.bundle_id,
+            world_id=fixture.bundle.world_id,
             runtime_digest="sha256:v2-runtime",
             created_at=CREATED_AT,
             valid_until=VALID_UNTIL,

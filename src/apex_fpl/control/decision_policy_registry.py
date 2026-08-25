@@ -7,7 +7,13 @@ from pathlib import Path
 
 import yaml
 
-from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.artifact_store import ArtifactIntegrityError, ArtifactStore
+from apex_fpl.control.decision_policy_support import (
+    load_candidate_policy,
+    load_chip_option_value_policy,
+    load_continuation_value_policy,
+    load_price_policy,
+)
 from apex_fpl.control.empirical_qualification_admission import (
     verify_typed_empirical_qualification,
 )
@@ -18,6 +24,20 @@ from apex_fpl.core.decision_policy import (
     DecisionPolicyQualificationState,
 )
 from apex_fpl.core.ids import DecisionPolicyId
+
+
+def _require_artifact_bytes(
+    artifact_id: str,
+    *,
+    store: ArtifactStore,
+    label: str,
+) -> None:
+    """Normalize storage failures at the DecisionPolicy trust boundary."""
+
+    try:
+        store.read_bytes(artifact_id)
+    except (FileNotFoundError, ArtifactIntegrityError) as exc:
+        raise ValueError(f"DecisionPolicy {label} artifact failed integrity/replay") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +75,51 @@ class DecisionPolicyRegistry:
             return None
         return self.get(self.champion_policy_id)
 
+    def _verify_receding_supports(
+        self,
+        policy: DecisionPolicy,
+        *,
+        store: ArtifactStore,
+    ) -> None:
+        if policy.evaluation_mode is not DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION:
+            return
+        support_ids = (
+            policy.continuation_value_artifact_id,
+            policy.chip_option_value_artifact_id,
+            policy.price_policy_artifact_id,
+            policy.candidate_policy_artifact_id,
+        )
+        if any(artifact_id is None for artifact_id in support_ids):
+            raise ValueError("receding-horizon DecisionPolicy lacks complete support artifacts")
+
+        typed_supports = (
+            (
+                policy.continuation_value_artifact_id,
+                "continuation-value",
+                load_continuation_value_policy,
+            ),
+            (
+                policy.chip_option_value_artifact_id,
+                "chip-option-value",
+                load_chip_option_value_policy,
+            ),
+            (policy.price_policy_artifact_id, "price-policy", load_price_policy),
+            (policy.candidate_policy_artifact_id, "candidate-policy", load_candidate_policy),
+        )
+        loaded = []
+        for artifact_id, label, loader in typed_supports:
+            assert artifact_id is not None
+            _require_artifact_bytes(artifact_id, store=store, label=label)
+            loaded.append(loader(artifact_id, store=store, as_of=policy.first_available_at))
+        continuation, chip_option, price, candidate = loaded
+        supports = (continuation, chip_option, price, candidate)
+        if any(support.season != policy.season for support in supports):
+            raise ValueError("DecisionPolicy support artifact season mismatch")
+        if continuation.horizon_gameweeks != policy.horizon_gameweeks:
+            raise ValueError("DecisionPolicy continuation-value horizon mismatch")
+        if chip_option.horizon_gameweeks != policy.horizon_gameweeks:
+            raise ValueError("DecisionPolicy chip-option horizon mismatch")
+
     def verify_policy_artifacts(
         self,
         policy: DecisionPolicy,
@@ -65,16 +130,13 @@ class DecisionPolicyRegistry:
     ) -> None:
         if self.get(policy.decision_policy_id) != policy:
             raise ValueError("DecisionPolicy is not registered under its semantic identity")
-        artifact_ids = (
-            policy.qualification_artifact_id,
-            policy.continuation_value_artifact_id,
-            policy.chip_option_value_artifact_id,
-            policy.price_policy_artifact_id,
-            policy.candidate_policy_artifact_id,
-        )
-        for artifact_id in artifact_ids:
-            if artifact_id is not None:
-                store.read_bytes(artifact_id)
+        if policy.qualification_artifact_id is not None:
+            _require_artifact_bytes(
+                policy.qualification_artifact_id,
+                store=store,
+                label="qualification",
+            )
+        self._verify_receding_supports(policy, store=store)
         if production:
             if not policy.production_qualified:
                 raise ValueError("production requires a qualified receding-horizon DecisionPolicy")
@@ -144,6 +206,7 @@ def load_decision_policy_registry(path: str | Path) -> DecisionPolicyRegistry:
                     else str(row["candidate_policy_artifact_id"])
                 ),
                 tie_break_policy=str(row["tie_break_policy"]),
+                numeric_policy_id=str(row["numeric_policy_id"]),
             )
         )
     champion_raw = raw.get("champion_policy_id")

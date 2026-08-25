@@ -28,7 +28,7 @@ from apex_fpl.core.experiments import (
     QualificationMetricResult,
     QualificationMetricRule,
 )
-from apex_fpl.core.ids import BundleId, GlobalWorldId
+from apex_fpl.core.ids import BundleId
 from apex_fpl.core.production import MANDATORY_PRODUCTION_PROOF_IDS, ProductionBackendQualification
 from apex_fpl.core.production_authority import ProductionAuthorityStatus
 from apex_fpl.core.production_proof_contract import (
@@ -43,6 +43,8 @@ from apex_fpl.core.proofs import (
     ProofStatus,
     ReleasePolicy,
 )
+
+from production_bundle_helpers import synthetic_production_bundle
 
 
 SEASON = "2026-2027"
@@ -173,6 +175,12 @@ def _empirical_qualification(store, proof_id: str) -> tuple[str, str, str]:
 def _qualified_cutover(tmp_path: Path):
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = synthetic_production_bundle(
+        store=store,
+        season=SEASON,
+        entry=ENTRY,
+        gameweek=GAMEWEEK,
+    )
     evidence = _artifact(store, "proof-evidence")
     manifest = _artifact(store, "manifest")
     store_q = _artifact(store, "store-qualified")
@@ -197,12 +205,19 @@ def _qualified_cutover(tmp_path: Path):
         artifact_ids = [evidence]
         evidence_ids = ["evidence"]
         if empirical:
-            qualification_artifact, subject_id, experiment_id = _empirical_qualification(
-                store,
-                proof_id,
-            )
-            artifact_ids.append(qualification_artifact)
-            evidence_ids.extend((subject_id, experiment_id))
+            direct = fixture.direct_qualifications.get(proof_id)
+            if direct is not None:
+                artifact_ids.append(direct.artifact_id)
+                evidence_ids.extend(
+                    (direct.subject_id, direct.experiment_id, direct.semantic_evidence_id)
+                )
+            else:
+                qualification_artifact, subject_id, experiment_id = _empirical_qualification(
+                    store,
+                    proof_id,
+                )
+                artifact_ids.append(qualification_artifact)
+                evidence_ids.extend((subject_id, experiment_id))
         claims.append(
             AssuranceClaim(
                 proof_id=proof_id,
@@ -231,8 +246,8 @@ def _qualified_cutover(tmp_path: Path):
         season=SEASON,
         entry=ENTRY,
         gameweek=GAMEWEEK,
-        bundle_id=BundleId("bundle-v2"),
-        world_id=GlobalWorldId("world-v2"),
+        bundle_id=fixture.bundle.bundle_id,
+        world_id=fixture.bundle.world_id,
         runtime_digest="sha256:runtime-v2",
         created_at=CREATED_AT,
         valid_until=VALID_UNTIL,
@@ -275,7 +290,8 @@ def test_exact_current_proof_authorized_release_is_only_actionable_authority(tmp
     assert authority.safe_to_act is True
     assert authority.release_id is not None
     assert str(authority.release_id) == outcome.release_record.release_id
-    assert authority.production_result_bundle_id == BundleId("bundle-v2")
+    assert outcome.release_record.bundle_id is not None
+    assert authority.production_result_bundle_id == BundleId(outcome.release_record.bundle_id)
 
 
 def _make_current_record(
@@ -361,6 +377,21 @@ def test_corrupt_publication_authorization_withholds_current_answer(tmp_path: Pa
     assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
     assert authority.production_result_bundle_id is None
     assert "publication authorization is invalid" in authority.blockers[0]
+
+
+def test_corrupt_production_bundle_withholds_current_answer(tmp_path: Path) -> None:
+    store, registry, outcome = _qualified_cutover(tmp_path)
+    bundle_id = outcome.release_record.bundle_id
+    assert bundle_id is not None
+    digest = bundle_id.split(":", 1)[1]
+    path = tmp_path / "artifacts" / "objects" / "sha256" / digest[:2] / digest
+    path.write_bytes(b"corrupt")
+
+    authority = _resolve(store, registry)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "publication authorization is invalid" in authority.blockers[0]
+    assert "production decision bundle" in authority.blockers[0]
 
 
 def test_expired_current_release_is_non_actionable_even_when_pointer_is_current(tmp_path: Path) -> None:
