@@ -6,6 +6,10 @@ from pathlib import Path
 import pytest
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.empirical_qualification_admission import (
+    SCENARIO_GENERATOR_QUALIFICATION_ID,
+    SCENARIO_POLICY_QUALIFICATION_ID,
+)
 from apex_fpl.control.ruleset_registry import load_ruleset
 from apex_fpl.control.scenario_registry import (
     ScenarioGovernanceRegistry,
@@ -69,6 +73,8 @@ from apex_fpl.decision.scenario_store import (
     store_robustness_report,
     store_scenario_set,
 )
+
+from empirical_qualification_helpers import synthetic_supported_qualification_artifact
 
 
 POSITIONS = {
@@ -489,8 +495,6 @@ def test_scenario_and_robustness_replay_preserve_semantic_identity(tmp_path: Pat
 def test_qualified_registry_requires_real_artifacts_and_champions(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     parameter = store.put_bytes(b"scenario-parameter").artifact_id
-    qualification = store.put_bytes(b"scenario-qualification").artifact_id
-    policy_qualification = store.put_bytes(b"policy-qualification").artifact_id
     generator = ScenarioGeneratorArtifact(
         generator_name="qualified-joint-generator",
         generator_version="1",
@@ -498,16 +502,36 @@ def test_qualified_registry_requires_real_artifacts_and_champions(tmp_path: Path
         rng_algorithm="qualified-rng-v1",
         parameter_artifact_ids=(parameter,),
         qualification_state=ScenarioQualificationState.QUALIFIED,
-        qualification_artifact_id=qualification,
+        qualification_artifact_id=store.put_bytes(b"generator-placeholder").artifact_id,
         valid_seasons=("2026-2027",),
         trained_through="2026-08-20T00:00:00Z",
         first_available_at="2026-08-21T00:00:00Z",
         max_horizon_gameweeks=8,
     )
+    generator = replace(
+        generator,
+        qualification_artifact_id=synthetic_supported_qualification_artifact(
+            store=store,
+            subject_payload=generator.semantic_payload(),
+            subject_kind="apex.scenario-generator",
+            proof_id=SCENARIO_GENERATOR_QUALIFICATION_ID,
+            season="2026-2027",
+        ),
+    )
     policy = replace(
         _policy(),
         qualification_state=ScenarioQualificationState.QUALIFIED,
-        qualification_artifact_id=policy_qualification,
+        qualification_artifact_id=store.put_bytes(b"policy-placeholder").artifact_id,
+    )
+    policy = replace(
+        policy,
+        qualification_artifact_id=synthetic_supported_qualification_artifact(
+            store=store,
+            subject_payload=policy.semantic_payload(),
+            subject_kind="apex.scenario-policy",
+            proof_id=SCENARIO_POLICY_QUALIFICATION_ID,
+            season="2026-2027",
+        ),
     )
     registry = ScenarioGovernanceRegistry(
         season="2026-2027",
@@ -516,9 +540,25 @@ def test_qualified_registry_requires_real_artifacts_and_champions(tmp_path: Path
         champion_generator_id=generator.scenario_generator_id,
         champion_policy_id=policy.scenario_policy_id,
     )
-    registry.verify_generator_artifacts(generator, store=store, production=True)
-    registry.verify_policy_artifacts(policy, store=store, production=True)
+    as_of = "2026-08-24T06:00:00Z"
+    registry.verify_generator_artifacts(
+        generator,
+        store=store,
+        production=True,
+        as_of=as_of,
+    )
+    registry.verify_policy_artifacts(
+        policy,
+        store=store,
+        production=True,
+        as_of=as_of,
+    )
 
     empty_store = FileSystemArtifactStore(tmp_path / "missing")
     with pytest.raises(FileNotFoundError):
-        registry.verify_generator_artifacts(generator, store=empty_store, production=True)
+        registry.verify_generator_artifacts(
+            generator,
+            store=empty_store,
+            production=True,
+            as_of=as_of,
+        )
