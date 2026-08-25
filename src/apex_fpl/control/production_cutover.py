@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import json
 from typing import Iterable, Protocol
 
-from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.artifact_store import ArtifactIntegrityError, ArtifactStore
 from apex_fpl.control.release_registry import ReleaseKey, ReleaseRecord, ReleaseStatus
 from apex_fpl.core.canonical import canonical_json_bytes
 from apex_fpl.core.ids import BundleId, GlobalWorldId, ReleaseId
@@ -29,6 +30,8 @@ from apex_fpl.core.proofs import (
 
 class ProductionReleaseRegistry(Protocol):
     """Durable shared production registry port required by cutover."""
+
+    backend_id: str
 
     def append(self, record: ReleaseRecord) -> ReleaseRecord: ...
 
@@ -76,6 +79,34 @@ def _validate_proof_surface(obligations: tuple[ProofObligation, ...]) -> None:
     )
     if downgraded:
         raise ValueError(f"mandatory production proofs are not REQUIRED: {downgraded}")
+
+
+def _backend_id(value: object, *, label: str) -> str:
+    backend_id = getattr(value, "backend_id", None)
+    if not isinstance(backend_id, str) or not backend_id.strip():
+        raise ValueError(f"{label} has no stable production backend identity")
+    return backend_id.strip()
+
+
+def _validate_backend_binding(
+    *,
+    artifact_store: ArtifactStore,
+    production_registry: ProductionReleaseRegistry,
+    qualification: ProductionBackendQualification,
+) -> None:
+    artifact_backend_id = _backend_id(artifact_store, label="production ArtifactStore")
+    registry_backend_id = _backend_id(
+        production_registry,
+        label="production ReleaseRegistry",
+    )
+    if artifact_backend_id != qualification.artifact_store_backend_id:
+        raise ValueError(
+            "production ArtifactStore backend identity does not match qualification"
+        )
+    if registry_backend_id != qualification.release_registry_backend_id:
+        raise ValueError(
+            "production ReleaseRegistry backend identity does not match qualification"
+        )
 
 
 def _claim_artifacts(
@@ -216,6 +247,16 @@ def _seal_release_record(record: ReleaseRecord, *, store: ArtifactStore) -> str:
     return ref.artifact_id
 
 
+def _parse_timestamp(value: str, *, label: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label} is not valid ISO-8601") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{label} must be timezone-aware")
+    return parsed
+
+
 def _cutover_blockers(
     *,
     season: str,
@@ -223,6 +264,8 @@ def _cutover_blockers(
     gameweek: int,
     bundle_id: BundleId | None,
     world_id: GlobalWorldId | None,
+    created_at: str,
+    valid_until: str | None,
     assurance_case: AssuranceCase,
     backend_qualification: ProductionBackendQualification,
 ) -> tuple[str, ...]:
@@ -244,6 +287,22 @@ def _cutover_blockers(
         blockers.append("production bundle identity is missing")
     if world_id is None:
         blockers.append("production GlobalWorld identity is missing")
+
+    created: datetime | None = None
+    try:
+        created = _parse_timestamp(created_at, label="production created_at")
+    except ValueError as exc:
+        blockers.append(str(exc))
+    if valid_until is None:
+        blockers.append("production release validity horizon is missing")
+    else:
+        try:
+            valid = _parse_timestamp(valid_until, label="production valid_until")
+        except ValueError as exc:
+            blockers.append(str(exc))
+        else:
+            if created is not None and valid <= created:
+                blockers.append("production valid_until must be later than created_at")
     return tuple(blockers)
 
 
@@ -269,6 +328,7 @@ def execute_production_cutover(
     season = str(season).strip()
     runtime_digest = str(runtime_digest).strip()
     created_at = str(created_at).strip()
+    valid_until = None if valid_until is None else str(valid_until).strip()
     if not season:
         raise ValueError("production season is required")
     if isinstance(entry, bool) or not isinstance(entry, int) or entry <= 0:
@@ -280,6 +340,11 @@ def execute_production_cutover(
 
     obligations_tuple = tuple(sorted(tuple(obligations), key=lambda item: item.proof_id))
     _validate_proof_surface(obligations_tuple)
+    _validate_backend_binding(
+        artifact_store=artifact_store,
+        production_registry=production_registry,
+        qualification=backend_qualification,
+    )
     manifest_id = _verify_artifact(
         artifact_store, artifact_manifest_id, label="production artifact manifest"
     )
@@ -309,6 +374,8 @@ def execute_production_cutover(
         gameweek=gameweek,
         bundle_id=bundle_id,
         world_id=world_id,
+        created_at=created_at,
+        valid_until=valid_until,
         assurance_case=assurance_case,
         backend_qualification=backend_qualification,
     )
@@ -319,6 +386,8 @@ def execute_production_cutover(
         bundle_id=bundle_id,
         world_id=world_id,
         runtime_digest=runtime_digest,
+        created_at=created_at,
+        valid_until=valid_until,
         artifact_manifest_id=manifest_id,
         assurance_case_id=certificate.assurance_case_id,
         assurance_case_artifact_id=case_artifact_id,
@@ -459,6 +528,8 @@ def _load_json_object(
 ) -> dict[str, object]:
     try:
         raw = json.loads(artifact_store.read_bytes(artifact_id).decode("utf-8"))
+    except ArtifactIntegrityError as exc:
+        raise ValueError(f"{schema_name} artifact failed integrity verification") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"{schema_name} artifact is not valid UTF-8 JSON") from exc
     if not isinstance(raw, dict):
@@ -564,6 +635,8 @@ def _replay_backend_qualification(
     if any(not isinstance(payload.get(name), bool) for name in bool_fields):
         raise ValueError("production backend qualification booleans must be typed")
     qualification = ProductionBackendQualification(
+        artifact_store_backend_id=str(payload.get("artifact_store_backend_id") or ""),
+        release_registry_backend_id=str(payload.get("release_registry_backend_id") or ""),
         artifact_store_qualification_artifact_id=str(
             payload.get("artifact_store_qualification_artifact_id") or ""
         ),
@@ -607,6 +680,11 @@ def load_production_publication_authorization(
         bundle_id=None if bundle_raw is None else BundleId(bundle_raw),
         world_id=None if world_raw is None else GlobalWorldId(world_raw),
         runtime_digest=str(payload.get("runtime_digest") or ""),
+        created_at=str(payload.get("created_at") or ""),
+        valid_until=_optional_string(
+            payload.get("valid_until"),
+            label="authorization valid_until",
+        ),
         artifact_manifest_id=str(payload.get("artifact_manifest_id") or ""),
         assurance_case_id=str(payload.get("assurance_case_id") or ""),
         assurance_case_artifact_id=str(payload.get("assurance_case_artifact_id") or ""),
@@ -675,6 +753,8 @@ def load_production_publication_authorization(
         gameweek=authorization.gameweek,
         bundle_id=authorization.bundle_id,
         world_id=authorization.world_id,
+        created_at=authorization.created_at,
+        valid_until=authorization.valid_until,
         assurance_case=case,
         backend_qualification=qualification,
     )
@@ -810,6 +890,8 @@ def load_production_cutover_report(
         raise ValueError("replayed production ReleaseRecord identity does not match report")
     if record.publication_authorization_artifact_id != report.publication_authorization_artifact_id:
         raise ValueError("replayed ReleaseRecord authorization does not match report")
+    if record.created_at != authorization.created_at or record.valid_until != authorization.valid_until:
+        raise ValueError("replayed ReleaseRecord validity does not match authorization")
     expected_published = report.status is ProductionCutoverStatus.PUBLISHED
     expected_status = ReleaseStatus.PUBLISHED if expected_published else ReleaseStatus.WITHHELD
     if record.status is not expected_status:
