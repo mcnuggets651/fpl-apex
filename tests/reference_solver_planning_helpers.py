@@ -62,13 +62,42 @@ class SyntheticPlanningParityMaterial:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _CachedParityTemplate:
+    material: SyntheticPlanningParityMaterial
+    artifacts: tuple[tuple[str, bytes], ...]
+
+
+# Test-only immutable cache. The cache never short-circuits production replay: it only avoids
+# rebuilding the exact same synthetic qualification/authorization artifacts in every isolated
+# test ArtifactStore. Content identities are checked again when bytes are reinserted.
+_PARITY_TEMPLATE_CACHE: dict[str, _CachedParityTemplate] = {}
+
+
+def _restore_cached_template(*, store, cached: _CachedParityTemplate) -> SyntheticPlanningParityMaterial:
+    for artifact_id, raw in cached.artifacts:
+        restored = store.put_bytes(raw)
+        if restored.artifact_id != artifact_id:
+            raise ValueError("cached synthetic planning parity artifact identity drifted")
+    return cached.material
+
+
 def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningParityMaterial:
     """Build mechanism-only replay-valid planning parity authority for tests.
 
-    This helper intentionally goes through the same sealed request, corpus replay,
-    worker qualification, champion registry, solver certificate, and authorization
-    machinery that production cutover verifies. It is synthetic test evidence only.
+    The first construction for a semantic production-planning bundle intentionally goes through
+    the same sealed request, corpus replay, worker qualification, champion registry, solver
+    certificate, and authorization machinery that production cutover verifies. Subsequent tests
+    restore those exact immutable bytes into their isolated stores; production verification still
+    independently replays the retained qualification and authorization on every cutover.
+
+    This is synthetic test evidence only and never production qualification evidence.
     """
+
+    cache_key = str(fixture.bundle.bundle_id)
+    cached = _PARITY_TEMPLATE_CACHE.get(cache_key)
+    if cached is not None:
+        return _restore_cached_template(store=store, cached=cached)
 
     verified = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
     policy = verified.decision_policy
@@ -178,7 +207,7 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         horizon_gameweeks=policy.horizon_gameweeks,
     )
 
-    return SyntheticPlanningParityMaterial(
+    material = SyntheticPlanningParityMaterial(
         planning_result_id=str(verified.decision.planning_result_id),
         certificate_artifact_id=stored_certificate.artifact_id,
         certificate_id=str(certificate.certificate_id),
@@ -187,3 +216,22 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         qualification_artifact_id=qualification_artifact_id,
         registry_artifact_id=authorization.authorization.registry_artifact_id,
     )
+    parity_artifact_ids = (
+        stored_request.artifact_id,
+        case_artifact_id,
+        corpus_artifact_id,
+        worker_code_artifact_id,
+        qualification_artifact_id,
+        authorization.authorization.registry_artifact_id,
+        stored_run.artifact_id,
+        stored_certificate.artifact_id,
+        authorization.artifact_id,
+    )
+    cached_artifacts = tuple(
+        (artifact_id, store.read_bytes(artifact_id)) for artifact_id in parity_artifact_ids
+    )
+    _PARITY_TEMPLATE_CACHE[cache_key] = _CachedParityTemplate(
+        material=material,
+        artifacts=cached_artifacts,
+    )
+    return material
