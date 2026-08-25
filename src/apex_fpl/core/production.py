@@ -116,14 +116,136 @@ class ProductionBackendQualification:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductionPublicationAuthorization:
+    """Immutable proof-derived authorization embedded in every V2 production release.
+
+    This artifact exists before a ReleaseRecord is constructed, so the record can bind to
+    it without an identity cycle. It is not sufficient on its own: publication still
+    requires the later CAS transition. Conversely, a PUBLISHED-looking record without an
+    exact verifying authorization can never become user-facing authority.
+    """
+
+    season: str
+    entry: int
+    gameweek: int
+    bundle_id: BundleId | None
+    world_id: GlobalWorldId | None
+    runtime_digest: str
+    artifact_manifest_id: str
+    assurance_case_id: str
+    assurance_case_artifact_id: str
+    proof_obligations_artifact_id: str
+    release_certificate_status: str
+    release_certificate_blockers: tuple[str, ...]
+    cutover_blockers: tuple[str, ...]
+    backend_qualification_id: str
+    backend_qualification_snapshot_artifact_id: str
+    backend_qualification_artifact_ids: tuple[str, ...]
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1:
+            raise ValueError("unsupported ProductionPublicationAuthorization schema_version")
+        season = str(self.season).strip()
+        runtime_digest = str(self.runtime_digest).strip()
+        manifest_id = str(self.artifact_manifest_id).strip()
+        case_id = str(self.assurance_case_id).strip()
+        case_artifact = str(self.assurance_case_artifact_id).strip()
+        proof_artifact = str(self.proof_obligations_artifact_id).strip()
+        backend_id = str(self.backend_qualification_id).strip()
+        backend_snapshot = str(self.backend_qualification_snapshot_artifact_id).strip()
+        if not season or not runtime_digest or not manifest_id:
+            raise ValueError("production authorization requires season/runtime/manifest")
+        if isinstance(self.entry, bool) or not isinstance(self.entry, int) or self.entry <= 0:
+            raise ValueError("production authorization entry must be positive integer")
+        if isinstance(self.gameweek, bool) or not isinstance(self.gameweek, int) or self.gameweek <= 0:
+            raise ValueError("production authorization gameweek must be positive integer")
+        if not all((case_id, case_artifact, proof_artifact, backend_id, backend_snapshot)):
+            raise ValueError("production authorization requires complete proof/backend identities")
+        if self.release_certificate_status not in {"PASS", "FAIL"}:
+            raise ValueError("production authorization certificate status must be PASS or FAIL")
+        certificate_blockers = tuple(
+            str(item).strip()
+            for item in self.release_certificate_blockers
+            if str(item).strip()
+        )
+        cutover_blockers = tuple(
+            str(item).strip() for item in self.cutover_blockers if str(item).strip()
+        )
+        backend_artifacts = tuple(
+            sorted(
+                set(
+                    str(item).strip()
+                    for item in self.backend_qualification_artifact_ids
+                    if str(item).strip()
+                )
+            )
+        )
+        if len(backend_artifacts) != 2:
+            raise ValueError("production authorization requires both backend qualification artifacts")
+        if self.release_certificate_status == "PASS" and certificate_blockers:
+            raise ValueError("PASS production authorization cannot retain certificate blockers")
+        if self.release_certificate_status == "FAIL" and not certificate_blockers:
+            raise ValueError("FAIL production authorization requires certificate blockers")
+        object.__setattr__(self, "season", season)
+        object.__setattr__(self, "runtime_digest", runtime_digest)
+        object.__setattr__(self, "artifact_manifest_id", manifest_id)
+        object.__setattr__(self, "assurance_case_id", case_id)
+        object.__setattr__(self, "assurance_case_artifact_id", case_artifact)
+        object.__setattr__(self, "proof_obligations_artifact_id", proof_artifact)
+        object.__setattr__(self, "backend_qualification_id", backend_id)
+        object.__setattr__(self, "backend_qualification_snapshot_artifact_id", backend_snapshot)
+        object.__setattr__(self, "release_certificate_blockers", certificate_blockers)
+        object.__setattr__(self, "cutover_blockers", cutover_blockers)
+        object.__setattr__(self, "backend_qualification_artifact_ids", backend_artifacts)
+
+    @property
+    def authorized(self) -> bool:
+        return (
+            self.release_certificate_status == "PASS"
+            and not self.release_certificate_blockers
+            and not self.cutover_blockers
+            and self.bundle_id is not None
+            and self.world_id is not None
+        )
+
+    def semantic_payload(self) -> dict[str, object]:
+        return {
+            "schema_name": "apex-production-publication-authorization",
+            "schema_version": self.schema_version,
+            "season": self.season,
+            "entry": self.entry,
+            "gameweek": self.gameweek,
+            "bundle_id": None if self.bundle_id is None else str(self.bundle_id),
+            "world_id": None if self.world_id is None else str(self.world_id),
+            "runtime_digest": self.runtime_digest,
+            "artifact_manifest_id": self.artifact_manifest_id,
+            "assurance_case_id": self.assurance_case_id,
+            "assurance_case_artifact_id": self.assurance_case_artifact_id,
+            "proof_obligations_artifact_id": self.proof_obligations_artifact_id,
+            "release_certificate_status": self.release_certificate_status,
+            "release_certificate_blockers": list(self.release_certificate_blockers),
+            "cutover_blockers": list(self.cutover_blockers),
+            "backend_qualification_id": self.backend_qualification_id,
+            "backend_qualification_snapshot_artifact_id": self.backend_qualification_snapshot_artifact_id,
+            "backend_qualification_artifact_ids": list(self.backend_qualification_artifact_ids),
+            "authorized": self.authorized,
+        }
+
+    @property
+    def authorization_id(self) -> str:
+        return canonical_sha256(self.semantic_payload())
+
+
+@dataclass(frozen=True, slots=True)
 class ProductionCutoverReport:
     """Content-addressed evidence for one explicit production cutover attempt.
 
     A PASS ReleaseCertificate is the certification transition. It is necessary but not
     sufficient for publication: the production control plane must also be qualified and
-    atomic compare-and-swap must make the exact derived PUBLISHED ReleaseRecord current.
-    WITHHELD attempts retain their immutable ReleaseRecord evidence but cannot move the
-    production pointer or become actionable.
+    atomic compare-and-swap must make the exact proof-authorized PUBLISHED ReleaseRecord
+    current. WITHHELD attempts retain immutable evidence but cannot move the production
+    pointer or become actionable.
     """
 
     season: str
@@ -132,6 +254,7 @@ class ProductionCutoverReport:
     bundle_id: BundleId | None
     world_id: GlobalWorldId | None
     attempt_release_id: ReleaseId
+    publication_authorization_artifact_id: str
     release_record_artifact_id: str
     assurance_case_id: str
     assurance_case_artifact_id: str
@@ -161,6 +284,7 @@ class ProductionCutoverReport:
             raise ValueError("production cutover gameweek must be positive integer")
         if not isinstance(self.status, ProductionCutoverStatus):
             raise ValueError("production cutover status must be typed")
+        authorization_artifact = str(self.publication_authorization_artifact_id).strip()
         case_id = str(self.assurance_case_id).strip()
         case_artifact = str(self.assurance_case_artifact_id).strip()
         proof_artifact = str(self.proof_obligations_artifact_id).strip()
@@ -170,6 +294,7 @@ class ProductionCutoverReport:
         manifest_id = str(self.artifact_manifest_id).strip()
         if not all(
             (
+                authorization_artifact,
                 case_id,
                 case_artifact,
                 proof_artifact,
@@ -180,7 +305,7 @@ class ProductionCutoverReport:
                 str(self.attempt_release_id).strip(),
             )
         ):
-            raise ValueError("production cutover report requires complete proof/backend/release identities")
+            raise ValueError("production cutover report requires complete authorization/proof/backend/release identities")
         if self.release_certificate_status not in {"PASS", "FAIL"}:
             raise ValueError("production ReleaseCertificate status must be PASS or FAIL")
 
@@ -190,9 +315,7 @@ class ProductionCutoverReport:
             if str(item).strip()
         )
         cutover_blockers = tuple(
-            str(item).strip()
-            for item in self.cutover_blockers
-            if str(item).strip()
+            str(item).strip() for item in self.cutover_blockers if str(item).strip()
         )
         backend_artifacts = tuple(
             sorted(
@@ -216,6 +339,7 @@ class ProductionCutoverReport:
             raise ValueError("production cutover requires both backend qualification artifacts")
         required_sources = {
             manifest_id,
+            authorization_artifact,
             case_artifact,
             proof_artifact,
             backend_snapshot,
@@ -224,7 +348,7 @@ class ProductionCutoverReport:
         }
         if not required_sources.issubset(set(sources)):
             raise ValueError(
-                "production cutover lineage must include manifest, AssuranceCase, proof policy, backend and ReleaseRecord evidence"
+                "production cutover lineage must include authorization, manifest, AssuranceCase, proof policy, backend and ReleaseRecord evidence"
             )
 
         if self.status is ProductionCutoverStatus.PUBLISHED:
@@ -236,10 +360,14 @@ class ProductionCutoverReport:
                 raise ValueError("PUBLISHED production cutover requires bundle/world identities")
             if self.production_pointer_after != str(self.attempt_release_id):
                 raise ValueError("published production pointer must resolve to the exact release")
-        elif self.production_pointer_before != self.production_pointer_after:
-            raise ValueError("WITHHELD production cutover must not change current pointer")
+        else:
+            if not certificate_blockers and not cutover_blockers:
+                raise ValueError("WITHHELD production cutover requires an explicit blocker")
+            if self.production_pointer_before != self.production_pointer_after:
+                raise ValueError("WITHHELD production cutover must not change current pointer")
 
         object.__setattr__(self, "season", season)
+        object.__setattr__(self, "publication_authorization_artifact_id", authorization_artifact)
         object.__setattr__(self, "assurance_case_id", case_id)
         object.__setattr__(self, "assurance_case_artifact_id", case_artifact)
         object.__setattr__(self, "proof_obligations_artifact_id", proof_artifact)
@@ -278,6 +406,7 @@ class ProductionCutoverReport:
             "bundle_id": None if self.bundle_id is None else str(self.bundle_id),
             "world_id": None if self.world_id is None else str(self.world_id),
             "attempt_release_id": str(self.attempt_release_id),
+            "publication_authorization_artifact_id": self.publication_authorization_artifact_id,
             "release_record_artifact_id": self.release_record_artifact_id,
             "assurance_case_id": self.assurance_case_id,
             "assurance_case_artifact_id": self.assurance_case_artifact_id,
