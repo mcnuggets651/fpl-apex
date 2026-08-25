@@ -1,31 +1,31 @@
 {
   "contract": "apex-strategy-recommendation-v2",
-  "generated_at": "2026-08-24T20:00:43.932823+00:00",
+  "generated_at": "2026-08-25T03:34:37.879556+00:00",
   "canonical": true,
   "user_facing_source_of_truth": true,
   "ready_to_act": false,
   "blockers": [
     "Apex Unified production run did not complete canonical assembly",
     "data quality failed: fpl_core_playerstats: official-player coverage=0.0%; missing_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; missing IDs are not an append-only trailing registration block; gap exceeds bounded lag policy (max 5 players and minimum 99.0% coverage)",
-    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (156.0h old; max 18.0h)"
+    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (163.5h old; max 18.0h)"
   ],
   "official_snapshot": {
-    "snapshot_id": "20260824T200035Z-c6f56e57",
-    "bootstrap_sha256": "8148610487d4f256ec4826c801bb55ad9c0a47267c83be637bfe42484e768509",
-    "fixtures_sha256": "a46a0c330deef107d9005dc02ccb2ebfc0dc1a2c46aed8cc211819998eacf9cd"
+    "snapshot_id": "20260825T033428Z-058fae22",
+    "bootstrap_sha256": "3effb07e473c440aa1211934ad77e7adff9adb9a1b86eaf77103e1fb80df5db5",
+    "fixtures_sha256": "412ed8cd9d3b970da6c90fcce3bdb69fb58b44a5e79281c3fd79ce7d7359bd49"
   },
-  "decision_bundle_id": "f46e0c8d5249fb8f773cbaea1c6be9ab90224512e9f5fd6208bc1e6acbb9719a",
+  "decision_bundle_id": "906d157ff5c028d67662804a6efbdbf89fbf230b04b3ae925d0f974cc1d39269",
   "decision_bundle": {
     "contract": "apex-decision-bundle-v1",
-    "bundle_id": "f46e0c8d5249fb8f773cbaea1c6be9ab90224512e9f5fd6208bc1e6acbb9719a",
+    "bundle_id": "906d157ff5c028d67662804a6efbdbf89fbf230b04b3ae925d0f974cc1d39269",
     "material_inputs": {
       "official_players": {
-        "rows": 609,
-        "sha256": "a32ed6309fe92440e39c0fc930e763781c63017f6372b7c9cf1758d6a8949a44"
+        "rows": 610,
+        "sha256": "0ee532f6011272b3b1483de3be79b25377b41c370e167a726b2e4f4fad07821f"
       },
       "official_fixtures": {
         "rows": 380,
-        "sha256": "428debeb708fc8315d5c38e0391dc2ac73cc61cbf45a0a80300b052968a322f0"
+        "sha256": "6667c7aa085e46b9e741abb320dfd2ac9fdac29f5905993c0b8e5653cbee7e71"
       },
       "fpl_core_playerstats": {
         "rows": 0,
@@ -52,32 +52,32 @@
         "sha256": "94ca4a30bca367c8517380ed27a123c98ebbdcef1ef9eaa487feff0b79104f7f"
       },
       "news_evidence": {
-        "rows": 41,
-        "sha256": "12e305702f40f0c953b9a0ffef549b58a6bcfbca8ec01f9621d0c5eb5eddf59e"
+        "rows": 57,
+        "sha256": "7a68bbbb0f08f26c9764b99817e0b8f5ffc0c18a21471cf9ffe3bce4cb803ea7"
       },
       "understat_team_ratings": {
         "rows": 20,
-        "sha256": "e4abd49de39114ec4b2de17c4f66ba872ed7d2d2e6a1a5ef4725ec32e07570cc"
+        "sha256": "7389da93c0548cb02b1743fcd0081c9a15b4f25371106600b0827959be8fd270"
       },
       "understat_team_goal_surface": {
         "rows": 160,
-        "sha256": "6b2a2908625767a0d47635a0c2aace06c4c85aef393d659bcc72eb5dc021a99c"
+        "sha256": "cf38c37dcb907f693537cc8dd9a937ee2ee2da43fdd94db7f3af97b9eded1bd0"
       },
       "fixture_projection_surface": {
         "rows": 160,
-        "sha256": "16b0542a2cb6bb46fa9f2989d5329386172e153179f60403a0c71536df1dc3e8"
+        "sha256": "7baca10b5b910476f35d0c615ae24bb50dcd8bfb3522f907c473f3b9276a7283"
       },
       "airsenal_projection_surface": {
-        "rows": 4872,
-        "sha256": "a9db54a1390271326f2967535ecccc293655b1a0aaab6f9b44f00f6405340f41"
+        "rows": 4880,
+        "sha256": "1148fa56df8172b51f563daa18fafd16ff12d0c2af69507314029200f705b19a"
       },
       "market_odds_surface": {
         "rows": 0,
         "sha256": "1f45160f5549e0c827b3b2d9ff22f5c6d645dd0f003527cdcbc6a4e0c9872530"
       },
       "final_projection_matrix": {
-        "rows": 4872,
-        "sha256": "a2f9a1f08c51ca2b2472d37a9c5b36809c6d291a676835428ecd612ccff80f41"
+        "rows": 4880,
+        "sha256": "08acad48ccd268287151b3244138d7453a29b6066488000ea9bc51f26c9ac4fb"
       }
     }
   },

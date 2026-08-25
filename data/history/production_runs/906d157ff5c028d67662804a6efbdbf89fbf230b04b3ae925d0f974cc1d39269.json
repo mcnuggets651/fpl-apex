@@ -1,0 +1,22 @@
+{
+  "contract": "apex-production-run-v1",
+  "run_id": "32805513975",
+  "generated_at": "2026-08-25T03:34:37.879556+00:00",
+  "status": "not_ready",
+  "decision_bundle_id": "906d157ff5c028d67662804a6efbdbf89fbf230b04b3ae925d0f974cc1d39269",
+  "official_snapshot": {
+    "snapshot_id": "20260825T033428Z-058fae22",
+    "bootstrap_sha256": "3effb07e473c440aa1211934ad77e7adff9adb9a1b86eaf77103e1fb80df5db5",
+    "fixtures_sha256": "412ed8cd9d3b970da6c90fcce3bdb69fb58b44a5e79281c3fd79ce7d7359bd49"
+  },
+  "blockers": [
+    "Apex Unified production run did not complete canonical assembly",
+    "data quality failed: fpl_core_playerstats: official-player coverage=0.0%; missing_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; missing IDs are not an append-only trailing registration block; gap exceeds bounded lag policy (max 5 players and minimum 99.0% coverage)",
+    "required source unhealthy: fpl_core_playerstats: FPL Core pin is stale (163.5h old; max 18.0h)"
+  ],
+  "rejected_stale_diagnostics": {
+    "solver_parity.json": "da55f0a7fb3f587afeb636c674917eed315fc18bc95ebf2eab7626fdb28c1ecc",
+    "elite_latest.json": "e3fcaac2938d10eaa67b2487323f7e6af22b131c7de9cce10c57d78374f502bd"
+  },
+  "manifest_sha256": "e707097017da7d367e39df1f6cc06426769c38108ab1a9d2c1962e9fc3a0ee20"
+}
