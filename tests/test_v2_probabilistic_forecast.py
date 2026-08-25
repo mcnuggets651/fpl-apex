@@ -13,12 +13,30 @@ from apex_fpl.acquisition import (
     acquire_official_global_world,
 )
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.experiment_registry import (
+    ExperimentRegistration,
+    ExperimentRegistry,
+    derive_empirical_qualification_certificate,
+    store_empirical_qualification_certificate,
+    store_experiment_definition,
+    store_experiment_registry,
+    store_experiment_result,
+)
 from apex_fpl.control.feature_snapshot import build_and_store_feature_snapshot
 from apex_fpl.control.forecast_model_registry import (
     ForecastModelRegistry,
     load_forecast_model_registry,
 )
 from apex_fpl.control.ruleset_registry import load_ruleset
+from apex_fpl.core.experiments import (
+    ExactQualificationValue,
+    ExperimentDefinition,
+    ExperimentResult,
+    QualificationMetricDirection,
+    QualificationMetricResult,
+    QualificationMetricRule,
+    qualification_subject_id,
+)
 from apex_fpl.core.features import (
     FeatureObservation,
     FeatureScope,
@@ -132,6 +150,70 @@ def _feature_snapshot(
     )
 
 
+def _typed_model_qualification(
+    store: FileSystemArtifactStore,
+    provisional: ForecastModelArtifact,
+) -> str:
+    evaluator = store.put_bytes(b"forecast-qualification-evaluator").artifact_id
+    policy = store.put_bytes(b"forecast-qualification-policy").artifact_id
+    source = store.put_bytes(b"forecast-qualification-source").artifact_id
+    definition = ExperimentDefinition(
+        proof_id="PO-FORECAST-QUALIFICATION-001",
+        subject_kind="apex.forecast-model",
+        subject_id=qualification_subject_id(provisional.semantic_payload()),
+        season="2026-2027",
+        evaluator_artifact_id=evaluator,
+        policy_artifact_id=policy,
+        declared_at="2026-08-20T00:00:00Z",
+        evaluation_window_start="2026-08-21T00:00:00Z",
+        evaluation_window_end="2026-08-23T00:00:00Z",
+        minimum_sample_size=1,
+        metric_rules=(
+            QualificationMetricRule(
+                "synthetic-calibration",
+                QualificationMetricDirection.AT_LEAST,
+                ExactQualificationValue(1, 1),
+            ),
+        ),
+        valid_until="2027-05-31T23:59:59Z",
+    )
+    definition_ref = store_experiment_definition(definition, store=store)
+    result = ExperimentResult(
+        experiment_id=definition.experiment_id,
+        proof_id=definition.proof_id,
+        subject_kind=definition.subject_kind,
+        subject_id=definition.subject_id,
+        season=definition.season,
+        evaluator_artifact_id=evaluator,
+        evaluated_at="2026-08-23T00:00:00Z",
+        sample_size=1,
+        metrics=(
+            QualificationMetricResult(
+                "synthetic-calibration",
+                ExactQualificationValue(1, 1),
+            ),
+        ),
+        source_artifact_ids=(source,),
+    )
+    result_ref = store_experiment_result(result, store=store)
+    registry_ref = store_experiment_registry(
+        ExperimentRegistry(
+            season="2026-2027",
+            registrations=(
+                ExperimentRegistration(definition.experiment_id, definition_ref.artifact_id),
+            ),
+        ),
+        store=store,
+    )
+    certificate = derive_empirical_qualification_certificate(
+        definition_artifact_id=definition_ref.artifact_id,
+        result_artifact_id=result_ref.artifact_id,
+        registry_artifact_id=registry_ref.artifact_id,
+        store=store,
+    )
+    return store_empirical_qualification_certificate(certificate, store=store).artifact_id
+
+
 def _model(
     store: FileSystemArtifactStore,
     *,
@@ -141,20 +223,44 @@ def _model(
     max_horizon: int = 8,
 ) -> ForecastModelArtifact:
     parameter = store.put_bytes(b"model-parameters").artifact_id
-    qualification = (
-        store.put_bytes(b"qualification-evidence").artifact_id
-        if state is ModelQualificationState.QUALIFIED
-        else None
-    )
-    return ForecastModelArtifact(
+    if state is not ModelQualificationState.QUALIFIED:
+        return ForecastModelArtifact(
+            model_name="test-distribution-model",
+            model_version="1",
+            feature_contract="FeatureSnapshot.v1",
+            prediction_contract="PredictionBatch.v1",
+            parameter_artifact_ids=(parameter,),
+            qualification_state=state,
+            qualification_artifact_id=None,
+            valid_seasons=("2026-2027",),
+            trained_through=trained_through,
+            first_available_at=first_available_at,
+            max_horizon_gameweeks=max_horizon,
+        )
+    placeholder = store.put_bytes(b"qualification-placeholder").artifact_id
+    provisional = ForecastModelArtifact(
         model_name="test-distribution-model",
         model_version="1",
         feature_contract="FeatureSnapshot.v1",
         prediction_contract="PredictionBatch.v1",
         parameter_artifact_ids=(parameter,),
         qualification_state=state,
-        qualification_artifact_id=qualification,
+        qualification_artifact_id=placeholder,
         valid_seasons=("2026-2027",),
+        trained_through=trained_through,
+        first_available_at=first_available_at,
+        max_horizon_gameweeks=max_horizon,
+    )
+    qualification = _typed_model_qualification(store, provisional)
+    return ForecastModelArtifact(
+        model_name=provisional.model_name,
+        model_version=provisional.model_version,
+        feature_contract=provisional.feature_contract,
+        prediction_contract=provisional.prediction_contract,
+        parameter_artifact_ids=provisional.parameter_artifact_ids,
+        qualification_state=state,
+        qualification_artifact_id=qualification,
+        valid_seasons=provisional.valid_seasons,
         trained_through=trained_through,
         first_available_at=first_available_at,
         max_horizon_gameweeks=max_horizon,
@@ -293,7 +399,6 @@ def test_model_scenarios_compile_to_exact_minutes_and_points_distributions():
     forecast = compile_prediction_row(_probabilistic_row(target), ruleset=_ruleset())
     assert not hasattr(forecast, "reason")
     assert forecast.minutes_distribution.support == ((0, 4_000), (90, 6_000))
-    # 90-minute MID goal scenario: 2 appearance + 5 goal + 1 clean sheet = 8.
     assert forecast.points_distribution.support == ((0, 4_000), (8, 6_000))
     assert forecast.expected_points_numerator == 48_000
     assert forecast.uncertainty.appearance_probability_bps == 6_000
