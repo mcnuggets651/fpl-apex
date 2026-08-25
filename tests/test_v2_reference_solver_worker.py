@@ -189,7 +189,11 @@ def _row(
         minutes = DiscreteIntegerDistribution(
             ((0, 10_000 - appearance_bps), (90, appearance_bps))
         )
-    points = DiscreteIntegerDistribution(((points_low, 5_000), (points_high, 5_000)))
+    points = (
+        DiscreteIntegerDistribution(((points_low, 10_000),))
+        if points_low == points_high
+        else DiscreteIntegerDistribution(((points_low, 5_000), (points_high, 5_000)))
+    )
     return PlayerFixtureForecast(
         target=PlayerFixtureTarget(
             fixture_id=fixture_id,
