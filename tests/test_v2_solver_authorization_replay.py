@@ -25,8 +25,14 @@ from reference_solver_qualification_helpers import (
 )
 
 
-def _stored_pass(store: FileSystemArtifactStore):
-    bundle = build_qualified_reference_solver_bundle(store)
+@pytest.fixture(scope="module")
+def qualified_bundle(tmp_path_factory):
+    root = tmp_path_factory.mktemp("reference-solver-authorization")
+    store = FileSystemArtifactStore(root / "artifacts")
+    return store, build_qualified_reference_solver_bundle(store)
+
+
+def _stored_pass(store: FileSystemArtifactStore, bundle):
     mechanics = certify_selected_action(
         bundle.result,
         state=bundle.state,
@@ -74,12 +80,12 @@ def _stored_pass(store: FileSystemArtifactStore):
         solver=stored_solver,
         store=store,
     )
-    return stored_report, authorization, solver, bundle
+    return stored_report, authorization, solver
 
 
-def test_publication_pass_replays_qualified_champion_authorization(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    stored_report, authorization, _, _ = _stored_pass(store)
+def test_publication_pass_replays_qualified_champion_authorization(qualified_bundle) -> None:
+    store, bundle = qualified_bundle
+    stored_report, authorization, _ = _stored_pass(store, bundle)
     replayed = load_independent_assurance_report(stored_report.artifact_id, store=store)
     verified = verify_stored_independent_assurance(replayed, store=store)
     assert verified.stored_report.report.publication_eligible is True
@@ -88,10 +94,9 @@ def test_publication_pass_replays_qualified_champion_authorization(tmp_path: Pat
 
 
 def test_pass_looking_report_without_authorization_is_rejected_on_verified_replay(
-    tmp_path: Path,
+    qualified_bundle,
 ) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    bundle = build_qualified_reference_solver_bundle(store)
+    store, bundle = qualified_bundle
     mechanics = certify_selected_action(
         bundle.result,
         state=bundle.state,
@@ -131,9 +136,12 @@ def test_pass_looking_report_without_authorization_is_rejected_on_verified_repla
         verify_stored_independent_assurance(replayed, store=store)
 
 
-def test_authorization_replay_fails_if_qualification_artifact_is_missing(tmp_path: Path) -> None:
-    source_store = FileSystemArtifactStore(tmp_path / "source")
-    _, authorization, solver, _ = _stored_pass(source_store)
+def test_authorization_replay_fails_if_qualification_artifact_is_missing(
+    qualified_bundle,
+    tmp_path: Path,
+) -> None:
+    source_store, bundle = qualified_bundle
+    _, authorization, solver = _stored_pass(source_store, bundle)
     replay_store = FileSystemArtifactStore(tmp_path / "replay")
     for artifact_id in (
         authorization.artifact_id,
