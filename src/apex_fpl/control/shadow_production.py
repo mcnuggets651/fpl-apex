@@ -15,7 +15,14 @@ from apex_fpl.control.release_registry import (
 )
 from apex_fpl.core.canonical import canonical_json_bytes, canonical_sha256
 from apex_fpl.core.ids import BundleId, GlobalWorldId, ReleaseId
-from apex_fpl.core.proofs import AssuranceCase, ProofObligation
+from apex_fpl.core.proofs import (
+    AssuranceCase,
+    AssuranceClaim,
+    ProofClass,
+    ProofObligation,
+    ProofStatus,
+    ReleasePolicy,
+)
 from apex_fpl.core.shadow import ShadowProductionReport, ShadowProductionStatus
 
 
@@ -48,6 +55,43 @@ def _claim_artifacts(case: AssuranceCase, store: ArtifactStore) -> tuple[str, ..
     for artifact_id in artifact_ids:
         _verify_artifact(store, artifact_id, label="assurance claim")
     return artifact_ids
+
+
+def _seal_release_policy(
+    case: AssuranceCase,
+    obligations: tuple[ProofObligation, ...],
+    *,
+    store: ArtifactStore,
+) -> tuple[str, str]:
+    proof_ids = [item.proof_id for item in obligations]
+    if len(proof_ids) != len(set(proof_ids)):
+        raise ValueError("shadow proof-obligation set contains duplicate proof_id")
+    ordered = tuple(sorted(obligations, key=lambda item: item.proof_id))
+    case_ref = store.put_bytes(
+        canonical_json_bytes(
+            {
+                "schema_name": "apex-shadow-assurance-case-snapshot",
+                "schema_version": 1,
+                "assurance_case": case.semantic_payload(),
+            }
+        ),
+        media_type="application/json",
+        schema_name="apex-shadow-assurance-case-snapshot",
+        schema_version="1",
+    )
+    proof_ref = store.put_bytes(
+        canonical_json_bytes(
+            {
+                "schema_name": "apex-shadow-proof-obligation-snapshot",
+                "schema_version": 1,
+                "obligations": [item.semantic_payload() for item in ordered],
+            }
+        ),
+        media_type="application/json",
+        schema_name="apex-shadow-proof-obligation-snapshot",
+        schema_version="1",
+    )
+    return case_ref.artifact_id, proof_ref.artifact_id
 
 
 def execute_shadow_production(
@@ -84,7 +128,13 @@ def execute_shadow_production(
         label="shadow artifact manifest",
     )
     claim_artifacts = _claim_artifacts(assurance_case, artifact_store)
-    certificate = assurance_case.derive_release_certificate(tuple(obligations))
+    obligations_tuple = tuple(obligations)
+    case_artifact_id, proof_artifact_id = _seal_release_policy(
+        assurance_case,
+        obligations_tuple,
+        store=artifact_store,
+    )
+    certificate = assurance_case.derive_release_certificate(obligations_tuple)
 
     key = ReleaseKey(season, entry, gameweek)
     production_before = production_reader.current_release_id(key)
@@ -115,7 +165,16 @@ def execute_shadow_production(
     shadow_after = shadow_registry.current_release_id(key)
     production_after = production_reader.current_release_id(key)
 
-    sources = tuple(sorted({manifest_id, *claim_artifacts}))
+    sources = tuple(
+        sorted(
+            {
+                manifest_id,
+                case_artifact_id,
+                proof_artifact_id,
+                *claim_artifacts,
+            }
+        )
+    )
     report = ShadowProductionReport(
         season=season,
         entry=entry,
@@ -124,6 +183,8 @@ def execute_shadow_production(
         world_id=world_id,
         release_id=ReleaseId(record.release_id),
         assurance_case_id=certificate.assurance_case_id,
+        assurance_case_artifact_id=case_artifact_id,
+        proof_obligations_artifact_id=proof_artifact_id,
         release_certificate_status=certificate.status,
         release_certificate_blockers=certificate.blockers,
         production_pointer_before=production_before,
@@ -153,12 +214,109 @@ def execute_shadow_production(
     return ShadowProductionOutcome(report, ref.artifact_id, record)
 
 
+def _string_tuple(value: object, *, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError(f"{label} must be string array")
+    return tuple(value)
+
+
+def _load_json_object(
+    artifact_id: str,
+    *,
+    artifact_store: ArtifactStore,
+    schema_name: str,
+) -> dict[str, object]:
+    try:
+        raw = json.loads(artifact_store.read_bytes(artifact_id).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{schema_name} artifact is not valid UTF-8 JSON") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"{schema_name} artifact must be JSON object")
+    if raw.get("schema_name") != schema_name or raw.get("schema_version") != 1:
+        raise ValueError(f"unsupported {schema_name} schema")
+    return raw
+
+
+def _replay_assurance_case(
+    artifact_id: str,
+    *,
+    artifact_store: ArtifactStore,
+) -> AssuranceCase:
+    raw = _load_json_object(
+        artifact_id,
+        artifact_store=artifact_store,
+        schema_name="apex-shadow-assurance-case-snapshot",
+    )
+    payload = raw.get("assurance_case")
+    if not isinstance(payload, dict):
+        raise ValueError("shadow AssuranceCase snapshot payload must be object")
+    claim_rows = payload.get("claims")
+    if not isinstance(claim_rows, list) or any(not isinstance(row, dict) for row in claim_rows):
+        raise ValueError("shadow AssuranceCase claims must be object array")
+    claims = tuple(
+        AssuranceClaim(
+            proof_id=str(row.get("proof_id") or ""),
+            status=ProofStatus(str(row.get("status") or "")),
+            evidence_ids=_string_tuple(row.get("evidence_ids"), label="evidence_ids"),
+            test_ids=_string_tuple(row.get("test_ids"), label="test_ids"),
+            artifact_ids=_string_tuple(row.get("artifact_ids"), label="artifact_ids"),
+        )
+        for row in claim_rows
+    )
+    case = AssuranceCase(
+        release_scope=str(payload.get("release_scope") or ""),
+        claims=claims,
+        schema_version=1,
+    )
+    declared = payload.get("assurance_case_id")
+    if not isinstance(declared, str) or declared != case.case_id:
+        raise ValueError("shadow AssuranceCase snapshot semantic identity mismatch")
+    return case
+
+
+def _replay_obligations(
+    artifact_id: str,
+    *,
+    artifact_store: ArtifactStore,
+) -> tuple[ProofObligation, ...]:
+    raw = _load_json_object(
+        artifact_id,
+        artifact_store=artifact_store,
+        schema_name="apex-shadow-proof-obligation-snapshot",
+    )
+    rows = raw.get("obligations")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("shadow proof snapshot obligations must be object array")
+    obligations = tuple(
+        ProofObligation(
+            proof_id=str(row.get("proof_id") or ""),
+            claim=str(row.get("claim") or ""),
+            proof_class=ProofClass(str(row.get("proof_class") or "")),
+            scope=str(row.get("scope") or ""),
+            required_evidence=_string_tuple(
+                row.get("required_evidence"), label="required_evidence"
+            ),
+            required_tests=_string_tuple(
+                row.get("required_tests"), label="required_tests"
+            ),
+            failure_consequence=str(row.get("failure_consequence") or ""),
+            release_policy=ReleasePolicy(str(row.get("release_policy") or "")),
+            owner=str(row.get("owner") or ""),
+        )
+        for row in rows
+    )
+    ids = [item.proof_id for item in obligations]
+    if len(ids) != len(set(ids)):
+        raise ValueError("replayed shadow proof snapshot contains duplicate proof_id")
+    return obligations
+
+
 def load_shadow_production_report(
     artifact_id: str,
     *,
     artifact_store: ArtifactStore,
 ) -> ShadowProductionReport:
-    """Replay a stored shadow report and re-verify every retained source artifact."""
+    """Replay a stored shadow report and independently re-derive its release certificate."""
 
     try:
         raw = json.loads(artifact_store.read_bytes(artifact_id).decode("utf-8"))
@@ -166,7 +324,10 @@ def load_shadow_production_report(
         raise ValueError("shadow production report is not valid UTF-8 JSON") from exc
     if not isinstance(raw, dict):
         raise ValueError("stored shadow production report must be JSON object")
-    if raw.get("schema_name") != "apex-stored-shadow-production-report" or raw.get("schema_version") != 1:
+    if (
+        raw.get("schema_name") != "apex-stored-shadow-production-report"
+        or raw.get("schema_version") != 1
+    ):
         raise ValueError("unsupported stored shadow production report schema")
     payload = raw.get("payload")
     report_id = raw.get("report_id")
@@ -180,28 +341,58 @@ def load_shadow_production_report(
             raise ValueError(f"{label} must be integer")
         return value
 
-    blockers = payload.get("release_certificate_blockers")
-    sources = payload.get("source_artifact_ids")
-    if not isinstance(blockers, list) or any(not isinstance(item, str) for item in blockers):
-        raise ValueError("shadow blockers must be string array")
-    if not isinstance(sources, list) or any(not isinstance(item, str) for item in sources):
-        raise ValueError("shadow source artifacts must be string array")
+    blockers = _string_tuple(
+        payload.get("release_certificate_blockers"),
+        label="shadow blockers",
+    )
+    sources = _string_tuple(
+        payload.get("source_artifact_ids"),
+        label="shadow source artifacts",
+    )
     report = ShadowProductionReport(
         season=str(payload.get("season") or ""),
         entry=strict_int(payload.get("entry"), label="entry"),
         gameweek=strict_int(payload.get("gameweek"), label="gameweek"),
-        bundle_id=(None if payload.get("bundle_id") is None else BundleId(str(payload.get("bundle_id")))),
-        world_id=(None if payload.get("world_id") is None else GlobalWorldId(str(payload.get("world_id")))),
+        bundle_id=(
+            None
+            if payload.get("bundle_id") is None
+            else BundleId(str(payload.get("bundle_id")))
+        ),
+        world_id=(
+            None
+            if payload.get("world_id") is None
+            else GlobalWorldId(str(payload.get("world_id")))
+        ),
         release_id=ReleaseId(str(payload.get("release_id") or "")),
         assurance_case_id=str(payload.get("assurance_case_id") or ""),
-        release_certificate_status=str(payload.get("release_certificate_status") or ""),
-        release_certificate_blockers=tuple(blockers),
-        production_pointer_before=(None if payload.get("production_pointer_before") is None else str(payload.get("production_pointer_before"))),
-        production_pointer_after=(None if payload.get("production_pointer_after") is None else str(payload.get("production_pointer_after"))),
-        shadow_pointer_before=(None if payload.get("shadow_pointer_before") is None else str(payload.get("shadow_pointer_before"))),
+        assurance_case_artifact_id=str(
+            payload.get("assurance_case_artifact_id") or ""
+        ),
+        proof_obligations_artifact_id=str(
+            payload.get("proof_obligations_artifact_id") or ""
+        ),
+        release_certificate_status=str(
+            payload.get("release_certificate_status") or ""
+        ),
+        release_certificate_blockers=blockers,
+        production_pointer_before=(
+            None
+            if payload.get("production_pointer_before") is None
+            else str(payload.get("production_pointer_before"))
+        ),
+        production_pointer_after=(
+            None
+            if payload.get("production_pointer_after") is None
+            else str(payload.get("production_pointer_after"))
+        ),
+        shadow_pointer_before=(
+            None
+            if payload.get("shadow_pointer_before") is None
+            else str(payload.get("shadow_pointer_before"))
+        ),
         shadow_pointer_after=str(payload.get("shadow_pointer_after") or ""),
         artifact_manifest_id=str(payload.get("artifact_manifest_id") or ""),
-        source_artifact_ids=tuple(sources),
+        source_artifact_ids=sources,
         status=ShadowProductionStatus(str(payload.get("status") or "")),
         schema_version=strict_int(payload.get("schema_version"), label="schema_version"),
     )
@@ -209,4 +400,20 @@ def load_shadow_production_report(
         raise ValueError("replayed shadow production report identity mismatch")
     for source_id in report.source_artifact_ids:
         _verify_artifact(artifact_store, source_id, label="shadow replay source")
+
+    case = _replay_assurance_case(
+        report.assurance_case_artifact_id,
+        artifact_store=artifact_store,
+    )
+    obligations = _replay_obligations(
+        report.proof_obligations_artifact_id,
+        artifact_store=artifact_store,
+    )
+    certificate = case.derive_release_certificate(obligations)
+    if certificate.assurance_case_id != report.assurance_case_id:
+        raise ValueError("shadow replay AssuranceCase identity disagrees with report")
+    if certificate.status != report.release_certificate_status:
+        raise ValueError("shadow replay ReleaseCertificate status disagrees with report")
+    if certificate.blockers != report.release_certificate_blockers:
+        raise ValueError("shadow replay ReleaseCertificate blockers disagree with report")
     return report
