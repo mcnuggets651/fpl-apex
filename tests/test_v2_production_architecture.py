@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+import ast
+import inspect
+from pathlib import Path
+
+from apex_fpl.control.production_cutover import execute_production_cutover
+
+
+ROOT = Path(__file__).resolve().parents[1]
+CORE_FILES = (
+    ROOT / "src" / "apex_fpl" / "core" / "production.py",
+    ROOT / "src" / "apex_fpl" / "core" / "production_authority.py",
+)
+CUTOVER = ROOT / "src" / "apex_fpl" / "control" / "production_cutover.py"
+AUTHORITY = ROOT / "src" / "apex_fpl" / "control" / "production_authority.py"
+
+
+def _imports(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    result: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            result.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            result.append(node.module or "")
+    return result
+
+
+def _forbidden_imports(path: Path) -> list[str]:
+    forbidden = (
+        "apex_fpl.data",
+        "apex_fpl.services",
+        "apex_fpl.evaluation",
+        "apex_fpl.replay",
+        "requests",
+        "httpx",
+        "pandas",
+        "numpy",
+        "scipy",
+        "random",
+    )
+    return [
+        name
+        for name in _imports(path)
+        if any(name == item or name.startswith(item + ".") for item in forbidden)
+    ]
+
+
+def test_production_core_contracts_are_dependency_free() -> None:
+    core_forbidden = (
+        "apex_fpl.control",
+        "apex_fpl.data",
+        "apex_fpl.services",
+        "apex_fpl.evaluation",
+        "apex_fpl.replay",
+        "requests",
+        "httpx",
+        "pandas",
+        "numpy",
+        "scipy",
+        "random",
+    )
+    for path in CORE_FILES:
+        imports = _imports(path)
+        assert [
+            name
+            for name in imports
+            if any(name == item or name.startswith(item + ".") for item in core_forbidden)
+        ] == []
+
+
+def test_production_cutover_has_no_network_v1_runtime_or_filesystem_backend_shortcut() -> None:
+    assert _forbidden_imports(CUTOVER) == []
+    text = CUTOVER.read_text(encoding="utf-8")
+    assert "FileSystemReleaseRegistry" not in text
+    assert "ready_to_act=True" not in text
+    assert "safe_to_act=True" not in text
+    assert "datetime.now(" not in text
+    assert "datetime.utcnow(" not in text
+    assert "stage_runtime_release" not in text
+    assert "derive_release_certificate" in text
+    assert "production_registry.compare_and_swap_current" in text
+    assert "ProductionPublicationAuthorization" in text
+
+
+def test_production_cutover_accepts_no_independent_readiness_or_safety_input() -> None:
+    parameters = inspect.signature(execute_production_cutover).parameters
+    assert "ready_to_act" not in parameters
+    assert "safe_to_act" not in parameters
+    source = inspect.getsource(execute_production_cutover)
+    assert "ready_to_act=publishable" in source
+    assert "safe_to_act=publishable" in source
+
+
+def test_answer_authority_is_current_published_v2_only() -> None:
+    assert _forbidden_imports(AUTHORITY) == []
+    text = AUTHORITY.read_text(encoding="utf-8")
+    assert "ReleaseStatus.PUBLISHED" in text
+    assert "publication_authorization_artifact_id" in text
+    assert "load_production_publication_authorization" in text
+    assert "ReleaseStatus.V1_ACTIONABLE" not in text
+    assert "ShadowProduction" not in text
+    assert "shadow_registry" not in text
+
+
+def test_production_authority_does_not_import_legacy_answer_surface() -> None:
+    for path in (CUTOVER, AUTHORITY):
+        text = path.read_text(encoding="utf-8")
+        assert "apex_fpl.services.answer_context" not in text
+        assert "apex_answer_context.json" not in text
