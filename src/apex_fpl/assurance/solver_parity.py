@@ -42,11 +42,11 @@ def validate_reference_solver_parity(
     except (FileNotFoundError, ValueError) as exc:
         blockers.append(f"reference solver retained I/O failed replay: {exc}")
     else:
-        if request.decision_input_id != result.decision_input.decision_input_id:
+        if request.decision_input_id != str(result.decision_input.decision_input_id):
             blockers.append("retained reference solver request DecisionInputId mismatch")
-        if request.candidate_universe_id != result.decision_input.candidate_universe_id:
+        if request.candidate_universe_id != str(result.decision_input.candidate_universe_id):
             blockers.append("retained reference solver request CandidateUniverseId mismatch")
-        if request.decision_policy_id != result.decision_input.decision_policy_id:
+        if request.decision_policy_id != str(result.decision_input.decision_policy_id):
             blockers.append("retained reference solver request DecisionPolicyId mismatch")
         if run.request_id != request.request_id:
             blockers.append("retained reference solver output/request identity mismatch")
