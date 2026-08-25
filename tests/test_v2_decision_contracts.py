@@ -10,6 +10,15 @@ from apex_fpl.control.decision_policy_registry import (
     DecisionPolicyRegistry,
     load_decision_policy_registry,
 )
+from apex_fpl.control.experiment_registry import (
+    ExperimentRegistration,
+    ExperimentRegistry,
+    derive_empirical_qualification_certificate,
+    store_empirical_qualification_certificate,
+    store_experiment_definition,
+    store_experiment_registry,
+    store_experiment_result,
+)
 from apex_fpl.core.decision import (
     CandidateUniverseScope,
     DecisionChip,
@@ -30,6 +39,15 @@ from apex_fpl.core.decision_policy import (
     DecisionPolicy,
     DecisionPolicyQualificationState,
 )
+from apex_fpl.core.experiments import (
+    ExactQualificationValue,
+    ExperimentDefinition,
+    ExperimentResult,
+    QualificationMetricDirection,
+    QualificationMetricResult,
+    QualificationMetricRule,
+    qualification_subject_id,
+)
 from apex_fpl.core.ids import (
     CandidateUniverseId,
     DecisionPolicyId,
@@ -37,6 +55,10 @@ from apex_fpl.core.ids import (
     ManagerStateId,
     RuleSetId,
 )
+
+
+SEASON = "2026-2027"
+DECISION_CUTOFF = "2026-08-25T00:00:00Z"
 
 
 def _artifact(store: FileSystemArtifactStore, content: bytes) -> str:
@@ -47,7 +69,7 @@ def _shadow_policy() -> DecisionPolicy:
     return DecisionPolicy(
         policy_name="tactical-reference",
         policy_version="1",
-        season="2026-2027",
+        season=SEASON,
         qualification_state=DecisionPolicyQualificationState.SHADOW,
         qualification_artifact_id=None,
         first_available_at="2026-08-24T00:00:00Z",
@@ -77,9 +99,73 @@ def _decision_input(policy_id: DecisionPolicyId) -> DecisionInput:
     )
 
 
+def _attach_decision_policy_qualification(
+    store: FileSystemArtifactStore,
+    policy: DecisionPolicy,
+) -> DecisionPolicy:
+    evaluator = _artifact(store, b"decision-policy-evaluator")
+    qualification_policy = _artifact(store, b"decision-policy-qualification-policy")
+    source = _artifact(store, b"decision-policy-qualification-source")
+    definition = ExperimentDefinition(
+        proof_id="PO-DECISION-POLICY-QUALIFICATION-001",
+        subject_kind="apex.decision-policy",
+        subject_id=qualification_subject_id(policy.semantic_payload()),
+        season=SEASON,
+        evaluator_artifact_id=evaluator,
+        policy_artifact_id=qualification_policy,
+        declared_at="2026-08-01T00:00:00Z",
+        evaluation_window_start="2026-08-02T00:00:00Z",
+        evaluation_window_end="2026-08-23T00:00:00Z",
+        minimum_sample_size=1,
+        metric_rules=(
+            QualificationMetricRule(
+                metric_id="synthetic-policy-score",
+                direction=QualificationMetricDirection.AT_LEAST,
+                threshold=ExactQualificationValue(1, 1),
+            ),
+        ),
+        valid_until="2026-09-01T00:00:00Z",
+    )
+    definition_ref = store_experiment_definition(definition, store=store)
+    result = ExperimentResult(
+        experiment_id=definition.experiment_id,
+        proof_id=definition.proof_id,
+        subject_kind=definition.subject_kind,
+        subject_id=definition.subject_id,
+        season=SEASON,
+        evaluator_artifact_id=evaluator,
+        evaluated_at="2026-08-23T00:00:00Z",
+        sample_size=1,
+        metrics=(
+            QualificationMetricResult(
+                metric_id="synthetic-policy-score",
+                value=ExactQualificationValue(1, 1),
+            ),
+        ),
+        source_artifact_ids=(source,),
+    )
+    result_ref = store_experiment_result(result, store=store)
+    registry = ExperimentRegistry(
+        season=SEASON,
+        registrations=(
+            ExperimentRegistration(definition.experiment_id, definition_ref.artifact_id),
+        ),
+    )
+    registry_ref = store_experiment_registry(registry, store=store)
+    certificate = derive_empirical_qualification_certificate(
+        definition_artifact_id=definition_ref.artifact_id,
+        result_artifact_id=result_ref.artifact_id,
+        registry_artifact_id=registry_ref.artifact_id,
+        store=store,
+    )
+    certificate_ref = store_empirical_qualification_certificate(certificate, store=store)
+    assert certificate.supported is True
+    return replace(policy, qualification_artifact_id=certificate_ref.artifact_id)
+
+
 def test_empty_registry_has_no_fabricated_production_decision_policy() -> None:
     registry = load_decision_policy_registry(Path("config/decision_policies_v2.yaml"))
-    assert registry.season == "2026-2027"
+    assert registry.season == SEASON
     assert registry.policies == ()
     assert registry.champion() is None
 
@@ -121,7 +207,7 @@ def test_receding_policy_tie_break_is_semantic_identity() -> None:
     first = DecisionPolicy(
         policy_name="receding-shadow",
         policy_version="1",
-        season="2026-2027",
+        season=SEASON,
         qualification_state=DecisionPolicyQualificationState.SHADOW,
         qualification_artifact_id=None,
         first_available_at="2026-08-24T00:00:00Z",
@@ -143,7 +229,7 @@ def test_receding_horizon_policy_requires_continuation_and_chip_option_artifacts
         DecisionPolicy(
             policy_name="bad-receding",
             policy_version="1",
-            season="2026-2027",
+            season=SEASON,
             qualification_state=DecisionPolicyQualificationState.SHADOW,
             qualification_artifact_id=None,
             first_available_at="2026-08-24T00:00:00Z",
@@ -165,7 +251,7 @@ def test_qualified_policy_without_price_and_candidate_policy_is_not_production_q
     policy = DecisionPolicy(
         policy_name="incomplete-over-time",
         policy_version="1",
-        season="2026-2027",
+        season=SEASON,
         qualification_state=DecisionPolicyQualificationState.QUALIFIED,
         qualification_artifact_id=_artifact(store, b"qualification"),
         first_available_at="2026-08-24T00:00:00Z",
@@ -181,7 +267,7 @@ def test_qualified_policy_without_price_and_candidate_policy_is_not_production_q
     assert policy.production_qualified is False
     with pytest.raises(ValueError, match="champion must be production qualified"):
         DecisionPolicyRegistry(
-            season="2026-2027",
+            season=SEASON,
             policies=(policy,),
             champion_policy_id=policy.decision_policy_id,
         )
@@ -191,7 +277,6 @@ def test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified(
     tmp_path: Path,
 ) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    qualification = _artifact(store, b"qualification")
     continuation = _artifact(store, b"continuation")
     chip_option = _artifact(store, b"chip-option")
     price_policy = _artifact(store, b"price-policy")
@@ -199,9 +284,9 @@ def test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified(
     policy = DecisionPolicy(
         policy_name="qualified-over-time",
         policy_version="1",
-        season="2026-2027",
+        season=SEASON,
         qualification_state=DecisionPolicyQualificationState.QUALIFIED,
-        qualification_artifact_id=qualification,
+        qualification_artifact_id=_artifact(store, b"prequalification-placeholder"),
         first_available_at="2026-08-24T00:00:00Z",
         evaluation_mode=DecisionEvaluationMode.RECEDING_HORIZON_WITH_CONTINUATION,
         objective_policy=DecisionObjectivePolicy.MAX_EXPECTED_FPL_POINTS_OVER_TIME,
@@ -212,17 +297,28 @@ def test_qualified_policy_artifacts_must_exist_and_champion_must_be_qualified(
         candidate_policy_artifact_id=candidate_policy,
         tie_break_policy="v1",
     )
+    policy = _attach_decision_policy_qualification(store, policy)
     assert policy.production_qualified is True
     registry = DecisionPolicyRegistry(
-        season="2026-2027",
+        season=SEASON,
         policies=(policy,),
         champion_policy_id=policy.decision_policy_id,
     )
-    registry.verify_policy_artifacts(policy, store=store, production=True)
+    registry.verify_policy_artifacts(
+        policy,
+        store=store,
+        production=True,
+        as_of=DECISION_CUTOFF,
+    )
 
     other_store = FileSystemArtifactStore(tmp_path / "other")
     with pytest.raises(FileNotFoundError):
-        registry.verify_policy_artifacts(policy, store=other_store, production=True)
+        registry.verify_policy_artifacts(
+            policy,
+            store=other_store,
+            production=True,
+            as_of=DECISION_CUTOFF,
+        )
 
 
 def test_solver_limit_and_error_are_not_constructible_as_infeasible_shortcuts() -> None:
