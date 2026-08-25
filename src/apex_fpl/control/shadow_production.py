@@ -129,7 +129,7 @@ def execute_shadow_production(
         label="shadow artifact manifest",
     )
     claim_artifacts = _claim_artifacts(assurance_case, artifact_store)
-    obligations_tuple = tuple(obligations)
+    obligations_tuple = tuple(sorted(tuple(obligations), key=lambda item: item.proof_id))
     case_artifact_id, proof_artifact_id = _seal_release_policy(
         assurance_case,
         obligations_tuple,
