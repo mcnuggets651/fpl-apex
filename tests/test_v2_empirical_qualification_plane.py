@@ -7,6 +7,9 @@ import yaml
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
 from apex_fpl.control.empirical_qualification_admission import (
+    LEARNING_POLICY_QUALIFICATION_ID,
+    SCENARIO_GENERATOR_QUALIFICATION_ID,
+    SCENARIO_POLICY_QUALIFICATION_ID,
     verify_typed_empirical_qualification,
 )
 from apex_fpl.control.experiment_registry import (
@@ -33,6 +36,7 @@ from apex_fpl.core.experiments import (
 from apex_fpl.core.production import MANDATORY_PRODUCTION_PROOF_IDS
 from apex_fpl.core.production_proof_contract import (
     EMPIRICAL_PRODUCTION_PROOF_IDS,
+    PRODUCTION_EMPIRICAL_SUBJECT_KIND,
     PRODUCTION_PROOF_CLASSES,
 )
 from apex_fpl.core.proofs import ProofClass
@@ -169,6 +173,30 @@ def test_experiment_must_be_predeclared_before_evaluation_window() -> None:
         )
 
 
+def test_production_empirical_proof_rejects_wrong_release_subject_kind() -> None:
+    with pytest.raises(ValueError, match="constitutional contract"):
+        ExperimentDefinition(
+            proof_id="PO-SCENARIO-CONVERGENCE-001",
+            subject_kind="apex.scenario-generator",
+            subject_id="subject",
+            season=SEASON,
+            evaluator_artifact_id="sha256:" + "1" * 64,
+            policy_artifact_id="sha256:" + "2" * 64,
+            declared_at="2026-08-01T00:00:00Z",
+            evaluation_window_start="2026-08-02T00:00:00Z",
+            evaluation_window_end="2026-08-20T00:00:00Z",
+            minimum_sample_size=1,
+            metric_rules=(
+                QualificationMetricRule(
+                    "metric",
+                    QualificationMetricDirection.AT_LEAST,
+                    ExactQualificationValue(0, 1),
+                ),
+            ),
+            valid_until="2026-09-01T00:00:00Z",
+        )
+
+
 def test_supported_certificate_replays_from_registered_immutable_evidence(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     definition = _definition(store)
@@ -281,3 +309,16 @@ def test_production_proof_class_contract_exactly_matches_required_yaml() -> None
         for proof_id, proof_class in required.items()
         if proof_class is ProofClass.EMPIRICAL_QUALIFICATION
     }
+    assert set(PRODUCTION_EMPIRICAL_SUBJECT_KIND) == set(EMPIRICAL_PRODUCTION_PROOF_IDS)
+    assert dict(PRODUCTION_EMPIRICAL_SUBJECT_KIND) == {
+        "PO-FORECAST-QUALIFICATION-001": "apex.forecast-model",
+        "PO-DECISION-POLICY-QUALIFICATION-001": "apex.decision-policy",
+        "PO-SCENARIO-CONVERGENCE-001": "apex.scenario-convergence",
+        "PO-MODEL-EVALUATION-001": "apex.model-evaluation",
+        "PO-MODEL-PROMOTION-001": "apex.model-promotion",
+    }
+    assert {
+        SCENARIO_GENERATOR_QUALIFICATION_ID,
+        SCENARIO_POLICY_QUALIFICATION_ID,
+        LEARNING_POLICY_QUALIFICATION_ID,
+    }.isdisjoint(MANDATORY_PRODUCTION_PROOF_IDS)
