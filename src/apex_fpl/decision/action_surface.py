@@ -30,6 +30,15 @@ from apex_fpl.core.rules import RuleSet
 from .mechanics import PlayerGameweekValue, build_gameweek_values, optimise_squad_submission
 
 
+_CHIP_SEARCH_PRIORITY = {
+    DecisionChip.NONE: 0,
+    DecisionChip.TRIPLE_CAPTAIN: 1,
+    DecisionChip.BENCH_BOOST: 2,
+    DecisionChip.WILDCARD: 3,
+    DecisionChip.FREE_HIT: 4,
+}
+
+
 class ChipUseView(Protocol):
     gameweek: int
     chip: str
@@ -195,7 +204,11 @@ def normal_squad_actions(
     max_transfers: int,
     ruleset: RuleSet,
 ):
-    if isinstance(max_transfers, bool) or not isinstance(max_transfers, int) or not 0 <= max_transfers <= 15:
+    if (
+        isinstance(max_transfers, bool)
+        or not isinstance(max_transfers, int)
+        or not 0 <= max_transfers <= 15
+    ):
         raise ValueError("max_transfers must be an integer in [0,15]")
     candidate_by_id = candidate_map(universe)
     current = tuple(candidate_by_id[row.player_id] for row in state.squad)
@@ -261,7 +274,9 @@ def full_rebuild_squad_actions(
         club_counts: dict[int, int] = {}
         for player in squad:
             club_counts[player.team_id] = club_counts.get(player.team_id, 0) + 1
-        if max(club_counts.values(), default=0) > ruleset.integer("FPL-SQUAD-MAX-CLUB-001"):
+        if max(club_counts.values(), default=0) > ruleset.integer(
+            "FPL-SQUAD-MAX-CLUB-001"
+        ):
             continue
         cost = sum(
             owned[player.player_id].selling_price_tenths
@@ -342,7 +357,12 @@ def enumerate_gameweek_actions(
     max_normal_transfers: int,
     chips_considered: tuple[DecisionChip, ...],
 ):
-    """Yield every legal action in the declared one-deadline surface."""
+    """Yield every legal action in the declared one-deadline surface.
+
+    Search order is deterministic and intentionally cheap-action-first. It affects only
+    when an incumbent is discovered under a node budget; the enumerated legal surface is
+    identical to the declared chip set.
+    """
 
     validate_owned_against_universe(state, universe)
     values = build_gameweek_values(
@@ -351,7 +371,9 @@ def enumerate_gameweek_actions(
         player_ids=(row.player_id for row in universe.players),
     )
     available = available_chips(state, ruleset=ruleset)
-    considered = tuple(sorted(set(chips_considered), key=lambda chip: chip.value))
+    considered = tuple(
+        sorted(set(chips_considered), key=lambda chip: _CHIP_SEARCH_PRIORITY[chip])
+    )
     for chip in considered:
         if chip not in available:
             continue
