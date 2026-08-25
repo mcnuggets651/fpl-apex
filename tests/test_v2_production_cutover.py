@@ -5,6 +5,15 @@ from pathlib import Path
 import pytest
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.experiment_registry import (
+    ExperimentRegistration,
+    ExperimentRegistry,
+    derive_empirical_qualification_certificate,
+    store_empirical_qualification_certificate,
+    store_experiment_definition,
+    store_experiment_registry,
+    store_experiment_result,
+)
 from apex_fpl.control.production_cutover import (
     execute_production_cutover,
     load_production_cutover_report,
@@ -15,11 +24,23 @@ from apex_fpl.control.release_registry import (
     ReleaseKey,
     ReleaseStatus,
 )
+from apex_fpl.core.experiments import (
+    ExactQualificationValue,
+    ExperimentDefinition,
+    ExperimentResult,
+    QualificationMetricDirection,
+    QualificationMetricResult,
+    QualificationMetricRule,
+)
 from apex_fpl.core.ids import BundleId, GlobalWorldId
 from apex_fpl.core.production import (
     MANDATORY_PRODUCTION_PROOF_IDS,
     ProductionBackendQualification,
     ProductionCutoverStatus,
+)
+from apex_fpl.core.production_proof_contract import (
+    EMPIRICAL_PRODUCTION_PROOF_IDS,
+    PRODUCTION_PROOF_CLASSES,
 )
 from apex_fpl.core.proofs import (
     AssuranceCase,
@@ -97,7 +118,7 @@ def _obligations() -> tuple[ProofObligation, ...]:
         ProofObligation(
             proof_id=proof_id,
             claim=f"synthetic pre-publication production proof for {proof_id}",
-            proof_class=ProofClass.FORMAL_INVARIANT,
+            proof_class=PRODUCTION_PROOF_CLASSES[proof_id],
             scope="production-test",
             required_evidence=("synthetic-evidence",),
             required_tests=("synthetic-test",),
@@ -109,7 +130,75 @@ def _obligations() -> tuple[ProofObligation, ...]:
     )
 
 
+def _empirical_qualification(store, proof_id: str) -> tuple[str, str, str]:
+    """Build synthetic mechanism evidence; never a real production qualification."""
+
+    subject_id = f"synthetic-subject:{proof_id}"
+    evaluator_artifact_id = _artifact(store, f"evaluator:{proof_id}")
+    policy_artifact_id = _artifact(store, f"policy:{proof_id}")
+    source_artifact_id = _artifact(store, f"source:{proof_id}")
+    definition = ExperimentDefinition(
+        proof_id=proof_id,
+        subject_kind="synthetic-production-proof-subject",
+        subject_id=subject_id,
+        season=SEASON,
+        evaluator_artifact_id=evaluator_artifact_id,
+        policy_artifact_id=policy_artifact_id,
+        declared_at="2026-08-01T00:00:00Z",
+        evaluation_window_start="2026-08-02T00:00:00Z",
+        evaluation_window_end="2026-08-24T00:00:00Z",
+        minimum_sample_size=10,
+        metric_rules=(
+            QualificationMetricRule(
+                metric_id="synthetic-score",
+                direction=QualificationMetricDirection.AT_LEAST,
+                threshold=ExactQualificationValue(1, 2),
+            ),
+        ),
+        valid_until=VALID_UNTIL,
+    )
+    definition_ref = store_experiment_definition(definition, store=store)
+    result = ExperimentResult(
+        experiment_id=definition.experiment_id,
+        proof_id=proof_id,
+        subject_kind=definition.subject_kind,
+        subject_id=subject_id,
+        season=SEASON,
+        evaluator_artifact_id=evaluator_artifact_id,
+        evaluated_at="2026-08-24T00:00:00Z",
+        sample_size=10,
+        metrics=(
+            QualificationMetricResult(
+                metric_id="synthetic-score",
+                value=ExactQualificationValue(1, 2),
+            ),
+        ),
+        source_artifact_ids=(source_artifact_id,),
+    )
+    result_ref = store_experiment_result(result, store=store)
+    registry = ExperimentRegistry(
+        season=SEASON,
+        registrations=(
+            ExperimentRegistration(
+                experiment_id=definition.experiment_id,
+                definition_artifact_id=definition_ref.artifact_id,
+            ),
+        ),
+    )
+    registry_ref = store_experiment_registry(registry, store=store)
+    certificate = derive_empirical_qualification_certificate(
+        definition_artifact_id=definition_ref.artifact_id,
+        result_artifact_id=result_ref.artifact_id,
+        registry_artifact_id=registry_ref.artifact_id,
+        store=store,
+    )
+    certificate_ref = store_empirical_qualification_certificate(certificate, store=store)
+    assert certificate.supported is True
+    return certificate_ref.artifact_id, subject_id, definition.experiment_id
+
+
 def _case(
+    store,
     claim_artifact: str,
     *,
     missing: str | None = None,
@@ -120,17 +209,29 @@ def _case(
     for proof_id in sorted(MANDATORY_PRODUCTION_PROOF_IDS):
         if proof_id == missing:
             continue
+        empirical = proof_id in EMPIRICAL_PRODUCTION_PROOF_IDS
+        artifact_ids = [claim_artifact]
+        evidence_ids = ["synthetic-evidence"]
+        if empirical and proof_id != inconclusive:
+            qualification_artifact, subject_id, experiment_id = _empirical_qualification(
+                store,
+                proof_id,
+            )
+            artifact_ids.append(qualification_artifact)
+            evidence_ids.extend((subject_id, experiment_id))
         claims.append(
             AssuranceClaim(
                 proof_id=proof_id,
                 status=(
                     ProofStatus.INCONCLUSIVE
                     if proof_id == inconclusive
+                    else ProofStatus.SUPPORTED
+                    if empirical
                     else ProofStatus.PROVEN
                 ),
-                evidence_ids=("synthetic-evidence",),
+                evidence_ids=tuple(evidence_ids),
                 test_ids=("synthetic-test",),
-                artifact_ids=(claim_artifact,),
+                artifact_ids=tuple(artifact_ids),
             )
         )
     return AssuranceCase(release_scope=scope, claims=tuple(claims))
@@ -174,7 +275,7 @@ def _execute(
         created_at=CREATED_AT,
         valid_until=valid_until,
         artifact_manifest_id=manifest,
-        assurance_case=case or _case(claim_artifact),
+        assurance_case=case or _case(store, claim_artifact),
         obligations=obligations or _obligations(),
         backend_qualification=backend or _backend(store, registry),
         artifact_store=store,
@@ -224,8 +325,91 @@ def test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_writ
             created_at=CREATED_AT,
             valid_until=VALID_UNTIL,
             artifact_manifest_id=manifest,
-            assurance_case=_case(claim),
+            assurance_case=_case(store, claim),
             obligations=obligations,
+            backend_qualification=_backend(store, registry),
+            artifact_store=store,
+            production_registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
+def test_proof_class_laundering_is_rejected_before_pointer_write(tmp_path: Path) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    manifest = _artifact(store, "manifest")
+    claim = _artifact(store, "claim")
+    target = sorted(EMPIRICAL_PRODUCTION_PROOF_IDS)[0]
+    obligations = tuple(
+        ProofObligation(
+            proof_id=item.proof_id,
+            claim=item.claim,
+            proof_class=(
+                ProofClass.FORMAL_INVARIANT if item.proof_id == target else item.proof_class
+            ),
+            scope=item.scope,
+            required_evidence=item.required_evidence,
+            required_tests=item.required_tests,
+            failure_consequence=item.failure_consequence,
+            release_policy=item.release_policy,
+            owner=item.owner,
+        )
+        for item in _obligations()
+    )
+    with pytest.raises(ValueError, match="proof class drifted"):
+        execute_production_cutover(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=BundleId("bundle-v2"),
+            world_id=GlobalWorldId("world-v2"),
+            runtime_digest="sha256:v2-runtime",
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
+            artifact_manifest_id=manifest,
+            assurance_case=_case(store, claim),
+            obligations=obligations,
+            backend_qualification=_backend(store, registry),
+            artifact_store=store,
+            production_registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
+def test_random_artifact_cannot_satisfy_empirical_production_proof(tmp_path: Path) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    manifest = _artifact(store, "manifest")
+    random_artifact = _artifact(store, "this-is-not-a-qualification-certificate")
+    target = sorted(EMPIRICAL_PRODUCTION_PROOF_IDS)[0]
+    good_case = _case(store, _artifact(store, "claim"))
+    claims = []
+    for claim in good_case.claims:
+        if claim.proof_id == target:
+            claims.append(
+                AssuranceClaim(
+                    proof_id=target,
+                    status=ProofStatus.SUPPORTED,
+                    evidence_ids=("synthetic-evidence", "fake-subject", "fake-experiment"),
+                    test_ids=claim.test_ids,
+                    artifact_ids=(random_artifact,),
+                )
+            )
+        else:
+            claims.append(claim)
+    with pytest.raises(ValueError, match="lacks matching typed qualification evidence"):
+        execute_production_cutover(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=BundleId("bundle-v2"),
+            world_id=GlobalWorldId("world-v2"),
+            runtime_digest="sha256:v2-runtime",
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
+            artifact_manifest_id=manifest,
+            assurance_case=AssuranceCase(release_scope=SCOPE, claims=tuple(claims)),
+            obligations=_obligations(),
             backend_qualification=_backend(store, registry),
             artifact_store=store,
             production_registry=registry,
@@ -249,7 +433,7 @@ def test_missing_required_proof_withholds_and_never_moves_production_pointer(tmp
         created_at=CREATED_AT,
         valid_until=VALID_UNTIL,
         artifact_manifest_id=manifest,
-        assurance_case=_case(claim, missing=missing),
+        assurance_case=_case(store, claim, missing=missing),
         obligations=_obligations(),
         backend_qualification=_backend(store, registry),
         artifact_store=store,
@@ -280,7 +464,7 @@ def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_
         created_at=CREATED_AT,
         valid_until=VALID_UNTIL,
         artifact_manifest_id=manifest,
-        assurance_case=_case(claim),
+        assurance_case=_case(store, claim),
         obligations=_obligations(),
         backend_qualification=_backend(store, registry, qualified=False),
         artifact_store=store,
@@ -313,7 +497,7 @@ def test_reference_filesystem_backends_cannot_be_qualified_by_green_booleans(tmp
         created_at=CREATED_AT,
         valid_until=VALID_UNTIL,
         artifact_manifest_id=manifest,
-        assurance_case=_case(claim),
+        assurance_case=_case(store, claim),
         obligations=_obligations(),
         backend_qualification=backend,
         artifact_store=store,
@@ -350,7 +534,7 @@ def test_backend_qualification_must_match_actual_adapter_identities(tmp_path: Pa
             created_at=CREATED_AT,
             valid_until=VALID_UNTIL,
             artifact_manifest_id=manifest,
-            assurance_case=_case(claim),
+            assurance_case=_case(store, claim),
             obligations=_obligations(),
             backend_qualification=backend,
             artifact_store=store,
@@ -391,7 +575,7 @@ def test_stale_writer_fails_closed_and_cannot_become_current(tmp_path: Path) -> 
             created_at=CREATED_AT,
             valid_until=VALID_UNTIL,
             artifact_manifest_id=manifest,
-            assurance_case=_case(claim),
+            assurance_case=_case(store, claim),
             obligations=_obligations(),
             backend_qualification=_backend(store, registry),
             artifact_store=store,
