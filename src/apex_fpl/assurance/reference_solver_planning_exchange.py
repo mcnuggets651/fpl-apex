@@ -23,6 +23,7 @@ from apex_fpl.core.reference_solver_planning_assurance import PlanningReferenceS
 from apex_fpl.core.reference_solver_planning_io import (
     PlanningReferenceSolverRequest,
     PlanningReferenceSolverRun,
+    PlanningReferenceSolverStatus,
     planning_request_from_payload,
     planning_run_from_payload,
 )
@@ -39,6 +40,12 @@ class StoredPlanningReferenceSolverRequest:
 class StoredPlanningReferenceSolverRun:
     artifact_id: str
     run: PlanningReferenceSolverRun
+
+
+@dataclass(frozen=True, slots=True)
+class StoredPlanningReferenceSolverCertificate:
+    artifact_id: str
+    certificate: PlanningReferenceSolverCertificate
 
 
 def build_planning_reference_solver_request(
@@ -202,6 +209,24 @@ def _rational(value) -> RationalValue | None:
     return RationalValue(value.numerator, value.denominator)
 
 
+def _rational_payload(value: object, *, label: str) -> RationalValue | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be object or null")
+    numerator = value.get("numerator")
+    denominator = value.get("denominator")
+    if isinstance(numerator, bool) or not isinstance(numerator, int):
+        raise ValueError(f"{label} numerator must be integer")
+    if (
+        isinstance(denominator, bool)
+        or not isinstance(denominator, int)
+        or denominator <= 0
+    ):
+        raise ValueError(f"{label} denominator must be positive integer")
+    return RationalValue(numerator, denominator)
+
+
 def build_planning_reference_solver_certificate(
     *,
     request_artifact_id: str,
@@ -266,3 +291,89 @@ def verify_planning_reference_solver_certificate_io(
     if rebuilt.semantic_payload() != certificate.semantic_payload():
         raise ValueError("planning reference certificate does not derive from retained worker I/O")
     return request, run
+
+
+def store_planning_reference_solver_certificate(
+    certificate: PlanningReferenceSolverCertificate,
+    *,
+    store: ArtifactStore,
+) -> StoredPlanningReferenceSolverCertificate:
+    """Seal a certificate under its semantic identity after replaying retained worker I/O."""
+
+    verify_planning_reference_solver_certificate_io(certificate, store=store)
+    ref = store.put_bytes(
+        canonical_json_bytes(certificate.semantic_payload()),
+        media_type="application/json",
+        schema_name="apex-planning-reference-solver-certificate",
+        schema_version="1",
+    )
+    if ref.artifact_id != str(certificate.certificate_id):
+        raise ValueError("planning reference certificate storage identity mismatch")
+    return StoredPlanningReferenceSolverCertificate(ref.artifact_id, certificate)
+
+
+def load_planning_reference_solver_certificate(
+    artifact_id: str,
+    *,
+    store: ArtifactStore,
+) -> StoredPlanningReferenceSolverCertificate:
+    """Load a certificate only if semantic identity and retained worker I/O both replay."""
+
+    try:
+        raw = store.read_bytes(artifact_id)
+    except (ArtifactIntegrityError, FileNotFoundError) as exc:
+        raise ValueError("planning reference certificate artifact failed integrity verification") from exc
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("planning reference certificate artifact is not valid UTF-8 JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("planning reference certificate artifact must be object")
+    if payload.get("schema_name") != "apex-planning-reference-solver-certificate":
+        raise ValueError("not an Apex planning reference solver certificate")
+    if payload.get("schema_version") != 1:
+        raise ValueError("unsupported planning reference solver certificate schema")
+    if canonical_json_bytes(payload) != raw:
+        raise ValueError("planning reference certificate artifact is not canonical JSON")
+    search_complete = payload.get("search_complete")
+    if not isinstance(search_complete, bool):
+        raise ValueError("planning reference certificate search_complete must be boolean")
+    certificate = PlanningReferenceSolverCertificate(
+        decision_input_id=DecisionInputId(str(payload.get("decision_input_id") or "")),
+        candidate_universe_id=CandidateUniverseId(
+            str(payload.get("candidate_universe_id") or "")
+        ),
+        decision_policy_id=DecisionPolicyId(str(payload.get("decision_policy_id") or "")),
+        worker_name=str(payload.get("worker_name") or ""),
+        worker_version=str(payload.get("worker_version") or ""),
+        solver_contract=str(payload.get("solver_contract") or ""),
+        solver_status=PlanningReferenceSolverStatus(str(payload.get("solver_status") or "")),
+        best_objective=_rational_payload(
+            payload.get("best_objective"),
+            label="planning reference best_objective",
+        ),
+        best_bound=_rational_payload(
+            payload.get("best_bound"),
+            label="planning reference best_bound",
+        ),
+        gap=_rational_payload(payload.get("gap"), label="planning reference gap"),
+        selected_action_id=(
+            None
+            if payload.get("selected_action_id") is None
+            else str(payload.get("selected_action_id"))
+        ),
+        selected_trajectory_id=(
+            None
+            if payload.get("selected_trajectory_id") is None
+            else str(payload.get("selected_trajectory_id"))
+        ),
+        search_complete=search_complete,
+        tie_break_policy_id=str(payload.get("tie_break_policy_id") or ""),
+        solver_input_artifact_id=str(payload.get("solver_input_artifact_id") or ""),
+        solver_output_artifact_id=str(payload.get("solver_output_artifact_id") or ""),
+        worker_artifact_id=str(payload.get("worker_artifact_id") or ""),
+    )
+    if str(certificate.certificate_id) != artifact_id:
+        raise ValueError("planning reference certificate semantic identity mismatch")
+    verify_planning_reference_solver_certificate_io(certificate, store=store)
+    return StoredPlanningReferenceSolverCertificate(artifact_id, certificate)
