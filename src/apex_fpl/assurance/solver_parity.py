@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from apex_fpl.assurance.reference_solver_exchange import verify_reference_solver_certificate_io
 from apex_fpl.assurance.worker_authorization import create_reference_solver_authorization
 from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.control.reference_solver_registry import ReferenceSolverRegistry
@@ -27,7 +28,7 @@ def validate_reference_solver_parity(
     store: ArtifactStore,
     expected_tie_break_policy_id: str | None = None,
 ) -> tuple[AssuranceParityStatus, tuple[str, ...]]:
-    """Validate an untrusted worker certificate against one exact DecisionResult."""
+    """Validate replay-derived untrusted worker evidence against one DecisionResult."""
 
     blockers: list[str] = []
     if certificate.decision_input_id != result.decision_input.decision_input_id:
@@ -36,15 +37,19 @@ def validate_reference_solver_parity(
         blockers.append("reference solver CandidateUniverseId mismatch")
     if certificate.decision_policy_id != result.decision_input.decision_policy_id:
         blockers.append("reference solver DecisionPolicyId mismatch")
-    for artifact_id in (
-        certificate.solver_input_artifact_id,
-        certificate.solver_output_artifact_id,
-        certificate.worker_artifact_id,
-    ):
-        try:
-            store.read_bytes(artifact_id)
-        except FileNotFoundError:
-            blockers.append(f"reference solver artifact missing: {artifact_id}")
+    try:
+        request, run = verify_reference_solver_certificate_io(certificate, store=store)
+    except (FileNotFoundError, ValueError) as exc:
+        blockers.append(f"reference solver retained I/O failed replay: {exc}")
+    else:
+        if request.decision_input_id != result.decision_input.decision_input_id:
+            blockers.append("retained reference solver request DecisionInputId mismatch")
+        if request.candidate_universe_id != result.decision_input.candidate_universe_id:
+            blockers.append("retained reference solver request CandidateUniverseId mismatch")
+        if request.decision_policy_id != result.decision_input.decision_policy_id:
+            blockers.append("retained reference solver request DecisionPolicyId mismatch")
+        if run.request_id != request.request_id:
+            blockers.append("retained reference solver output/request identity mismatch")
     if blockers:
         return AssuranceParityStatus.FAIL, tuple(blockers)
 
