@@ -9,6 +9,7 @@ import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.control.empirical_qualification_admission import (
+    LEARNING_POLICY_QUALIFICATION_ID,
     verify_typed_empirical_qualification,
 )
 from apex_fpl.core.ids import LearningPolicyId
@@ -102,7 +103,7 @@ class LearningPolicyRegistry:
                 qualification_artifact_id=policy.qualification_artifact_id,
                 subject_payload=policy.semantic_payload(),
                 subject_kind="apex.learning-policy",
-                proof_id="PO-MODEL-EVALUATION-001",
+                proof_id=LEARNING_POLICY_QUALIFICATION_ID,
                 season=season,
                 as_of=cutoff,
                 store=store,
