@@ -150,11 +150,11 @@ def derive_reference_solver_algorithmic_qualification(
             case.expected_decision_artifact_id,
             store=store,
         ).result
-        if request.decision_input_id != expected.decision_input.decision_input_id:
+        if request.decision_input_id != str(expected.decision_input.decision_input_id):
             raise ValueError("qualification request/expected DecisionInput identity mismatch")
-        if request.candidate_universe_id != expected.decision_input.candidate_universe_id:
+        if request.candidate_universe_id != str(expected.decision_input.candidate_universe_id):
             raise ValueError("qualification request/expected CandidateUniverse identity mismatch")
-        if request.decision_policy_id != expected.decision_input.decision_policy_id:
+        if request.decision_policy_id != str(expected.decision_input.decision_policy_id):
             raise ValueError("qualification request/expected DecisionPolicy identity mismatch")
         policy_horizon = request.decision_policy.get("horizon_gameweeks")
         if policy_horizon != corpus.horizon_gameweeks:
