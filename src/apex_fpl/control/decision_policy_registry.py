@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.artifact_store import ArtifactIntegrityError, ArtifactStore
 from apex_fpl.control.decision_policy_support import (
     load_candidate_policy,
     load_chip_option_value_policy,
@@ -24,6 +24,20 @@ from apex_fpl.core.decision_policy import (
     DecisionPolicyQualificationState,
 )
 from apex_fpl.core.ids import DecisionPolicyId
+
+
+def _require_artifact_bytes(
+    artifact_id: str,
+    *,
+    store: ArtifactStore,
+    label: str,
+) -> None:
+    """Normalize storage failures at the DecisionPolicy trust boundary."""
+
+    try:
+        store.read_bytes(artifact_id)
+    except (FileNotFoundError, ArtifactIntegrityError) as exc:
+        raise ValueError(f"DecisionPolicy {label} artifact failed integrity/replay") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,26 +92,26 @@ class DecisionPolicyRegistry:
         if any(artifact_id is None for artifact_id in support_ids):
             raise ValueError("receding-horizon DecisionPolicy lacks complete support artifacts")
 
-        continuation = load_continuation_value_policy(
-            policy.continuation_value_artifact_id,  # type: ignore[arg-type]
-            store=store,
-            as_of=policy.first_available_at,
+        typed_supports = (
+            (
+                policy.continuation_value_artifact_id,
+                "continuation-value",
+                load_continuation_value_policy,
+            ),
+            (
+                policy.chip_option_value_artifact_id,
+                "chip-option-value",
+                load_chip_option_value_policy,
+            ),
+            (policy.price_policy_artifact_id, "price-policy", load_price_policy),
+            (policy.candidate_policy_artifact_id, "candidate-policy", load_candidate_policy),
         )
-        chip_option = load_chip_option_value_policy(
-            policy.chip_option_value_artifact_id,  # type: ignore[arg-type]
-            store=store,
-            as_of=policy.first_available_at,
-        )
-        price = load_price_policy(
-            policy.price_policy_artifact_id,  # type: ignore[arg-type]
-            store=store,
-            as_of=policy.first_available_at,
-        )
-        candidate = load_candidate_policy(
-            policy.candidate_policy_artifact_id,  # type: ignore[arg-type]
-            store=store,
-            as_of=policy.first_available_at,
-        )
+        loaded = []
+        for artifact_id, label, loader in typed_supports:
+            assert artifact_id is not None
+            _require_artifact_bytes(artifact_id, store=store, label=label)
+            loaded.append(loader(artifact_id, store=store, as_of=policy.first_available_at))
+        continuation, chip_option, price, candidate = loaded
         supports = (continuation, chip_option, price, candidate)
         if any(support.season != policy.season for support in supports):
             raise ValueError("DecisionPolicy support artifact season mismatch")
@@ -117,7 +131,11 @@ class DecisionPolicyRegistry:
         if self.get(policy.decision_policy_id) != policy:
             raise ValueError("DecisionPolicy is not registered under its semantic identity")
         if policy.qualification_artifact_id is not None:
-            store.read_bytes(policy.qualification_artifact_id)
+            _require_artifact_bytes(
+                policy.qualification_artifact_id,
+                store=store,
+                label="qualification",
+            )
         self._verify_receding_supports(policy, store=store)
         if production:
             if not policy.production_qualified:
