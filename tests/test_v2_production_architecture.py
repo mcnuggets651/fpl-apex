@@ -17,6 +17,9 @@ CORE_FILES = (
 )
 CUTOVER = ROOT / "src" / "apex_fpl" / "control" / "production_cutover.py"
 AUTHORITY = ROOT / "src" / "apex_fpl" / "control" / "production_authority.py"
+BACKEND_QUALIFICATION = (
+    ROOT / "src" / "apex_fpl" / "control" / "production_backend_qualification.py"
+)
 
 
 def _imports(path: Path) -> list[str]:
@@ -93,6 +96,17 @@ def test_filesystem_control_plane_is_structurally_reference_only() -> None:
     assert FileSystemReleaseRegistry.backend_id.startswith("apex.reference.")
 
 
+def test_production_backend_qualification_replay_is_independent_and_fail_closed() -> None:
+    assert _forbidden_imports(BACKEND_QUALIFICATION) == []
+    text = BACKEND_QUALIFICATION.read_text(encoding="utf-8")
+    assert "load_production_backend_qualification" in text
+    assert "ArtifactIntegrityError" in text
+    assert "artifact_store.verify" in text
+    assert "ProductionBackendQualification(" in text
+    assert "FileSystemArtifactStore" not in text
+    assert "FileSystemReleaseRegistry" not in text
+
+
 def test_production_cutover_accepts_no_independent_readiness_or_safety_input() -> None:
     parameters = inspect.signature(execute_production_cutover).parameters
     assert "ready_to_act" not in parameters
@@ -108,6 +122,9 @@ def test_answer_authority_is_current_published_v2_only() -> None:
     assert "ReleaseStatus.PUBLISHED" in text
     assert "publication_authorization_artifact_id" in text
     assert "load_production_publication_authorization" in text
+    assert "load_production_backend_qualification" in text
+    assert text.count("production_registry.current_release_id(key)") >= 2
+    assert "current V2 production pointer changed during authority verification" in text
     assert "ReleaseStatus.V1_ACTIONABLE" not in text
     assert "ShadowProduction" not in text
     assert "shadow_registry" not in text
@@ -137,7 +154,7 @@ def test_production_authorization_binds_release_validity_window() -> None:
 
 
 def test_production_authority_does_not_import_legacy_answer_surface() -> None:
-    for path in (CUTOVER, AUTHORITY):
+    for path in (CUTOVER, AUTHORITY, BACKEND_QUALIFICATION):
         text = path.read_text(encoding="utf-8")
         assert "apex_fpl.services.answer_context" not in text
         assert "apex_answer_context.json" not in text
