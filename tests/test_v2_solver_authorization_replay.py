@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from apex_fpl.assurance.reference_mechanics import certify_selected_action
 from apex_fpl.assurance.replay_verification import verify_stored_independent_assurance
 from apex_fpl.assurance.store import (
     load_independent_assurance_report,
@@ -16,123 +17,37 @@ from apex_fpl.assurance.worker_authorization import (
     load_reference_solver_authorization,
 )
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
-from apex_fpl.control.reference_solver_registry import ReferenceSolverRegistry
-from apex_fpl.core.assurance import (
-    AssuranceParityStatus,
-    IndependentAssuranceReport,
-    ReferenceCheckResult,
-    ReferenceMechanicsCertificate,
-    ReferenceMechanicsCheck,
-    ReferenceSolverCertificate,
-    ReferenceSolverStatus,
-)
-from apex_fpl.core.decision import DecisionMechanics, RationalValue
-from apex_fpl.core.ids import (
-    CandidateUniverseId,
-    DecisionId,
-    DecisionInputId,
-    DecisionPolicyId,
-    ForecastId,
-    ManagerStateId,
-    RuleSetId,
-)
-from apex_fpl.core.reference_solver_worker import (
-    ReferenceSolverWorkerArtifact,
-    ReferenceSolverWorkerQualification,
+from apex_fpl.core.assurance import AssuranceParityStatus, IndependentAssuranceReport
+
+from reference_solver_qualification_helpers import (
+    build_qualified_reference_solver_bundle,
+    ruleset,
 )
 
 
-def _mechanics() -> DecisionMechanics:
-    return DecisionMechanics(
-        xi_points=RationalValue(50, 1),
-        autosub_points=RationalValue(2, 1),
-        captain_bonus=RationalValue(5, 1),
-        squad_points_if_bench_boost=RationalValue(60, 1),
-        points_before_hits=RationalValue(57, 1),
-        hit_points=0,
-        objective_points=RationalValue(57, 1),
+@pytest.fixture(scope="module")
+def qualified_bundle(tmp_path_factory):
+    root = tmp_path_factory.mktemp("reference-solver-authorization")
+    store = FileSystemArtifactStore(root / "artifacts")
+    return store, build_qualified_reference_solver_bundle(store)
+
+
+def _stored_pass(store: FileSystemArtifactStore, bundle):
+    mechanics = certify_selected_action(
+        bundle.result,
+        state=bundle.state,
+        forecast=bundle.forecast,
+        universe=bundle.universe,
+        ruleset=ruleset(),
     )
-
-
-def _mechanics_certificate(source: str) -> ReferenceMechanicsCertificate:
-    return ReferenceMechanicsCertificate(
-        decision_id=DecisionId("authorization-decision"),
-        decision_input_id=DecisionInputId("authorization-input"),
-        manager_state_id=ManagerStateId("authorization-manager"),
-        forecast_id=ForecastId("authorization-forecast"),
-        ruleset_id=RuleSetId("authorization-rules"),
-        candidate_universe_id=CandidateUniverseId("authorization-universe"),
-        action_id="authorization-action",
-        recomputed_bank_after_tenths=0,
-        recomputed_hit_points=0,
-        recomputed_mechanics=_mechanics(),
-        checks=tuple(
-            ReferenceCheckResult(check, True, f"{check.value} reconciled")
-            for check in ReferenceMechanicsCheck
-        ),
-        algorithm_id="reference-mechanics-exhaustive-appearance-v1",
-        source_artifact_ids=(source,),
-    )
-
-
-def _solver_certificate(store: FileSystemArtifactStore) -> ReferenceSolverCertificate:
-    worker_code = store.put_bytes(b"authorization-worker-code").artifact_id
-    solver_input = store.put_bytes(b"authorization-solver-input").artifact_id
-    solver_output = store.put_bytes(b"authorization-solver-output").artifact_id
-    return ReferenceSolverCertificate(
-        decision_input_id=DecisionInputId("authorization-input"),
-        candidate_universe_id=CandidateUniverseId("authorization-universe"),
-        decision_policy_id=DecisionPolicyId("authorization-policy"),
-        worker_name="authorization-worker",
-        worker_version="1",
-        solver_status=ReferenceSolverStatus.OPTIMAL,
-        best_objective=RationalValue(57, 1),
-        best_bound=RationalValue(57, 1),
-        gap=RationalValue.zero(),
-        selected_action_id="authorization-action",
-        action_surface_complete=True,
-        tie_break_policy_id="lexicographic-official-id-v1",
-        solver_input_artifact_id=solver_input,
-        solver_output_artifact_id=solver_output,
-        worker_artifact_id=worker_code,
-    )
-
-
-def _qualified_registry(
-    store: FileSystemArtifactStore,
-    solver: ReferenceSolverCertificate,
-) -> ReferenceSolverRegistry:
-    qualification = store.put_bytes(b"authorization-worker-qualification").artifact_id
-    worker = ReferenceSolverWorkerArtifact(
-        worker_name=solver.worker_name,
-        worker_version=solver.worker_version,
-        solver_contract="apex-v2-exact-decision-parity-v1",
-        code_artifact_id=solver.worker_artifact_id,
-        qualification_state=ReferenceSolverWorkerQualification.QUALIFIED,
-        qualification_artifact_id=qualification,
-        valid_seasons=("2026-2027",),
-        first_available_at="2026-08-24T00:00:00Z",
-        max_horizon_gameweeks=1,
-    )
-    return ReferenceSolverRegistry(
-        season="2026-2027",
-        workers=(worker,),
-        champion_worker_id=worker.worker_id,
-    )
-
-
-def _stored_pass(store: FileSystemArtifactStore):
-    source = store.put_bytes(b"authorization-mechanics-source").artifact_id
-    mechanics = _mechanics_certificate(source)
-    solver = _solver_certificate(store)
-    registry = _qualified_registry(store, solver)
+    solver = bundle.solver_certificate
     authorization = create_reference_solver_authorization(
         solver,
-        worker_registry=registry,
+        worker_registry=bundle.registry,
         registry_artifact_id=None,
         store=store,
         season="2026-2027",
-        decision_cutoff="2026-08-24T06:00:00Z",
+        decision_cutoff=bundle.forecast.feature_cutoff,
         horizon_gameweeks=1,
     )
     stored_mechanics = store_reference_mechanics_certificate(mechanics, store=store)
@@ -168,9 +83,9 @@ def _stored_pass(store: FileSystemArtifactStore):
     return stored_report, authorization, solver
 
 
-def test_publication_pass_replays_qualified_champion_authorization(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    stored_report, authorization, _ = _stored_pass(store)
+def test_publication_pass_replays_qualified_champion_authorization(qualified_bundle) -> None:
+    store, bundle = qualified_bundle
+    stored_report, authorization, _ = _stored_pass(store, bundle)
     replayed = load_independent_assurance_report(stored_report.artifact_id, store=store)
     verified = verify_stored_independent_assurance(replayed, store=store)
     assert verified.stored_report.report.publication_eligible is True
@@ -178,11 +93,18 @@ def test_publication_pass_replays_qualified_champion_authorization(tmp_path: Pat
     assert verified.solver_authorization.artifact_id == authorization.artifact_id
 
 
-def test_pass_looking_report_without_authorization_is_rejected_on_verified_replay(tmp_path: Path) -> None:
-    store = FileSystemArtifactStore(tmp_path / "artifacts")
-    source = store.put_bytes(b"missing-authorization-source").artifact_id
-    mechanics = _mechanics_certificate(source)
-    solver = _solver_certificate(store)
+def test_pass_looking_report_without_authorization_is_rejected_on_verified_replay(
+    qualified_bundle,
+) -> None:
+    store, bundle = qualified_bundle
+    mechanics = certify_selected_action(
+        bundle.result,
+        state=bundle.state,
+        forecast=bundle.forecast,
+        universe=bundle.universe,
+        ruleset=ruleset(),
+    )
+    solver = bundle.solver_certificate
     stored_mechanics = store_reference_mechanics_certificate(mechanics, store=store)
     stored_solver = store_reference_solver_certificate(solver, store=store)
     report = IndependentAssuranceReport(
@@ -195,7 +117,7 @@ def test_pass_looking_report_without_authorization_is_rejected_on_verified_repla
         source_artifact_ids=tuple(
             sorted(
                 {
-                    source,
+                    *mechanics.source_artifact_ids,
                     solver.solver_input_artifact_id,
                     solver.solver_output_artifact_id,
                     solver.worker_artifact_id,
@@ -214,9 +136,12 @@ def test_pass_looking_report_without_authorization_is_rejected_on_verified_repla
         verify_stored_independent_assurance(replayed, store=store)
 
 
-def test_authorization_replay_fails_if_qualification_artifact_is_missing(tmp_path: Path) -> None:
-    source_store = FileSystemArtifactStore(tmp_path / "source")
-    _, authorization, solver = _stored_pass(source_store)
+def test_authorization_replay_fails_if_qualification_artifact_is_missing(
+    qualified_bundle,
+    tmp_path: Path,
+) -> None:
+    source_store, bundle = qualified_bundle
+    _, authorization, solver = _stored_pass(source_store, bundle)
     replay_store = FileSystemArtifactStore(tmp_path / "replay")
     for artifact_id in (
         authorization.artifact_id,

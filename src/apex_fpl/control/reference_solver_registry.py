@@ -8,6 +8,9 @@ from pathlib import Path
 import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.reference_solver_qualification import (
+    verify_reference_solver_algorithmic_qualification,
+)
 from apex_fpl.core.assurance import ReferenceSolverCertificate
 from apex_fpl.core.ids import ReferenceSolverWorkerId
 from apex_fpl.core.reference_solver_worker import (
@@ -86,7 +89,17 @@ class ReferenceSolverRegistry:
         if not store.verify(worker.code_artifact_id):
             raise ValueError("reference solver worker code artifact is missing/corrupt")
         qualification = worker.qualification_artifact_id
-        if qualification is not None and not store.verify(qualification):
+        if worker.qualification_state is ReferenceSolverWorkerQualification.QUALIFIED:
+            if qualification is None:
+                raise ValueError("qualified reference solver worker lacks qualification artifact")
+            verify_reference_solver_algorithmic_qualification(
+                worker,
+                qualification_artifact_id=qualification,
+                store=store,
+                season=season,
+                horizon_gameweeks=horizon_gameweeks,
+            )
+        elif qualification is not None and not store.verify(qualification):
             raise ValueError("reference solver worker qualification artifact is missing/corrupt")
         worker.require_available_for(
             season=season,

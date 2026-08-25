@@ -46,9 +46,11 @@ def _worker(
     certificate: ReferenceSolverCertificate,
     *,
     qualified: bool,
+    first_available_at: str = "2026-08-24T00:00:00Z",
+    max_horizon_gameweeks: int = 8,
 ) -> ReferenceSolverWorkerArtifact:
     qualification = (
-        store.put_bytes(b"reference-worker-qualification").artifact_id
+        store.put_bytes(b"arbitrary-bytes-are-not-qualification").artifact_id
         if qualified
         else None
     )
@@ -64,8 +66,8 @@ def _worker(
         ),
         qualification_artifact_id=qualification,
         valid_seasons=("2026-2027",),
-        first_available_at="2026-08-24T00:00:00Z",
-        max_horizon_gameweeks=8,
+        first_available_at=first_available_at,
+        max_horizon_gameweeks=max_horizon_gameweeks,
     )
 
 
@@ -75,7 +77,9 @@ def test_reference_solver_registry_starts_with_no_fabricated_champion() -> None:
     assert registry.champion() is None
 
 
-def test_production_reference_solver_requires_registered_qualified_champion(tmp_path: Path) -> None:
+def test_arbitrary_qualification_artifact_cannot_authorize_production_worker(
+    tmp_path: Path,
+) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     certificate = _certificate(store)
     worker = _worker(store, certificate, qualified=True)
@@ -84,23 +88,24 @@ def test_production_reference_solver_requires_registered_qualified_champion(tmp_
         workers=(worker,),
         champion_worker_id=worker.worker_id,
     )
-    verified = registry.verify_certificate_worker(
-        certificate,
-        store=store,
-        season="2026-2027",
-        cutoff="2026-08-24T06:00:00Z",
-        horizon_gameweeks=1,
-        production=True,
-    )
-    assert verified.worker_id == worker.worker_id
+    with pytest.raises(ValueError, match="qualification"):
+        registry.verify_certificate_worker(
+            certificate,
+            store=store,
+            season="2026-2027",
+            cutoff="2026-08-24T06:00:00Z",
+            horizon_gameweeks=1,
+            production=True,
+        )
 
+
+def test_shadow_reference_solver_cannot_be_production_champion(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    certificate = _certificate(store)
     shadow = _worker(store, certificate, qualified=False)
-    shadow_registry = ReferenceSolverRegistry(
-        season="2026-2027",
-        workers=(shadow,),
-    )
+    registry = ReferenceSolverRegistry(season="2026-2027", workers=(shadow,))
     with pytest.raises(ValueError, match="qualified"):
-        shadow_registry.verify_certificate_worker(
+        registry.verify_certificate_worker(
             certificate,
             store=store,
             season="2026-2027",
@@ -114,23 +119,18 @@ def test_reference_solver_registry_rejects_worker_code_identity_mismatch(tmp_pat
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     certificate = _certificate(store)
     other_code = store.put_bytes(b"different-reference-worker-code").artifact_id
-    qualification = store.put_bytes(b"reference-worker-qualification").artifact_id
     mismatched = ReferenceSolverWorkerArtifact(
         worker_name=certificate.worker_name,
         worker_version=certificate.worker_version,
         solver_contract="apex-v2-exact-decision-parity-v1",
         code_artifact_id=other_code,
-        qualification_state=ReferenceSolverWorkerQualification.QUALIFIED,
-        qualification_artifact_id=qualification,
+        qualification_state=ReferenceSolverWorkerQualification.SHADOW,
+        qualification_artifact_id=None,
         valid_seasons=("2026-2027",),
         first_available_at="2026-08-24T00:00:00Z",
         max_horizon_gameweeks=8,
     )
-    registry = ReferenceSolverRegistry(
-        season="2026-2027",
-        workers=(mismatched,),
-        champion_worker_id=mismatched.worker_id,
-    )
+    registry = ReferenceSolverRegistry(season="2026-2027", workers=(mismatched,))
     with pytest.raises(ValueError, match="not registered under exact identity"):
         registry.verify_certificate_worker(
             certificate,
@@ -138,30 +138,21 @@ def test_reference_solver_registry_rejects_worker_code_identity_mismatch(tmp_pat
             season="2026-2027",
             cutoff="2026-08-24T06:00:00Z",
             horizon_gameweeks=1,
-            production=True,
+            production=False,
         )
 
 
 def test_reference_solver_registry_uses_calendar_horizon_and_no_future_worker(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     certificate = _certificate(store)
-    qualification = store.put_bytes(b"reference-worker-qualification").artifact_id
-    worker = ReferenceSolverWorkerArtifact(
-        worker_name=certificate.worker_name,
-        worker_version=certificate.worker_version,
-        solver_contract="apex-v2-exact-decision-parity-v1",
-        code_artifact_id=certificate.worker_artifact_id,
-        qualification_state=ReferenceSolverWorkerQualification.QUALIFIED,
-        qualification_artifact_id=qualification,
-        valid_seasons=("2026-2027",),
+    worker = _worker(
+        store,
+        certificate,
+        qualified=False,
         first_available_at="2026-08-25T00:00:00Z",
         max_horizon_gameweeks=2,
     )
-    registry = ReferenceSolverRegistry(
-        season="2026-2027",
-        workers=(worker,),
-        champion_worker_id=worker.worker_id,
-    )
+    registry = ReferenceSolverRegistry(season="2026-2027", workers=(worker,))
     with pytest.raises(ValueError, match="not available"):
         registry.verify_certificate_worker(
             certificate,
@@ -169,7 +160,7 @@ def test_reference_solver_registry_uses_calendar_horizon_and_no_future_worker(tm
             season="2026-2027",
             cutoff="2026-08-24T06:00:00Z",
             horizon_gameweeks=1,
-            production=True,
+            production=False,
         )
     with pytest.raises(ValueError, match="horizon"):
         registry.verify_certificate_worker(
@@ -178,5 +169,5 @@ def test_reference_solver_registry_uses_calendar_horizon_and_no_future_worker(tm
             season="2026-2027",
             cutoff="2026-08-26T06:00:00Z",
             horizon_gameweeks=3,
-            production=True,
+            production=False,
         )
