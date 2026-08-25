@@ -18,7 +18,7 @@ Shadow writes use a distinct `FileSystemReleaseRegistry` root/namespace supplied
 
 ## Release semantics
 
-The supplied `AssuranceCase` derives its `ReleaseCertificate` from the supplied proof obligations.
+The supplied `AssuranceCase` derives its `ReleaseCertificate` from the supplied proof obligations. Proof obligations are canonicalized by `proof_id` before both derivation and sealing, and duplicate proof IDs fail before any release is staged.
 
 - eligible certificate -> shadow `ReleaseRecord.status=CERTIFIED`;
 - ineligible certificate -> shadow `ReleaseRecord.status=WITHHELD`.
@@ -39,13 +39,22 @@ Before shadow execution:
 - the artifact manifest must verify in `ArtifactStore`;
 - every artifact ID attached to an `AssuranceClaim` must verify.
 
-The resulting `ShadowProductionReport` is stored under canonical content identity. Replay:
+The runner additionally seals two content-addressed policy snapshots:
+
+1. the exact `AssuranceCase` plus its derived semantic identity;
+2. the exact canonical `ProofObligation` set used to derive the release certificate.
+
+Both snapshot artifacts are mandatory `ShadowProductionReport` lineage. The resulting report is stored under canonical content identity. Replay:
 
 1. verifies the report envelope and semantic ID;
 2. reconstructs the strict typed report;
-3. re-verifies every retained source artifact.
+3. re-verifies every retained source artifact;
+4. reconstructs the exact retained `AssuranceCase`;
+5. reconstructs the exact retained proof-obligation set;
+6. independently re-derives the `ReleaseCertificate`;
+7. requires its AssuranceCase ID, PASS/FAIL status and blocker tuple to match the stored report exactly.
 
-Missing or corrupt evidence therefore invalidates a historical shadow PASS rather than leaving a stale green boolean behind.
+This prevents a historical PASS from surviving a changed release policy or from being explained only by a stale green boolean. Missing or corrupt evidence invalidates the replay.
 
 ## CAS behavior
 
@@ -59,12 +68,19 @@ The runner fails closed for:
 
 - missing/corrupt manifest;
 - missing/corrupt AssuranceCase artifact evidence;
+- duplicate proof IDs;
+- missing/corrupt retained AssuranceCase or proof-policy snapshot;
+- replayed ReleaseCertificate disagreement;
 - stale shadow CAS;
 - production-pointer movement during the rehearsal;
 - malformed or tampered stored shadow reports;
 - missing/corrupt replay source evidence.
 
 An AssuranceCase that is internally valid but lacks a mandatory proof does not crash. It creates a non-actionable `WITHHELD` shadow release whose blockers come from the derived ReleaseCertificate.
+
+## CI contract
+
+`.github/workflows/v2-shadow-production.yml` uses the same frozen dependency installation path as Apex CI, runs every `tests/test_v2_shadow_*.py` contract/adversarial/traceability test and runs Ruff over the entire Slice 12 surface. Constitutional proof/requirement/invariant changes also trigger this workflow.
 
 ## Cutover boundary
 
