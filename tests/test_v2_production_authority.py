@@ -44,7 +44,7 @@ from apex_fpl.core.proofs import (
     ReleasePolicy,
 )
 
-from production_bundle_helpers import synthetic_production_bundle
+from production_planning_bundle_helpers import synthetic_production_planning_bundle
 
 
 SEASON = "2026-2027"
@@ -175,7 +175,7 @@ def _empirical_qualification(store, proof_id: str) -> tuple[str, str, str]:
 def _qualified_cutover(tmp_path: Path):
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
-    fixture = synthetic_production_bundle(
+    fixture = synthetic_production_planning_bundle(
         store=store,
         season=SEASON,
         entry=ENTRY,
@@ -391,7 +391,7 @@ def test_corrupt_production_bundle_withholds_current_answer(tmp_path: Path) -> N
     assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
     assert authority.production_result_bundle_id is None
     assert "publication authorization is invalid" in authority.blockers[0]
-    assert "production decision bundle" in authority.blockers[0]
+    assert "production planning bundle" in authority.blockers[0]
 
 
 def test_expired_current_release_is_non_actionable_even_when_pointer_is_current(tmp_path: Path) -> None:
