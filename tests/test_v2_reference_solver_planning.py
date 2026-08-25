@@ -56,7 +56,7 @@ def _request(store, *, max_search_nodes: int) -> tuple[PlanningReferenceSolverRe
 
 def test_planning_reference_contract_is_distinct_from_tactical_v1(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    request, _ = _request(store, max_search_nodes=500)
+    request, _ = _request(store, max_search_nodes=5_000)
     assert request.solver_contract == REFERENCE_SOLVER_PLANNING_CONTRACT
     assert request.solver_contract != "apex-v2-exact-decision-parity-v1"
     assert request.horizon_gameweeks == 2
@@ -66,7 +66,7 @@ def test_independent_planning_worker_matches_complete_main_planner_trajectory(
     tmp_path: Path,
 ) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
-    request, expected = _request(store, max_search_nodes=500)
+    request, expected = _request(store, max_search_nodes=5_000)
     run = solve_planning_reference_request(request)
 
     assert run.solver_status is PlanningReferenceSolverStatus.OPTIMAL
