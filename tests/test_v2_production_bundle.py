@@ -25,9 +25,7 @@ def test_production_bundle_round_trip_binds_complete_direct_decision_lineage(
     fixture = synthetic_production_bundle(store=store)
     bundle = fixture.bundle
 
-    assert str(bundle.bundle_id) == "sha256:" + canonical_sha256(
-        bundle.semantic_payload()
-    ).split(":", 1)[1]
+    assert str(bundle.bundle_id) == canonical_sha256(bundle.semantic_payload())
     assert store.verify(str(bundle.bundle_id))
     verified = load_production_decision_bundle(bundle.bundle_id, store=store)
     assert verified.bundle == bundle
