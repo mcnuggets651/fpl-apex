@@ -4,7 +4,10 @@ import ast
 import inspect
 from pathlib import Path
 
+from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.production_authority import resolve_production_answer_authority
 from apex_fpl.control.production_cutover import execute_production_cutover
+from apex_fpl.control.release_registry import FileSystemReleaseRegistry
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,6 +85,12 @@ def test_production_cutover_has_no_network_v1_runtime_or_filesystem_backend_shor
     assert "derive_release_certificate" in text
     assert "production_registry.compare_and_swap_current" in text
     assert "ProductionPublicationAuthorization" in text
+    assert "_validate_backend_binding" in text
+
+
+def test_filesystem_control_plane_is_structurally_reference_only() -> None:
+    assert FileSystemArtifactStore.backend_id.startswith("apex.reference.")
+    assert FileSystemReleaseRegistry.backend_id.startswith("apex.reference.")
 
 
 def test_production_cutover_accepts_no_independent_readiness_or_safety_input() -> None:
@@ -102,6 +111,29 @@ def test_answer_authority_is_current_published_v2_only() -> None:
     assert "ReleaseStatus.V1_ACTIONABLE" not in text
     assert "ShadowProduction" not in text
     assert "shadow_registry" not in text
+
+
+def test_answer_authority_requires_explicit_replayable_time_and_no_hidden_clock() -> None:
+    parameters = inspect.signature(resolve_production_answer_authority).parameters
+    assert "as_of" in parameters
+    text = AUTHORITY.read_text(encoding="utf-8")
+    assert "datetime.now(" not in text
+    assert "datetime.utcnow(" not in text
+    assert "valid_until" in text
+    assert "has expired" in text
+
+
+def test_production_authorization_binds_release_validity_window() -> None:
+    core = (ROOT / "src" / "apex_fpl" / "core" / "production.py").read_text(
+        encoding="utf-8"
+    )
+    cutover = CUTOVER.read_text(encoding="utf-8")
+    assert "created_at: str" in core
+    assert "valid_until: str | None" in core
+    assert '"created_at": self.created_at' in core
+    assert '"valid_until": self.valid_until' in core
+    assert "record.created_at != authorization.created_at" in cutover
+    assert "record.valid_until != authorization.valid_until" in cutover
 
 
 def test_production_authority_does_not_import_legacy_answer_surface() -> None:
