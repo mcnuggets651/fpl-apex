@@ -40,6 +40,7 @@ from apex_fpl.core.production import (
 )
 from apex_fpl.core.production_proof_contract import (
     EMPIRICAL_PRODUCTION_PROOF_IDS,
+    PRODUCTION_EMPIRICAL_SUBJECT_KIND,
     PRODUCTION_PROOF_CLASSES,
 )
 from apex_fpl.core.proofs import (
@@ -139,7 +140,7 @@ def _empirical_qualification(store, proof_id: str) -> tuple[str, str, str]:
     source_artifact_id = _artifact(store, f"source:{proof_id}")
     definition = ExperimentDefinition(
         proof_id=proof_id,
-        subject_kind="synthetic-production-proof-subject",
+        subject_kind=PRODUCTION_EMPIRICAL_SUBJECT_KIND[proof_id],
         subject_id=subject_id,
         season=SEASON,
         evaluator_artifact_id=evaluator_artifact_id,
