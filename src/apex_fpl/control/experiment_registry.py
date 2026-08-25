@@ -115,10 +115,16 @@ class ExperimentRegistration:
     definition_artifact_id: str
 
     def __post_init__(self) -> None:
-        if not str(self.experiment_id).strip():
-            raise ValueError("experiment registration requires experiment_id")
-        if not str(self.definition_artifact_id).strip():
-            raise ValueError("experiment registration requires definition_artifact_id")
+        object.__setattr__(
+            self,
+            "experiment_id",
+            _string(self.experiment_id, label="experiment_id"),
+        )
+        object.__setattr__(
+            self,
+            "definition_artifact_id",
+            _string(self.definition_artifact_id, label="definition_artifact_id"),
+        )
 
     def semantic_payload(self) -> dict[str, str]:
         return {
@@ -136,9 +142,7 @@ class ExperimentRegistry:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported ExperimentRegistry schema_version")
-        season = str(self.season).strip()
-        if not season:
-            raise ValueError("ExperimentRegistry requires season")
+        season = _string(self.season, label="ExperimentRegistry season")
         registrations = tuple(sorted(self.registrations, key=lambda row: row.experiment_id))
         ids = [row.experiment_id for row in registrations]
         if len(ids) != len(set(ids)):
@@ -167,16 +171,15 @@ class ExperimentRegistry:
 
 def load_experiment_registry(path: str | Path) -> ExperimentRegistry:
     payload = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    if not isinstance(payload, dict) or _strict_int(
-        payload.get("schema_version"), label="schema_version"
-    ) != 1:
+    if not isinstance(payload, dict):
+        raise ValueError("ExperimentRegistry must be object")
+    if _strict_int(payload.get("schema_version"), label="schema_version") != 1:
         raise ValueError("ExperimentRegistry requires schema_version 1")
-    season = _string(payload.get("season"), label="ExperimentRegistry season")
     rows = payload.get("experiments")
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise ValueError("ExperimentRegistry experiments must be object array")
     return ExperimentRegistry(
-        season=season,
+        season=_string(payload.get("season"), label="ExperimentRegistry season"),
         registrations=tuple(
             ExperimentRegistration(
                 experiment_id=_string(row.get("experiment_id"), label="experiment_id"),
@@ -308,15 +311,17 @@ def load_experiment_result(
         source_artifact_ids=_string_tuple(
             payload.get("source_artifact_ids"), label="source_artifact_ids"
         ),
-        schema_version=_strict_int(payload.get("schema_version"), label="result schema_version"),
+        schema_version=_strict_int(
+            payload.get("schema_version"), label="result schema_version"
+        ),
     )
     if result.result_id != declared:
         raise ValueError("ExperimentResult semantic identity mismatch")
+    if not store.verify(result.evaluator_artifact_id):
+        raise ValueError("ExperimentResult evaluator artifact missing/corrupt")
     for source_id in result.source_artifact_ids:
         if not store.verify(source_id):
             raise ValueError("ExperimentResult source artifact missing/corrupt")
-    if not store.verify(result.evaluator_artifact_id):
-        raise ValueError("ExperimentResult evaluator artifact missing/corrupt")
     return result
 
 
@@ -368,7 +373,9 @@ def load_experiment_registry_artifact(
             )
             for row in rows
         ),
-        schema_version=_strict_int(payload.get("schema_version"), label="registry schema_version"),
+        schema_version=_strict_int(
+            payload.get("schema_version"), label="registry schema_version"
+        ),
     )
     if registry.registry_id != declared:
         raise ValueError("ExperimentRegistry semantic identity mismatch")
@@ -388,25 +395,36 @@ def _derive_decision(
     definition: ExperimentDefinition,
     result: ExperimentResult,
 ) -> tuple[EmpiricalQualificationDecision, tuple[str, ...]]:
-    blockers: list[str] = []
+    structural: list[str] = []
+    incomplete: list[str] = []
+    threshold_failures: list[str] = []
+
     if result.experiment_id != definition.experiment_id:
-        blockers.append("experiment result references different experiment")
+        structural.append("experiment result references different experiment")
     if result.proof_id != definition.proof_id:
-        blockers.append("experiment result proof_id mismatch")
+        structural.append("experiment result proof_id mismatch")
     if result.subject_kind != definition.subject_kind:
-        blockers.append("experiment result subject_kind mismatch")
+        structural.append("experiment result subject_kind mismatch")
     if result.subject_id != definition.subject_id:
-        blockers.append("experiment result subject_id mismatch")
+        structural.append("experiment result subject_id mismatch")
     if result.season != definition.season:
-        blockers.append("experiment result season mismatch")
+        structural.append("experiment result season mismatch")
     if result.evaluator_artifact_id != definition.evaluator_artifact_id:
-        blockers.append("experiment result evaluator identity mismatch")
-    if result.evaluated_at < definition.evaluation_window_end:
-        blockers.append("experiment result was finalized before evaluation window ended")
-    if result.evaluated_at > definition.valid_until:
-        blockers.append("experiment result was finalized after experiment validity expired")
+        structural.append("experiment result evaluator identity mismatch")
+
+    evaluated = _aware_instant(result.evaluated_at, label="result evaluated_at")
+    window_end = _aware_instant(
+        definition.evaluation_window_end,
+        label="evaluation_window_end",
+    )
+    validity_end = _aware_instant(definition.valid_until, label="valid_until")
+    if evaluated < window_end:
+        structural.append("experiment result was finalized before evaluation window ended")
+    if evaluated > validity_end:
+        structural.append("experiment result was finalized after experiment validity expired")
+
     if result.sample_size < definition.minimum_sample_size:
-        blockers.append(
+        incomplete.append(
             f"insufficient sample: {result.sample_size} < {definition.minimum_sample_size}"
         )
 
@@ -415,26 +433,23 @@ def _derive_decision(
     unknown = sorted(set(values) - rule_ids)
     missing = sorted(rule_ids - set(values))
     if unknown:
-        blockers.append(f"unexpected experiment metrics: {unknown}")
+        structural.append(f"unexpected experiment metrics: {unknown}")
     if missing:
-        blockers.append(f"missing experiment metrics: {missing}")
+        incomplete.append(f"missing experiment metrics: {missing}")
     failed_metrics = sorted(
         rule.metric_id
         for rule in definition.metric_rules
         if rule.metric_id in values and not rule.satisfied_by(values[rule.metric_id])
     )
     if failed_metrics:
-        blockers.append(f"qualification thresholds failed: {failed_metrics}")
+        threshold_failures.append(f"qualification thresholds failed: {failed_metrics}")
 
-    if not blockers:
-        return EmpiricalQualificationDecision.SUPPORTED, ()
-    if any(
-        blocker.startswith("insufficient sample")
-        or blocker.startswith("missing experiment metrics")
-        for blocker in blockers
-    ):
-        return EmpiricalQualificationDecision.INCONCLUSIVE, tuple(blockers)
-    return EmpiricalQualificationDecision.REJECTED, tuple(blockers)
+    blockers = tuple(structural + incomplete + threshold_failures)
+    if structural or threshold_failures:
+        return EmpiricalQualificationDecision.REJECTED, blockers
+    if incomplete:
+        return EmpiricalQualificationDecision.INCONCLUSIVE, blockers
+    return EmpiricalQualificationDecision.SUPPORTED, ()
 
 
 def derive_empirical_qualification_certificate(
@@ -450,7 +465,9 @@ def derive_empirical_qualification_certificate(
     if registration is None:
         raise ValueError("experiment is not registered")
     if registration.definition_artifact_id != definition_artifact_id:
-        raise ValueError("registered experiment definition artifact does not match supplied definition")
+        raise ValueError(
+            "registered experiment definition artifact does not match supplied definition"
+        )
     if definition.season != registry.season:
         raise ValueError("experiment registry/definition season mismatch")
     result = load_experiment_result(result_artifact_id, store=store)
@@ -544,7 +561,9 @@ def load_empirical_qualification_certificate(
             payload.get("first_available_at"), label="first_available_at"
         ),
         valid_until=_string(payload.get("valid_until"), label="valid_until"),
-        schema_version=_strict_int(payload.get("schema_version"), label="certificate schema_version"),
+        schema_version=_strict_int(
+            payload.get("schema_version"), label="certificate schema_version"
+        ),
     )
     if certificate.certificate_id != declared:
         raise ValueError("empirical qualification certificate semantic identity mismatch")
@@ -552,24 +571,27 @@ def load_empirical_qualification_certificate(
         if not store.verify(source_id):
             raise ValueError("empirical qualification source artifact missing/corrupt")
 
-    replayable_registries = []
+    replayable_registries: list[str] = []
     for source_id in certificate.source_artifact_ids:
         try:
-            registry = load_experiment_registry_artifact(source_id, store=store)
+            load_experiment_registry_artifact(source_id, store=store)
         except ValueError:
             continue
-        replayable_registries.append((source_id, registry))
+        replayable_registries.append(source_id)
     if len(replayable_registries) != 1:
-        raise ValueError("empirical qualification must retain exactly one replayable ExperimentRegistry")
-    registry_artifact_id, _ = replayable_registries[0]
+        raise ValueError(
+            "empirical qualification must retain exactly one replayable ExperimentRegistry"
+        )
     derived = derive_empirical_qualification_certificate(
         definition_artifact_id=certificate.experiment_definition_artifact_id,
         result_artifact_id=certificate.result_artifact_id,
-        registry_artifact_id=registry_artifact_id,
+        registry_artifact_id=replayable_registries[0],
         store=store,
     )
     if derived.semantic_payload() != certificate.semantic_payload():
-        raise ValueError("empirical qualification certificate does not re-derive from retained evidence")
+        raise ValueError(
+            "empirical qualification certificate does not re-derive from retained evidence"
+        )
     if as_of is not None:
         current = _aware_instant(as_of, label="qualification as_of")
         first = _aware_instant(
@@ -579,6 +601,6 @@ def load_empirical_qualification_certificate(
         expiry = _aware_instant(certificate.valid_until, label="qualification valid_until")
         if current < first:
             raise ValueError("empirical qualification was not yet available at as_of")
-        if current > expiry:
+        if current >= expiry:
             raise ValueError("empirical qualification has expired")
     return certificate
