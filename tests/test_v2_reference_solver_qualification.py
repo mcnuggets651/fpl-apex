@@ -8,9 +8,15 @@ import pytest
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
 from apex_fpl.control.reference_solver_qualification import (
     derive_reference_solver_algorithmic_qualification,
+    load_reference_solver_qualification_corpus,
+    store_reference_solver_qualification_corpus,
     verify_reference_solver_algorithmic_qualification,
 )
-from apex_fpl.core.reference_solver_qualification import reference_solver_worker_subject_id
+from apex_fpl.core.reference_solver_qualification import (
+    REFERENCE_SOLVER_REQUIRED_COVERAGE,
+    ReferenceSolverQualificationCorpus,
+    reference_solver_worker_subject_id,
+)
 from apex_fpl.core.reference_solver_worker import ReferenceSolverWorkerQualification
 
 from reference_solver_qualification_helpers import build_qualified_reference_solver_bundle
@@ -28,7 +34,8 @@ def test_algorithmic_qualification_replays_exact_corpus_and_authorizes_registry(
         season="2026-2027",
         horizon_gameweeks=1,
     )
-    assert certificate.passed_case_count == 1
+    assert certificate.passed_case_count == 3
+    assert certificate.coverage_tags == REFERENCE_SOLVER_REQUIRED_COVERAGE
     verified = bundle.registry.verify_certificate_worker(
         bundle.solver_certificate,
         store=store,
@@ -110,3 +117,30 @@ def test_qualification_corpus_is_reexecuted_not_merely_hash_checked(tmp_path: Pa
         bundle.worker.semantic_payload()
     )
     assert derived.worker_code_artifact_id == other_code
+
+
+def test_trivial_replayable_corpus_cannot_self_qualify(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    bundle = build_qualified_reference_solver_bundle(store)
+    full = load_reference_solver_qualification_corpus(
+        bundle.corpus_artifact_id,
+        store=store,
+    )
+    weak = ReferenceSolverQualificationCorpus(
+        season=full.season,
+        horizon_gameweeks=full.horizon_gameweeks,
+        solver_contract=full.solver_contract,
+        case_artifact_ids=(bundle.case_artifact_ids[0],),
+    )
+    weak_artifact = store_reference_solver_qualification_corpus(weak, store=store)
+    shadow = replace(
+        bundle.worker,
+        qualification_state=ReferenceSolverWorkerQualification.SHADOW,
+        qualification_artifact_id=None,
+    )
+    with pytest.raises(ValueError, match="mandatory derived coverage"):
+        derive_reference_solver_algorithmic_qualification(
+            shadow,
+            corpus_artifact_id=weak_artifact,
+            store=store,
+        )
