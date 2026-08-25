@@ -17,6 +17,7 @@ INVARIANTS = {
     "INV-PRODUCTION-CAS-ATOMIC",
     "INV-PRODUCTION-WITHHELD-NON-ACTIONABLE",
     "INV-PRODUCTION-ANSWER-CURRENT-ONLY",
+    "INV-PRODUCTION-AUTHORITY-TIME-BOUNDED",
     "INV-PRODUCTION-REPLAY-EXACT",
 }
 
@@ -44,6 +45,9 @@ def test_slice13_production_proof_requirement_and_invariant_traceability_is_clos
     proof = next(row for row in proofs if row["proof_id"] == PROOF_ID)
     requirement = next(row for row in requirements if row["requirement_id"] == REQUIREMENT_ID)
     assert proof["release_policy"] == "REQUIRED"
+    assert proof["scope"] == "production_control_plane_build"
+    assert "ProductionCutoverReport" not in set(proof["required_evidence"])
+    assert "production_CAS_result" not in set(proof["required_evidence"])
     assert requirement["critical"] is True
     assert PROOF_ID in requirement["proof_obligations"]
     assert INVARIANTS.issubset(set(requirement["invariants"]))
