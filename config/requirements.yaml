@@ -183,3 +183,11 @@ requirements:
     implementation: [src/apex_fpl/core/learning_common.py, src/apex_fpl/core/learning_training.py, src/apex_fpl/core/learning_dataset.py, src/apex_fpl/core/learning_observations.py, src/apex_fpl/core/learning_policy.py, src/apex_fpl/core/learning_evaluation.py, src/apex_fpl/core/learning_promotion.py, src/apex_fpl/core/outcome_truth.py, src/apex_fpl/control/outcome_truth_registry.py, src/apex_fpl/control/learning_policy_registry.py, src/apex_fpl/control/learning_evaluator.py, src/apex_fpl/control/learning_promotion.py, src/apex_fpl/control/learning_store.py, config/outcome_truth_v2.yaml, config/learning_policies_v2.yaml]
     tests: [tests/test_v2_learning_governance.py, tests/test_v2_learning_prediction_coverage.py, tests/test_v2_learning_policy_parsing.py, tests/test_v2_learning_replay.py, tests/test_v2_learning_architecture.py]
     proof_obligations: [PO-LEARNING-NO-HINDSIGHT-001, PO-MODEL-EVALUATION-001, PO-MODEL-PROMOTION-001, PO-OUTCOME-TRUTH-001, PO-ARTIFACT-INTEGRITY-001]
+
+  - requirement_id: REQ-V2-SHADOW-PRODUCTION
+    requirement: Before production cutover, V2 must rehearse the real AssuranceCase-to-ReleaseCertificate and immutable ReleaseRecord/CAS publication contract in an isolated shadow registry while remaining structurally non-actionable, keeping the production current pointer read-only and replaying all shadow evidence exactly.
+    critical: true
+    invariants: [INV-SHADOW-NON-ACTIONABLE, INV-SHADOW-PRODUCTION-POINTER-READ-ONLY, INV-SHADOW-USES-RELEASE-CONTRACT, INV-SHADOW-REPLAY-EXACT, INV-ASSURANCE-DERIVES-RELEASE, INV-CAS-CURRENT-POINTER, INV-IMMUTABLE-RELEASE]
+    implementation: [src/apex_fpl/core/shadow.py, src/apex_fpl/control/shadow_production.py, .github/workflows/v2-shadow-production.yml, docs/APEX_SHADOW_PRODUCTION_V2.md]
+    tests: [tests/test_v2_shadow_production.py, tests/test_v2_shadow_architecture.py, tests/test_v2_shadow_traceability.py]
+    proof_obligations: [PO-SHADOW-PRODUCTION-001, PO-ARTIFACT-INTEGRITY-001, PO-RELEASE-CAS-001]

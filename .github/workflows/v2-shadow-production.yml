@@ -1,0 +1,37 @@
+name: V2 Shadow Production
+
+on:
+  pull_request:
+    paths:
+      - "src/apex_fpl/core/proofs.py"
+      - "src/apex_fpl/core/shadow.py"
+      - "src/apex_fpl/control/shadow_production.py"
+      - "tests/test_v2_shadow_*.py"
+      - "docs/APEX_SHADOW_PRODUCTION_V2.md"
+      - "docs/APEX_INVARIANTS.md"
+      - "config/proof_obligations.yaml"
+      - "config/requirements.yaml"
+      - ".github/workflows/v2-shadow-production.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shadow-production-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12.14"
+      - name: Install frozen Apex CI environment
+        shell: bash
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --no-deps -r requirements.lock
+          .venv/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run shadow production contract tests
+        run: .venv/bin/python -m pytest -q tests/test_v2_shadow_*.py
+      - name: Run Ruff on shadow production surface
+        run: .venv/bin/ruff check src/apex_fpl/core/proofs.py src/apex_fpl/core/shadow.py src/apex_fpl/control/shadow_production.py tests/test_v2_shadow_*.py

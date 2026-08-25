@@ -52,6 +52,21 @@ class ProofObligation:
         if self.release_policy is ReleasePolicy.REQUIRED and not self.required_tests:
             raise ValueError(f"{self.proof_id}: required release proof must name a test route")
 
+    def semantic_payload(self) -> dict[str, object]:
+        """Canonical durable representation of one release proof obligation."""
+
+        return {
+            "proof_id": self.proof_id,
+            "claim": self.claim,
+            "proof_class": self.proof_class.value,
+            "scope": self.scope,
+            "required_evidence": list(self.required_evidence),
+            "required_tests": list(self.required_tests),
+            "failure_consequence": self.failure_consequence,
+            "release_policy": self.release_policy.value,
+            "owner": self.owner,
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class AssuranceClaim:
@@ -95,13 +110,21 @@ class AssuranceCase:
         if len(ids) != len(set(ids)):
             raise ValueError("AssuranceCase contains duplicate proof claims")
 
-    @property
-    def case_id(self) -> str:
-        payload = {
+    def semantic_payload(self) -> dict[str, object]:
+        """Return the exact payload historically used to derive ``case_id``.
+
+        Keeping this shape identical preserves every existing AssuranceCase identity while
+        making the release evidence replayable as an immutable semantic object.
+        """
+
+        return {
             "release_scope": self.release_scope,
             "claims": [claim.semantic_payload() for claim in self.claims],
         }
-        return canonical_sha256(payload)
+
+    @property
+    def case_id(self) -> str:
+        return canonical_sha256(self.semantic_payload())
 
     def derive_release_certificate(
         self,

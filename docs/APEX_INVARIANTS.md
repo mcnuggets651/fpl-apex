@@ -76,3 +76,7 @@
 - **INV-PROMOTION-SEPARATE-FROM-EVALUATION** — training/evaluation/comparison artifacts cannot mutate the forecast-model champion; a separate immutable ModelPromotionCertificate is required.
 - **INV-MODEL-REGISTRY-CAS** — champion changes occur only through immutable parent-linked ModelRegistryGeneration transitions that reject stale writers and non-PROMOTE certificates.
 - **INV-LEARNING-REPLAY-EXACT** — every downstream learning dependency replays the exact stored object type and semantic identity and verifies all retained parent/source artifacts; valid-but-unrelated artifacts cannot satisfy another object's evidence obligation.
+- **INV-SHADOW-NON-ACTIONABLE** — a Slice 12 shadow release always has `ready_to_act=false` and `safe_to_act=false`, even when its derived ReleaseCertificate is PASS.
+- **INV-SHADOW-PRODUCTION-POINTER-READ-ONLY** — shadow execution may observe the production current pointer but cannot append to or compare-and-swap that production registry; the pointer must be identical before and after a certifiable shadow run.
+- **INV-SHADOW-USES-RELEASE-CONTRACT** — shadow production derives ReleaseCertificate from AssuranceCase and exercises immutable ReleaseRecord plus CAS semantics in an isolated shadow registry rather than maintaining an independent readiness flag.
+- **INV-SHADOW-REPLAY-EXACT** — every ShadowProductionReport is content-addressed and replay-verifies the artifact manifest and all retained AssuranceCase artifact evidence; lost or corrupt evidence invalidates historical shadow success.
