@@ -14,9 +14,9 @@ def _artifact(store: FileSystemArtifactStore, value: str) -> str:
     return store.put_bytes(value.encode("utf-8")).artifact_id
 
 
-def _obligation() -> ProofObligation:
+def _obligation(proof_id: str = "PO-SNAPSHOT-001") -> ProofObligation:
     return ProofObligation(
-        proof_id="PO-SNAPSHOT-001",
+        proof_id=proof_id,
         claim="snapshot proof",
         proof_class=ProofClass.FORMAL_INVARIANT,
         scope="shadow",
@@ -97,6 +97,37 @@ def test_duplicate_shadow_proof_ids_are_rejected_before_release(tmp_path: Path) 
             shadow_registry=FileSystemReleaseRegistry(tmp_path / "shadow"),
             production_reader=FileSystemReleaseRegistry(tmp_path / "production"),
         )
+
+
+def test_shadow_release_and_replay_use_same_canonical_proof_order(tmp_path: Path) -> None:
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
+    manifest = _artifact(store, "manifest")
+    outcome = execute_shadow_production(
+        season="2026-2027",
+        entry=63984,
+        gameweek=1,
+        bundle_id=None,
+        world_id=None,
+        runtime_digest="sha256:runtime",
+        created_at="2026-08-25T05:00:00Z",
+        valid_until=None,
+        artifact_manifest_id=manifest,
+        assurance_case=AssuranceCase(
+            release_scope="2026-2027:63984:1:shadow",
+            claims=(),
+        ),
+        obligations=(_obligation("PO-Z-001"), _obligation("PO-A-001")),
+        artifact_store=store,
+        shadow_registry=FileSystemReleaseRegistry(tmp_path / "shadow"),
+        production_reader=FileSystemReleaseRegistry(tmp_path / "production"),
+    )
+    assert outcome.report.release_certificate_status == "FAIL"
+    assert outcome.report.release_certificate_blockers == (
+        "missing required proof: PO-A-001",
+        "missing required proof: PO-Z-001",
+    )
+    replayed = load_shadow_production_report(outcome.report_artifact_id, artifact_store=store)
+    assert replayed.release_certificate_blockers == outcome.report.release_certificate_blockers
 
 
 def test_shadow_replay_fails_if_retained_proof_policy_snapshot_is_lost(tmp_path: Path) -> None:
