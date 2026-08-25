@@ -52,6 +52,7 @@ class ReleaseRecord:
     ready_to_act: bool
     safe_to_act: bool
     artifact_manifest_id: str
+    publication_authorization_artifact_id: str | None = None
     superseded_by: str | None = None
     release_id: str | None = None
 
@@ -59,6 +60,10 @@ class ReleaseRecord:
         payload = asdict(self)
         payload["status"] = self.status.value
         payload.pop("release_id", None)
+        # Preserve every pre-Slice-13 historical ReleaseRecord identity exactly. Only a V2
+        # production release carries the new proof-derived authorization field.
+        if payload.get("publication_authorization_artifact_id") is None:
+            payload.pop("publication_authorization_artifact_id", None)
         return payload
 
     def with_release_id(self) -> "ReleaseRecord":
@@ -125,6 +130,10 @@ def _release_record_from_payload(payload: object, *, expected_release_id: str) -
         ready_to_act=ready,
         safe_to_act=safe,
         artifact_manifest_id=str(payload.get("artifact_manifest_id") or ""),
+        publication_authorization_artifact_id=_strict_optional_string(
+            payload.get("publication_authorization_artifact_id"),
+            label="publication_authorization_artifact_id",
+        ),
         superseded_by=_strict_optional_string(payload.get("superseded_by"), label="superseded_by"),
         release_id=expected_release_id,
     )
