@@ -1,9 +1,9 @@
 """Dependency-free empirical experiment and qualification contracts for Apex V2.
 
 Empirical production claims must not become true merely because an arbitrary immutable
-artifact exists.  This module separates the stable pre-qualification subject identity,
+artifact exists. This module separates the stable pre-qualification subject identity,
 a predeclared experiment, its immutable result, and the derived qualification
-certificate.  Control-layer replay is responsible for re-deriving certificates from the
+certificate. Control-layer replay is responsible for re-deriving certificates from the
 retained definition/result evidence.
 """
 
@@ -16,6 +16,7 @@ from math import gcd
 from typing import Mapping
 
 from .canonical import canonical_sha256
+from .production_proof_contract import PRODUCTION_EMPIRICAL_SUBJECT_KIND
 
 
 def _text(value: object, *, label: str) -> str:
@@ -71,12 +72,21 @@ def _artifact_tuple(values: tuple[str, ...], *, label: str) -> tuple[str, ...]:
     return normalized
 
 
+def _validate_production_empirical_subject(proof_id: str, subject_kind: str) -> None:
+    expected = PRODUCTION_EMPIRICAL_SUBJECT_KIND.get(proof_id)
+    if expected is not None and subject_kind != expected:
+        raise ValueError(
+            "production empirical proof subject_kind does not match constitutional contract: "
+            f"{proof_id} requires {expected!r}, found {subject_kind!r}"
+        )
+
+
 def qualification_subject_payload(payload: Mapping[str, object]) -> dict[str, object]:
     """Return stable candidate semantics before qualification is attached.
 
     Existing V2 candidate identities intentionally include qualification state/artifact.
     A qualification certificate cannot target that final identity without a content cycle,
-    because the final identity would itself depend on the certificate artifact ID.  The
+    because the final identity would itself depend on the certificate artifact ID. The
     subject identity therefore removes only the qualification fields while preserving all
     model/policy/worker semantics that are actually being qualified.
     """
@@ -165,7 +175,11 @@ class QualificationMetricRule:
         }
 
     def satisfied_by(self, value: ExactQualificationValue) -> bool:
-        candidate = value.absolute() if self.direction is QualificationMetricDirection.ABS_AT_MOST else value
+        candidate = (
+            value.absolute()
+            if self.direction is QualificationMetricDirection.ABS_AT_MOST
+            else value
+        )
         threshold = (
             self.threshold.absolute()
             if self.direction is QualificationMetricDirection.ABS_AT_MOST
@@ -213,6 +227,7 @@ class ExperimentDefinition:
             raise ValueError("unsupported ExperimentDefinition schema_version")
         for label in ("proof_id", "subject_kind", "subject_id", "season"):
             object.__setattr__(self, label, _text(getattr(self, label), label=label))
+        _validate_production_empirical_subject(self.proof_id, self.subject_kind)
         object.__setattr__(
             self,
             "evaluator_artifact_id",
@@ -224,8 +239,14 @@ class ExperimentDefinition:
             _artifact_id(self.policy_artifact_id, label="experiment policy artifact"),
         )
         declared = _aware_iso(self.declared_at, label="experiment declared_at")
-        start = _aware_iso(self.evaluation_window_start, label="experiment evaluation_window_start")
-        end = _aware_iso(self.evaluation_window_end, label="experiment evaluation_window_end")
+        start = _aware_iso(
+            self.evaluation_window_start,
+            label="experiment evaluation_window_start",
+        )
+        end = _aware_iso(
+            self.evaluation_window_end,
+            label="experiment evaluation_window_end",
+        )
         valid_until = _aware_iso(self.valid_until, label="experiment valid_until")
         if _instant(declared) > _instant(start):
             raise ValueError("experiment must be predeclared before evaluation window starts")
@@ -239,7 +260,11 @@ class ExperimentDefinition:
         metric_ids = [row.metric_id for row in rules]
         if len(metric_ids) != len(set(metric_ids)):
             raise ValueError("experiment contains duplicate qualification metric rules")
-        object.__setattr__(self, "minimum_sample_size", _positive_int(self.minimum_sample_size, label="minimum_sample_size"))
+        object.__setattr__(
+            self,
+            "minimum_sample_size",
+            _positive_int(self.minimum_sample_size, label="minimum_sample_size"),
+        )
         object.__setattr__(self, "metric_rules", rules)
         object.__setattr__(self, "declared_at", declared)
         object.__setattr__(self, "evaluation_window_start", start)
@@ -288,13 +313,22 @@ class ExperimentResult:
             raise ValueError("unsupported ExperimentResult schema_version")
         for label in ("experiment_id", "proof_id", "subject_kind", "subject_id", "season"):
             object.__setattr__(self, label, _text(getattr(self, label), label=label))
+        _validate_production_empirical_subject(self.proof_id, self.subject_kind)
         object.__setattr__(
             self,
             "evaluator_artifact_id",
             _artifact_id(self.evaluator_artifact_id, label="result evaluator artifact"),
         )
-        object.__setattr__(self, "evaluated_at", _aware_iso(self.evaluated_at, label="result evaluated_at"))
-        object.__setattr__(self, "sample_size", _nonnegative_int(self.sample_size, label="sample_size"))
+        object.__setattr__(
+            self,
+            "evaluated_at",
+            _aware_iso(self.evaluated_at, label="result evaluated_at"),
+        )
+        object.__setattr__(
+            self,
+            "sample_size",
+            _nonnegative_int(self.sample_size, label="sample_size"),
+        )
         metrics = tuple(sorted(self.metrics, key=lambda row: row.metric_id))
         metric_ids = [row.metric_id for row in metrics]
         if len(metric_ids) != len(set(metric_ids)):
@@ -347,8 +381,16 @@ class EmpiricalQualificationCertificate:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported EmpiricalQualificationCertificate schema_version")
-        for label in ("proof_id", "subject_kind", "subject_id", "season", "experiment_id", "result_id"):
+        for label in (
+            "proof_id",
+            "subject_kind",
+            "subject_id",
+            "season",
+            "experiment_id",
+            "result_id",
+        ):
             object.__setattr__(self, label, _text(getattr(self, label), label=label))
+        _validate_production_empirical_subject(self.proof_id, self.subject_kind)
         object.__setattr__(
             self,
             "experiment_definition_artifact_id",
@@ -367,7 +409,10 @@ class EmpiricalQualificationCertificate:
             raise ValueError("supported empirical qualification cannot contain blockers")
         if self.decision is not EmpiricalQualificationDecision.SUPPORTED and not blockers:
             raise ValueError("non-supported empirical qualification requires blocker")
-        first = _aware_iso(self.first_available_at, label="qualification first_available_at")
+        first = _aware_iso(
+            self.first_available_at,
+            label="qualification first_available_at",
+        )
         valid_until = _aware_iso(self.valid_until, label="qualification valid_until")
         if _instant(first) >= _instant(valid_until):
             raise ValueError("qualification validity window must have positive duration")
