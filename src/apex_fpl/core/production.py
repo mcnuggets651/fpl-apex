@@ -9,9 +9,6 @@ from .canonical import canonical_sha256
 from .ids import BundleId, GlobalWorldId, ReleaseId
 
 
-# Production may not obtain a PASS certificate by handing the AssuranceCase a narrowed
-# proof registry. This closed constitutional surface is intentionally redundant with the
-# machine-readable registry and traceability tests keep the two synchronized.
 MANDATORY_PRODUCTION_PROOF_IDS = frozenset(
     {
         "PO-RUNTIME-IDENTITY-001",
@@ -67,12 +64,7 @@ class ProductionCutoverStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ProductionBackendQualification:
-    """Operational qualification for the production control plane.
-
-    Qualification is bound to the exact backend adapter identities. Reference/local
-    filesystem adapters are structurally non-production even if a caller supplies green
-    capability booleans.
-    """
+    """Operational qualification for the exact production control-plane adapters."""
 
     artifact_store_backend_id: str
     release_registry_backend_id: str
@@ -152,12 +144,7 @@ class ProductionBackendQualification:
 
 @dataclass(frozen=True, slots=True)
 class ProductionPublicationAuthorization:
-    """Immutable proof-derived authorization embedded in every V2 production release.
-
-    The authorization binds release scope, decision/runtime identity, exact validity window,
-    proof surface and production backend qualification before a ReleaseRecord is constructed.
-    It is necessary but not sufficient: publication still requires the later atomic CAS.
-    """
+    """Immutable proof-derived authorization embedded in every V2 production release."""
 
     season: str
     entry: int
@@ -175,6 +162,8 @@ class ProductionPublicationAuthorization:
     release_certificate_blockers: tuple[str, ...]
     cutover_blockers: tuple[str, ...]
     backend_qualification_id: str
+    artifact_store_backend_id: str
+    release_registry_backend_id: str
     backend_qualification_snapshot_artifact_id: str
     backend_qualification_artifact_ids: tuple[str, ...]
     schema_version: int = 1
@@ -191,6 +180,8 @@ class ProductionPublicationAuthorization:
         case_artifact = str(self.assurance_case_artifact_id).strip()
         proof_artifact = str(self.proof_obligations_artifact_id).strip()
         backend_id = str(self.backend_qualification_id).strip()
+        artifact_backend = str(self.artifact_store_backend_id).strip()
+        registry_backend = str(self.release_registry_backend_id).strip()
         backend_snapshot = str(self.backend_qualification_snapshot_artifact_id).strip()
         if not season or not runtime_digest or not created_at or not manifest_id:
             raise ValueError("production authorization requires season/runtime/time/manifest")
@@ -200,7 +191,17 @@ class ProductionPublicationAuthorization:
             raise ValueError("production authorization entry must be positive integer")
         if isinstance(self.gameweek, bool) or not isinstance(self.gameweek, int) or self.gameweek <= 0:
             raise ValueError("production authorization gameweek must be positive integer")
-        if not all((case_id, case_artifact, proof_artifact, backend_id, backend_snapshot)):
+        if not all(
+            (
+                case_id,
+                case_artifact,
+                proof_artifact,
+                backend_id,
+                artifact_backend,
+                registry_backend,
+                backend_snapshot,
+            )
+        ):
             raise ValueError("production authorization requires complete proof/backend identities")
         if self.release_certificate_status not in {"PASS", "FAIL"}:
             raise ValueError("production authorization certificate status must be PASS or FAIL")
@@ -236,6 +237,8 @@ class ProductionPublicationAuthorization:
         object.__setattr__(self, "assurance_case_artifact_id", case_artifact)
         object.__setattr__(self, "proof_obligations_artifact_id", proof_artifact)
         object.__setattr__(self, "backend_qualification_id", backend_id)
+        object.__setattr__(self, "artifact_store_backend_id", artifact_backend)
+        object.__setattr__(self, "release_registry_backend_id", registry_backend)
         object.__setattr__(self, "backend_qualification_snapshot_artifact_id", backend_snapshot)
         object.__setattr__(self, "release_certificate_blockers", certificate_blockers)
         object.__setattr__(self, "cutover_blockers", cutover_blockers)
@@ -272,6 +275,8 @@ class ProductionPublicationAuthorization:
             "release_certificate_blockers": list(self.release_certificate_blockers),
             "cutover_blockers": list(self.cutover_blockers),
             "backend_qualification_id": self.backend_qualification_id,
+            "artifact_store_backend_id": self.artifact_store_backend_id,
+            "release_registry_backend_id": self.release_registry_backend_id,
             "backend_qualification_snapshot_artifact_id": self.backend_qualification_snapshot_artifact_id,
             "backend_qualification_artifact_ids": list(self.backend_qualification_artifact_ids),
             "authorized": self.authorized,
@@ -284,14 +289,7 @@ class ProductionPublicationAuthorization:
 
 @dataclass(frozen=True, slots=True)
 class ProductionCutoverReport:
-    """Content-addressed evidence for one explicit production cutover attempt.
-
-    A PASS ReleaseCertificate is the certification transition. It is necessary but not
-    sufficient for publication: the production control plane must also be qualified and
-    atomic compare-and-swap must make the exact proof-authorized PUBLISHED ReleaseRecord
-    current. WITHHELD attempts retain immutable evidence but cannot move the production
-    pointer or become actionable.
-    """
+    """Content-addressed evidence for one explicit production cutover attempt."""
 
     season: str
     entry: int
@@ -435,14 +433,10 @@ class ProductionCutoverReport:
 
     @property
     def ready_to_act(self) -> bool:
-        """Derived authority only; there is no independent readiness input."""
-
         return self.publication_eligible
 
     @property
     def safe_to_act(self) -> bool:
-        """System publication safety derives from successful certified cutover only."""
-
         return self.publication_eligible
 
     def semantic_payload(self) -> dict[str, object]:
