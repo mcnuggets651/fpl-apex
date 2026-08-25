@@ -18,12 +18,11 @@ class ProductionCutoverStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ProductionBackendQualification:
-    """Immutable operational qualification asserted for a production control plane.
+    """Operational qualification for the production control plane.
 
-    The qualification bytes themselves must be retained and verified by the caller.
-    This type deliberately has no default or filesystem shortcut: production requires
-    explicit evidence that both durable artifact storage and the current-pointer backend
-    satisfy the frozen operational contract.
+    There is deliberately no default or filesystem shortcut. Production requires retained
+    evidence that immutable artifact storage and the current-pointer registry are durable,
+    shared and provide the atomicity/history semantics required by the frozen architecture.
     """
 
     artifact_store_qualification_artifact_id: str
@@ -79,10 +78,11 @@ class ProductionBackendQualification:
 class ProductionCutoverReport:
     """Content-addressed evidence for one explicit production cutover attempt.
 
-    ``PUBLISHED`` is possible only when the retained AssuranceCase derives a blocker-free
-    PASS ReleaseCertificate, the production control plane is explicitly qualified, and
-    compare-and-swap has made the exact immutable release current. ``WITHHELD`` is
-    structurally non-actionable and cannot move the current pointer.
+    A PASS ReleaseCertificate is the certification transition. It is necessary but not
+    sufficient for publication: the production control plane must also be qualified and
+    atomic compare-and-swap must make the exact derived PUBLISHED ReleaseRecord current.
+    WITHHELD attempts retain their immutable ReleaseRecord evidence but cannot move the
+    production pointer or become actionable.
     """
 
     season: str
@@ -90,13 +90,16 @@ class ProductionCutoverReport:
     gameweek: int
     bundle_id: BundleId | None
     world_id: GlobalWorldId | None
-    release_id: ReleaseId | None
+    attempt_release_id: ReleaseId
+    release_record_artifact_id: str
     assurance_case_id: str
     assurance_case_artifact_id: str
     proof_obligations_artifact_id: str
     release_certificate_status: str
     release_certificate_blockers: tuple[str, ...]
+    cutover_blockers: tuple[str, ...]
     backend_qualification_id: str
+    backend_qualification_snapshot_artifact_id: str
     backend_qualification_artifact_ids: tuple[str, ...]
     production_pointer_before: str | None
     production_pointer_after: str | None
@@ -121,15 +124,33 @@ class ProductionCutoverReport:
         case_artifact = str(self.assurance_case_artifact_id).strip()
         proof_artifact = str(self.proof_obligations_artifact_id).strip()
         backend_id = str(self.backend_qualification_id).strip()
+        backend_snapshot = str(self.backend_qualification_snapshot_artifact_id).strip()
+        record_artifact = str(self.release_record_artifact_id).strip()
         manifest_id = str(self.artifact_manifest_id).strip()
-        if not case_id or not case_artifact or not proof_artifact or not backend_id or not manifest_id:
-            raise ValueError("production cutover report requires proof/backend/manifest identities")
+        if not all(
+            (
+                case_id,
+                case_artifact,
+                proof_artifact,
+                backend_id,
+                backend_snapshot,
+                record_artifact,
+                manifest_id,
+                str(self.attempt_release_id).strip(),
+            )
+        ):
+            raise ValueError("production cutover report requires complete proof/backend/release identities")
         if self.release_certificate_status not in {"PASS", "FAIL"}:
             raise ValueError("production ReleaseCertificate status must be PASS or FAIL")
 
-        blockers = tuple(
+        certificate_blockers = tuple(
             str(item).strip()
             for item in self.release_certificate_blockers
+            if str(item).strip()
+        )
+        cutover_blockers = tuple(
+            str(item).strip()
+            for item in self.cutover_blockers
             if str(item).strip()
         )
         backend_artifacts = tuple(
@@ -156,35 +177,37 @@ class ProductionCutoverReport:
             manifest_id,
             case_artifact,
             proof_artifact,
+            backend_snapshot,
+            record_artifact,
             *backend_artifacts,
         }
         if not required_sources.issubset(set(sources)):
             raise ValueError(
-                "production cutover lineage must include manifest, AssuranceCase, proof policy and backend qualifications"
+                "production cutover lineage must include manifest, AssuranceCase, proof policy, backend and ReleaseRecord evidence"
             )
 
         if self.status is ProductionCutoverStatus.PUBLISHED:
-            if self.release_certificate_status != "PASS" or blockers:
+            if self.release_certificate_status != "PASS" or certificate_blockers:
                 raise ValueError("PUBLISHED production cutover requires blocker-free PASS ReleaseCertificate")
-            if self.release_id is None:
-                raise ValueError("PUBLISHED production cutover requires release_id")
+            if cutover_blockers:
+                raise ValueError("PUBLISHED production cutover cannot retain cutover blockers")
             if self.bundle_id is None or self.world_id is None:
                 raise ValueError("PUBLISHED production cutover requires bundle/world identities")
-            if self.production_pointer_after != str(self.release_id):
+            if self.production_pointer_after != str(self.attempt_release_id):
                 raise ValueError("published production pointer must resolve to the exact release")
-        else:
-            if self.release_id is not None:
-                raise ValueError("WITHHELD production cutover cannot claim a published release_id")
-            if self.production_pointer_before != self.production_pointer_after:
-                raise ValueError("WITHHELD production cutover must not change current pointer")
+        elif self.production_pointer_before != self.production_pointer_after:
+            raise ValueError("WITHHELD production cutover must not change current pointer")
 
         object.__setattr__(self, "season", season)
         object.__setattr__(self, "assurance_case_id", case_id)
         object.__setattr__(self, "assurance_case_artifact_id", case_artifact)
         object.__setattr__(self, "proof_obligations_artifact_id", proof_artifact)
         object.__setattr__(self, "backend_qualification_id", backend_id)
+        object.__setattr__(self, "backend_qualification_snapshot_artifact_id", backend_snapshot)
+        object.__setattr__(self, "release_record_artifact_id", record_artifact)
         object.__setattr__(self, "artifact_manifest_id", manifest_id)
-        object.__setattr__(self, "release_certificate_blockers", blockers)
+        object.__setattr__(self, "release_certificate_blockers", certificate_blockers)
+        object.__setattr__(self, "cutover_blockers", cutover_blockers)
         object.__setattr__(self, "backend_qualification_artifact_ids", backend_artifacts)
         object.__setattr__(self, "source_artifact_ids", sources)
 
@@ -200,7 +223,7 @@ class ProductionCutoverReport:
 
     @property
     def safe_to_act(self) -> bool:
-        """System-publication safety derives from successful certified cutover only."""
+        """System publication safety derives from successful certified cutover only."""
 
         return self.publication_eligible
 
@@ -213,13 +236,16 @@ class ProductionCutoverReport:
             "gameweek": self.gameweek,
             "bundle_id": None if self.bundle_id is None else str(self.bundle_id),
             "world_id": None if self.world_id is None else str(self.world_id),
-            "release_id": None if self.release_id is None else str(self.release_id),
+            "attempt_release_id": str(self.attempt_release_id),
+            "release_record_artifact_id": self.release_record_artifact_id,
             "assurance_case_id": self.assurance_case_id,
             "assurance_case_artifact_id": self.assurance_case_artifact_id,
             "proof_obligations_artifact_id": self.proof_obligations_artifact_id,
             "release_certificate_status": self.release_certificate_status,
             "release_certificate_blockers": list(self.release_certificate_blockers),
+            "cutover_blockers": list(self.cutover_blockers),
             "backend_qualification_id": self.backend_qualification_id,
+            "backend_qualification_snapshot_artifact_id": self.backend_qualification_snapshot_artifact_id,
             "backend_qualification_artifact_ids": list(self.backend_qualification_artifact_ids),
             "production_pointer_before": self.production_pointer_before,
             "production_pointer_after": self.production_pointer_after,
