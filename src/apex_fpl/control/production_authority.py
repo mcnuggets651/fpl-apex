@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import Protocol
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.production_backend_qualification import (
+    load_production_backend_qualification,
+)
 from apex_fpl.control.production_cutover import load_production_publication_authorization
 from apex_fpl.control.release_registry import ReleaseKey, ReleaseRecord, ReleaseStatus
 from apex_fpl.core.ids import BundleId, GlobalWorldId, ReleaseId
@@ -16,6 +19,8 @@ from apex_fpl.core.production_authority import (
 
 
 class ProductionCurrentReader(Protocol):
+    backend_id: str
+
     def current_release_id(self, key: ReleaseKey) -> str | None: ...
 
     def read_release(self, release_id: str) -> ReleaseRecord: ...
@@ -46,6 +51,13 @@ def _parse_timestamp(value: str, *, label: str) -> datetime:
     return parsed
 
 
+def _backend_id(value: object, *, label: str) -> str:
+    backend_id = getattr(value, "backend_id", None)
+    if not isinstance(backend_id, str) or not backend_id.strip():
+        raise ValueError(f"{label} has no stable backend identity")
+    return backend_id.strip()
+
+
 def resolve_production_answer_authority(
     *,
     season: str,
@@ -58,15 +70,12 @@ def resolve_production_answer_authority(
     """Resolve only the exact current, unexpired, proof-authorized PUBLISHED V2 release.
 
     ``as_of`` is explicit so answer authority never depends on a hidden wall clock and can be
-    replayed exactly. A current pointer is not sufficient once its validity horizon has
-    expired or before its declared creation time.
+    replayed exactly. The current pointer is re-read immediately before authority is returned
+    so a concurrent CAS cannot make a stale release user-facing during verification.
     """
 
     key = ReleaseKey(season, entry, gameweek)
-    try:
-        evaluation_time = _parse_timestamp(as_of, label="production authority as_of")
-    except ValueError as exc:
-        raise ValueError(str(exc)) from exc
+    evaluation_time = _parse_timestamp(as_of, label="production authority as_of")
 
     release_id = production_registry.current_release_id(key)
     if release_id is None:
@@ -145,6 +154,35 @@ def resolve_production_answer_authority(
         return _unavailable(key, "publication authorization validity does not match ReleaseRecord")
     if authorization.artifact_manifest_id != record.artifact_manifest_id:
         return _unavailable(key, "publication authorization manifest does not match ReleaseRecord")
+
+    try:
+        qualification = load_production_backend_qualification(
+            authorization.backend_qualification_snapshot_artifact_id,
+            artifact_store=artifact_store,
+        )
+        artifact_backend_id = _backend_id(
+            artifact_store,
+            label="production authority ArtifactStore",
+        )
+        registry_backend_id = _backend_id(
+            production_registry,
+            label="production authority ReleaseRegistry",
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        return _unavailable(key, f"current production backend qualification is invalid: {exc}")
+    if qualification.qualification_id != authorization.backend_qualification_id:
+        return _unavailable(key, "publication authorization backend identity does not reconcile")
+    if not qualification.qualified:
+        return _unavailable(key, "current production backend qualification is not production-qualified")
+    if qualification.artifact_store_backend_id != artifact_backend_id:
+        return _unavailable(key, "current ArtifactStore backend differs from publication authorization")
+    if qualification.release_registry_backend_id != registry_backend_id:
+        return _unavailable(key, "current ReleaseRegistry backend differs from publication authorization")
+    if qualification.qualification_scope != f"{season}:{entry}:{gameweek}:production":
+        return _unavailable(key, "current production backend qualification scope does not match authority")
+
+    if production_registry.current_release_id(key) != release_id:
+        return _unavailable(key, "current V2 production pointer changed during authority verification")
 
     return ProductionAnswerAuthority(
         season=key.season,
