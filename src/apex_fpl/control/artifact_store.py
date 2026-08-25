@@ -57,7 +57,15 @@ class ArtifactStore(Protocol):
 
 
 class FileSystemArtifactStore:
-    """Content-addressed store with immutable objects and atomic writes."""
+    """Content-addressed store with immutable objects and atomic writes.
+
+    This adapter is intentionally reference/local infrastructure. Its stable backend ID is
+    part of the Slice 13 production-binding contract so a caller cannot relabel a local
+    filesystem instance as a durable shared production store merely by supplying green
+    qualification booleans.
+    """
+
+    backend_id = "apex.reference.filesystem-artifact-store.v1"
 
     def __init__(self, root: str | Path):
         self.root = Path(root)

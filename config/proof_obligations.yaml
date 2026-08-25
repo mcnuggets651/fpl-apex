@@ -329,3 +329,13 @@ proof_obligations:
     failure_consequence: Withhold V2 cutover; a shadow run that cannot prove release semantics, non-actionability, production-pointer isolation and immutable replay cannot satisfy the pre-cutover gate.
     release_policy: REQUIRED
     owner: control.shadow_production
+
+  - proof_id: PO-PRODUCTION-CUTOVER-001
+    claim: 'The exact executing Slice 13 build is pre-certified to enforce the V2 production-cutover mechanism: only a complete blocker-free constitutional AssuranceCase may create proof-derived publication authorization; qualification is bound to the actual non-reference durable shared backend identities; validity is explicit and time-bounded; publication uses stale-writer-safe CAS of one immutable PUBLISHED ReleaseRecord; and forged, stale, expired, corrupt, V1, shadow, CERTIFIED-only or reference-filesystem states remain non-authoritative.'
+    proof_class: ALGORITHMIC_CERTIFICATE
+    scope: production_control_plane_build
+    required_evidence: [BuildManifest, source_sha, runtime_digest, immutable_CI_test_evidence, Slice13_contract_test_results, backend_binding_test_results, authority_validity_test_results]
+    required_tests: [test_production_cutover_publishes_only_after_complete_pass_and_exact_cas, test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_write, test_missing_required_proof_withholds_and_never_moves_production_pointer, test_unqualified_backend_withholds_even_when_release_certificate_passes, test_reference_filesystem_backends_cannot_be_qualified_by_green_booleans, test_backend_qualification_must_match_actual_adapter_identities, test_missing_or_invalid_validity_horizon_withholds, test_stale_writer_fails_closed_and_cannot_become_current, test_forged_published_ready_record_without_authorization_is_rejected, test_v1_and_certified_records_cannot_become_v2_answer_authority, test_corrupt_publication_authorization_withholds_current_answer, test_expired_current_release_is_non_actionable_even_when_pointer_is_current, test_publication_authorization_validity_must_match_release_record, test_authorization_cannot_be_replayed_through_different_backend_identities, test_answer_authority_withholds_if_current_pointer_changes_during_verification, test_production_cutover_accepts_no_independent_readiness_or_safety_input, test_answer_authority_is_current_published_v2_only, test_answer_authority_requires_explicit_replayable_time_and_no_hidden_clock]
+    failure_consequence: Withhold production and preserve the existing current pointer; post-attempt ProductionCutoverReport and CAS evidence may audit what happened but may never be required to authorize the same attempt that creates them.
+    release_policy: REQUIRED
+    owner: control.production_cutover

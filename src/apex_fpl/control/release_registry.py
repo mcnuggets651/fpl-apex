@@ -52,6 +52,7 @@ class ReleaseRecord:
     ready_to_act: bool
     safe_to_act: bool
     artifact_manifest_id: str
+    publication_authorization_artifact_id: str | None = None
     superseded_by: str | None = None
     release_id: str | None = None
 
@@ -59,6 +60,10 @@ class ReleaseRecord:
         payload = asdict(self)
         payload["status"] = self.status.value
         payload.pop("release_id", None)
+        # Preserve every pre-Slice-13 historical ReleaseRecord identity exactly. Only a V2
+        # production release carries the new proof-derived authorization field.
+        if payload.get("publication_authorization_artifact_id") is None:
+            payload.pop("publication_authorization_artifact_id", None)
         return payload
 
     def with_release_id(self) -> "ReleaseRecord":
@@ -88,14 +93,64 @@ def _canonical_json_bytes(payload: dict[str, object]) -> bytes:
     ).encode("utf-8")
 
 
+def _strict_optional_string(value: object, *, label: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"release record {label} must be string or null")
+    return value
+
+
+def _release_record_from_payload(payload: object, *, expected_release_id: str) -> ReleaseRecord:
+    if not isinstance(payload, dict):
+        raise ValueError("release record must be JSON object")
+    declared = payload.get("release_id")
+    if declared != expected_release_id:
+        raise ValueError("release record declared identity mismatch")
+    entry = payload.get("entry")
+    gameweek = payload.get("gameweek")
+    ready = payload.get("ready_to_act")
+    safe = payload.get("safe_to_act")
+    if isinstance(entry, bool) or not isinstance(entry, int):
+        raise ValueError("release record entry must be integer")
+    if gameweek is not None and (isinstance(gameweek, bool) or not isinstance(gameweek, int)):
+        raise ValueError("release record gameweek must be integer or null")
+    if not isinstance(ready, bool) or not isinstance(safe, bool):
+        raise ValueError("release record readiness fields must be booleans")
+    record = ReleaseRecord(
+        season=str(payload.get("season") or ""),
+        entry=entry,
+        gameweek=gameweek,
+        bundle_id=_strict_optional_string(payload.get("bundle_id"), label="bundle_id"),
+        world_id=_strict_optional_string(payload.get("world_id"), label="world_id"),
+        runtime_digest=str(payload.get("runtime_digest") or ""),
+        created_at=str(payload.get("created_at") or ""),
+        valid_until=_strict_optional_string(payload.get("valid_until"), label="valid_until"),
+        status=ReleaseStatus(str(payload.get("status") or "")),
+        ready_to_act=ready,
+        safe_to_act=safe,
+        artifact_manifest_id=str(payload.get("artifact_manifest_id") or ""),
+        publication_authorization_artifact_id=_strict_optional_string(
+            payload.get("publication_authorization_artifact_id"),
+            label="publication_authorization_artifact_id",
+        ),
+        superseded_by=_strict_optional_string(payload.get("superseded_by"), label="superseded_by"),
+        release_id=expected_release_id,
+    )
+    if record.with_release_id().release_id != expected_release_id:
+        raise ValueError("release record content identity mismatch")
+    return record
+
+
 class FileSystemReleaseRegistry:
     """Filesystem adapter implementing immutable records and atomic CAS pointers.
 
-    This adapter is intentionally backend-neutral domain infrastructure. It is suitable
-    for tests, local recovery and a single shared POSIX volume. V2 production cutover
-    must bind the same contract to a durable shared backend selected from operational
-    evidence.
+    This adapter is suitable for tests, local recovery and a single shared POSIX volume.
+    Its stable reference backend ID prevents Slice 13 from treating it as a qualified
+    durable shared production registry by configuration alone.
     """
+
+    backend_id = "apex.reference.filesystem-release-registry.v1"
 
     def __init__(self, root: str | Path, *, lock_timeout_seconds: float = 5.0):
         self.root = Path(root)
@@ -162,6 +217,19 @@ class FileSystemReleaseRegistry:
                 os.close(fd)
         return normalized
 
+    def read_release(self, release_id: str) -> ReleaseRecord:
+        """Replay one immutable ReleaseRecord and verify its content identity."""
+
+        value = str(release_id).strip()
+        if not value:
+            raise ValueError("release_id is required")
+        path = self._release_path(value)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"release record is not valid UTF-8 JSON: {value}") from exc
+        return _release_record_from_payload(payload, expected_release_id=value)
+
     def current_release_id(self, key: ReleaseKey) -> str | None:
         path = self._pointer_path(key)
         if not path.exists():
@@ -169,6 +237,12 @@ class FileSystemReleaseRegistry:
         payload = json.loads(path.read_text(encoding="utf-8"))
         value = payload.get("release_id")
         return str(value) if value else None
+
+    def current_release(self, key: ReleaseKey) -> ReleaseRecord | None:
+        """Resolve current pointer to an identity-verified immutable release."""
+
+        release_id = self.current_release_id(key)
+        return None if release_id is None else self.read_release(release_id)
 
     def compare_and_swap_current(
         self,
