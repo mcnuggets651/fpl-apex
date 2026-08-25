@@ -65,16 +65,20 @@ def _text(value: object, *, label: str) -> str:
     return value.strip()
 
 
+def _read_dependency(artifact_id: str, *, store: ArtifactStore, label: str) -> bytes:
+    try:
+        return store.read_bytes(artifact_id)
+    except (FileNotFoundError, ArtifactIntegrityError) as exc:
+        raise ValueError(f"production bundle {label} failed integrity/replay") from exc
+
+
 def _read_json_object(
     artifact_id: str,
     *,
     store: ArtifactStore,
     label: str,
 ) -> dict[str, object]:
-    try:
-        content = store.read_bytes(artifact_id)
-    except (FileNotFoundError, ArtifactIntegrityError) as exc:
-        raise ValueError(f"{label} artifact failed integrity/replay") from exc
+    content = _read_dependency(artifact_id, store=store, label=label)
     try:
         value = json.loads(content.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -159,6 +163,13 @@ def _verify_policy_supports(policy: DecisionPolicy, *, store: ArtifactStore) -> 
     )
     if any(item is None for item in support_ids):
         raise ValueError("production bundle DecisionPolicy lacks complete support semantics")
+    for artifact_id, label in zip(
+        support_ids,
+        ("continuation policy", "chip option policy", "price policy", "candidate policy"),
+        strict=True,
+    ):
+        assert artifact_id is not None
+        _read_dependency(str(artifact_id), store=store, label=label)
     continuation = load_continuation_value_policy(
         str(policy.continuation_value_artifact_id),
         store=store,
@@ -187,23 +198,28 @@ def _verify_policy_supports(policy: DecisionPolicy, *, store: ArtifactStore) -> 
         raise ValueError("production bundle chip-option horizon mismatch")
     if policy.qualification_artifact_id is None:
         raise ValueError("production bundle DecisionPolicy lacks qualification artifact")
-    store.read_bytes(policy.qualification_artifact_id)
+    _read_dependency(
+        policy.qualification_artifact_id,
+        store=store,
+        label="DecisionPolicy qualification",
+    )
 
 
 def _verify_model_dependencies(model: ForecastModelArtifact, *, store: ArtifactStore) -> None:
     for artifact_id in model.parameter_artifact_ids:
-        store.read_bytes(artifact_id)
+        _read_dependency(artifact_id, store=store, label="forecast model parameter")
     if model.qualification_artifact_id is None:
         raise ValueError("production bundle forecast model lacks qualification artifact")
-    store.read_bytes(model.qualification_artifact_id)
+    _read_dependency(
+        model.qualification_artifact_id,
+        store=store,
+        label="forecast model qualification",
+    )
 
 
 def _forecast_horizon(forecast: Forecast) -> int:
     gameweeks = sorted(
-        {
-            row.target.gameweek
-            for row in (*forecast.rows, *forecast.abstentions)
-        }
+        {row.target.gameweek for row in (*forecast.rows, *forecast.abstentions)}
     )
     if not gameweeks:
         raise ValueError("production bundle forecast has no declared targets")
