@@ -313,3 +313,42 @@ def test_publication_authorization_validity_must_match_release_record(tmp_path: 
     assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
     assert authority.production_result_bundle_id is None
     assert "validity does not match" in authority.blockers[0]
+
+
+def test_authorization_cannot_be_replayed_through_different_backend_identities(tmp_path: Path) -> None:
+    store, registry, _ = _qualified_cutover(tmp_path)
+    alternate_store = _DurableArtifactStore(tmp_path / "artifacts")
+    alternate_registry = _DurableReleaseRegistry(tmp_path / "production")
+    alternate_store.backend_id = "test.production.other-artifact-store.v1"
+    alternate_registry.backend_id = "test.production.other-release-registry.v1"
+
+    authority = _resolve(alternate_store, alternate_registry)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "backend differs from publication authorization" in authority.blockers[0]
+
+
+class _DriftingCurrentReader:
+    backend_id = _DurableReleaseRegistry.backend_id
+
+    def __init__(self, delegate: _DurableReleaseRegistry):
+        self.delegate = delegate
+        self.calls = 0
+
+    def current_release_id(self, key: ReleaseKey) -> str | None:
+        self.calls += 1
+        value = self.delegate.current_release_id(key)
+        return value if self.calls == 1 else "concurrent-new-release"
+
+    def read_release(self, release_id: str):
+        return self.delegate.read_release(release_id)
+
+
+def test_answer_authority_withholds_if_current_pointer_changes_during_verification(
+    tmp_path: Path,
+) -> None:
+    store, registry, _ = _qualified_cutover(tmp_path)
+    authority = _resolve(store, _DriftingCurrentReader(registry))
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "pointer changed during authority verification" in authority.blockers[0]
