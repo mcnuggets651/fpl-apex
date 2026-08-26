@@ -7,6 +7,8 @@ import pytest
 
 import apex_fpl.control.production_cutover as production_cutover_module
 import production_planning_bundle_helpers as planning_fixture_helpers
+from apex_fpl.control.production_planning_bundle import load_production_planning_bundle
+from reference_solver_planning_helpers import SyntheticPlanningParityMaterial
 
 
 PARITY_PROOF_ID = "PO-REFERENCE-SOLVER-PARITY-001"
@@ -134,6 +136,35 @@ def _lightweight_parity_dependency(claim, *, verified_bundle, store) -> bool:
     )
 
 
+def _lightweight_parity_material(*, store, fixture) -> SyntheticPlanningParityMaterial:
+    """Build only immutable parity claim material for tests unrelated to parity replay.
+
+    These tests deliberately use the 15-player lineage-only fixture, which cannot and must not
+    satisfy the strong worker qualification corpus requiring an executed transfer-finance case.
+    The production parity validator is independently replaced by ``_lightweight_parity_dependency``
+    for the same tests, while every dedicated parity test continues to execute the full sealed
+    worker/corpus/qualification/champion/certificate path.
+    """
+
+    verified = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
+    planning_result_id = str(verified.decision.planning_result_id)
+    certificate_ref = store.put_bytes(
+        f"synthetic-lightweight-planning-parity-certificate:{planning_result_id}".encode("utf-8")
+    )
+    authorization_ref = store.put_bytes(
+        f"synthetic-lightweight-planning-parity-authorization:{planning_result_id}".encode("utf-8")
+    )
+    return SyntheticPlanningParityMaterial(
+        planning_result_id=planning_result_id,
+        certificate_artifact_id=certificate_ref.artifact_id,
+        certificate_id=f"synthetic-lightweight-certificate:{planning_result_id}",
+        authorization_artifact_id=authorization_ref.artifact_id,
+        authorization_id=f"synthetic-lightweight-authorization:{planning_result_id}",
+        qualification_artifact_id=certificate_ref.artifact_id,
+        registry_artifact_id=authorization_ref.artifact_id,
+    )
+
+
 @pytest.fixture(autouse=True)
 def _isolate_planning_assurance_cost(monkeypatch, request):
     module = request.module
@@ -184,3 +215,9 @@ def _isolate_planning_assurance_cost(monkeypatch, request):
             "claim_has_matching_planning_reference_solver_parity",
             _lightweight_parity_dependency,
         )
+        if hasattr(module, "synthetic_planning_parity_material"):
+            monkeypatch.setattr(
+                module,
+                "synthetic_planning_parity_material",
+                _lightweight_parity_material,
+            )
