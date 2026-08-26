@@ -73,8 +73,10 @@ def test_production_bundle_replay_adapters_have_no_network_v1_or_hidden_clock() 
 def test_cutover_and_answer_authority_both_replay_exact_production_bundle() -> None:
     cutover = CUTOVER.read_text(encoding="utf-8")
     authority = AUTHORITY.read_text(encoding="utf-8")
-    assert "load_production_decision_bundle" in cutover
-    assert "load_production_decision_bundle" in authority
+    assert "load_production_planning_bundle" in cutover
+    assert "load_production_planning_bundle" in authority
+    assert "load_production_decision_bundle" not in cutover
+    assert "load_production_decision_bundle" not in authority
     assert "_bundle_empirical_bindings" in cutover
     assert "PRODUCTION_EMPIRICAL_SUBJECT_KIND" in cutover
     assert "qualification_subject_id" in cutover
