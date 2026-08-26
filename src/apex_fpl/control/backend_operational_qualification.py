@@ -1,6 +1,6 @@
 """Behavior-derived operational qualification for production backend adapters.
 
-The probe is intentionally provider-neutral.  A backend cannot become production-qualified
+The probe is intentionally provider-neutral. A backend cannot become production-qualified
 merely by choosing a new backend_id and supplying green booleans: the exact adapter must
 support fresh-instance shared visibility, immutable release replay and stale-writer-safe CAS,
 and the observed evidence is retained under content identity.
@@ -15,10 +15,13 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
-from typing import Protocol
 
 from apex_fpl.control.artifact_store import ArtifactStore
-from apex_fpl.control.production_cutover import ProductionReleaseRegistry
+from apex_fpl.control.backend_ports import (
+    ProductionReleaseRegistry,
+    ReopenableArtifactStore,
+    ReopenableReleaseRegistry,
+)
 from apex_fpl.control.release_registry import (
     CompareAndSwapConflict,
     ImmutableReleaseConflict,
@@ -32,18 +35,6 @@ from apex_fpl.core.backend_qualification import (
 )
 from apex_fpl.core.canonical import canonical_json_bytes, canonical_sha256
 from apex_fpl.core.production import ProductionBackendQualification
-
-
-class ReopenableArtifactStore(ArtifactStore, Protocol):
-    backend_id: str
-
-    def reopen(self) -> "ReopenableArtifactStore": ...
-
-
-class ReopenableReleaseRegistry(ProductionReleaseRegistry, Protocol):
-    backend_id: str
-
-    def reopen(self) -> "ReopenableReleaseRegistry": ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -407,34 +398,30 @@ def load_release_registry_probe_evidence(
     return evidence
 
 
-def verify_backend_qualification_evidence(
+def verify_stored_backend_qualification_evidence(
     qualification: ProductionBackendQualification,
     *,
-    artifact_store: ArtifactStore,
-    release_registry: ProductionReleaseRegistry,
+    store: ArtifactStore,
 ) -> VerifiedBackendQualification:
     artifact_evidence = load_artifact_store_probe_evidence(
         qualification.artifact_store_qualification_artifact_id,
-        store=artifact_store,
+        store=store,
     )
     registry_evidence = load_release_registry_probe_evidence(
         qualification.release_registry_qualification_artifact_id,
-        store=artifact_store,
+        store=store,
     )
-    actual_artifact_backend = _backend_id(artifact_store, label="ArtifactStore")
-    actual_registry_backend = _backend_id(release_registry, label="ReleaseRegistry")
-    if artifact_evidence.backend_id != actual_artifact_backend:
-        raise ValueError("artifact-store probe evidence belongs to a different backend")
-    if registry_evidence.backend_id != actual_registry_backend:
-        raise ValueError("release-registry probe evidence belongs to a different backend")
+    if artifact_evidence.backend_id != qualification.artifact_store_backend_id:
+        raise ValueError("artifact-store probe evidence backend identity mismatch")
+    if registry_evidence.backend_id != qualification.release_registry_backend_id:
+        raise ValueError("release-registry probe evidence backend identity mismatch")
     if artifact_evidence.qualification_scope != qualification.qualification_scope:
         raise ValueError("artifact-store probe evidence scope mismatch")
     if registry_evidence.qualification_scope != qualification.qualification_scope:
         raise ValueError("release-registry probe evidence scope mismatch")
-
     expected = ProductionBackendQualification(
-        artifact_store_backend_id=actual_artifact_backend,
-        release_registry_backend_id=actual_registry_backend,
+        artifact_store_backend_id=qualification.artifact_store_backend_id,
+        release_registry_backend_id=qualification.release_registry_backend_id,
         artifact_store_qualification_artifact_id=(
             qualification.artifact_store_qualification_artifact_id
         ),
@@ -465,3 +452,22 @@ def verify_backend_qualification_evidence(
         artifact_store_evidence=artifact_evidence,
         release_registry_evidence=registry_evidence,
     )
+
+
+def verify_backend_qualification_evidence(
+    qualification: ProductionBackendQualification,
+    *,
+    artifact_store: ArtifactStore,
+    release_registry: ProductionReleaseRegistry,
+) -> VerifiedBackendQualification:
+    verified = verify_stored_backend_qualification_evidence(
+        qualification,
+        store=artifact_store,
+    )
+    actual_artifact_backend = _backend_id(artifact_store, label="ArtifactStore")
+    actual_registry_backend = _backend_id(release_registry, label="ReleaseRegistry")
+    if verified.artifact_store_evidence.backend_id != actual_artifact_backend:
+        raise ValueError("artifact-store probe evidence belongs to a different backend")
+    if verified.release_registry_evidence.backend_id != actual_registry_backend:
+        raise ValueError("release-registry probe evidence belongs to a different backend")
+    return verified
