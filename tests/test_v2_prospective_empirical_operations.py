@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 
 import pytest
+import typer
 
 import apex_fpl.control.candidate_operations as candidate_operations
 import apex_fpl.control.prospective_experiment_operations as experiment_operations
@@ -31,7 +32,15 @@ from apex_fpl.core.decision_policy_support import (
     PricePolicy,
 )
 from apex_fpl.core.numeric_policy import DECISION_NUMERIC_POLICY_ID
-from apex_fpl.v2_operations_cli import experiment_declare, experiment_result
+from apex_fpl.v2_operations_cli import (
+    _EXPERIMENT_SPEC_FIELDS,
+    _MODEL_SPEC_FIELDS,
+    _POLICY_SPEC_FIELDS,
+    _RESULT_SPEC_FIELDS,
+    _validate_spec,
+    experiment_declare,
+    experiment_result,
+)
 
 
 T0 = "2026-08-26T16:00:00Z"
@@ -58,8 +67,6 @@ def _model_spec(parameter_id: str) -> dict[str, object]:
         "qualification_season": SEASON,
         "trained_through": "2026-08-25T23:59:00Z",
         "max_horizon_gameweeks": 8,
-        # Deliberately ignored: the operator owns first_available_at.
-        "first_available_at": "2000-01-01T00:00:00Z",
     }
 
 
@@ -78,8 +85,6 @@ def _experiment_spec(evaluator_id: str, policy_id: str) -> dict[str, object]:
             }
         ],
         "valid_until": TEND,
-        # Deliberately ignored: callers cannot backdate the declaration.
-        "declared_at": "2000-01-01T00:00:00Z",
     }
 
 
@@ -93,8 +98,6 @@ def _result_spec(source_id: str) -> dict[str, object]:
             }
         ],
         "source_artifact_ids": [source_id],
-        # Deliberately ignored: callers cannot backdate outcome availability.
-        "evaluated_at": "2000-01-01T00:00:00Z",
     }
 
 
@@ -206,7 +209,7 @@ def test_declaration_cannot_be_backdated_or_opened_after_window_start(tmp_path, 
         )
 
 
-def test_decision_policy_candidate_requires_receding_support_and_cannot_use_model_certificate(
+def test_decision_policy_candidate_requires_receding_support_and_cannot_use_tactical_policy(
     tmp_path, monkeypatch
 ) -> None:
     store = _store(tmp_path)
@@ -233,6 +236,24 @@ def test_decision_policy_candidate_requires_receding_support_and_cannot_use_mode
     tactical["horizon_gameweeks"] = 1
     with pytest.raises(ValueError):
         materialize_decision_policy_candidate(tactical, store=store)
+
+
+@pytest.mark.parametrize(
+    ("allowed_fields", "payload", "label"),
+    [
+        (_MODEL_SPEC_FIELDS, {"first_available_at": "2000-01-01T00:00:00Z"}, "model spec"),
+        (_POLICY_SPEC_FIELDS, {"first_available_at": "2000-01-01T00:00:00Z"}, "policy spec"),
+        (_EXPERIMENT_SPEC_FIELDS, {"declared_at": "2000-01-01T00:00:00Z"}, "experiment spec"),
+        (_RESULT_SPEC_FIELDS, {"evaluated_at": "2000-01-01T00:00:00Z"}, "result spec"),
+    ],
+)
+def test_operator_specs_reject_caller_owned_chronology(
+    allowed_fields: frozenset[str],
+    payload: dict[str, object],
+    label: str,
+) -> None:
+    with pytest.raises(typer.BadParameter, match="unsupported fields"):
+        _validate_spec(payload, allowed_fields=allowed_fields, label=label)
 
 
 def test_cli_exposes_no_caller_authored_declaration_or_result_timestamp() -> None:
