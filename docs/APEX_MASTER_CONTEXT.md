@@ -25,6 +25,22 @@ Build the strongest auditable Fantasy Premier League decision engine possible: m
 11. A red data/readiness/snapshot-consistency gate blocks an Apex-labelled recommendation.
 12. Football randomness cannot be eliminated; confidence must never be presented as certainty.
 13. Never claim a unique optimum when solver bounds or the disclosed equivalence band contain alternatives.
+14. Git/CI engineering evidence never substitutes for the current V2 production authority chain.
+15. Empirical production qualification is prospective/no-hindsight: candidate semantics, evaluator, thresholds and window must be committed before outcomes.
+16. Qualification and champion promotion are separate reviewed operations; no operator command may auto-promote a champion.
+17. Production runtime storage must fail closed to the exact qualified shared backend; there is no local-filesystem production fallback.
+
+## Current V2 engineering lineage
+
+The latest certified engineering parent is PR #85, `v2/postgres-production-backend`, exact certified head:
+
+`5be756e677b6f0b876f616319a943485c5875d68`
+
+Its same-head evidence includes 817 passing tests, full Ruff/upstream/governance checks, immutable image/SBOM/provenance and successful V2 Shadow Production. PR #85 remains draft/open/unmerged and is **not** production authority.
+
+PR #86, `v2/prospective-empirical-operations`, is stacked directly on that exact #85 head. It closes the operator-path gap by adding fail-closed production PostgreSQL selection, immutable SHADOW candidate materialization, prospective experiment declaration, post-window result sealing, replay-derived qualification and reviewed QUALIFIED-candidate proposals. It does not fabricate outcomes, set champions or perform cutover.
+
+Actual V2 production cutover remains **WITHHELD** until a real deployed backend and operational qualification, genuine prospective empirical evidence, reviewed production champions, a replay-valid current schema-v2 planning bundle, complete AssuranceCase and PUBLISHED release all exist together.
 
 ## One production recommendation
 Apex has **one** user-facing decision contract:
@@ -38,7 +54,7 @@ The canonical production command is:
 python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
 ```
 
-When the user asks for “the Apex team”, this contract is the answer. Internal Pinnacle, Elite, CVaR, regret and solver outputs exist to construct/challenge that answer, not to create several competing Apex teams.
+When the user asks for “the Apex team”, this contract is the answer only when its authority/readiness chain genuinely passes. Internal Pinnacle, Elite, CVaR, regret and solver outputs exist to construct/challenge that answer, not to create several competing Apex teams. A V2-labelled recommendation must not be invented while V2 authority is withheld.
 
 ## Unified decision flow
 Official FPL → validated enrichment → first-class minutes model → canonical player xP ensemble → near-optimal legal squad shortlist → exact full-horizon XI/captain/vice/bench/autosub rescoring → **one canonical Decision**, with equivalence, correlated robustness and Elite epsilon audits attached as diagnostics.
@@ -69,8 +85,15 @@ Elite never creates or modifies expected points.
 ### Robustness
 Correlated scenarios, CVaR, exact force/ban regret, captain stability, exact mechanics and independent solver parity expose fragility. They do not silently substitute another objective.
 
+## V2 prospective qualification workflow
+The reviewed operator sequence is:
+
+`shared production store -> SHADOW candidate -> predeclared experiment -> future retained outcomes -> replay-derived certificate -> QUALIFIED candidate proposal -> separate reviewed champion admission`
+
+The `apex-v2` operator CLI records candidate/declaration/result chronology itself, cannot backdate those fields, has no filesystem production fallback and does not mutate champions. See `APEX_PROSPECTIVE_EMPIRICAL_OPERATIONS_V2.md`.
+
 ## Projection-model next priority
-The main known projection gap is formal empirical-Bayes/partial-pooling shrinkage of small-sample player attacking rates toward role/position priors. This is the next modelling upgrade after the unified recommendation is validated. Dixon-Coles/Poisson is a later fixture-expert benchmark, not a new selection philosophy.
+The main known projection gap remains formal empirical-Bayes/partial-pooling shrinkage of small-sample player attacking rates toward role/position priors, but any production promotion must follow the V2 prospective qualification chain above. Dixon-Coles/Poisson remains a later fixture-expert benchmark, not a new selection philosophy.
 
 ## Expected decision output
 The canonical recommendation should contain the legal 15-man squad, GW XI, captain, vice, bench order, horizon objective, exact GW mechanics, readiness status, epsilon convergence evidence, Haaland/no-Haaland scenarios when relevant and robustness diagnostics.
@@ -90,6 +113,9 @@ Only then inspect internal diagnostics if needed. Continue from the latest state
 - [Canonical decision policy](APEX_CANONICAL_DECISION_POLICY.md)
 - [Current state](CURRENT_STATE.md)
 - [Decisions](APEX_DECISIONS.md)
+- [V2 architecture](APEX_ARCHITECTURE_V2.md)
+- [Prospective empirical operations](APEX_PROSPECTIVE_EMPIRICAL_OPERATIONS_V2.md)
+- [Backend operational qualification](APEX_BACKEND_OPERATIONAL_QUALIFICATION_V2.md)
 - [Architecture](APEX_ARCHITECTURE.md)
 - [Model specification](APEX_MODEL_SPEC.md)
 - [Data sources](APEX_DATA_SOURCES.md)
