@@ -14,6 +14,12 @@ _TARGET_MODULES = {
     "test_v2_production_cutover",
     "test_v2_production_authority",
     "test_v2_production_planning_bundle",
+    "test_v2_reference_solver_planning",
+    "test_v2_reference_solver_planning_qualification",
+}
+_STRONG_FIXTURE_MODULES = {
+    "test_v2_reference_solver_planning",
+    "test_v2_reference_solver_planning_qualification",
 }
 _FULL_PARITY_TESTS = {
     "test_v2_production_cutover::test_production_cutover_publishes_only_after_complete_pass_and_exact_cas",
@@ -136,16 +142,18 @@ def _isolate_planning_assurance_cost(monkeypatch, request):
         return
 
     node_key = f"{module_name}::{request.node.name}"
-    requires_full_parity = node_key in _FULL_PARITY_TESTS
+    requires_strong_fixture = (
+        module_name in _STRONG_FIXTURE_MODULES or node_key in _FULL_PARITY_TESTS
+    )
 
     # Most production-control tests exercise bundle/CAS/expiry/authority semantics, not transfer
     # search breadth. For those tests the synthetic FULL_OFFICIAL universe is exactly the owned
     # 15-player squad, which keeps the real two-GW planner/replay path but removes irrelevant
-    # transfer combinatorics. Dedicated parity tests retain the stronger 16-player banking,
-    # finance and terminal-chip-reserve world, and the standalone qualification tests are never
-    # patched here.
-    cache_variant = "strong-parity" if requires_full_parity else "lineage-only"
-    if not requires_full_parity:
+    # transfer combinatorics. Dedicated parity/worker/qualification tests retain the stronger
+    # 16-player banking, finance and terminal-chip-reserve world. Both fixture variants are built
+    # by the real planner once and then restored byte-for-byte into isolated ArtifactStores.
+    cache_variant = "strong-parity" if requires_strong_fixture else "lineage-only"
+    if not requires_strong_fixture:
         monkeypatch.setattr(
             planning_fixture_helpers,
             "CANDIDATE_POSITIONS",
@@ -170,7 +178,7 @@ def _isolate_planning_assurance_cost(monkeypatch, request):
     if module_name in {
         "test_v2_production_cutover",
         "test_v2_production_authority",
-    } and not requires_full_parity:
+    } and node_key not in _FULL_PARITY_TESTS:
         monkeypatch.setattr(
             production_cutover_module,
             "claim_has_matching_planning_reference_solver_parity",
