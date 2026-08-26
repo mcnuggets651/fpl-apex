@@ -12,7 +12,6 @@ to DML after an administrator has initialised the schema.
 from __future__ import annotations
 
 from hashlib import sha256
-import json
 import re
 from typing import Final
 from uuid import uuid4
@@ -70,7 +69,7 @@ def _table(schema: str, name: str):
 def initialize_postgres_control_plane(dsn: str, *, schema: str = "apex_v2") -> None:
     """Create the immutable control-plane schema and persisted backend identities.
 
-    This is an administrative operation.  Runtime production roles do not need CREATE,
+    This is an administrative operation. Runtime production roles do not need CREATE,
     ALTER, UPDATE or DELETE privileges after bootstrap.
     """
 
@@ -173,21 +172,28 @@ def initialize_postgres_control_plane(dsn: str, *, schema: str = "apex_v2") -> N
         conn.commit()
 
 
+def _not_initialised_error() -> RuntimeError:
+    return RuntimeError(
+        "PostgreSQL Apex control plane is not initialised; run "
+        "initialize_postgres_control_plane with administrative credentials"
+    )
+
+
 def _load_instance_id(dsn: str, schema: str, component: str) -> str:
-    with psycopg.connect(dsn) as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                sql.SQL("SELECT instance_id FROM {} WHERE component = %s").format(
-                    _table(schema, "backend_identity")
-                ),
-                (component,),
-            )
-            row = cursor.fetchone()
+    try:
+        with psycopg.connect(dsn) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    sql.SQL("SELECT instance_id FROM {} WHERE component = %s").format(
+                        _table(schema, "backend_identity")
+                    ),
+                    (component,),
+                )
+                row = cursor.fetchone()
+    except (psycopg.errors.InvalidSchemaName, psycopg.errors.UndefinedTable) as exc:
+        raise _not_initialised_error() from exc
     if row is None or not isinstance(row[0], str) or not row[0].strip():
-        raise RuntimeError(
-            "PostgreSQL Apex control plane is not initialised; run "
-            "initialize_postgres_control_plane with administrative credentials"
-        )
+        raise _not_initialised_error()
     return row[0].strip()
 
 
