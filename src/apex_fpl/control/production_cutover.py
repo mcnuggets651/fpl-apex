@@ -9,9 +9,13 @@ from typing import Iterable, Protocol
 
 from apex_fpl.control.artifact_store import ArtifactIntegrityError, ArtifactStore
 from apex_fpl.control.experiment_registry import load_empirical_qualification_certificate
-from apex_fpl.control.production_bundle import (
-    VerifiedProductionDecisionBundle,
-    load_production_decision_bundle,
+from apex_fpl.control.production_planning_bundle import (
+    VerifiedProductionPlanningBundle,
+    load_production_planning_bundle,
+)
+from apex_fpl.control.production_reference_solver_binding import (
+    REFERENCE_SOLVER_PARITY_PROOF_ID,
+    claim_has_matching_planning_reference_solver_parity,
 )
 from apex_fpl.control.release_registry import ReleaseKey, ReleaseRecord, ReleaseStatus
 from apex_fpl.core.canonical import canonical_json_bytes
@@ -137,7 +141,7 @@ def _validate_backend_binding(
 
 
 def _bundle_empirical_bindings(
-    verified: VerifiedProductionDecisionBundle | None,
+    verified: VerifiedProductionPlanningBundle | None,
 ) -> dict[str, _EmpiricalReleaseBinding]:
     if verified is None:
         return {}
@@ -172,10 +176,10 @@ def _verified_bundle_for_release(
     entry: int,
     gameweek: int,
     store: ArtifactStore,
-) -> VerifiedProductionDecisionBundle | None:
+) -> VerifiedProductionPlanningBundle | None:
     if bundle_id is None:
         return None
-    verified = load_production_decision_bundle(bundle_id, store=store)
+    verified = load_production_planning_bundle(bundle_id, store=store)
     bundle = verified.bundle
     if bundle.season != season:
         raise ValueError("production bundle season does not match release scope")
@@ -237,6 +241,7 @@ def _claim_artifacts(
     season: str,
     as_of: str,
     empirical_bindings: dict[str, _EmpiricalReleaseBinding] | None = None,
+    verified_bundle: VerifiedProductionPlanningBundle | None = None,
 ) -> tuple[str, ...]:
     """Verify retained evidence behind every satisfying mandatory proof claim."""
 
@@ -279,6 +284,16 @@ def _claim_artifacts(
                 "mandatory empirical production proof lacks matching typed "
                 f"qualification evidence: {proof_id}"
             )
+        if satisfying and proof_id == REFERENCE_SOLVER_PARITY_PROOF_ID:
+            if verified_bundle is None or not claim_has_matching_planning_reference_solver_parity(
+                claim,
+                verified_bundle=verified_bundle,
+                store=store,
+            ):
+                raise ValueError(
+                    "mandatory reference-solver production proof lacks replay-valid "
+                    "planning parity and qualified-champion authorization"
+                )
     artifact_ids = tuple(
         sorted({artifact for claim in case.claims for artifact in claim.artifact_ids})
     )
@@ -505,6 +520,7 @@ def execute_production_cutover(
         season=season,
         as_of=created_at,
         empirical_bindings=empirical_bindings,
+        verified_bundle=verified_bundle,
     )
     backend_artifacts = (
         _verify_artifact(
@@ -900,6 +916,7 @@ def load_production_publication_authorization(
         season=authorization.season,
         as_of=authorization.created_at,
         empirical_bindings=empirical_bindings,
+        verified_bundle=verified_bundle,
     )
     certificate = case.derive_release_certificate(obligations)
     if certificate.assurance_case_id != authorization.assurance_case_id:

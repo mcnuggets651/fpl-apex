@@ -57,6 +57,14 @@ class ManagerStateId(ApexId):
     kind = "manager_state_id"
 
 
+class PlanningStateId(ApexId):
+    kind = "planning_state_id"
+
+
+class PlanningResultId(ApexId):
+    kind = "planning_result_id"
+
+
 class FeatureSnapshotId(ApexId):
     kind = "feature_snapshot_id"
 

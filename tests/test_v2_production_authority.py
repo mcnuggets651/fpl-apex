@@ -44,7 +44,8 @@ from apex_fpl.core.proofs import (
     ReleasePolicy,
 )
 
-from production_bundle_helpers import synthetic_production_bundle
+from production_planning_bundle_helpers import synthetic_production_planning_bundle
+from reference_solver_planning_helpers import synthetic_planning_parity_material
 
 
 SEASON = "2026-2027"
@@ -54,6 +55,7 @@ SCOPE = f"{SEASON}:{ENTRY}:{GAMEWEEK}:production"
 CREATED_AT = "2026-08-25T06:00:00Z"
 VALID_UNTIL = "2026-08-29T10:00:00Z"
 AS_OF = "2026-08-25T07:00:00Z"
+PARITY_PROOF_ID = "PO-REFERENCE-SOLVER-PARITY-001"
 
 
 class _DurableArtifactStore:
@@ -175,12 +177,13 @@ def _empirical_qualification(store, proof_id: str) -> tuple[str, str, str]:
 def _qualified_cutover(tmp_path: Path):
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
-    fixture = synthetic_production_bundle(
+    fixture = synthetic_production_planning_bundle(
         store=store,
         season=SEASON,
         entry=ENTRY,
         gameweek=GAMEWEEK,
     )
+    parity = synthetic_planning_parity_material(store=store, fixture=fixture)
     evidence = _artifact(store, "proof-evidence")
     manifest = _artifact(store, "manifest")
     store_q = _artifact(store, "store-qualified")
@@ -218,6 +221,9 @@ def _qualified_cutover(tmp_path: Path):
                 )
                 artifact_ids.append(qualification_artifact)
                 evidence_ids.extend((subject_id, experiment_id))
+        if proof_id == PARITY_PROOF_ID:
+            artifact_ids.extend(parity.artifact_ids)
+            evidence_ids.extend(parity.evidence_ids)
         claims.append(
             AssuranceClaim(
                 proof_id=proof_id,
@@ -391,7 +397,7 @@ def test_corrupt_production_bundle_withholds_current_answer(tmp_path: Path) -> N
     assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
     assert authority.production_result_bundle_id is None
     assert "publication authorization is invalid" in authority.blockers[0]
-    assert "production decision bundle" in authority.blockers[0]
+    assert "production planning bundle" in authority.blockers[0]
 
 
 def test_expired_current_release_is_non_actionable_even_when_pointer_is_current(tmp_path: Path) -> None:

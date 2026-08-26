@@ -13,10 +13,14 @@ from apex_fpl.core.assurance import ReferenceSolverCertificate
 from apex_fpl.core.canonical import canonical_json_bytes
 from apex_fpl.core.ids import ReferenceSolverCertificateId, ReferenceSolverWorkerId
 from apex_fpl.core.reference_solver_authorization import ReferenceSolverAuthorization
+from apex_fpl.core.reference_solver_planning_assurance import PlanningReferenceSolverCertificate
 from apex_fpl.core.reference_solver_worker import (
     ReferenceSolverWorkerArtifact,
     ReferenceSolverWorkerQualification,
 )
+
+
+ReferenceCertificate = ReferenceSolverCertificate | PlanningReferenceSolverCertificate
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +122,7 @@ def _registry_semantic_payload(registry: ReferenceSolverRegistry) -> dict[str, o
 
 
 def create_reference_solver_authorization(
-    certificate: ReferenceSolverCertificate,
+    certificate: ReferenceCertificate,
     *,
     worker_registry: ReferenceSolverRegistry,
     registry_artifact_id: str | None,
@@ -181,7 +185,7 @@ def create_reference_solver_authorization(
 def load_reference_solver_authorization(
     artifact_id: str,
     *,
-    certificate: ReferenceSolverCertificate,
+    certificate: ReferenceCertificate,
     store: ArtifactStore,
 ) -> StoredReferenceSolverAuthorization:
     """Replay authorization and re-prove champion/qualification from retained registry."""

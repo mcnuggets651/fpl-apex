@@ -8,15 +8,24 @@ from pathlib import Path
 import yaml
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.reference_solver_planning_qualification import (
+    verify_planning_reference_solver_algorithmic_qualification,
+)
 from apex_fpl.control.reference_solver_qualification import (
     verify_reference_solver_algorithmic_qualification,
 )
 from apex_fpl.core.assurance import ReferenceSolverCertificate
 from apex_fpl.core.ids import ReferenceSolverWorkerId
+from apex_fpl.core.reference_solver_io import REFERENCE_SOLVER_CONTRACT
+from apex_fpl.core.reference_solver_planning_assurance import PlanningReferenceSolverCertificate
+from apex_fpl.core.reference_solver_planning_io import REFERENCE_SOLVER_PLANNING_CONTRACT
 from apex_fpl.core.reference_solver_worker import (
     ReferenceSolverWorkerArtifact,
     ReferenceSolverWorkerQualification,
 )
+
+
+ReferenceCertificate = ReferenceSolverCertificate | PlanningReferenceSolverCertificate
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +69,7 @@ class ReferenceSolverRegistry:
 
     def match_certificate(
         self,
-        certificate: ReferenceSolverCertificate,
+        certificate: ReferenceCertificate,
     ) -> ReferenceSolverWorkerArtifact | None:
         return next(
             (
@@ -73,9 +82,55 @@ class ReferenceSolverRegistry:
             None,
         )
 
+    @staticmethod
+    def _require_certificate_contract(
+        worker: ReferenceSolverWorkerArtifact,
+        certificate: ReferenceCertificate,
+    ) -> None:
+        if worker.solver_contract == REFERENCE_SOLVER_CONTRACT:
+            if not isinstance(certificate, ReferenceSolverCertificate):
+                raise ValueError("tactical reference worker requires tactical solver certificate")
+            return
+        if worker.solver_contract == REFERENCE_SOLVER_PLANNING_CONTRACT:
+            if not isinstance(certificate, PlanningReferenceSolverCertificate):
+                raise ValueError("planning reference worker requires planning solver certificate")
+            if certificate.solver_contract != worker.solver_contract:
+                raise ValueError("planning solver certificate contract does not match worker")
+            return
+        raise ValueError(f"unsupported registered reference solver contract: {worker.solver_contract}")
+
+    @staticmethod
+    def _verify_qualification(
+        worker: ReferenceSolverWorkerArtifact,
+        *,
+        qualification_artifact_id: str,
+        store: ArtifactStore,
+        season: str,
+        horizon_gameweeks: int,
+    ) -> None:
+        if worker.solver_contract == REFERENCE_SOLVER_CONTRACT:
+            verify_reference_solver_algorithmic_qualification(
+                worker,
+                qualification_artifact_id=qualification_artifact_id,
+                store=store,
+                season=season,
+                horizon_gameweeks=horizon_gameweeks,
+            )
+            return
+        if worker.solver_contract == REFERENCE_SOLVER_PLANNING_CONTRACT:
+            verify_planning_reference_solver_algorithmic_qualification(
+                worker,
+                qualification_artifact_id=qualification_artifact_id,
+                store=store,
+                season=season,
+                horizon_gameweeks=horizon_gameweeks,
+            )
+            return
+        raise ValueError(f"unsupported registered reference solver contract: {worker.solver_contract}")
+
     def verify_certificate_worker(
         self,
-        certificate: ReferenceSolverCertificate,
+        certificate: ReferenceCertificate,
         *,
         store: ArtifactStore,
         season: str,
@@ -86,13 +141,14 @@ class ReferenceSolverRegistry:
         worker = self.match_certificate(certificate)
         if worker is None:
             raise ValueError("reference solver certificate worker is not registered under exact identity")
+        self._require_certificate_contract(worker, certificate)
         if not store.verify(worker.code_artifact_id):
             raise ValueError("reference solver worker code artifact is missing/corrupt")
         qualification = worker.qualification_artifact_id
         if worker.qualification_state is ReferenceSolverWorkerQualification.QUALIFIED:
             if qualification is None:
                 raise ValueError("qualified reference solver worker lacks qualification artifact")
-            verify_reference_solver_algorithmic_qualification(
+            self._verify_qualification(
                 worker,
                 qualification_artifact_id=qualification,
                 store=store,

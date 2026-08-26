@@ -83,7 +83,6 @@ A replay decision may consume only immutable inputs proven available before its 
 ## D027 — Stateful rules are season-versioned
 Free-transfer initialization, special top-ups, chip windows and other state transitions belong to an explicit `SeasonRules` contract. Historical replay must never inherit a later season's rules silently. Before GW1 the initial squad has unlimited changes but zero bankable FTs; the first FT is available for GW2.
 
-
 ## D028 — Current role evidence supersedes stale minutes priors
 The maximum-EV optimiser remains unchanged: it already maximises canonical raw xP. The conservative selection bias was traced to expected-minutes construction, where a fixed preseason blend could leave repeated current team-sheet evidence dominated by a prior-season role that no longer applied. Preseason weight now rises with repeated appearances and starts, capped at 82%, and verified deadline evidence may explicitly override expected minutes/start/appearance probabilities. Official injury, suspension and negative availability evidence is applied after those upside signals and remains a hard ceiling. Confidence and CVaR remain diagnostics; they do not discount canonical xP a second time.
 
@@ -104,3 +103,15 @@ must preserve missing return values; only an explicitly observed zero may pull a
 historical rate down. Solver and diagnostic artifacts must also publish their
 actual producer contracts: captain records, constrained-squad additions/removals,
 and MILP incumbent/bound/gap/termination metadata.
+
+## D031 — Production decision authority is receding-horizon planning-v2
+
+A one-Gameweek tactical solve is reference/shadow analysis only. Production max-EV-over-time authority requires an exact replayable receding-horizon `PlanningResultId` over the qualified DecisionPolicy, exact current ManagerState, sealed Forecast and RuleSet, and `FULL_OFFICIAL` CandidateUniverse. Hypothetical future states may model permanent transfers, realised selling resources, FT banking and chip state, but can never impersonate current truth. Production authority requires complete `OPTIMAL` zero-gap search and publishes only the first exact current action; later trajectory steps are contingencies to be refreshed and re-solved.
+
+## D032 — Independent production solver parity must be planning-v2
+
+Tactical-v1 reference-solver evidence cannot certify a receding-horizon production decision. The production parity proof must bind the exact `PlanningResultId`, horizon/cutoff, DecisionInput, DecisionPolicy and FULL_OFFICIAL universe to a replay-valid planning-v2 certificate plus authorization from the registered artifact-verified qualified champion worker. Objective, root action and selected trajectory must match exactly under complete OPTIMAL zero-gap execution. Missing, limited, errored, unqualified, non-champion or mismatched evidence fails closed.
+
+## D033 — Durable shared backend identity is a production prerequisite
+
+`FileSystemArtifactStore` and `FileSystemReleaseRegistry` are reference/local adapters only and their stable `apex.reference.*` backend IDs can never be promoted by configuration booleans. GitHub Actions artifacts are transitional evidence, not the sole V2 authority store. Production cutover requires deployable durable shared ArtifactStore and ReleaseRegistry implementations with immutable history/content identity and stale-writer-safe atomic CAS, followed by qualification of the exact deployed backend identities from retained operational evidence. Until that exists and passes replay, V2 production cutover remains WITHHELD.

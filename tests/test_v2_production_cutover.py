@@ -51,10 +51,12 @@ from apex_fpl.core.proofs import (
     ReleasePolicy,
 )
 
-from production_bundle_helpers import (
+from production_bundle_helpers import synthetic_production_bundle
+from production_planning_bundle_helpers import (
     DirectQualificationMaterial,
-    synthetic_production_bundle,
+    synthetic_production_planning_bundle,
 )
+from reference_solver_planning_helpers import synthetic_planning_parity_material
 
 
 SEASON = "2026-2027"
@@ -63,6 +65,7 @@ GAMEWEEK = 2
 SCOPE = f"{SEASON}:{ENTRY}:{GAMEWEEK}:production"
 CREATED_AT = "2026-08-25T06:00:00Z"
 VALID_UNTIL = "2026-08-29T10:00:00Z"
+PARITY_PROOF_ID = "PO-REFERENCE-SOLVER-PARITY-001"
 
 
 class _DurableArtifactStore:
@@ -119,7 +122,7 @@ def _artifact(store, value: str) -> str:
 
 
 def _fixture(store):
-    return synthetic_production_bundle(
+    return synthetic_production_planning_bundle(
         store=store,
         season=SEASON,
         entry=ENTRY,
@@ -228,7 +231,13 @@ def _case(
     inconclusive: str | None = None,
     scope: str = SCOPE,
 ) -> AssuranceCase:
-    direct = _fixture(store).direct_qualifications
+    fixture = _fixture(store)
+    direct = fixture.direct_qualifications
+    parity = (
+        None
+        if missing == PARITY_PROOF_ID or inconclusive == PARITY_PROOF_ID
+        else synthetic_planning_parity_material(store=store, fixture=fixture)
+    )
     claims = []
     for proof_id in sorted(MANDATORY_PRODUCTION_PROOF_IDS):
         if proof_id == missing:
@@ -250,6 +259,10 @@ def _case(
                 )
                 artifact_ids.append(qualification_artifact)
                 evidence_ids.extend((subject_id, experiment_id))
+        if proof_id == PARITY_PROOF_ID and proof_id != inconclusive:
+            assert parity is not None
+            artifact_ids.extend(parity.artifact_ids)
+            evidence_ids.extend(parity.evidence_ids)
         claims.append(
             AssuranceClaim(
                 proof_id=proof_id,
@@ -336,6 +349,38 @@ def test_production_cutover_publishes_only_after_complete_pass_and_exact_cas(tmp
         artifact_store=store,
     )
     assert replayed.report_id == outcome.report.report_id
+
+
+def test_legacy_v1_bundle_is_rejected_before_pointer_write(tmp_path: Path) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    legacy = synthetic_production_bundle(
+        store=store,
+        season=SEASON,
+        entry=ENTRY,
+        gameweek=GAMEWEEK,
+    )
+    manifest = _artifact(store, "manifest")
+    claim = _artifact(store, "claim")
+
+    with pytest.raises(ValueError, match="schema-v2 planning bundle"):
+        execute_production_cutover(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=legacy.bundle.bundle_id,
+            world_id=legacy.bundle.world_id,
+            runtime_digest="sha256:v2-runtime",
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
+            artifact_manifest_id=manifest,
+            assurance_case=_case(store, claim),
+            obligations=_obligations(),
+            backend_qualification=_backend(store, registry),
+            artifact_store=store,
+            production_registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 
 
 def test_incomplete_constitutional_proof_surface_is_rejected_before_pointer_write(
@@ -444,6 +489,92 @@ def test_random_artifact_cannot_satisfy_empirical_production_proof(tmp_path: Pat
             valid_until=VALID_UNTIL,
             artifact_manifest_id=manifest,
             assurance_case=AssuranceCase(release_scope=SCOPE, claims=tuple(claims)),
+            obligations=_obligations(),
+            backend_qualification=_backend(store, registry),
+            artifact_store=store,
+            production_registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
+def test_random_artifact_cannot_satisfy_reference_solver_parity(tmp_path: Path) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
+    manifest = _artifact(store, "manifest")
+    random_artifact = _artifact(store, "this-is-not-planning-parity")
+    good_case = _case(store, _artifact(store, "claim"))
+    claims = tuple(
+        AssuranceClaim(
+            proof_id=claim.proof_id,
+            status=claim.status,
+            evidence_ids=(
+                "synthetic-evidence",
+                str(fixture.bundle.planning_result_id),
+                "sha256:" + "1" * 64,
+                "sha256:" + "2" * 64,
+            ),
+            test_ids=claim.test_ids,
+            artifact_ids=(random_artifact,),
+        )
+        if claim.proof_id == PARITY_PROOF_ID
+        else claim
+        for claim in good_case.claims
+    )
+    with pytest.raises(ValueError, match="lacks replay-valid planning parity"):
+        execute_production_cutover(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=fixture.bundle.bundle_id,
+            world_id=fixture.bundle.world_id,
+            runtime_digest="sha256:v2-runtime",
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
+            artifact_manifest_id=manifest,
+            assurance_case=AssuranceCase(release_scope=SCOPE, claims=claims),
+            obligations=_obligations(),
+            backend_qualification=_backend(store, registry),
+            artifact_store=store,
+            production_registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
+def test_planning_parity_certificate_without_champion_authorization_is_rejected(
+    tmp_path: Path,
+) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
+    manifest = _artifact(store, "manifest")
+    good_case = _case(store, _artifact(store, "claim"))
+    parity_claim = next(claim for claim in good_case.claims if claim.proof_id == PARITY_PROOF_ID)
+    claims = tuple(
+        AssuranceClaim(
+            proof_id=claim.proof_id,
+            status=claim.status,
+            evidence_ids=claim.evidence_ids[:-1],
+            test_ids=claim.test_ids,
+            artifact_ids=claim.artifact_ids[:-1],
+        )
+        if claim.proof_id == PARITY_PROOF_ID
+        else claim
+        for claim in good_case.claims
+    )
+    assert len(parity_claim.artifact_ids) >= 3
+    with pytest.raises(ValueError, match="qualified-champion authorization"):
+        execute_production_cutover(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=fixture.bundle.bundle_id,
+            world_id=fixture.bundle.world_id,
+            runtime_digest="sha256:v2-runtime",
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
+            artifact_manifest_id=manifest,
+            assurance_case=AssuranceCase(release_scope=SCOPE, claims=claims),
             obligations=_obligations(),
             backend_qualification=_backend(store, registry),
             artifact_store=store,
@@ -680,9 +811,7 @@ def test_production_replay_rejects_lost_or_corrupt_source_evidence(tmp_path: Pat
     store, _, outcome = _execute(tmp_path)
     source_id = outcome.report.backend_qualification_artifact_ids[0]
     digest = source_id.split(":", 1)[1]
-    object_path = (
-        tmp_path / "artifacts" / "objects" / "sha256" / digest[:2] / digest
-    )
+    object_path = tmp_path / "artifacts" / "objects" / "sha256" / digest[:2] / digest
     object_path.write_bytes(b"corrupt")
     with pytest.raises(ValueError, match="production replay source"):
         load_production_cutover_report(
