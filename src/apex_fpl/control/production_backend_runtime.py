@@ -64,10 +64,10 @@ def load_production_backend_runtime(
     try:
         artifact_store = PostgresArtifactStore(dsn, schema=schema)
         release_registry = PostgresReleaseRegistry(dsn, schema=schema)
-    except Exception as exc:  # normalize credential/connection/bootstrap failures at trust boundary
+    except Exception:  # normalize and suppress credential-bearing driver/bootstrap errors
         raise RuntimeError(
             "production PostgreSQL control plane is unavailable or uninitialised"
-        ) from exc
+        ) from None
 
     if not artifact_store.backend_id.startswith("apex.production.postgres-artifact-store.v1:"):
         raise RuntimeError("production ArtifactStore identity is not a PostgreSQL production ID")
