@@ -1,0 +1,262 @@
+from __future__ import annotations
+
+from dataclasses import replace
+
+from apex_fpl.assurance.reference_solver_planning_exchange import (
+    build_planning_reference_solver_request,
+    store_planning_reference_solver_request,
+)
+from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.manager_state_store import store_manager_state
+from apex_fpl.control.reference_solver_planning_qualification import (
+    store_planning_reference_solver_qualification_case,
+)
+from apex_fpl.core.canonical import canonical_sha256
+from apex_fpl.core.decision import CandidatePlayer, CandidateUniverse, CandidateUniverseScope, DecisionUseMode
+from apex_fpl.core.forecast import (
+    DiscreteIntegerDistribution,
+    Forecast,
+    ForecastUncertainty,
+    PlayerFixtureForecast,
+    PlayerFixtureTarget,
+)
+from apex_fpl.core.identity import OfficialPlayerId
+from apex_fpl.core.ids import FeatureSnapshotId, PredictionBatchId
+from apex_fpl.core.manager_state import ChipUse
+from apex_fpl.core.reference_solver_planning_qualification import (
+    PlanningReferenceSolverQualificationCase,
+)
+from apex_fpl.decision.planner import optimise_receding_horizon
+from apex_fpl.decision.planning_store import store_planning_result
+from apex_fpl.decision.store import store_candidate_universe
+
+
+_FINANCE_GAMEWEEK = 6
+_FINANCE_EXTRA_PLAYER = OfficialPlayerId(16)
+
+
+def _finance_candidate_universe(verified, *, store: ArtifactStore) -> tuple[CandidateUniverse, str]:
+    base = verified.candidate_universe
+    if any(int(row.player_id) == int(_FINANCE_EXTRA_PLAYER) for row in base.players):
+        raise ValueError("focused finance case expects publication universe without player 16")
+    source = store.put_bytes(b"synthetic-planning-finance-universe-source").artifact_id
+    universe = CandidateUniverse(
+        global_world_id=base.global_world_id,
+        scope=CandidateUniverseScope.FULL_OFFICIAL,
+        players=(
+            *base.players,
+            CandidatePlayer(
+                player_id=_FINANCE_EXTRA_PLAYER,
+                team_id=16,
+                position="MID",
+                current_price_tenths=51,
+            ),
+        ),
+        official_player_count=len(base.players) + 1,
+        source_artifact_ids=(source,),
+    )
+    stored = store_candidate_universe(universe, store=store)
+    return universe, stored.artifact_id
+
+
+def _finance_manager_state(verified, *, store: ArtifactStore):
+    source = store.put_bytes(b"synthetic-planning-finance-chip-history").artifact_id
+    chips = (
+        ChipUse(chip="BENCH_BOOST", gameweek=2, set_number=1, source_artifact_id=source),
+        ChipUse(chip="TRIPLE_CAPTAIN", gameweek=3, set_number=1, source_artifact_id=source),
+        ChipUse(chip="WILDCARD", gameweek=4, set_number=1, source_artifact_id=source),
+        ChipUse(chip="FREE_HIT", gameweek=5, set_number=1, source_artifact_id=source),
+    )
+    state = replace(
+        verified.manager_state,
+        gameweek=_FINANCE_GAMEWEEK,
+        bank_tenths=1,
+        free_transfers=1,
+        chips_used=chips,
+        transfer_ledger=(),
+    )
+    state.require_decision_safe(ruleset=verified.ruleset)
+    store_manager_state(state, store=store)
+    return state
+
+
+def _row_for_depth(verified, *, player_id: int, depth: int) -> PlayerFixtureForecast:
+    base_gameweek = verified.bundle.gameweek
+    for row in verified.forecast.rows:
+        if int(row.target.player_id) == player_id and row.target.gameweek == base_gameweek + depth:
+            return row
+    raise ValueError(f"missing publication forecast template for player {player_id} depth {depth}")
+
+
+def _retarget_row(
+    template: PlayerFixtureForecast,
+    *,
+    gameweek: int,
+    player_id: OfficialPlayerId,
+    team_id: int,
+    position: str,
+    points: int | None = None,
+) -> PlayerFixtureForecast:
+    target = PlayerFixtureTarget(
+        fixture_id=gameweek * 1000 + int(player_id),
+        gameweek=gameweek,
+        player_id=player_id,
+        team_id=team_id,
+        opponent_team_id=100 + team_id,
+        is_home=True,
+        position=position,
+    )
+    uncertainty: ForecastUncertainty = template.uncertainty
+    points_distribution = template.points_distribution
+    if points is not None:
+        points_distribution = DiscreteIntegerDistribution(((points, 10_000),))
+        uncertainty = replace(
+            uncertainty,
+            points_p10=points,
+            points_p50=points,
+            points_p90=points,
+        )
+    return PlayerFixtureForecast(
+        target=target,
+        prediction_row_id=canonical_sha256(
+            {
+                "schema_name": "synthetic-planning-finance-row",
+                "gameweek": gameweek,
+                "player_id": int(player_id),
+            }
+        ),
+        minutes_distribution=template.minutes_distribution,
+        points_distribution=points_distribution,
+        uncertainty=uncertainty,
+    )
+
+
+def _finance_forecast(verified, universe: CandidateUniverse) -> Forecast:
+    rows: list[PlayerFixtureForecast] = []
+    for depth, gameweek in enumerate((_FINANCE_GAMEWEEK, _FINANCE_GAMEWEEK + 1)):
+        for player in universe.players:
+            player_id = int(player.player_id)
+            if player.player_id == _FINANCE_EXTRA_PLAYER:
+                template = _row_for_depth(verified, player_id=8, depth=depth)
+                rows.append(
+                    _retarget_row(
+                        template,
+                        gameweek=gameweek,
+                        player_id=player.player_id,
+                        team_id=player.team_id,
+                        position=player.position,
+                        points=0 if depth == 0 else 12,
+                    )
+                )
+                continue
+            template = _row_for_depth(verified, player_id=player_id, depth=depth)
+            # Player 8 is deliberately good in GW7 (10 xP in the source fixture), while
+            # the new £5.1m MID is 12 xP. Banking first and transferring only in GW7 is
+            # therefore uniquely better than sacrificing current-GW points for an early move.
+            rows.append(
+                _retarget_row(
+                    template,
+                    gameweek=gameweek,
+                    player_id=player.player_id,
+                    team_id=player.team_id,
+                    position=player.position,
+                )
+            )
+    return replace(
+        verified.forecast,
+        feature_snapshot_id=FeatureSnapshotId(
+            canonical_sha256(
+                {
+                    "schema_name": "synthetic-planning-finance-feature-snapshot",
+                    "world_id": str(universe.global_world_id),
+                }
+            )
+        ),
+        prediction_batch_id=PredictionBatchId(
+            canonical_sha256(
+                {
+                    "schema_name": "synthetic-planning-finance-prediction-batch",
+                    "world_id": str(universe.global_world_id),
+                }
+            )
+        ),
+        rows=tuple(rows),
+        abstentions=(),
+    )
+
+
+def store_finance_qualification_case(
+    *,
+    store: ArtifactStore,
+    verified,
+    continuation,
+    chip_option,
+    price_policy,
+    candidate_policy,
+    max_search_nodes: int = 500,
+) -> str:
+    """Store a focused finance/banking case for planning-worker qualification.
+
+    Current-set chips are all validly consumed in prior GWs, removing chip branching from this
+    case. The separate publication case proves the complete chip surface. Together the retained
+    cases cover the same production semantics without multiplying unrelated action surfaces.
+    """
+
+    universe, universe_artifact_id = _finance_candidate_universe(verified, store=store)
+    manager_state = _finance_manager_state(verified, store=store)
+    forecast = _finance_forecast(verified, universe)
+    policy = verified.decision_policy
+    result = optimise_receding_horizon(
+        state=manager_state,
+        forecast=forecast,
+        universe=universe,
+        ruleset=verified.ruleset,
+        policy=policy,
+        continuation=continuation,
+        chip_option=chip_option,
+        price_policy=price_policy,
+        candidate_policy=candidate_policy,
+        use_mode=DecisionUseMode.PRODUCTION,
+        max_search_nodes=max_search_nodes,
+        alternatives_limit=0,
+    )
+    if not result.solver.search_complete or result.solver.gap.numerator != 0:
+        raise ValueError("focused planning finance fixture did not complete exact search")
+    steps = result.selected_trajectory.steps
+    if len(steps) != 2 or steps[0].action.transfers or not steps[1].action.transfers:
+        raise ValueError("focused planning finance fixture did not bank then transfer")
+    if len(steps[1].action.transfers) != 1:
+        raise ValueError("focused planning finance fixture must execute exactly one transfer")
+    move = steps[1].action.transfers[0]
+    if move.incoming_player_id != _FINANCE_EXTRA_PLAYER:
+        raise ValueError("focused planning finance fixture selected the wrong incoming player")
+
+    stored_result = store_planning_result(
+        result,
+        manager_state_id=manager_state.manager_state_id,
+        universe=universe,
+        ruleset=verified.ruleset,
+        continuation=continuation,
+        chip_option=chip_option,
+        store=store,
+    )
+    request = build_planning_reference_solver_request(
+        result=result,
+        manager_state=manager_state,
+        forecast=forecast,
+        candidate_universe=universe,
+        ruleset=verified.ruleset,
+        decision_policy=policy,
+        continuation_policy=continuation,
+        chip_option_policy=chip_option,
+        price_policy=price_policy,
+        candidate_policy=candidate_policy,
+        max_search_nodes=max_search_nodes,
+    )
+    stored_request = store_planning_reference_solver_request(request, store=store)
+    case = PlanningReferenceSolverQualificationCase(
+        request_artifact_id=stored_request.artifact_id,
+        expected_planning_result_artifact_id=stored_result.artifact_id,
+        candidate_universe_artifact_id=universe_artifact_id,
+    )
+    return store_planning_reference_solver_qualification_case(case, store=store)
