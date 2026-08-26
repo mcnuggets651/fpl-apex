@@ -8,6 +8,10 @@ import json
 from typing import Iterable, Protocol
 
 from apex_fpl.control.artifact_store import ArtifactIntegrityError, ArtifactStore
+from apex_fpl.control.backend_operational_qualification import (
+    verify_backend_qualification_evidence,
+    verify_stored_backend_qualification_evidence,
+)
 from apex_fpl.control.experiment_registry import load_empirical_qualification_certificate
 from apex_fpl.control.production_planning_bundle import (
     VerifiedProductionPlanningBundle,
@@ -501,6 +505,11 @@ def execute_production_cutover(
         production_registry=production_registry,
         qualification=backend_qualification,
     )
+    verify_backend_qualification_evidence(
+        backend_qualification,
+        artifact_store=artifact_store,
+        release_registry=production_registry,
+    )
     verified_bundle = _verified_bundle_for_release(
         bundle_id=bundle_id,
         world_id=world_id,
@@ -826,6 +835,10 @@ def _replay_backend_qualification(
     )
     if qualification.qualification_id != declared:
         raise ValueError("production backend qualification semantic identity mismatch")
+    verify_stored_backend_qualification_evidence(
+        qualification,
+        store=artifact_store,
+    )
     return qualification
 
 

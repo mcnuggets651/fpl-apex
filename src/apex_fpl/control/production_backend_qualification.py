@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 
 from apex_fpl.control.artifact_store import ArtifactIntegrityError, ArtifactStore
+from apex_fpl.control.backend_operational_qualification import (
+    verify_stored_backend_qualification_evidence,
+)
 from apex_fpl.core.production import ProductionBackendQualification
 
 
@@ -19,11 +22,13 @@ def load_production_backend_qualification(
     *,
     artifact_store: ArtifactStore,
 ) -> ProductionBackendQualification:
-    """Replay one qualification snapshot and verify its semantic identity/evidence."""
+    """Replay one qualification snapshot and re-derive it from typed probe evidence."""
 
+    if not artifact_store.verify(artifact_id):
+        raise ValueError("production backend qualification failed integrity verification")
     try:
         raw = json.loads(artifact_store.read_bytes(artifact_id).decode("utf-8"))
-    except ArtifactIntegrityError as exc:
+    except (FileNotFoundError, ArtifactIntegrityError) as exc:
         raise ValueError("production backend qualification failed integrity verification") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("production backend qualification is not valid UTF-8 JSON") from exc
@@ -64,12 +69,8 @@ def load_production_backend_qualification(
     )
     if qualification.qualification_id != declared:
         raise ValueError("production backend qualification semantic identity mismatch")
-    for evidence_id in (
-        qualification.artifact_store_qualification_artifact_id,
-        qualification.release_registry_qualification_artifact_id,
-    ):
-        if not artifact_store.verify(evidence_id):
-            raise ValueError(
-                f"production backend qualification evidence is missing/corrupt: {evidence_id}"
-            )
+    verify_stored_backend_qualification_evidence(
+        qualification,
+        store=artifact_store,
+    )
     return qualification

@@ -70,6 +70,11 @@ class FileSystemArtifactStore:
     def __init__(self, root: str | Path):
         self.root = Path(root)
 
+    def reopen(self) -> "FileSystemArtifactStore":
+        """Return a fresh adapter over the same reference/local store."""
+
+        return FileSystemArtifactStore(self.root)
+
     @staticmethod
     def _digest_from_id(artifact_id: str) -> str:
         algorithm, separator, digest = str(artifact_id).partition(":")
