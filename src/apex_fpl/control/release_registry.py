@@ -93,6 +93,28 @@ def _canonical_json_bytes(payload: dict[str, object]) -> bytes:
     ).encode("utf-8")
 
 
+def normalize_release_record(record: ReleaseRecord) -> ReleaseRecord:
+    """Assign and verify ReleaseRecord content identity before persistence.
+
+    A caller-supplied release_id is never trusted.  This closes a subtle hole in the
+    original filesystem adapter where a forged explicit ID could be written first and
+    would only be detected later during replay.
+    """
+
+    derived = record.with_release_id()
+    if record.release_id is not None and record.release_id != derived.release_id:
+        raise ValueError("ReleaseRecord declared identity does not match content")
+    return derived
+
+
+def release_record_bytes(record: ReleaseRecord) -> bytes:
+    normalized = normalize_release_record(record)
+    assert normalized.release_id is not None
+    return _canonical_json_bytes(
+        {**normalized.content_payload(), "release_id": normalized.release_id}
+    )
+
+
 def _strict_optional_string(value: object, *, label: str) -> str | None:
     if value is None:
         return None
@@ -142,6 +164,16 @@ def _release_record_from_payload(payload: object, *, expected_release_id: str) -
     return record
 
 
+def parse_release_record_bytes(content: bytes, *, expected_release_id: str) -> ReleaseRecord:
+    try:
+        payload = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"release record is not valid UTF-8 JSON: {expected_release_id}"
+        ) from exc
+    return _release_record_from_payload(payload, expected_release_id=expected_release_id)
+
+
 class FileSystemReleaseRegistry:
     """Filesystem adapter implementing immutable records and atomic CAS pointers.
 
@@ -155,6 +187,12 @@ class FileSystemReleaseRegistry:
     def __init__(self, root: str | Path, *, lock_timeout_seconds: float = 5.0):
         self.root = Path(root)
         self.lock_timeout_seconds = lock_timeout_seconds
+
+    def reopen(self) -> "FileSystemReleaseRegistry":
+        return FileSystemReleaseRegistry(
+            self.root,
+            lock_timeout_seconds=self.lock_timeout_seconds,
+        )
 
     def _release_path(self, release_id: str) -> Path:
         return self.root / "releases" / f"{release_id}.json"
@@ -195,11 +233,9 @@ class FileSystemReleaseRegistry:
                 pass
 
     def append(self, record: ReleaseRecord) -> ReleaseRecord:
-        normalized = record if record.release_id else record.with_release_id()
+        normalized = normalize_release_record(record)
         assert normalized.release_id is not None
-        body = _canonical_json_bytes(
-            {**normalized.content_payload(), "release_id": normalized.release_id}
-        )
+        body = release_record_bytes(normalized)
         destination = self._release_path(normalized.release_id)
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists():
@@ -224,11 +260,7 @@ class FileSystemReleaseRegistry:
         if not value:
             raise ValueError("release_id is required")
         path = self._release_path(value)
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(f"release record is not valid UTF-8 JSON: {value}") from exc
-        return _release_record_from_payload(payload, expected_release_id=value)
+        return parse_release_record_bytes(path.read_bytes(), expected_release_id=value)
 
     def current_release_id(self, key: ReleaseKey) -> str | None:
         path = self._pointer_path(key)
