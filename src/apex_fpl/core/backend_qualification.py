@@ -1,10 +1,24 @@
-"""Dependency-free operational probe evidence for production control-plane backends."""
+"""Dependency-free qualification evidence for production control-plane backends."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from .canonical import canonical_sha256
+
+
+REQUIRED_BACKEND_DEPLOYMENT_EVIDENCE_KINDS = frozenset(
+    {
+        "RETENTION",
+        "ACCESS_CONTROL",
+        "CREDENTIAL_SEPARATION",
+        "BACKUP",
+        "RESTORE",
+        "DISASTER_RECOVERY",
+        "AVAILABILITY",
+        "GEOGRAPHIC_DURABILITY",
+    }
+)
 
 
 def _required(value: str, *, label: str) -> str:
@@ -183,6 +197,131 @@ class ReleaseRegistryProbeEvidence:
             "stale_writer_conflict_observed": self.stale_writer_conflict_observed,
             "successful_cas_transition": self.successful_cas_transition,
             "final_release_id": self.final_release_id,
+        }
+
+    @property
+    def evidence_id(self) -> str:
+        return canonical_sha256(self.semantic_payload())
+
+
+@dataclass(frozen=True, slots=True)
+class BackendDeploymentEvidenceItem:
+    """One retained operational/deployment proof item for a concrete backend deployment."""
+
+    evidence_kind: str
+    evidence_artifact_id: str
+    issuer: str
+    observed_at: str
+    outcome: str
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        if isinstance(self.schema_version, bool) or self.schema_version != 1:
+            raise ValueError("unsupported BackendDeploymentEvidenceItem schema")
+        kind = _required(self.evidence_kind, label="deployment evidence_kind").upper()
+        if kind not in REQUIRED_BACKEND_DEPLOYMENT_EVIDENCE_KINDS:
+            raise ValueError(f"unsupported deployment evidence kind: {kind}")
+        artifact_id = _required(
+            self.evidence_artifact_id,
+            label="deployment evidence artifact_id",
+        )
+        issuer = _required(self.issuer, label="deployment evidence issuer")
+        observed_at = _required(self.observed_at, label="deployment evidence observed_at")
+        outcome = _required(self.outcome, label="deployment evidence outcome").upper()
+        if outcome not in {"PASS", "FAIL"}:
+            raise ValueError("deployment evidence outcome must be PASS or FAIL")
+        object.__setattr__(self, "evidence_kind", kind)
+        object.__setattr__(self, "evidence_artifact_id", artifact_id)
+        object.__setattr__(self, "issuer", issuer)
+        object.__setattr__(self, "observed_at", observed_at)
+        object.__setattr__(self, "outcome", outcome)
+
+    def semantic_payload(self) -> dict[str, object]:
+        return {
+            "schema_name": "apex-backend-deployment-evidence-item",
+            "schema_version": self.schema_version,
+            "evidence_kind": self.evidence_kind,
+            "evidence_artifact_id": self.evidence_artifact_id,
+            "issuer": self.issuer,
+            "observed_at": self.observed_at,
+            "outcome": self.outcome,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BackendDeploymentQualificationEvidence:
+    """Retained non-probe evidence that a concrete shared deployment is production durable.
+
+    Fresh-connection probes deliberately cannot create this evidence. A production deployment
+    must retain all required operational proof classes, each backed by an immutable artifact.
+    GitHub Actions/database-service fixtures are mechanism tests and must never be registered as
+    real deployment evidence.
+    """
+
+    artifact_store_backend_id: str
+    release_registry_backend_id: str
+    qualification_scope: str
+    deployment_id: str
+    environment_class: str
+    evaluated_at: str
+    evidence_items: tuple[BackendDeploymentEvidenceItem, ...]
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        if isinstance(self.schema_version, bool) or self.schema_version != 1:
+            raise ValueError("unsupported BackendDeploymentQualificationEvidence schema")
+        for field, label in (
+            ("artifact_store_backend_id", "deployment artifact-store backend_id"),
+            ("release_registry_backend_id", "deployment release-registry backend_id"),
+            ("qualification_scope", "deployment qualification_scope"),
+            ("deployment_id", "deployment_id"),
+            ("evaluated_at", "deployment evaluated_at"),
+        ):
+            object.__setattr__(self, field, _required(getattr(self, field), label=label))
+        environment = _required(
+            self.environment_class,
+            label="deployment environment_class",
+        ).upper()
+        if environment not in {"PRODUCTION", "TEST"}:
+            raise ValueError("deployment environment_class must be PRODUCTION or TEST")
+        object.__setattr__(self, "environment_class", environment)
+        items = tuple(self.evidence_items)
+        kinds = [item.evidence_kind for item in items]
+        if len(kinds) != len(set(kinds)):
+            raise ValueError("deployment evidence contains duplicate evidence_kind")
+        object.__setattr__(self, "evidence_items", tuple(sorted(items, key=lambda item: item.evidence_kind)))
+
+    @property
+    def complete(self) -> bool:
+        return {
+            item.evidence_kind for item in self.evidence_items
+        } == REQUIRED_BACKEND_DEPLOYMENT_EVIDENCE_KINDS
+
+    @property
+    def supported(self) -> bool:
+        return (
+            self.environment_class == "PRODUCTION"
+            and self.complete
+            and all(item.outcome == "PASS" for item in self.evidence_items)
+        )
+
+    @property
+    def evidence_artifact_ids(self) -> tuple[str, ...]:
+        return tuple(item.evidence_artifact_id for item in self.evidence_items)
+
+    def semantic_payload(self) -> dict[str, object]:
+        return {
+            "schema_name": "apex-backend-deployment-qualification-evidence",
+            "schema_version": self.schema_version,
+            "artifact_store_backend_id": self.artifact_store_backend_id,
+            "release_registry_backend_id": self.release_registry_backend_id,
+            "qualification_scope": self.qualification_scope,
+            "deployment_id": self.deployment_id,
+            "environment_class": self.environment_class,
+            "evaluated_at": self.evaluated_at,
+            "evidence_items": [item.semantic_payload() for item in self.evidence_items],
+            "complete": self.complete,
+            "supported": self.supported,
         }
 
     @property
