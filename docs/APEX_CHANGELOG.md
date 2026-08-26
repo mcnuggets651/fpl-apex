@@ -2,6 +2,18 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-26 — V2 prospective empirical operations plane
+- Added fail-closed production PostgreSQL runtime selection through `APEX_PRODUCTION_POSTGRES_DSN` with no filesystem fallback and credential-safe persisted backend identity reporting.
+- Added immutable SHADOW forecast-model and receding-horizon DecisionPolicy candidate materialization; operator execution time owns candidate availability and candidate commands never mutate champion registries.
+- Added prospective experiment declaration over exact candidate subject/evaluator/policy/threshold/window semantics; caller-authored declaration timestamps are not accepted and late declaration fails closed.
+- Added post-window result sealing using operator-recorded UTC; caller-authored result availability timestamps and premature outcomes fail closed.
+- Added replay-derived empirical qualification plus explicit QUALIFIED-candidate materialization for exact SUPPORTED certificates while preserving separate reviewed champion admission.
+- Added the `apex-v2` operator CLI for backend identity, immutable file sealing, candidate creation, experiment declaration/result, qualification derivation and qualified-candidate proposals.
+- Added adversarial tests for missing production DSN/no fallback, credential redaction, caller timestamp rejection, premature result rejection, support-artifact reconciliation, exact certificate/subject binding and no automatic champion mutation.
+- Added focused CI coverage for the new operations plane and PR-level concurrency cancellation for V2 Shadow Production so superseded audits cannot accumulate.
+- Added `APEX_PROSPECTIVE_EMPIRICAL_OPERATIONS_V2.md`, refreshed V2 architecture and Project Brain, and recorded D035.
+- This slice does not fabricate a deployed production backend, future outcomes, qualification certificates or champions and does not perform production cutover.
+
 ## 2026-08-26 — V2 durable PostgreSQL backend and two-plane qualification
 - Added provider-neutral production backend ports and deployable PostgreSQL ArtifactStore/ReleaseRegistry adapters with persisted logical backend identity, immutable content/release history and transactional stale-writer-safe CAS.
 - Added digest-pinned PostgreSQL 17.11 integration coverage to Apex CI plus a focused backend fast-fail gate; full same-head Apex CI remains mandatory for certification.
@@ -13,7 +25,7 @@ This is a human project-level changelog. Git history remains the detailed code r
 - Production cutover and answer authority replay backend qualification independently against the actual live backend identities.
 - Synthetic backend qualification fixtures were moved/kept under `tests/` and are explicitly mechanism-only; runtime publication paths do not self-author Plane-B PASS evidence.
 - Added adversarial tests for boolean laundering, random artifacts, wrong backend identities, TEST environment evidence, incomplete operational coverage and cross-control-plane replay.
-- PR #85 was genuinely restacked onto certified PR #84 head `e535fc289a3e6885f34bf6ca45f6ebd42a84241c`; it remains draft/open/unmerged and production remains WITHHELD.
+- PR #85 was genuinely restacked onto certified PR #84 head `e535fc289a3e6885f34bf6ca45f6ebd42a84241c`; exact head `5be756e677b6f0b876f616319a943485c5875d68` later passed 817/817 full-suite tests, full Ruff/upstream/governance checks, build evidence reconciliation and V2 Shadow Production and is engineering-certified. It remains draft/open/unmerged and production remains WITHHELD.
 
 ## 2026-08-26 — V2 exact receding-horizon planner and planning authority
 - Added immutable hypothetical planning-state, trajectory, solver-certificate and receding-horizon decision-result contracts separated from current exact ManagerState truth.
