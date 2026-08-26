@@ -35,6 +35,8 @@ from apex_fpl.core.reference_solver_worker import (
 )
 from apex_fpl.workers.reference_solver_planning import solve_planning_reference_request
 
+from reference_solver_planning_finance_case import store_finance_qualification_case
+
 
 @dataclass(frozen=True, slots=True)
 class SyntheticPlanningParityMaterial:
@@ -62,42 +64,20 @@ class SyntheticPlanningParityMaterial:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class _CachedParityTemplate:
-    material: SyntheticPlanningParityMaterial
-    artifacts: tuple[tuple[str, bytes], ...]
-
-
-# Test-only immutable cache. The cache never short-circuits production replay: it only avoids
-# rebuilding the exact same synthetic qualification/authorization artifacts in every isolated
-# test ArtifactStore. Content identities are checked again when bytes are reinserted.
-_PARITY_TEMPLATE_CACHE: dict[str, _CachedParityTemplate] = {}
-
-
-def _restore_cached_template(*, store, cached: _CachedParityTemplate) -> SyntheticPlanningParityMaterial:
-    for artifact_id, raw in cached.artifacts:
-        restored = store.put_bytes(raw)
-        if restored.artifact_id != artifact_id:
-            raise ValueError("cached synthetic planning parity artifact identity drifted")
-    return cached.material
-
-
 def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningParityMaterial:
     """Build mechanism-only replay-valid planning parity authority for tests.
 
-    The first construction for a semantic production-planning bundle intentionally goes through
-    the same sealed request, corpus replay, worker qualification, champion registry, solver
-    certificate, and authorization machinery that production cutover verifies. Subsequent tests
-    restore those exact immutable bytes into their isolated stores; production verification still
-    independently replays the retained qualification and authorization on every cutover.
+    Qualification deliberately uses two focused retained cases instead of one combinatorial
+    mega-case:
 
-    This is synthetic test evidence only and never production qualification evidence.
+    * the exact publication fixture is a 15-player FULL_OFFICIAL chip-surface case;
+    * a separate GW6-7 case adds one £5.1m MID, consumes the current chip set historically,
+      and proves FT banking plus realised transfer finance.
+
+    Coverage remains derived from sealed requests/results and is aggregated across the corpus.
+    The publication certificate is then built for the exact current PlanningResult. This is
+    synthetic mechanism evidence only and never production qualification evidence.
     """
-
-    cache_key = str(fixture.bundle.bundle_id)
-    cached = _PARITY_TEMPLATE_CACHE.get(cache_key)
-    if cached is not None:
-        return _restore_cached_template(store=store, cached=cached)
 
     verified = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
     policy = verified.decision_policy
@@ -132,20 +112,34 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         chip_option_policy=chip_option,
         price_policy=price,
         candidate_policy=candidate,
-        max_search_nodes=5_000,
+        max_search_nodes=500,
     )
     stored_request = store_planning_reference_solver_request(request, store=store)
 
-    case = PlanningReferenceSolverQualificationCase(
+    publication_case = PlanningReferenceSolverQualificationCase(
         request_artifact_id=stored_request.artifact_id,
         expected_planning_result_artifact_id=fixture.bundle.planning_result_artifact_id,
         candidate_universe_artifact_id=fixture.bundle.candidate_universe_artifact_id,
     )
-    case_artifact_id = store_planning_reference_solver_qualification_case(case, store=store)
+    publication_case_artifact_id = store_planning_reference_solver_qualification_case(
+        publication_case,
+        store=store,
+    )
+    finance_case_artifact_id = store_finance_qualification_case(
+        store=store,
+        verified=verified,
+        continuation=continuation,
+        chip_option=chip_option,
+        price_policy=price,
+        candidate_policy=candidate,
+        max_search_nodes=500,
+    )
     corpus = PlanningReferenceSolverQualificationCorpus(
         season=fixture.bundle.season,
         max_horizon_gameweeks=policy.horizon_gameweeks,
-        case_artifact_ids=(case_artifact_id,),
+        case_artifact_ids=tuple(
+            sorted((publication_case_artifact_id, finance_case_artifact_id))
+        ),
     )
     corpus_artifact_id = store_planning_reference_solver_qualification_corpus(
         corpus,
@@ -207,7 +201,7 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         horizon_gameweeks=policy.horizon_gameweeks,
     )
 
-    material = SyntheticPlanningParityMaterial(
+    return SyntheticPlanningParityMaterial(
         planning_result_id=str(verified.decision.planning_result_id),
         certificate_artifact_id=stored_certificate.artifact_id,
         certificate_id=str(certificate.certificate_id),
@@ -216,22 +210,3 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         qualification_artifact_id=qualification_artifact_id,
         registry_artifact_id=authorization.authorization.registry_artifact_id,
     )
-    parity_artifact_ids = (
-        stored_request.artifact_id,
-        case_artifact_id,
-        corpus_artifact_id,
-        worker_code_artifact_id,
-        qualification_artifact_id,
-        authorization.authorization.registry_artifact_id,
-        stored_run.artifact_id,
-        stored_certificate.artifact_id,
-        authorization.artifact_id,
-    )
-    cached_artifacts = tuple(
-        (artifact_id, store.read_bytes(artifact_id)) for artifact_id in parity_artifact_ids
-    )
-    _PARITY_TEMPLATE_CACHE[cache_key] = _CachedParityTemplate(
-        material=material,
-        artifacts=cached_artifacts,
-    )
-    return material
