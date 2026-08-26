@@ -14,6 +14,18 @@ def _required(value: str, *, label: str) -> str:
     return text
 
 
+def _strict_bool(value: object, *, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be boolean")
+    return value
+
+
+def _positive_int(value: object, *, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{label} must be positive integer")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class ArtifactStoreProbeEvidence:
     """Observed shared-persistence behavior for one exact ArtifactStore backend."""
@@ -30,7 +42,7 @@ class ArtifactStoreProbeEvidence:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if isinstance(self.schema_version, bool) or self.schema_version != 1:
             raise ValueError("unsupported ArtifactStoreProbeEvidence schema")
         for field, label in (
             ("backend_id", "artifact backend_id"),
@@ -41,6 +53,12 @@ class ArtifactStoreProbeEvidence:
             ("reopened_read_sha256", "artifact reopened_read_sha256"),
         ):
             object.__setattr__(self, field, _required(getattr(self, field), label=label))
+        for field, label in (
+            ("stable_backend_identity", "artifact stable_backend_identity"),
+            ("shared_visibility", "artifact shared_visibility"),
+            ("integrity_verified", "artifact integrity_verified"),
+        ):
+            object.__setattr__(self, field, _strict_bool(getattr(self, field), label=label))
         for digest in (self.probe_content_sha256, self.reopened_read_sha256):
             if len(digest) != 64:
                 raise ValueError("artifact probe SHA-256 must contain 64 hex characters")
@@ -101,7 +119,7 @@ class ReleaseRegistryProbeEvidence:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if isinstance(self.schema_version, bool) or self.schema_version != 1:
             raise ValueError("unsupported ReleaseRegistryProbeEvidence schema")
         for field, label in (
             ("backend_id", "registry backend_id"),
@@ -113,10 +131,25 @@ class ReleaseRegistryProbeEvidence:
             ("final_release_id", "registry final_release_id"),
         ):
             object.__setattr__(self, field, _required(getattr(self, field), label=label))
-        if isinstance(self.probe_entry, bool) or self.probe_entry <= 0:
-            raise ValueError("registry probe_entry must be positive integer")
-        if isinstance(self.probe_gameweek, bool) or self.probe_gameweek <= 0:
-            raise ValueError("registry probe_gameweek must be positive integer")
+        object.__setattr__(
+            self,
+            "probe_entry",
+            _positive_int(self.probe_entry, label="registry probe_entry"),
+        )
+        object.__setattr__(
+            self,
+            "probe_gameweek",
+            _positive_int(self.probe_gameweek, label="registry probe_gameweek"),
+        )
+        for field, label in (
+            ("stable_backend_identity", "registry stable_backend_identity"),
+            ("shared_visibility", "registry shared_visibility"),
+            ("immutable_replay", "registry immutable_replay"),
+            ("forged_identity_rejected", "registry forged_identity_rejected"),
+            ("stale_writer_conflict_observed", "registry stale_writer_conflict_observed"),
+            ("successful_cas_transition", "registry successful_cas_transition"),
+        ):
+            object.__setattr__(self, field, _strict_bool(getattr(self, field), label=label))
 
     @property
     def supported(self) -> bool:
