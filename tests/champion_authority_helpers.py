@@ -19,6 +19,7 @@ from apex_fpl.core.ids import (
 )
 from apex_fpl.core.learning_common import ModelPromotionDecision
 from apex_fpl.core.learning_promotion import ModelPromotionCertificate, ModelRegistryGeneration
+from apex_fpl.decision.scenario_store import load_robustness_report, load_scenario_set
 
 from empirical_qualification_helpers import synthetic_supported_qualification_artifact
 from production_planning_bundle_helpers import SyntheticPlanningBundleFixture
@@ -96,20 +97,23 @@ def synthetic_production_champion_authority(
     policy_qualification = fixture.direct_qualifications[
         "PO-DECISION-POLICY-QUALIFICATION-001"
     ].artifact_id
-    policy_review = _source_id(store, "decision-policy-reviewed-change")
     policy_admission = issue_champion_admission(
         role=ChampionRole.DECISION_POLICY,
         season=season,
         candidate_id=str(fixture.bundle.decision_policy_id),
         subject_payload=policy_payload,
         qualification_artifact_id=policy_qualification,
-        review_artifact_id=policy_review,
+        review_artifact_id=_source_id(store, "decision-policy-reviewed-change"),
         reviewed_by="synthetic-reviewer",
         reviewed_at=reviewed_at,
         reason="synthetic mechanism-only DecisionPolicy admission",
         store=store,
     )
 
+    scenario_set = load_scenario_set(
+        fixture.bundle.scenario_set_artifact_id,
+        store=store,
+    ).scenario_set
     generator_payload = {
         "schema_name": "synthetic-planning-generator",
         "season": season,
@@ -124,7 +128,7 @@ def synthetic_production_champion_authority(
     generator_admission = issue_champion_admission(
         role=ChampionRole.SCENARIO_GENERATOR,
         season=season,
-        candidate_id=str(fixture.bundle.scenario_set_id and _scenario_generator_id(store, fixture)),
+        candidate_id=str(scenario_set.scenario_generator_id),
         subject_payload=generator_payload,
         qualification_artifact_id=generator_qualification,
         review_artifact_id=_source_id(store, "scenario-generator-reviewed-change"),
@@ -134,6 +138,10 @@ def synthetic_production_champion_authority(
         store=store,
     )
 
+    robustness_report = load_robustness_report(
+        fixture.bundle.robustness_report_artifact_id,
+        store=store,
+    ).report
     policy_subject = {
         "schema_name": "synthetic-planning-scenario-policy",
         "season": season,
@@ -148,7 +156,7 @@ def synthetic_production_champion_authority(
     scenario_policy_admission = issue_champion_admission(
         role=ChampionRole.SCENARIO_POLICY,
         season=season,
-        candidate_id=str(_scenario_policy_id(store, fixture)),
+        candidate_id=str(robustness_report.scenario_policy_id),
         subject_payload=policy_subject,
         qualification_artifact_id=scenario_policy_qualification,
         review_artifact_id=_source_id(store, "scenario-policy-reviewed-change"),
@@ -180,19 +188,3 @@ def synthetic_production_champion_authority(
         scenario_generator_admission=generator_admission,
         scenario_policy_admission=scenario_policy_admission,
     )
-
-
-def _scenario_generator_id(store, fixture: SyntheticPlanningBundleFixture) -> str:
-    raw = _json_at(store, fixture.bundle.scenario_set_artifact_id)
-    value = raw.get("scenario_generator_id")
-    if not isinstance(value, str) or not value:
-        raise AssertionError("synthetic scenario set has no scenario generator identity")
-    return value
-
-
-def _scenario_policy_id(store, fixture: SyntheticPlanningBundleFixture) -> str:
-    raw = _json_at(store, fixture.bundle.robustness_report_artifact_id)
-    value = raw.get("scenario_policy_id")
-    if not isinstance(value, str) or not value:
-        raise AssertionError("synthetic robustness report has no scenario policy identity")
-    return value
