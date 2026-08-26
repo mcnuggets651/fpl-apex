@@ -24,9 +24,11 @@ def load_production_backend_qualification(
 ) -> ProductionBackendQualification:
     """Replay one qualification snapshot and re-derive it from typed probe evidence."""
 
+    if not artifact_store.verify(artifact_id):
+        raise ValueError("production backend qualification failed integrity verification")
     try:
         raw = json.loads(artifact_store.read_bytes(artifact_id).decode("utf-8"))
-    except ArtifactIntegrityError as exc:
+    except (FileNotFoundError, ArtifactIntegrityError) as exc:
         raise ValueError("production backend qualification failed integrity verification") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("production backend qualification is not valid UTF-8 JSON") from exc
