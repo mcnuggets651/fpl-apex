@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
-from apex_fpl.control.backend_operational_qualification import (
-    derive_backend_qualification_from_probes,
-)
 from apex_fpl.control.experiment_registry import (
     ExperimentRegistration,
     ExperimentRegistry,
@@ -55,6 +51,7 @@ from apex_fpl.core.proofs import (
     ReleasePolicy,
 )
 
+from backend_qualification_helpers import synthetic_production_backend_qualification
 from production_bundle_helpers import synthetic_production_bundle
 from production_planning_bundle_helpers import (
     DirectQualificationMaterial,
@@ -310,11 +307,10 @@ def _backend(store, registry, *, qualified: bool = True, scope: str = SCOPE):
         if not isinstance(store, _DurableArtifactStore):
             raise TypeError("negative durable backend probe requires test-double ArtifactStore")
         probe_store = _UnstableProbeArtifactStore(store.root)
-    return derive_backend_qualification_from_probes(
-        artifact_store=probe_store,
-        release_registry=registry,
+    return synthetic_production_backend_qualification(
+        store=probe_store,
+        registry=registry,
         qualification_scope=scope,
-        probe_nonce=uuid4().hex,
     ).qualification
 
 
@@ -773,7 +769,7 @@ def test_random_nonreference_green_backend_evidence_cannot_authorize_cutover(
         qualification_scope=SCOPE,
     )
     assert backend.qualified is True
-    with pytest.raises(ValueError, match="operational probe"):
+    with pytest.raises(ValueError, match="qualification binding"):
         execute_production_cutover(
             season=SEASON,
             entry=ENTRY,
