@@ -16,6 +16,22 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.11-bookworm@sha256:84560e3b9c6874893fc4e2854f5dc3e7c1a37bc9d1dfd7a8c641310ae22ba5ad
+        env:
+          POSTGRES_USER: apex
+          POSTGRES_PASSWORD: apex-ci
+          POSTGRES_DB: apex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U apex -d apex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APEX_TEST_POSTGRES_DSN: postgresql://apex:apex-ci@127.0.0.1:5432/apex
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
