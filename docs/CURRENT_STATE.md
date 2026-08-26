@@ -8,96 +8,127 @@ Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
 
 - Repository: `mcnuggets651/fpl-apex`.
 - Production branch remains `main`.
-- The V2 control-plane stack is being built in reviewed, unmerged PRs; an open V2 PR must never be described as production merely because its CI is green.
-- **Actual V2 production cutover is WITHHELD.** There is no authority to expose a V2 recommendation until the exact current `PUBLISHED` release, publication authorization, production planning bundle and all mandatory proofs replay successfully on qualified durable shared backends within their validity window.
-- No production forecast-model, DecisionPolicy, scenario or planning reference-solver champion is fabricated by configuration.
-- `config/experiments_v2.yaml` contains no retrospective qualification shortcut. Empirical production qualification must be prospectively predeclared and no-hindsight.
+- V2 work remains in reviewed draft PRs; green CI on an open branch is engineering evidence only, never production authority.
+- **Actual V2 production cutover remains WITHHELD.** No Apex V2 recommendation may be exposed until an exact current `PUBLISHED` release, publication authorization, schema-v2 production planning bundle, mandatory proofs, qualified champions and exact qualified shared backend identities all replay successfully inside their validity window.
+- No production forecast-model, DecisionPolicy, scenario/dependence or planning reference-solver champion is fabricated by repository configuration.
+- `config/experiments_v2.yaml` still contains no retrospective qualification shortcut. Empirical production qualification remains prospective and no-hindsight.
 
-## Current V2 implementation stack
-
-### Certified pre-cutover foundation
-
-The certified stack through PR #83 provides the immutable V2 control plane, typed empirical-qualification admission, exact DecisionPolicy support contracts and independent assurance foundations. It deliberately does not create production champions or perform cutover.
-
-### PR #84 — exact receding-horizon planner
+## Certified parent — PR #84 exact receding-horizon planner
 
 Branch: `v2/receding-horizon-planner`  
-PR: #84 — **draft/open/unmerged**
+PR: #84 — **draft/open/unmerged, engineering certified**  
+Certified head: `e535fc289a3e6885f34bf6ca45f6ebd42a84241c`
 
-PR #84 closes the structural gap between tactical current-Gameweek analysis and production-shaped max-EV-over-time decision execution:
+Exact same-head certification evidence:
 
-- hypothetical planning state is typed separately from `CURRENT_EXACT` ManagerState truth;
-- exact multi-Gameweek transitions cover realised selling finance, free-transfer banking, normal transfers, Wildcard, Free Hit and set-specific chip persistence/reversal;
-- terminal chip-option reserve is part of the governed horizon objective;
-- one exact immediately executable current `DecisionAction` is exposed from the selected trajectory;
-- production planning requires a `FULL_OFFICIAL` CandidateUniverse and complete `OPTIMAL` zero-gap solve;
-- planning states/results and their state/rules lineage replay offline under content identity;
-- robustness EV-regret is anchored to the governed planning selection objective while realised scenario scoring remains fixed-current-action analysis;
-- independent reference-solver parity is versioned as planning-v2 and independently reconstructs the horizon search rather than broadening tactical-v1 evidence;
-- planning-worker qualification is replay-derived algorithmic evidence with explicit banking, transfer-finance, chip-surface, terminal-reserve, root-action, trajectory and zero-gap coverage;
-- production solver parity requires the exact qualified champion authorization/certificate for the exact `PlanningResultId`, horizon, cutoff, objective, root action and selected trajectory;
-- production publication authority is migrated to schema-v2 `ProductionPlanningBundle`; the legacy tactical/schema-v1 `ProductionDecisionBundle` is retained only as historical/mechanism evidence;
-- constitutional proof obligations, requirements and invariants are planning-v2-bound and guarded by executable traceability tests.
+- Apex CI run `32972587860`: SUCCESS.
+- Full suite: **795 passed**.
+- Ruff, upstream pin checks and governance consistency: PASS.
+- Immutable runtime image: `sha256:97d537255ec225581890f79c4538e7fa14ace61c4c62b16c597e7c2dc0255cec`.
+- Build manifest: `sha256:badb2067ddfee219b54d533995e6f42ba6c118059f53451d7f30f10262d42bf6`.
+- Dependency lock digest: `sha256:ffa1141cab8b1bfa9e89ab69fa97dfe2e256ed7526314d88d4056cdb1a3b87f0`.
+- SBOM artifact: `sha256:a6ec5ccc252cb6636a98f383770abd14df1928ce3a133a2503d45776671e0f3f`.
+- Provenance artifact: `sha256:c4d98c3c8550212f01a2adca8803836a3214d49869e473eb5878a0cb1fe54635`.
+- Build-evidence artifact ID `9609030571`, ZIP digest `sha256:4b706c4a4a8feb116d9aa89837a7772d57178759718833bb752dba67d5b577f5`; the downloaded ZIP digest reconciled exactly.
+- V2 Shadow Production run `32972587878`: SUCCESS, 15/15 shadow contract tests + Ruff.
 
-The strong synthetic planning world used by solver qualification remains mechanism-only test evidence. It is not a real production champion or empirical football evidence.
+PR #84 is therefore the certified engineering parent for subsequent V2 slices, but it remains unmerged pending explicit approval.
 
-### Certification state
+## PR #85 — durable PostgreSQL production backend
 
-The code/governance candidate immediately before this Project Brain refresh was `8d621541c3e19af91658642042b6da44a1644ca3`.
+Branch: `v2/postgres-production-backend`  
+PR: #85 — **draft/open/unmerged**
 
-- V2 Shadow Production run `32924061255` succeeded on that exact pre-documentation head: 15/15 shadow contract tests and Ruff passed.
-- Apex CI run `32924061244` was still executing full pytest when this documentation maintenance was prepared.
-- This documentation refresh changes the branch SHA, so **final PR #84 certification must use a fresh same-head Apex CI + V2 Shadow Production pair after this commit**. Prior runs are supporting evidence only, not certification of the new head.
+PR #85 has now been genuinely restacked onto certified #84. The restack commit uses GitHub's own conflict-resolved merge tree and has certified #84 as an ancestor; comparison to `e535fc2...` reports `behind_by=0`.
 
-## Runtime-test architecture
+### Implemented backend mechanism
 
-The planning assurance tests now separate two responsibilities without weakening production replay:
+- Provider-neutral production backend ports.
+- Persisted logical PostgreSQL backend identities independent of DSN/host/credential labels.
+- Explicit PostgreSQL control-plane bootstrap.
+- Immutable SHA-256 `PostgresArtifactStore` with cross-connection replay/integrity verification.
+- Immutable `PostgresReleaseRegistry` with verified ReleaseRecord identity and transactional stale-writer-safe CAS.
+- Digest-pinned PostgreSQL 17.11 integration service in Apex CI.
+- Focused backend-contract CI job plus the complete Apex suite.
 
-- ordinary production CAS/expiry/authority tests use a real but minimal two-Gameweek `FULL_OFFICIAL` planning world so they do not repeatedly solve irrelevant transfer combinatorics;
-- dedicated planner/reference-solver/qualification/parity tests retain the stronger 16-player banking, financed-transfer and positive terminal-reserve world;
-- identical synthetic fixture bytes may be reused across isolated test ArtifactStores, but production qualification, authorization and replay code itself is not cached or bypassed;
-- qualification verification intentionally re-derives the certificate and re-executes the independent worker.
+### Two-plane production qualification
 
-## Remaining production blockers
+Backend qualification is deliberately split so database integration tests cannot impersonate real operational durability.
 
-### 1. Durable shared production backend — implementation blocker
+**Plane A — mechanical behavior** proves only what fresh adapters can observe:
 
-The repository currently implements only:
+- stable persisted backend identity;
+- shared cross-connection visibility;
+- SHA-256 integrity;
+- immutable ReleaseRecord replay;
+- forged-release identity rejection;
+- stale-writer CAS conflict; and
+- successful CAS transition.
 
-- `FileSystemArtifactStore` — backend ID `apex.reference.filesystem-artifact-store.v1`;
-- `FileSystemReleaseRegistry` — backend ID `apex.reference.filesystem-release-registry.v1`.
+`derive_backend_qualification_from_probes()` returns only `VerifiedBackendMechanicalQualification`; it cannot directly authorize production.
 
-Both are explicitly reference/local adapters and are structurally disqualified from production. GitHub Actions artifacts are transitional/supplemental evidence, not the sole durable V2 authority store.
+**Plane B — retained deployment/operations evidence** requires complete typed evidence for:
 
-A subsequent slice must implement deployable durable shared ArtifactStore and ReleaseRegistry adapters with immutable content identity/history and atomic stale-writer-safe CAS, then qualify the **actual deployed backend identities** using retained operational evidence. Configuration booleans cannot substitute for that evidence.
+1. retention;
+2. access control;
+3. credential separation;
+4. backup;
+5. restore;
+6. disaster recovery;
+7. availability; and
+8. geographic durability.
 
-### 2. Real production champions — qualification blocker
+Plane B must be `environment_class=PRODUCTION`, complete, PASS, exact-backend-bound, exact-scope-bound and backed by retained source artifacts. TEST evidence, incomplete evidence, random bytes, copied evidence from another backend/scope or corrupt evidence fails closed.
 
-The control plane may define candidate artifacts and registries, but production admission still requires genuine registered champions within exact season/horizon/time scope. Synthetic test certificates never satisfy this.
+The two planes are joined through role-specific content-addressed production qualification bindings. Both bindings must reference the same Plane-B evidence. Cutover and answer-authority replay independently re-derive the qualification; caller-authored green booleans cannot override retained evidence.
 
-### 3. Empirical football/model evidence — time/no-hindsight blocker
+Production cutover/answer-authority code is verifier-only for Plane B. Generic evidence-authoring helpers are administrative/test utilities and are not imported or invoked by runtime publication paths. Synthetic helpers live under `tests/` and are explicitly mechanism-only.
 
-Forecast model, DecisionPolicy, realised scenario convergence, model evaluation and model promotion production proofs require predeclared typed experiments. Known historical outcomes cannot be relabelled retrospectively as V2 qualification. Where sufficient predeclared evidence does not exist, qualification must proceed prospectively as outcomes become available.
+## PR #85 certification state
 
-### 4. Production cutover — deliberately blocked
+The restacked branch is undergoing final candidate maintenance. Before final certification the candidate must include:
 
-Cutover remains WITHHELD until every mandatory proof is replay-valid on the exact schema-v2 production planning bundle, exact runtime, exact qualified champions and exact qualified shared backend identities. Only a current unexpired `PUBLISHED` V2 release can become answer authority.
+- executable two-plane qualification traceability;
+- genuinely focused backend fast-fail CI;
+- final Project Brain/governance wording; and
+- fresh exact-head Apex CI plus V2 Shadow Production.
 
-### 5. Slice 14 — blocked
+No earlier #85 run may certify the final candidate after these changes.
 
-Slice 14 remains blocked until a real V2 `PUBLISHED` production release exists. PR #66 remains archaeology/regression evidence only.
+## Remaining production blockers after PR #85 engineering certification
 
-## Next implementation sequence
+### 1. Real deployed shared backend evidence
 
-1. Finish PR #84 final same-head certification and keep it draft/open/unmerged until explicit merge approval.
-2. Build and test the durable shared production ArtifactStore/ReleaseRegistry adapters without weakening the existing reference-adapter rejection or backend-identity binding.
-3. Qualify only an actually deployed backend using retained operational evidence for durability, access control, recovery, integrity, concurrency/CAS and identity.
-4. Register prospective no-hindsight experiments/candidates where empirical production qualification is still absent; never backfill already-known outcomes.
-5. Create real champions only after their exact qualification contracts pass.
-6. Assemble and replay a genuine schema-v2 `ProductionPlanningBundle` plus all mandatory assurance evidence.
-7. Perform cutover only if the complete AssuranceCase authorizes an exact time-bounded PUBLISHED release on the qualified shared backend.
-8. Begin Slice 14 only after that real production publication exists.
+PR #85 implements a deployable PostgreSQL backend and qualification mechanism, but **does not deploy or qualify a real production database**. GitHub Actions PostgreSQL proves Plane A mechanics only. Real retained Plane-B operational evidence for the actual deployed backend identities is still required.
+
+### 2. Real production champions
+
+Forecast model, DecisionPolicy, scenario/dependence and planning reference-solver production champions remain absent until their exact qualification contracts pass. Synthetic test certificates are never production evidence.
+
+### 3. Prospective empirical evidence
+
+Required empirical production proofs must remain predeclared/no-hindsight. Already-known historical outcomes cannot be relabelled retrospectively as production qualification evidence.
+
+### 4. Production cutover
+
+Cutover remains WITHHELD until one exact schema-v2 `ProductionPlanningBundle`, exact runtime, exact qualified champions, complete AssuranceCase, exact qualified backend identities and time-bounded publication authorization all replay successfully.
+
+### 5. Slice 14
+
+Slice 14 remains blocked until a genuine current `PUBLISHED` V2 production release exists. PR #66 remains archaeology/regression evidence only.
+
+## Next sequence
+
+1. Freeze the final #85 candidate on certified #84 ancestry.
+2. Pass the focused PostgreSQL/two-plane backend contract gate.
+3. Pass full same-head Apex CI, inspect exact test count, runtime digest, SBOM/provenance and uploaded build evidence.
+4. Pass same-head V2 Shadow Production.
+5. Keep #85 draft/open/unmerged until explicit merge approval.
+6. Separately deploy a real shared production PostgreSQL control plane and collect genuine Plane-B operational evidence; do not treat CI as deployment qualification.
+7. Complete prospective champion/empirical qualification work.
+8. Assemble/replay the genuine production bundle and cut over only if the constitutional authority chain passes.
+9. Begin Slice 14 only after a real current PUBLISHED V2 release exists.
 
 ## User-facing FPL boundary
 
-Until the V2 production authority chain above passes, do not invent or manually choose a squad and call it Apex V2. A user-facing Apex-labelled recommendation must come from the canonical authority contract; otherwise report the blocker explicitly.
+Until the V2 production authority chain passes, do not invent or manually select a squad and label it Apex V2. A user-facing Apex recommendation must come from the canonical current production authority contract; otherwise report the blocker explicitly.

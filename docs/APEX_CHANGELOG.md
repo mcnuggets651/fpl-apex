@@ -2,6 +2,19 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-26 — V2 durable PostgreSQL backend and two-plane qualification
+- Added provider-neutral production backend ports and deployable PostgreSQL ArtifactStore/ReleaseRegistry adapters with persisted logical backend identity, immutable content/release history and transactional stale-writer-safe CAS.
+- Added digest-pinned PostgreSQL 17.11 integration coverage to Apex CI plus a focused backend fast-fail gate; full same-head Apex CI remains mandatory for certification.
+- Split backend qualification into two independent evidence planes: live mechanical probes and retained deployment/operations evidence.
+- Mechanical probes now produce `VerifiedBackendMechanicalQualification` only; they cannot directly authorize production.
+- Added mandatory Plane-B evidence classes for retention, access control, credential separation, backup, restore, disaster recovery, availability and geographic durability.
+- Added exact backend/scope/deployment binding, content-addressed deployment observations, role-specific production qualification bindings and replay that re-derives all qualification booleans.
+- TEST/CI PostgreSQL, incomplete evidence, random bytes, copied cross-backend evidence, corrupt evidence and reference-filesystem adapters fail closed.
+- Production cutover and answer authority replay backend qualification independently against the actual live backend identities.
+- Synthetic backend qualification fixtures were moved/kept under `tests/` and are explicitly mechanism-only; runtime publication paths do not self-author Plane-B PASS evidence.
+- Added adversarial tests for boolean laundering, random artifacts, wrong backend identities, TEST environment evidence, incomplete operational coverage and cross-control-plane replay.
+- PR #85 was genuinely restacked onto certified PR #84 head `e535fc289a3e6885f34bf6ca45f6ebd42a84241c`; it remains draft/open/unmerged and production remains WITHHELD.
+
 ## 2026-08-26 — V2 exact receding-horizon planner and planning authority
 - Added immutable hypothetical planning-state, trajectory, solver-certificate and receding-horizon decision-result contracts separated from current exact ManagerState truth.
 - Added exact multi-Gameweek transitions for realised selling finance, free-transfer banking, normal transfers, Wildcard, Free Hit, set-specific chip persistence/reversal and terminal chip-option reserve.
