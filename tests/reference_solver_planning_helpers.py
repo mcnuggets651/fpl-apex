@@ -47,6 +47,8 @@ class SyntheticPlanningParityMaterial:
     authorization_id: str
     qualification_artifact_id: str
     registry_artifact_id: str
+    corpus_artifact_id: str | None = None
+    worker_code_artifact_id: str | None = None
 
     @property
     def evidence_ids(self) -> tuple[str, ...]:
@@ -209,4 +211,6 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         authorization_id=authorization.authorization.authorization_id,
         qualification_artifact_id=qualification_artifact_id,
         registry_artifact_id=authorization.authorization.registry_artifact_id,
+        corpus_artifact_id=corpus_artifact_id,
+        worker_code_artifact_id=worker_code_artifact_id,
     )
