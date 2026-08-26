@@ -55,6 +55,7 @@ def test_connection_failure_is_normalized_without_dsn_leak(monkeypatch) -> None:
         )
     assert "top-secret" not in str(exc.value)
     assert exc.value.__cause__ is None
+    assert exc.value.__context__ is None
 
 
 def test_empty_production_schema_fails_closed(monkeypatch) -> None:
