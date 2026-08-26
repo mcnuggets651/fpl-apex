@@ -7,6 +7,8 @@ import pytest
 
 import apex_fpl.control.production_cutover as production_cutover_module
 import production_planning_bundle_helpers as planning_fixture_helpers
+from apex_fpl.control.production_planning_bundle import load_production_planning_bundle
+from reference_solver_planning_helpers import SyntheticPlanningParityMaterial
 
 
 PARITY_PROOF_ID = "PO-REFERENCE-SOLVER-PARITY-001"
@@ -14,10 +16,6 @@ _TARGET_MODULES = {
     "test_v2_production_cutover",
     "test_v2_production_authority",
     "test_v2_production_planning_bundle",
-    "test_v2_reference_solver_planning",
-    "test_v2_reference_solver_planning_qualification",
-}
-_STRONG_FIXTURE_MODULES = {
     "test_v2_reference_solver_planning",
     "test_v2_reference_solver_planning_qualification",
 }
@@ -88,13 +86,7 @@ def _cached_planning_fixture(
     entry: int = 63984,
     gameweek: int = 2,
 ):
-    """Reuse exact synthetic lineage bytes across isolated assurance-test stores.
-
-    The first call for each semantic fixture variant executes the real planner and records every
-    immutable artifact write. Later calls restore those exact content-addressed bytes into each
-    test's isolated ArtifactStore. Production planning-result, bundle, qualification and
-    authorization replay are never cached or bypassed by this helper.
-    """
+    """Reuse exact synthetic lineage bytes across isolated assurance-test stores."""
 
     key = (cache_variant, str(season), int(entry), int(gameweek))
     cached = _PLANNING_FIXTURE_CACHE.get(key)
@@ -120,17 +112,34 @@ def _cached_planning_fixture(
 
 
 def _lightweight_parity_dependency(claim, *, verified_bundle, store) -> bool:
-    """Unit-test seam for tests whose subject is not solver parity.
-
-    Dedicated end-to-end tests leave the real replay path untouched. This seam still requires the
-    exact bundle PlanningResultId to be present in the parity claim so unrelated proof evidence
-    cannot accidentally satisfy the dependency in isolated tests.
-    """
+    """Unit-test seam for tests whose subject is not solver parity."""
 
     del store
     return (
         claim.proof_id == PARITY_PROOF_ID
         and str(verified_bundle.decision.planning_result_id) in set(claim.evidence_ids)
+    )
+
+
+def _lightweight_parity_material(*, store, fixture) -> SyntheticPlanningParityMaterial:
+    """Build only immutable parity claim material for tests unrelated to parity replay."""
+
+    verified = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
+    planning_result_id = str(verified.decision.planning_result_id)
+    certificate_ref = store.put_bytes(
+        f"synthetic-lightweight-planning-parity-certificate:{planning_result_id}".encode("utf-8")
+    )
+    authorization_ref = store.put_bytes(
+        f"synthetic-lightweight-planning-parity-authorization:{planning_result_id}".encode("utf-8")
+    )
+    return SyntheticPlanningParityMaterial(
+        planning_result_id=planning_result_id,
+        certificate_artifact_id=certificate_ref.artifact_id,
+        certificate_id=f"synthetic-lightweight-certificate:{planning_result_id}",
+        authorization_artifact_id=authorization_ref.artifact_id,
+        authorization_id=f"synthetic-lightweight-authorization:{planning_result_id}",
+        qualification_artifact_id=certificate_ref.artifact_id,
+        registry_artifact_id=authorization_ref.artifact_id,
     )
 
 
@@ -142,23 +151,19 @@ def _isolate_planning_assurance_cost(monkeypatch, request):
         return
 
     node_key = f"{module_name}::{request.node.name}"
-    requires_strong_fixture = (
-        module_name in _STRONG_FIXTURE_MODULES or node_key in _FULL_PARITY_TESTS
-    )
 
-    # Most production-control tests exercise bundle/CAS/expiry/authority semantics, not transfer
-    # search breadth. For those tests the synthetic FULL_OFFICIAL universe is exactly the owned
-    # 15-player squad, which keeps the real two-GW planner/replay path but removes irrelevant
-    # transfer combinatorics. Dedicated parity/worker/qualification tests retain the stronger
-    # 16-player banking, finance and terminal-chip-reserve world. Both fixture variants are built
-    # by the real planner once and then restored byte-for-byte into isolated ArtifactStores.
-    cache_variant = "strong-parity" if requires_strong_fixture else "lineage-only"
-    if not requires_strong_fixture:
-        monkeypatch.setattr(
-            planning_fixture_helpers,
-            "CANDIDATE_POSITIONS",
-            dict(planning_fixture_helpers.OWNED_POSITIONS),
-        )
+    # Every ordinary/publication planning fixture is the exact owned 15-player FULL_OFFICIAL
+    # synthetic world. That world is intentionally the focused chip-surface case: WC/FH rebuilds
+    # have exactly one legal squad, so chip mechanics can be proven without crossing them with a
+    # transfer-combination surface. The independent qualification helper adds a second retained
+    # 16-player finance/banking case with current-set chips already consumed. Coverage is derived
+    # across both cases; production planner/worker semantics are not mocked or narrowed.
+    monkeypatch.setattr(
+        planning_fixture_helpers,
+        "CANDIDATE_POSITIONS",
+        dict(planning_fixture_helpers.OWNED_POSITIONS),
+    )
+    cache_variant = "focused-chip-15"
 
     original_fixture = getattr(module, "synthetic_production_planning_bundle", None)
     if callable(original_fixture):
@@ -184,3 +189,9 @@ def _isolate_planning_assurance_cost(monkeypatch, request):
             "claim_has_matching_planning_reference_solver_parity",
             _lightweight_parity_dependency,
         )
+        if hasattr(module, "synthetic_planning_parity_material"):
+            monkeypatch.setattr(
+                module,
+                "synthetic_planning_parity_material",
+                _lightweight_parity_material,
+            )

@@ -7,7 +7,7 @@ import pytest
 from apex_fpl.core.decision import RationalValue
 from apex_fpl.core.decision_policy_support import ChipOptionValuePolicy, ExactPolicyValue
 from apex_fpl.core.identity import OfficialPlayerId
-from apex_fpl.core.ids import GlobalWorldId, ManagerStateId, RuleSetId
+from apex_fpl.core.ids import GlobalWorldId, ManagerStateId
 from apex_fpl.core.manager_state import OwnedPlayer
 from apex_fpl.core.planning import PlanningChipUse, PlanningState
 from apex_fpl.core.rules import OfficialRuleSource, RuleDefinition, RuleSet

@@ -14,6 +14,8 @@ REFERENCE_SOLVER_PROOF_ID = "PO-REFERENCE-SOLVER-PARITY-001"
 REQUIREMENT_ID = "REQ-V2-PRODUCTION-CUTOVER"
 PLANNER_REQUIREMENT_ID = "REQ-RECEDING-HORIZON-PLANNER"
 ASSURANCE_REQUIREMENT_ID = "REQ-INDEPENDENT-DECISION-ASSURANCE"
+CUTOVER = ROOT / "src/apex_fpl/control/production_cutover.py"
+AUTHORITY = ROOT / "src/apex_fpl/control/production_authority.py"
 INVARIANTS = {
     "INV-PRODUCTION-CERTIFICATE-ONLY",
     "INV-PRODUCTION-PLANNING-AUTHORITY",
@@ -85,6 +87,17 @@ def test_slice13_production_proof_requirement_and_invariant_traceability_is_clos
         available_tests |= _test_functions(ROOT / relative)
     missing = set(proof["required_tests"]) - available_tests
     assert missing == set()
+
+
+def test_cutover_and_answer_authority_both_replay_exact_production_bundle() -> None:
+    """Constitutionally own the schema-v2 bundle replay guard under cutover requirement."""
+
+    cutover = CUTOVER.read_text(encoding="utf-8")
+    authority = AUTHORITY.read_text(encoding="utf-8")
+    assert "load_production_planning_bundle" in cutover
+    assert "load_production_planning_bundle" in authority
+    assert "load_production_decision_bundle" not in cutover
+    assert "load_production_decision_bundle" not in authority
 
 
 def test_receding_horizon_planner_has_explicit_constitutional_ownership() -> None:
