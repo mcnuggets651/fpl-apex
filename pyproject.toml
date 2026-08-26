@@ -18,6 +18,7 @@ dependencies = [
   "typer>=0.12,<1",
   "rich>=13.7,<15",
   "tabulate>=0.9,<1",
+  "psycopg[binary]>=3.3,<4",
 ]
 
 [project.optional-dependencies]
