@@ -29,7 +29,7 @@ from apex_fpl.core.experiments import (
     QualificationMetricRule,
 )
 from apex_fpl.core.ids import BundleId
-from apex_fpl.core.production import MANDATORY_PRODUCTION_PROOF_IDS, ProductionBackendQualification
+from apex_fpl.core.production import MANDATORY_PRODUCTION_PROOF_IDS
 from apex_fpl.core.production_authority import ProductionAuthorityStatus
 from apex_fpl.core.production_proof_contract import (
     EMPIRICAL_PRODUCTION_PROOF_IDS,
@@ -44,6 +44,7 @@ from apex_fpl.core.proofs import (
     ReleasePolicy,
 )
 
+from backend_qualification_helpers import synthetic_production_backend_qualification
 from production_planning_bundle_helpers import synthetic_production_planning_bundle
 from reference_solver_planning_helpers import synthetic_planning_parity_material
 
@@ -62,7 +63,11 @@ class _DurableArtifactStore:
     backend_id = "test.production.durable-artifact-store.v1"
 
     def __init__(self, root: Path):
-        self.delegate = FileSystemArtifactStore(root)
+        self.root = Path(root)
+        self.delegate = FileSystemArtifactStore(self.root)
+
+    def reopen(self):
+        return _DurableArtifactStore(self.root)
 
     def put_bytes(self, content: bytes, **kwargs):
         return self.delegate.put_bytes(content, **kwargs)
@@ -78,7 +83,11 @@ class _DurableReleaseRegistry:
     backend_id = "test.production.durable-release-registry.v1"
 
     def __init__(self, root: Path):
-        self.delegate = FileSystemReleaseRegistry(root)
+        self.root = Path(root)
+        self.delegate = FileSystemReleaseRegistry(self.root)
+
+    def reopen(self):
+        return _DurableReleaseRegistry(self.root)
 
     def append(self, record):
         return self.delegate.append(record)
@@ -186,8 +195,6 @@ def _qualified_cutover(tmp_path: Path):
     parity = synthetic_planning_parity_material(store=store, fixture=fixture)
     evidence = _artifact(store, "proof-evidence")
     manifest = _artifact(store, "manifest")
-    store_q = _artifact(store, "store-qualified")
-    registry_q = _artifact(store, "registry-qualified")
     obligations = tuple(
         ProofObligation(
             proof_id=proof_id,
@@ -237,17 +244,11 @@ def _qualified_cutover(tmp_path: Path):
         release_scope=SCOPE,
         claims=tuple(claims),
     )
-    backend = ProductionBackendQualification(
-        artifact_store_backend_id=store.backend_id,
-        release_registry_backend_id=registry.backend_id,
-        artifact_store_qualification_artifact_id=store_q,
-        release_registry_qualification_artifact_id=registry_q,
-        durable_shared_artifact_store=True,
-        durable_shared_release_registry=True,
-        atomic_compare_and_swap=True,
-        immutable_release_history=True,
+    backend = synthetic_production_backend_qualification(
+        store=store,
+        registry=registry,
         qualification_scope=SCOPE,
-    )
+    ).qualification
     outcome = execute_production_cutover(
         season=SEASON,
         entry=ENTRY,
