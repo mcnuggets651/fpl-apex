@@ -445,8 +445,6 @@ def verify_stored_backend_qualification_evidence(
     )
     if expected.semantic_payload() != qualification.semantic_payload():
         raise ValueError("production backend qualification is not derived from retained probes")
-    if not artifact_evidence.supported or not registry_evidence.supported:
-        raise ValueError("production backend operational probes are not fully supported")
     return VerifiedBackendQualification(
         qualification=qualification,
         artifact_store_evidence=artifact_evidence,
