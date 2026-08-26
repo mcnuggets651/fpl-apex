@@ -27,3 +27,19 @@ Joint dependence is produced only by an explicitly governed external worker and 
 ## Independent decision assurance
 
 A sealed `DecisionResult` is not publication-authorised solely by certificates produced inside the DecisionEngine. Slice 10 adds two independent release-blocking proofs: a reference mechanics certificate produced without importing `decision.engine` or `decision.mechanics`, and an external reference-solver parity certificate admitted through a qualified worker registry. Missing, limited, errored, unqualified or contradictory independent evidence never becomes PASS by absence. The assurance layer can certify, block or remain inconclusive; it cannot mutate the selected action or introduce new live data. See `docs/APEX_INDEPENDENT_ASSURANCE_V2.md`.
+
+## Durable production control plane
+
+Reference filesystem stores remain local/test infrastructure. Production authority requires the PostgreSQL control plane introduced in PR #85: persisted logical ArtifactStore/ReleaseRegistry identities, immutable content/release history and transactional stale-writer-safe current-pointer CAS. Backend qualification is two-plane: fresh mechanical behavior plus retained production deployment/operations evidence. CI proves implementation mechanics only and cannot impersonate a deployed production database. See `docs/APEX_BACKEND_OPERATIONAL_QUALIFICATION_V2.md`.
+
+## Prospective empirical operations plane
+
+PR #86 adds an operator adapter above the existing pure empirical contracts rather than changing their statistics. The operational path is intentionally fail-closed:
+
+`production PostgreSQL -> immutable candidate -> prospective experiment declaration -> future retained outcome -> replay-derived qualification -> reviewed qualified-candidate proposal -> separate champion admission`
+
+The operator adapter records candidate availability, experiment declaration and result availability at execution time. Those chronology fields are not caller-controlled. It refuses declarations after the evaluation window starts and outcomes before the window ends. Qualification cannot mutate a champion; candidate materialization returns a reviewable registry row only. The `apex-v2` CLI has no filesystem production fallback and never performs cutover. See `docs/APEX_PROSPECTIVE_EMPIRICAL_OPERATIONS_V2.md`.
+
+## Production boundary
+
+A green implementation branch, green CI database, SHADOW candidate, SUPPORTED certificate or QUALIFIED candidate is not independently sufficient for publication. Production still requires exact registered champions, exact qualified deployed backend identities, a replay-valid schema-v2 planning bundle, complete AssuranceCase, publication authorization and atomic PUBLISHED release. Until that chain exists, V2 remains WITHHELD.

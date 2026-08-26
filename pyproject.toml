@@ -27,6 +27,7 @@ airsenal = ["airsenal @ git+https://github.com/alan-turing-institute/AIrsenal.gi
 
 [project.scripts]
 apex-fpl = "apex_fpl.cli:app"
+apex-v2 = "apex_fpl.v2_operations_cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]

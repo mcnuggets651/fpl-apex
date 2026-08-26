@@ -9,15 +9,22 @@ on:
       - "src/apex_fpl/control/shadow_production.py"
       - "src/apex_fpl/control/backend_operational_qualification.py"
       - "src/apex_fpl/control/production_backend_qualification.py"
+      - "src/apex_fpl/control/production_backend_runtime.py"
       - "src/apex_fpl/control/production_cutover.py"
       - "src/apex_fpl/control/production_authority.py"
+      - "src/apex_fpl/control/candidate_operations.py"
+      - "src/apex_fpl/control/prospective_experiment_operations.py"
+      - "src/apex_fpl/v2_operations_cli.py"
       - "tests/test_v2_shadow_*.py"
       - "tests/test_v2_backend_*.py"
       - "tests/test_v2_postgres_backend.py"
+      - "tests/test_v2_production_backend_runtime.py"
+      - "tests/test_v2_prospective_empirical_operations.py"
       - "tests/test_v2_production_cutover.py"
       - "tests/test_v2_production_authority.py"
       - "docs/APEX_SHADOW_PRODUCTION_V2.md"
       - "docs/APEX_BACKEND_OPERATIONAL_QUALIFICATION_V2.md"
+      - "docs/APEX_PROSPECTIVE_EMPIRICAL_OPERATIONS_V2.md"
       - "docs/APEX_INVARIANTS.md"
       - "config/proof_obligations.yaml"
       - "config/requirements.yaml"
@@ -26,6 +33,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: v2-shadow-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   shadow-production-audit:

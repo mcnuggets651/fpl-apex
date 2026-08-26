@@ -49,6 +49,8 @@ jobs:
           tests/test_v2_postgres_backend.py
           tests/test_v2_backend_operational_qualification.py
           tests/test_v2_backend_qualification_traceability.py
+          tests/test_v2_production_backend_runtime.py
+          tests/test_v2_prospective_empirical_operations.py
       - name: Ruff production backend contract surface
         run: >-
           .venv/bin/ruff check
@@ -57,12 +59,18 @@ jobs:
           src/apex_fpl/control/backend_ports.py
           src/apex_fpl/control/postgres_backend.py
           src/apex_fpl/control/production_backend_qualification.py
+          src/apex_fpl/control/production_backend_runtime.py
           src/apex_fpl/control/production_cutover.py
           src/apex_fpl/control/release_registry.py
+          src/apex_fpl/control/candidate_operations.py
+          src/apex_fpl/control/prospective_experiment_operations.py
+          src/apex_fpl/v2_operations_cli.py
           tests/backend_qualification_helpers.py
           tests/test_v2_postgres_backend.py
           tests/test_v2_backend_operational_qualification.py
           tests/test_v2_backend_qualification_traceability.py
+          tests/test_v2_production_backend_runtime.py
+          tests/test_v2_prospective_empirical_operations.py
           tests/test_v2_production_cutover.py
           tests/test_v2_production_authority.py
 
