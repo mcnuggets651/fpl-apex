@@ -61,13 +61,16 @@ def load_production_backend_runtime(
     if not schema:
         raise RuntimeError(f"{PRODUCTION_POSTGRES_SCHEMA_ENV} cannot be empty")
 
+    artifact_store: PostgresArtifactStore | None = None
+    release_registry: PostgresReleaseRegistry | None = None
     try:
         artifact_store = PostgresArtifactStore(dsn, schema=schema)
         release_registry = PostgresReleaseRegistry(dsn, schema=schema)
-    except Exception:  # normalize and suppress credential-bearing driver/bootstrap errors
-        raise RuntimeError(
-            "production PostgreSQL control plane is unavailable or uninitialised"
-        ) from None
+    except Exception:
+        # Do not retain the credential-bearing driver exception as __cause__ or __context__.
+        pass
+    if artifact_store is None or release_registry is None:
+        raise RuntimeError("production PostgreSQL control plane is unavailable or uninitialised")
 
     if not artifact_store.backend_id.startswith("apex.production.postgres-artifact-store.v1:"):
         raise RuntimeError("production ArtifactStore identity is not a PostgreSQL production ID")
