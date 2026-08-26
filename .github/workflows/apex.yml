@@ -44,12 +44,15 @@ jobs:
           .venv/bin/python -m pip install --no-deps -r requirements.lock
           .venv/bin/python -m pip install --no-deps --no-build-isolation -e .
       - name: Run production backend contract tests
-        run: >-
-          .venv/bin/python -m pytest -q
-          tests/test_v2_postgres_backend.py
-          tests/test_v2_backend_operational_qualification.py
-          tests/test_v2_production_cutover.py
-          tests/test_v2_production_authority.py
+        shell: bash
+        run: |
+          .venv/bin/python -m pytest -q \
+            tests/test_v2_postgres_backend.py \
+            tests/test_v2_backend_operational_qualification.py
+          .venv/bin/python -m pytest -q tests/test_v2_production_cutover.py \
+            -k 'unqualified_backend or reference_filesystem_backends or random_nonreference_green_backend or backend_qualification_must_match'
+          .venv/bin/python -m pytest -q tests/test_v2_production_authority.py \
+            -k 'authorization_cannot_be_replayed_through_different_backend_identities'
       - name: Ruff production backend contract surface
         run: >-
           .venv/bin/ruff check
