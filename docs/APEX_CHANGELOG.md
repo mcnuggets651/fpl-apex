@@ -2,6 +2,20 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-26 — V2 exact receding-horizon planner and planning authority
+- Added immutable hypothetical planning-state, trajectory, solver-certificate and receding-horizon decision-result contracts separated from current exact ManagerState truth.
+- Added exact multi-Gameweek transitions for realised selling finance, free-transfer banking, normal transfers, Wildcard, Free Hit, set-specific chip persistence/reversal and terminal chip-option reserve.
+- Added production-shaped receding-horizon optimisation requiring the FULL_OFFICIAL candidate universe and complete OPTIMAL zero-gap search while exposing one exact immediately executable current action.
+- Added content-addressed planning-state/result/rules replay and planning-aware robustness objective reconciliation.
+- Added an independent planning-v2 reference solver that reconstructs finance, chip, horizon and search semantics without importing the main planner/transition/objective helpers.
+- Added replay-derived planning-worker algorithmic qualification with mandatory banking, transfer-finance, chip-surface, terminal-reserve, root-action, trajectory and zero-gap coverage.
+- Added exact production planning solver parity binding to the qualified champion authorization/certificate, PlanningResultId, horizon/cutoff, objective, root action and selected trajectory.
+- Migrated production publication/answer authority to schema-v2 ProductionPlanningBundle; legacy tactical/schema-v1 ProductionDecisionBundle remains historical/mechanism evidence only.
+- Migrated `PO-REFERENCE-SOLVER-PARITY-001`, `PO-PRODUCTION-CUTOVER-001`, requirements and constitutional invariants to planning-v2 and added executable traceability tests.
+- Removed pathological assurance-test coupling by separating minimal production-control planning fixtures from the strong solver-qualification world and reusing identical synthetic immutable fixture bytes across isolated test stores; production qualification/authorization/replay itself remains uncached.
+- Confirmed the next structural production blocker: only reference filesystem ArtifactStore/ReleaseRegistry adapters exist. A real durable shared backend and actual backend qualification remain required before cutover.
+- No production champion, backend qualification or production release is claimed by this change.
+
 ## 2026-08-24 — V2 Slice 10 independent decision assurance
 - Added a dependency-free reference mechanics checker that independently reconstructs current-state legality, transfer resources, hits, squad/XI/bench/captain structure and expected mechanics without importing the DecisionEngine or its mechanics implementation.
 - Added a deliberately different exhaustive realised-appearance-state autosub algorithm so independent mechanics evidence can detect shared implementation defects rather than simply repeat Slice 8 calculations.

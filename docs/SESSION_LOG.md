@@ -2,6 +2,37 @@
 
 Append concise records after meaningful project sessions. This is continuity context, not a replacement for Git history.
 
+## 2026-08-26 — PR #84 exact receding-horizon production authority
+
+### Finding
+The certified V2 control plane still had a structural decision-execution gap: the production policy contract required receding-horizon max-EV-over-time semantics, while the executable DecisionEngine remained deliberately tactical/shadow-only. Production solver parity also still inherited tactical-v1 proof wording and publication authority still accepted the legacy tactical bundle shape.
+
+A second audit found a CI-design problem rather than a production-planner defect: many production CAS/expiry/authority tests repeatedly rebuilt the same deliberately strong 16-player two-Gameweek planning/qualification world, causing the full suite to spend most of its time reproving unrelated solver setup.
+
+### Implementation
+- Added typed hypothetical planning state and exact multi-Gameweek trajectory/result contracts.
+- Added exact planning transitions for realised selling finance, free-transfer banking, normal transfers, Wildcard, Free Hit, chip persistence/reversal and terminal chip reserve.
+- Added a production-shaped receding-horizon planner requiring FULL_OFFICIAL coverage and complete OPTIMAL zero-gap search while exposing one exact current executable action.
+- Added immutable planning state/result/rules replay.
+- Anchored robustness regret to the governed planning objective without turning future contingencies into scenario-specific hindsight actions.
+- Added an independently implemented planning-v2 reference solver and replay-derived algorithmic worker qualification.
+- Bound production solver parity to the exact PlanningResultId, horizon/cutoff, qualified champion authorization, objective, root action and selected trajectory.
+- Migrated production publication/answer authority to schema-v2 ProductionPlanningBundle; tactical schema-v1 is historical/mechanism-only.
+- Migrated constitutional proof obligations, requirements and invariants to planning-v2 and added executable traceability tests.
+- Split synthetic test responsibilities: ordinary control-plane tests use a minimal real planning world; only actual planner/parity/qualification tests retain the strong banking/finance/chip-reserve world. Synthetic immutable fixture bytes may be reused across isolated stores, but production replay/qualification/authorization is never cached.
+
+### Certification evidence before Project Brain refresh
+- Exact code/governance head `8d621541c3e19af91658642042b6da44a1644ca3`.
+- V2 Shadow Production run `32924061255`: SUCCESS; 15/15 shadow contract tests and Ruff passed.
+- Apex CI run `32924061244` was still executing full pytest when documentation maintenance began.
+- Because this Project Brain refresh creates a new head, final PR #84 certification requires a fresh same-head CI + Shadow pair; prior runs remain supporting evidence only.
+
+### Next blocker audit
+The repository still has only `FileSystemArtifactStore` and `FileSystemReleaseRegistry`, both carrying stable `apex.reference.*` backend IDs and both explicitly non-production. `docs/APEX_ARTIFACT_STORE.md` also states GitHub Actions artifacts are transitional and cannot be the sole final V2 store. Therefore the next implementation slice after #84 certification is a real durable shared ArtifactStore/ReleaseRegistry backend plus qualification of the actual deployed identities. Empirical champions remain separately blocked on genuine prospective no-hindsight evidence.
+
+### Boundary
+No production champion was fabricated, no real backend was qualified, no production cutover occurred, Slice 14 was not started, and PR #84 remains draft/open/unmerged pending exact-head certification and explicit merge approval.
+
 ## 2026-08-11 — Decision-surface architecture repair, PR 1
 
 ### Finding

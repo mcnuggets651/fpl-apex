@@ -2,148 +2,102 @@
 
 Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
 
-**Last updated:** 2026-08-11
+**Last updated:** 2026-08-26
 
-The sealed-decision-surface change is currently a local release candidate on
-`agent/seal-decision-bundle`. It is not production until PR review, CI, merge and
-a fresh Apex Unified artifact prove matching bundle identity end to end. Local
-validation currently passes 174 tests, Ruff, governance, upstream pins and
-workflow YAML checks.
+## Production status
 
-## Production
+- Repository: `mcnuggets651/fpl-apex`.
+- Production branch remains `main`.
+- The V2 control-plane stack is being built in reviewed, unmerged PRs; an open V2 PR must never be described as production merely because its CI is green.
+- **Actual V2 production cutover is WITHHELD.** There is no authority to expose a V2 recommendation until the exact current `PUBLISHED` release, publication authorization, production planning bundle and all mandatory proofs replay successfully on qualified durable shared backends within their validity window.
+- No production forecast-model, DecisionPolicy, scenario or planning reference-solver champion is fabricated by configuration.
+- `config/experiments_v2.yaml` contains no retrospective qualification shortcut. Empirical production qualification must be prospectively predeclared and no-hindsight.
 
-- Repository: `mcnuggets651/fpl-apex`
-- Production branch: `main`
-- Production selector: canonical xP → rolling-horizon legal maximum-EV optimiser
-  → exact Gameweek mechanics → one published recommendation. Correlated
-  robustness and Elite frontiers are non-authoritative diagnostics.
-- PR #25 is merged. It corrects isolated preseason-cameo weighting and exposes
-  labelled captain/evidence surfaces.
-- Latest production publication: `a147754` on 2026-08-11.
-- PR #16 is merged. The Understat team-strength challenger is shadow-only and
-  does not change canonical publication.
-- PR #14 is closed and superseded. It combined model activation, readiness
-  semantics and uncalibrated captain telemetry, and its original historical
-  validator used an outcome-selected prediction cohort.
-- PR #17 is merged. It fixes versioned season rules/free transfers and adds the
-  deterministic replay foundations.
-- PR #18 is merged. It adds a dormant attack-only shrinkage candidate and the
-  corrected shadow validator; it does not connect shrinkage to production.
+## Current V2 implementation stack
 
-The only production command is:
+### Certified pre-cutover foundation
 
-```bash
-python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
-```
+The certified stack through PR #83 provides the immutable V2 control plane, typed empirical-qualification admission, exact DecisionPolicy support contracts and independent assurance foundations. It deliberately does not create production champions or perform cutover.
 
-The only user-facing outputs are:
+### PR #84 — exact receding-horizon planner
 
-- `data/generated/apex_answer_context.json`
-- `data/generated/apex_recommendation_latest.json`
-- `data/generated/apex_recommendation_latest.md`
+Branch: `v2/receding-horizon-planner`  
+PR: #84 — **draft/open/unmerged**
 
-## ChatGPT query discipline
+PR #84 closes the structural gap between tactical current-Gameweek analysis and production-shaped max-EV-over-time decision execution:
 
-Every FPL/player/squad/transfer question must follow
-[`CHATGPT_APEX_QUERY_POLICY.md`](CHATGPT_APEX_QUERY_POLICY.md).
+- hypothetical planning state is typed separately from `CURRENT_EXACT` ManagerState truth;
+- exact multi-Gameweek transitions cover realised selling finance, free-transfer banking, normal transfers, Wildcard, Free Hit and set-specific chip persistence/reversal;
+- terminal chip-option reserve is part of the governed horizon objective;
+- one exact immediately executable current `DecisionAction` is exposed from the selected trajectory;
+- production planning requires a `FULL_OFFICIAL` CandidateUniverse and complete `OPTIMAL` zero-gap solve;
+- planning states/results and their state/rules lineage replay offline under content identity;
+- robustness EV-regret is anchored to the governed planning selection objective while realised scenario scoring remains fixed-current-action analysis;
+- independent reference-solver parity is versioned as planning-v2 and independently reconstructs the horizon search rather than broadening tactical-v1 evidence;
+- planning-worker qualification is replay-derived algorithmic evidence with explicit banking, transfer-finance, chip-surface, terminal-reserve, root-action, trajectory and zero-gap coverage;
+- production solver parity requires the exact qualified champion authorization/certificate for the exact `PlanningResultId`, horizon, cutoff, objective, root action and selected trajectory;
+- production publication authority is migrated to schema-v2 `ProductionPlanningBundle`; the legacy tactical/schema-v1 `ProductionDecisionBundle` is retained only as historical/mechanism evidence;
+- constitutional proof obligations, requirements and invariants are planning-v2-bound and guarded by executable traceability tests.
 
-In particular: load this Project Brain and the latest canonical recommendation
-before answering; use committed Apex and pinned-upstream evidence first; do not
-browse externally unless a concrete repository evidence gap prevents a defensible
-answer; and never mix production, shadow, open-PR or stale artifacts without
-labelling the distinction.
+The strong synthetic planning world used by solver qualification remains mechanism-only test evidence. It is not a real production champion or empirical football evidence.
 
-## Latest verified canonical recommendation
+### Certification state
 
-The post-PR #25 publication at `a147754` reported:
+The code/governance candidate immediately before this Project Brain refresh was `8d621541c3e19af91658642042b6da44a1644ca3`.
 
-- selector: **strategy_maximum_ev**
-- GW1 exact-mechanics total: **51.42 xP**
-- captain: **Haaland**
-- vice-captain: **Bruno Fernandes**
-- fixtures SHA-256 prefix: `a478e20d030d`
+- V2 Shadow Production run `32924061255` succeeded on that exact pre-documentation head: 15/15 shadow contract tests and Ruff passed.
+- Apex CI run `32924061244` was still executing full pytest when this documentation maintenance was prepared.
+- This documentation refresh changes the branch SHA, so **final PR #84 certification must use a fresh same-head Apex CI + V2 Shadow Production pair after this commit**. Prior runs are supporting evidence only, not certification of the new head.
 
-Canonical 15:
+## Runtime-test architecture
 
-- GK: Verbruggen, Petrović
-- DEF: Virgil, Guéhi, Thiaw, Truffert, Kayode
-- MID: Bruno Fernandes, Enzo, Schade, Ndiaye, Drakes-Thomas
-- FWD: Haaland, Thiago, Neave
+The planning assurance tests now separate two responsibilities without weakening production replay:
 
-GW1 XI:
+- ordinary production CAS/expiry/authority tests use a real but minimal two-Gameweek `FULL_OFFICIAL` planning world so they do not repeatedly solve irrelevant transfer combinatorics;
+- dedicated planner/reference-solver/qualification/parity tests retain the stronger 16-player banking, financed-transfer and positive terminal-reserve world;
+- identical synthetic fixture bytes may be reused across isolated test ArtifactStores, but production qualification, authorization and replay code itself is not cached or bypassed;
+- qualification verification intentionally re-derives the certificate and re-executes the independent worker.
 
-- Verbruggen
-- Virgil, Guéhi, Thiaw, Kayode
-- Bruno Fernandes, Enzo, Schade, Ndiaye
-- Haaland, Thiago
+## Remaining production blockers
 
-Bench: Petrović; Truffert → Drakes-Thomas → Neave.
+### 1. Durable shared production backend — implementation blocker
 
-This remains the official baseline. Its `safe_to_act=true` is still under audit
-because captain surfaces disagree, selected-player authoritative role evidence is
-empty, preseason return coverage is 5.6% and calibration has not begun.
+The repository currently implements only:
 
-## Model status
+- `FileSystemArtifactStore` — backend ID `apex.reference.filesystem-artifact-store.v1`;
+- `FileSystemReleaseRegistry` — backend ID `apex.reference.filesystem-release-registry.v1`.
 
-### Team strength
+Both are explicitly reference/local adapters and are structurally disqualified from production. GitHub Actions artifacts are transitional/supplemental evidence, not the sole durable V2 authority store.
 
-The Understat challenger from PR #16 is merged in shadow mode. Its component
-checks passed and it does not alter canonical publication. The exact PR #17
-merge SHA passed 142 local tests/Ruff, and the subsequent Apex Unified run
-published the decision-ready artifact above.
+A subsequent slice must implement deployable durable shared ArtifactStore and ReleaseRegistry adapters with immutable content identity/history and atomic stale-writer-safe CAS, then qualify the **actual deployed backend identities** using retained operational evidence. Configuration booleans cannot substitute for that evidence.
 
-### Player-rate shrinkage
+### 2. Real production champions — qualification blocker
 
-A clean research implementation is merged from PR #18 with only:
+The control plane may define candidate artifacts and registries, but production admission still requires genuine registered champions within exact season/horizon/time scope. Synthetic test certificates never satisfy this.
 
-- the dormant shrinkage model;
-- production-parity cohort construction;
-- corrected chronological validator and tests;
-- durable validation evidence.
+### 3. Empirical football/model evidence — time/no-hindsight blocker
 
-The corrected full-roster validator passes its xG90/xA90 chronological shadow
-gate across 2024/25 and 2025/26, including pre-GW1, GW1-5 and GW6+ strata.
-DEFCON fails and is a no-op by default. Those seasons have been inspected during
-development, so they are not independent final holdouts. The merged report sets
-`production_activation_authorized=false`; activation requires a separate PR and
-decision.
+Forecast model, DecisionPolicy, realised scenario convergence, model evaluation and model promotion production proofs require predeclared typed experiments. Known historical outcomes cannot be relabelled retrospectively as V2 qualification. Where sufficient predeclared evidence does not exist, qualification must proceed prospectively as outcomes become available.
 
-### Captain uncertainty
+### 4. Production cutover — deliberately blocked
 
-The fixed-XI captain frequency is telemetry only. Scenario coefficients and the
-proposed 50% threshold are not historically calibrated; the raw production
-control also fails that threshold. Keep this diagnostic out of readiness until
-coverage/discrimination have been calibrated.
+Cutover remains WITHHELD until every mandatory proof is replay-valid on the exact schema-v2 production planning bundle, exact runtime, exact qualified champions and exact qualified shared backend identities. Only a current unexpired `PUBLISHED` V2 release can become answer authority.
 
-## Full-season validation
+### 5. Slice 14 — blocked
 
-The 2025/26 deadline archive is feasible and should be run as a locked
-pseudo-prospective integration/strategy benchmark with a cutoff of
-`deadline - 120 minutes`. It must include transfers, hits, chips, XI, bench
-order, captaincy, autosubs, state reconciliation and isolated realised scoring.
+Slice 14 remains blocked until a real V2 `PUBLISHED` production release exists. PR #66 remains archaeology/regression evidence only.
 
-It is not the final independent model validation because completed 2025/26
-evidence influenced model design. Freeze the shipped code/configuration and use
-the 2026/27 deadline archive as the true prospective final test.
+## Next implementation sequence
 
-## Immediate release sequence
+1. Finish PR #84 final same-head certification and keep it draft/open/unmerged until explicit merge approval.
+2. Build and test the durable shared production ArtifactStore/ReleaseRegistry adapters without weakening the existing reference-adapter rejection or backend-identity binding.
+3. Qualify only an actually deployed backend using retained operational evidence for durability, access control, recovery, integrity, concurrency/CAS and identity.
+4. Register prospective no-hindsight experiments/candidates where empirical production qualification is still absent; never backfill already-known outcomes.
+5. Create real champions only after their exact qualification contracts pass.
+6. Assemble and replay a genuine schema-v2 `ProductionPlanningBundle` plus all mandatory assurance evidence.
+7. Perform cutover only if the complete AssuranceCase authorizes an exact time-bounded PUBLISHED release on the qualified shared backend.
+8. Begin Slice 14 only after that real production publication exists.
 
-1. Ship the sealed decision bundle and verify one production `bundle_id` across
-   Pinnacle, Elite, parity and canonical publication.
-2. Repair missing preseason-value propagation, diagnostic schemas and solver-gap
-   reporting.
-3. Unify squad selection and published exact-mechanics objectives.
-4. Make authoritative evidence decision-relevant and readiness-aware.
-5. Resume projection calibration and full-season replay only after the decision
-   contract is reproducible.
+## User-facing FPL boundary
 
-## Current boundaries
-
-- Public FPL cannot expose unpublished pre-deadline private transfers.
-- Market odds remain optional until a validated feed is configured and healthy.
-- New-season expected minutes and attacking rates remain prior-heavy.
-- Elite epsilon and captain scenario coefficients are not calibrated.
-- The PR 7 replay engine now executes and scores a legal 38-GW action chain, but
-  the 2025/26 Apex total is blocked because zero immutable pre-deadline Apex
-  bundles are available. Official result coverage is 38/38; Official-FPL xP
-  coverage is only 11/38. No hindsight proxy is permitted.
+Until the V2 production authority chain above passes, do not invent or manually choose a squad and call it Apex V2. A user-facing Apex-labelled recommendation must come from the canonical authority contract; otherwise report the blocker explicitly.
