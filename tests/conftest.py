@@ -6,12 +6,14 @@ from typing import Any, Callable
 import pytest
 
 import apex_fpl.control.production_cutover as production_cutover_module
+import production_planning_bundle_helpers as planning_fixture_helpers
 
 
 PARITY_PROOF_ID = "PO-REFERENCE-SOLVER-PARITY-001"
 _TARGET_MODULES = {
     "test_v2_production_cutover",
     "test_v2_production_authority",
+    "test_v2_production_planning_bundle",
 }
 _FULL_PARITY_TESTS = {
     "test_v2_production_cutover::test_production_cutover_publishes_only_after_complete_pass_and_exact_cas",
@@ -68,26 +70,27 @@ class _RecordingArtifactStore:
         return tuple(sorted(self._recorded.values(), key=lambda item: item.artifact_id))
 
 
-_PLANNING_FIXTURE_CACHE: dict[tuple[str, int, int], _CachedPlanningFixture] = {}
+_PLANNING_FIXTURE_CACHE: dict[tuple[str, str, int, int], _CachedPlanningFixture] = {}
 
 
 def _cached_planning_fixture(
     original: Callable[..., object],
     *,
     store,
+    cache_variant: str,
     season: str = "2026-2027",
     entry: int = 63984,
     gameweek: int = 2,
 ):
-    """Reuse exact synthetic lineage bytes across isolated cutover/authority test stores.
+    """Reuse exact synthetic lineage bytes across isolated assurance-test stores.
 
-    The first call executes the real planner and records every immutable artifact write. Later
-    calls restore the same content-addressed bytes into each test's own ArtifactStore. This is a
-    test-fixture optimization only; production planning-result/bundle/qualification replay is not
-    bypassed or cached.
+    The first call for each semantic fixture variant executes the real planner and records every
+    immutable artifact write. Later calls restore those exact content-addressed bytes into each
+    test's isolated ArtifactStore. Production planning-result, bundle, qualification and
+    authorization replay are never cached or bypassed by this helper.
     """
 
-    key = (str(season), int(entry), int(gameweek))
+    key = (cache_variant, str(season), int(entry), int(gameweek))
     cached = _PLANNING_FIXTURE_CACHE.get(key)
     if cached is not None:
         for item in cached.artifacts:
@@ -132,6 +135,23 @@ def _isolate_planning_assurance_cost(monkeypatch, request):
     if module_name not in _TARGET_MODULES:
         return
 
+    node_key = f"{module_name}::{request.node.name}"
+    requires_full_parity = node_key in _FULL_PARITY_TESTS
+
+    # Most production-control tests exercise bundle/CAS/expiry/authority semantics, not transfer
+    # search breadth. For those tests the synthetic FULL_OFFICIAL universe is exactly the owned
+    # 15-player squad, which keeps the real two-GW planner/replay path but removes irrelevant
+    # transfer combinatorics. Dedicated parity tests retain the stronger 16-player banking,
+    # finance and terminal-chip-reserve world, and the standalone qualification tests are never
+    # patched here.
+    cache_variant = "strong-parity" if requires_full_parity else "lineage-only"
+    if not requires_full_parity:
+        monkeypatch.setattr(
+            planning_fixture_helpers,
+            "CANDIDATE_POSITIONS",
+            dict(planning_fixture_helpers.OWNED_POSITIONS),
+        )
+
     original_fixture = getattr(module, "synthetic_production_planning_bundle", None)
     if callable(original_fixture):
         monkeypatch.setattr(
@@ -140,14 +160,17 @@ def _isolate_planning_assurance_cost(monkeypatch, request):
             lambda *, store, season="2026-2027", entry=63984, gameweek=2: _cached_planning_fixture(
                 original_fixture,
                 store=store,
+                cache_variant=cache_variant,
                 season=season,
                 entry=entry,
                 gameweek=gameweek,
             ),
         )
 
-    node_key = f"{module_name}::{request.node.name}"
-    if node_key not in _FULL_PARITY_TESTS:
+    if module_name in {
+        "test_v2_production_cutover",
+        "test_v2_production_authority",
+    } and not requires_full_parity:
         monkeypatch.setattr(
             production_cutover_module,
             "claim_has_matching_planning_reference_solver_parity",
