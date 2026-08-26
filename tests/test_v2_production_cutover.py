@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.backend_operational_qualification import (
+    derive_backend_qualification_from_probes,
+)
 from apex_fpl.control.experiment_registry import (
     ExperimentRegistration,
     ExperimentRegistry,
@@ -69,12 +73,16 @@ PARITY_PROOF_ID = "PO-REFERENCE-SOLVER-PARITY-001"
 
 
 class _DurableArtifactStore:
-    """Test double for a separately qualified durable shared ArtifactStore adapter."""
+    """Mechanism-only non-reference ArtifactStore test double."""
 
     backend_id = "test.production.durable-artifact-store.v1"
 
     def __init__(self, root: Path):
-        self.delegate = FileSystemArtifactStore(root)
+        self.root = Path(root)
+        self.delegate = FileSystemArtifactStore(self.root)
+
+    def reopen(self):
+        return _DurableArtifactStore(self.root)
 
     def put_bytes(self, content: bytes, **kwargs):
         return self.delegate.put_bytes(content, **kwargs)
@@ -86,13 +94,28 @@ class _DurableArtifactStore:
         return self.delegate.verify(artifact_id)
 
 
+class _UnstableReopenedArtifactStore(_DurableArtifactStore):
+    backend_id = "test.production.changed-artifact-store.v1"
+
+
+class _UnstableProbeArtifactStore(_DurableArtifactStore):
+    """Produces valid negative probe evidence: fresh adapter identity changes."""
+
+    def reopen(self):
+        return _UnstableReopenedArtifactStore(self.root)
+
+
 class _DurableReleaseRegistry:
-    """Test double for a separately qualified durable shared ReleaseRegistry adapter."""
+    """Mechanism-only non-reference ReleaseRegistry test double."""
 
     backend_id = "test.production.durable-release-registry.v1"
 
     def __init__(self, root: Path):
-        self.delegate = FileSystemReleaseRegistry(root)
+        self.root = Path(root)
+        self.delegate = FileSystemReleaseRegistry(self.root)
+
+    def reopen(self):
+        return _DurableReleaseRegistry(self.root)
 
     def append(self, record):
         return self.delegate.append(record)
@@ -282,17 +305,17 @@ def _case(
 
 
 def _backend(store, registry, *, qualified: bool = True, scope: str = SCOPE):
-    return ProductionBackendQualification(
-        artifact_store_backend_id=store.backend_id,
-        release_registry_backend_id=registry.backend_id,
-        artifact_store_qualification_artifact_id=_artifact(store, "artifact-store-qualified"),
-        release_registry_qualification_artifact_id=_artifact(store, "registry-qualified"),
-        durable_shared_artifact_store=qualified,
-        durable_shared_release_registry=qualified,
-        atomic_compare_and_swap=qualified,
-        immutable_release_history=qualified,
+    probe_store = store
+    if not qualified:
+        if not isinstance(store, _DurableArtifactStore):
+            raise TypeError("negative durable backend probe requires test-double ArtifactStore")
+        probe_store = _UnstableProbeArtifactStore(store.root)
+    return derive_backend_qualification_from_probes(
+        artifact_store=probe_store,
+        release_registry=registry,
         qualification_scope=scope,
-    )
+        probe_nonce=uuid4().hex,
+    ).qualification
 
 
 def _execute(
@@ -674,6 +697,8 @@ def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_
     fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
+    backend = _backend(store, registry, qualified=False)
+    assert backend.qualified is False
     outcome = execute_production_cutover(
         season=SEASON,
         entry=ENTRY,
@@ -686,7 +711,7 @@ def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_
         artifact_manifest_id=manifest,
         assurance_case=_case(store, claim),
         obligations=_obligations(),
-        backend_qualification=_backend(store, registry, qualified=False),
+        backend_qualification=backend,
         artifact_store=store,
         production_registry=registry,
     )
@@ -725,6 +750,46 @@ def test_reference_filesystem_backends_cannot_be_qualified_by_green_booleans(tmp
         production_registry=registry,
     )
     assert outcome.report.status is ProductionCutoverStatus.WITHHELD
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
+def test_random_nonreference_green_backend_evidence_cannot_authorize_cutover(
+    tmp_path: Path,
+) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    fixture = _fixture(store)
+    manifest = _artifact(store, "manifest")
+    claim = _artifact(store, "claim")
+    backend = ProductionBackendQualification(
+        artifact_store_backend_id=store.backend_id,
+        release_registry_backend_id=registry.backend_id,
+        artifact_store_qualification_artifact_id=_artifact(store, "random-store-green"),
+        release_registry_qualification_artifact_id=_artifact(store, "random-registry-green"),
+        durable_shared_artifact_store=True,
+        durable_shared_release_registry=True,
+        atomic_compare_and_swap=True,
+        immutable_release_history=True,
+        qualification_scope=SCOPE,
+    )
+    assert backend.qualified is True
+    with pytest.raises(ValueError, match="operational probe"):
+        execute_production_cutover(
+            season=SEASON,
+            entry=ENTRY,
+            gameweek=GAMEWEEK,
+            bundle_id=fixture.bundle.bundle_id,
+            world_id=fixture.bundle.world_id,
+            runtime_digest="sha256:v2-runtime",
+            created_at=CREATED_AT,
+            valid_until=VALID_UNTIL,
+            artifact_manifest_id=manifest,
+            assurance_case=_case(store, claim),
+            obligations=_obligations(),
+            backend_qualification=backend,
+            artifact_store=store,
+            production_registry=registry,
+        )
     assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 
 
@@ -783,7 +848,10 @@ class _StaleRegistry(_DurableReleaseRegistry):
 
 def test_stale_writer_fails_closed_and_cannot_become_current(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")
-    registry = _StaleRegistry(tmp_path / "production")
+    root = tmp_path / "production"
+    qualification_registry = _DurableReleaseRegistry(root)
+    backend = _backend(store, qualification_registry)
+    registry = _StaleRegistry(root)
     fixture = _fixture(store)
     manifest = _artifact(store, "manifest")
     claim = _artifact(store, "claim")
@@ -800,7 +868,7 @@ def test_stale_writer_fails_closed_and_cannot_become_current(tmp_path: Path) -> 
             artifact_manifest_id=manifest,
             assurance_case=_case(store, claim),
             obligations=_obligations(),
-            backend_qualification=_backend(store, registry),
+            backend_qualification=backend,
             artifact_store=store,
             production_registry=registry,
         )
