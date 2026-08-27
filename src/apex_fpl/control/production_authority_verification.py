@@ -1,14 +1,20 @@
 """Shared fail-closed verification for the published production authority closure.
 
-Release publication and answer-time resolution must prove the same authority chain:
-ReleaseRecord -> ArtifactManifest -> current ProductionAuthorityRoot.  This module keeps
-that replay contract in one place so cutover and serving cannot silently diverge.
+Release publication and answer-time resolution prove one chain:
+ReleaseRecord -> ArtifactManifest -> current ProductionAuthorityRoot. Every mandatory
+manifest role is replayed as its expected type so a content-valid artifact cannot be
+substituted into the wrong semantic role.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from apex_fpl.assurance.reference_solver_planning_exchange import (
+    load_planning_reference_solver_certificate,
+)
+from apex_fpl.assurance.worker_authorization import load_reference_solver_authorization
+from apex_fpl.control import _production_cutover_legacy as _cutover_replay
 from apex_fpl.control.artifact_manifest import (
     load_artifact_manifest,
     verify_artifact_manifest_scope,
@@ -23,11 +29,14 @@ from apex_fpl.control.production_authority_root import (
     VerifiedProductionAuthorityRoot,
     verify_production_authority_root,
 )
+from apex_fpl.control.production_planning_bundle import load_production_planning_bundle
+from apex_fpl.control.production_reference_solver_binding import REFERENCE_SOLVER_PARITY_PROOF_ID
 from apex_fpl.core.artifact_manifest import (
     ArtifactManifest,
     ArtifactManifestEntry,
     ArtifactManifestRole,
 )
+from apex_fpl.core.ids import BundleId
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +56,11 @@ def _backend_id(registry: ProductionAuthorityRootRegistry) -> str:
     return value.strip()
 
 
+def _require_semantic(entry: ArtifactManifestEntry, expected: str, *, label: str) -> None:
+    if entry.semantic_id != str(expected):
+        raise ValueError(f"artifact manifest {label} semantic identity mismatch")
+
+
 def _require_artifact_role(
     manifest: ArtifactManifest,
     role: ArtifactManifestRole,
@@ -56,19 +70,54 @@ def _require_artifact_role(
 ) -> ArtifactManifestEntry:
     entry = manifest.require_role(role)
     if entry.artifact_id != str(expected_artifact_id):
-        raise ValueError(
-            f"artifact manifest {role.value} does not match production authority root"
-        )
-    if (
-        expected_semantic_id is not None
-        and entry.semantic_id is not None
-        and entry.semantic_id != str(expected_semantic_id)
-    ):
-        raise ValueError(
-            f"artifact manifest {role.value} semantic identity does not match "
-            "production authority root"
-        )
+        raise ValueError(f"artifact manifest {role.value} does not match production authority root")
+    if expected_semantic_id is not None:
+        _require_semantic(entry, str(expected_semantic_id), label=role.value)
     return entry
+
+
+def _verify_reference_solver_authorization(
+    manifest: ArtifactManifest,
+    *,
+    assurance_case,
+    verified_bundle,
+    store: ArtifactStore,
+) -> None:
+    entry = manifest.require_role(ArtifactManifestRole.REFERENCE_SOLVER_AUTHORIZATION)
+    claim = next(
+        (item for item in assurance_case.claims if item.proof_id == REFERENCE_SOLVER_PARITY_PROOF_ID),
+        None,
+    )
+    if claim is None or entry.artifact_id not in claim.artifact_ids:
+        raise ValueError("manifest reference-solver authorization is not retained by parity claim")
+    for candidate_id in claim.artifact_ids:
+        if candidate_id == entry.artifact_id:
+            continue
+        try:
+            certificate = load_planning_reference_solver_certificate(candidate_id, store=store).certificate
+            stored = load_reference_solver_authorization(
+                entry.artifact_id,
+                certificate=certificate,
+                store=store,
+            )
+        except (FileNotFoundError, ValueError):
+            continue
+        authorization = stored.authorization
+        if authorization.season != verified_bundle.bundle.season:
+            continue
+        if authorization.decision_cutoff != verified_bundle.forecast.feature_cutoff:
+            continue
+        if authorization.horizon_gameweeks != verified_bundle.decision_policy.horizon_gameweeks:
+            continue
+        if authorization.solver_certificate_id != certificate.certificate_id:
+            continue
+        _require_semantic(
+            entry,
+            str(authorization.authorization_id),
+            label=ArtifactManifestRole.REFERENCE_SOLVER_AUTHORIZATION.value,
+        )
+        return
+    raise ValueError("manifest reference-solver authorization failed typed replay")
 
 
 def verify_production_authority_closure(
@@ -84,13 +133,9 @@ def verify_production_authority_closure(
     store: ArtifactStore,
     authority_root_registry: ProductionAuthorityRootRegistry,
 ) -> VerifiedProductionAuthorityClosure:
-    """Replay the complete manifest/root authority chain at the caller's exact ``as_of``."""
+    """Replay every mandatory manifest role and the current root at exact ``as_of``."""
 
-    manifest = load_artifact_manifest(
-        str(artifact_manifest_id),
-        store=store,
-        verify_members=True,
-    )
+    manifest = load_artifact_manifest(str(artifact_manifest_id), store=store, verify_members=True)
     verify_artifact_manifest_scope(
         manifest,
         season=str(season),
@@ -100,6 +145,51 @@ def verify_production_authority_closure(
         world_id=str(world_id),
         runtime_digest=str(runtime_digest),
         authority_root_artifact_id=manifest.authority_root_artifact_id,
+    )
+
+    planning_entry = manifest.require_role(ArtifactManifestRole.PLANNING_BUNDLE)
+    verified_bundle = load_production_planning_bundle(BundleId(planning_entry.artifact_id), store=store)
+    bundle = verified_bundle.bundle
+    if (
+        bundle.season != str(season)
+        or bundle.entry != entry
+        or bundle.gameweek != gameweek
+        or str(bundle.world_id) != str(world_id)
+    ):
+        raise ValueError("manifest planning bundle typed replay does not match release scope")
+    if planning_entry.semantic_id is not None:
+        _require_semantic(planning_entry, str(bundle.bundle_id), label=planning_entry.role.value)
+    world_entry = manifest.require_role(ArtifactManifestRole.WORLD)
+    if world_entry.artifact_id != str(bundle.world_id):
+        raise ValueError("manifest WORLD does not match typed planning-bundle world")
+    if world_entry.semantic_id is not None:
+        _require_semantic(world_entry, str(bundle.world_id), label=world_entry.role.value)
+
+    assurance_entry = manifest.require_role(ArtifactManifestRole.ASSURANCE_CASE)
+    assurance_case = _cutover_replay._replay_assurance_case(
+        assurance_entry.artifact_id,
+        artifact_store=store,
+    )
+    _require_semantic(assurance_entry, assurance_case.case_id, label=assurance_entry.role.value)
+
+    obligations_entry = manifest.require_role(ArtifactManifestRole.PROOF_OBLIGATIONS)
+    _cutover_replay._replay_obligations(obligations_entry.artifact_id, artifact_store=store)
+    if obligations_entry.semantic_id is not None:
+        _require_semantic(
+            obligations_entry,
+            obligations_entry.artifact_id,
+            label=obligations_entry.role.value,
+        )
+
+    backend_entry = manifest.require_role(ArtifactManifestRole.BACKEND_QUALIFICATION)
+    backend_qualification = _cutover_replay._replay_backend_qualification(
+        backend_entry.artifact_id,
+        artifact_store=store,
+    )
+    _require_semantic(
+        backend_entry,
+        backend_qualification.qualification_id,
+        label=backend_entry.role.value,
     )
 
     qualification_entry = manifest.require_role(
@@ -113,13 +203,11 @@ def verify_production_authority_closure(
     )
     if not qualification.qualification.qualified:
         raise ValueError("production AuthorityRootRegistry is not independently qualified")
-    if (
-        qualification_entry.semantic_id is not None
-        and qualification_entry.semantic_id != qualification.qualification.qualification_id
-    ):
-        raise ValueError(
-            "artifact manifest authority-root registry qualification semantic identity mismatch"
-        )
+    _require_semantic(
+        qualification_entry,
+        qualification.qualification.qualification_id,
+        label=qualification_entry.role.value,
+    )
 
     root_entry = manifest.require_role(ArtifactManifestRole.AUTHORITY_ROOT)
     current_root_id = authority_root_registry.current_root_id(str(season))
@@ -127,7 +215,6 @@ def verify_production_authority_closure(
         raise ValueError("production authority-root current pointer is missing")
     if current_root_id != root_entry.artifact_id:
         raise ValueError("production authority-root current pointer does not match release manifest")
-
     registry_root = authority_root_registry.read_root(current_root_id)
     verified = verify_production_authority_root(
         current_root_id,
@@ -140,8 +227,7 @@ def verify_production_authority_closure(
         raise ValueError("production authority root differs between registry and ArtifactStore")
     if root.season != str(season):
         raise ValueError("production authority root season does not match release")
-    if root_entry.semantic_id is not None and root_entry.semantic_id != root.root_id:
-        raise ValueError("artifact manifest AUTHORITY_ROOT semantic identity mismatch")
+    _require_semantic(root_entry, root.root_id, label=root_entry.role.value)
 
     _require_artifact_role(
         manifest,
@@ -170,6 +256,13 @@ def verify_production_authority_closure(
         ArtifactManifestRole.BUILD_MANIFEST,
         root.build_manifest_artifact_id,
         expected_semantic_id=root.build_manifest_id,
+    )
+
+    _verify_reference_solver_authorization(
+        manifest,
+        assurance_case=assurance_case,
+        verified_bundle=verified_bundle,
+        store=store,
     )
 
     return VerifiedProductionAuthorityClosure(
