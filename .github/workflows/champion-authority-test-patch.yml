@@ -1,0 +1,46 @@
+name: Champion Authority Test Patch
+
+on:
+  push:
+    branches: [v2/champion-authority-chain]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Patch backend and stale-CAS fixtures
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_v2_production_cutover.py")
+          text = path.read_text()
+          old_backend = '''    fixture = _fixture(store)\n    manifest = _artifact(store, "manifest")\n    claim = _artifact(store, "claim")\n    backend = _backend(store, registry, qualified=False)\n    assert backend.qualified is False\n    outcome = execute_production_cutover(\n        season=SEASON,\n        entry=ENTRY,\n        gameweek=GAMEWEEK,\n        bundle_id=fixture.bundle.bundle_id,\n        world_id=fixture.bundle.world_id,\n        runtime_digest="sha256:v2-runtime",\n        created_at=CREATED_AT,\n        valid_until=VALID_UNTIL,\n        artifact_manifest_id=manifest,\n        assurance_case=_case(store, claim),\n        obligations=_obligations(),\n        backend_qualification=backend,\n        artifact_store=store,\n        production_registry=registry,\n    )\n'''
+          new_backend = '''    backend = _backend(store, registry, qualified=False)\n    assert backend.qualified is False\n    _, _, outcome = _execute(\n        tmp_path,\n        backend=backend,\n        store=store,\n        registry=registry,\n    )\n'''
+          old_stale = '''    fixture = _fixture(store)\n    manifest = _artifact(store, "manifest")\n    claim = _artifact(store, "claim")\n    with pytest.raises(CompareAndSwapConflict, match="stale production"):\n        execute_production_cutover(\n            season=SEASON,\n            entry=ENTRY,\n            gameweek=GAMEWEEK,\n            bundle_id=fixture.bundle.bundle_id,\n            world_id=fixture.bundle.world_id,\n            runtime_digest="sha256:v2-runtime",\n            created_at=CREATED_AT,\n            valid_until=VALID_UNTIL,\n            artifact_manifest_id=manifest,\n            assurance_case=_case(store, claim),\n            obligations=_obligations(),\n            backend_qualification=backend,\n            artifact_store=store,\n            production_registry=registry,\n        )\n'''
+          new_stale = '''    with pytest.raises(CompareAndSwapConflict, match="stale production"):\n        _execute(\n            tmp_path,\n            backend=backend,\n            store=store,\n            registry=registry,\n        )\n'''
+          for label, old, new in (("backend", old_backend, new_backend), ("stale", old_stale, new_stale)):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label} fixture target count={count}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          python -m py_compile tests/test_v2_production_cutover.py
+          git diff --check
+      - name: Commit fixture patch and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/champion-authority-test-patch.yml
+          git add tests/test_v2_production_cutover.py .github/workflows/champion-authority-test-patch.yml
+          git commit -m "Fix champion authority cutover regression fixtures"
+          git push origin HEAD:v2/champion-authority-chain
