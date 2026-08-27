@@ -8,8 +8,6 @@ Apex V2 is in a stacked engineering-certification migration, not live production
 
 #87 now binds production publication and answer authority to one immutable point-in-time `ProductionChampionGeneration`. Forecast champion authority must be independently re-derived from exact retained learning evaluation/comparison/policy evidence; DecisionPolicy, scenario-generator and scenario-policy champions require separate reviewed admissions with typed empirical qualifications. The exact generation must match the schema-v2 production planning bundle and is retained in schema-v2 `ProductionPublicationAuthorization`. Synthetic fixtures prove mechanism only.
 
-The #87 certification suite reuses identical deterministic synthetic fixture bytes across isolated filesystem-backed test stores to avoid repeatedly solving the same planning/reference-solver setup. Only synthetic evidence generation is cached: production cutover, champion-authority replay, empirical bindings, backend checks and reference-solver verification remain independently executed in every test. Cache templates are corruption-isolated from each test store, and non-filesystem stores bypass the optimization.
-
 No real 2026/27 forecast champion, DecisionPolicy champion, scenario champion, planning reference-solver champion, deployed production PostgreSQL Plane-B evidence, prospective future qualification outcome or PUBLISHED V2 release is asserted. Until those genuine authorities exist and the full cutover chain passes, `ready_to_act` and `safe_to_act` remain false for V2 production.
 
 ## Current state
