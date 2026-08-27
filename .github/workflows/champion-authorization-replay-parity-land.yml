@@ -1,0 +1,36 @@
+name: Champion Authorization Replay Parity Land
+
+on:
+  push:
+    branches: [v2/champion-authority-chain]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: champion-authorization-replay-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  land:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Apply replay-parity hardening
+        run: python scripts/land_champion_authorization_replay_parity.py
+      - name: Validate diff
+        run: git diff --check
+      - name: Commit hardening and retire landing files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm scripts/land_champion_authorization_replay_parity.py
+          rm .github/workflows/champion-authorization-replay-parity-land.yml
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Enforce champion authorization replay parity"
+          git push origin HEAD:v2/champion-authority-chain
