@@ -12,6 +12,10 @@ from typing import Iterable
 
 from apex_fpl.control import _production_cutover_legacy as _legacy
 from apex_fpl.control.backend_ports import ProductionAuthorityRootRegistry
+from apex_fpl.control.postgres_atomic_publication import (
+    compare_and_swap_release_under_authority_root,
+    is_postgres_release_registry,
+)
 from apex_fpl.control.production_authority_verification import (
     VerifiedProductionAuthorityClosure,
     require_authority_root_unchanged,
@@ -50,7 +54,12 @@ def _require_manifest_input_binding(
 
 
 class _RootGuardedReleaseRegistry:
-    """Delegate release persistence but re-check the root immediately before release CAS."""
+    """Delegate persistence while binding release CAS to the exact authority-root pointer.
+
+    Reference/non-PostgreSQL adapters receive the portable before-CAS root check. The real
+    PostgreSQL release adapter uses a stronger primitive: root-pointer verification and release
+    CAS occur in one database transaction while the season root row is locked ``FOR UPDATE``.
+    """
 
     def __init__(
         self,
@@ -75,6 +84,16 @@ class _RootGuardedReleaseRegistry:
             season=self._season,
             authority_root_registry=self._authority_root_registry,
         )
+        if is_postgres_release_registry(self._delegate):
+            compare_and_swap_release_under_authority_root(
+                self._delegate,
+                self._authority_root_registry,
+                key,
+                expected_release_id=expected_release_id,
+                new_release_id=new_release_id,
+                expected_root_id=self._closure.current_root_id,
+            )
+            return
         self._delegate.compare_and_swap_current(
             key,
             expected_release_id=expected_release_id,
