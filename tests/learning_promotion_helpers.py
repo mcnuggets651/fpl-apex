@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
+from pathlib import Path
 
 import yaml
 
 from apex_fpl.control.empirical_qualification_admission import LEARNING_POLICY_QUALIFICATION_ID
+from apex_fpl.control.learning_evaluator import evaluate_model
 from apex_fpl.control.learning_policy_registry import LearningPolicyRegistry
 from apex_fpl.control.learning_promotion import (
     apply_model_promotion,
@@ -12,32 +15,32 @@ from apex_fpl.control.learning_promotion import (
     issue_model_promotion_certificate,
 )
 from apex_fpl.control.learning_store import store_learning_object
-from apex_fpl.core.ids import (
-    EvaluationDatasetId,
-    EvaluationObservationSetId,
-    EvaluationRealizedTruthSetId,
-    EvaluationTruthSetId,
-    ModelArtifactId,
-    TrainingRunId,
-)
+from apex_fpl.control.outcome_truth_registry import load_outcome_truth_registry_bytes
+from apex_fpl.core.identity import OfficialPlayerId
+from apex_fpl.core.ids import FeatureSnapshotId, ForecastId, ModelArtifactId
 from apex_fpl.core.learning_common import (
     EvaluationMetric,
     ExactMetricValue,
-    LearningEvaluationStatus,
     LearningPolicyQualification,
-    LearningUseMode,
     MetricDirection,
 )
-from apex_fpl.core.learning_evaluation import EvaluationMetricResult, ModelEvaluationReport
+from apex_fpl.core.learning_dataset import EvaluationCase, EvaluationDataset
+from apex_fpl.core.learning_observations import EvaluationObservation, EvaluationObservationSet
 from apex_fpl.core.learning_policy import (
     LearningEvaluationPolicy,
     MetricPromotionRule,
     MetricRequirement,
 )
 from apex_fpl.core.learning_promotion import ModelRegistryGeneration
+from apex_fpl.core.learning_training import ModelTrainingRun
 from apex_fpl.core.outcome_truth import OutcomeTarget
 
 from empirical_qualification_helpers import synthetic_supported_qualification_artifact
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PREDICTED_AT = "2026-08-10T08:00:00Z"
+OUTCOME_AT = "2026-08-11T08:00:00Z"
 
 
 def _source_id(store, label: str) -> str:
@@ -81,64 +84,152 @@ def _policy_bundle(*, store, season: str):
         valid_until="2026-10-31T00:00:00Z",
     )
     policy = replace(policy, qualification_artifact_id=qualification)
-    store_learning_object(policy, store=store)
+    stored_policy = store_learning_object(policy, store=store)
     registry = LearningPolicyRegistry(
         season=season,
         policies=(policy,),
         champion_policy_id=policy.policy_id,
     )
-    payload = {
+    registry_payload = {
         "schema_version": 1,
         "season": season,
         "champion_policy_id": str(policy.policy_id),
         "policies": [policy.semantic_payload()],
     }
     registry_artifact = store.put_bytes(
-        yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
+        yaml.safe_dump(registry_payload, sort_keys=True).encode("utf-8")
     ).artifact_id
-    return policy, registry, registry_artifact
+    return policy, stored_policy.artifact_id, registry, registry_artifact
+
+
+def _truth(store):
+    content = (ROOT / "config" / "outcome_truth_v2.yaml").read_bytes()
+    artifact_id = store.put_bytes(content).artifact_id
+    return load_outcome_truth_registry_bytes(content), artifact_id
+
+
+def _official_minutes_outcomes(store) -> tuple[tuple[str, ...], tuple[ExactMetricValue, ...]]:
+    actuals = (ExactMetricValue(61), ExactMetricValue(69))
+    artifacts: list[str] = []
+    for index, actual in enumerate(actuals, start=1):
+        value = actual.as_fraction()
+        if value.denominator != 1:
+            raise AssertionError("synthetic Official FPL minutes must be integer")
+        payload = {
+            "elements": [
+                {
+                    "id": index,
+                    "stats": {
+                        "minutes": value.numerator,
+                        "total_points": 0,
+                        "goals_scored": 0,
+                        "assists": 0,
+                    },
+                }
+            ]
+        }
+        artifacts.append(
+            store.put_bytes(
+                json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).artifact_id
+        )
+    return tuple(artifacts), actuals
+
+
+def _training(*, store, model_id: ModelArtifactId, label: str):
+    dataset_artifact = _source_id(store, f"{label}-training-dataset")
+    trainer_artifact = _source_id(store, f"{label}-trainer")
+    parameter_artifact = _source_id(store, f"{label}-parameter")
+    run = ModelTrainingRun(
+        model_artifact_id=model_id,
+        training_cutoff="2026-07-31T23:00:00Z",
+        first_available_at="2026-08-01T00:00:00Z",
+        training_dataset_artifact_ids=(dataset_artifact,),
+        trainer_code_artifact_id=trainer_artifact,
+        parameter_artifact_ids=(parameter_artifact,),
+        source_artifact_ids=(dataset_artifact, trainer_artifact, parameter_artifact),
+    )
+    return run, store_learning_object(run, store=store).artifact_id
 
 
 def _evaluation(
     *,
     store,
+    season: str,
     model_id: ModelArtifactId,
     policy,
-    truth_set_id: EvaluationTruthSetId,
-    realized_truth_set_id: EvaluationRealizedTruthSetId,
-    value: int,
+    policy_artifact_id: str,
+    registry,
+    registry_artifact_id: str,
+    truth_registry,
+    truth_registry_artifact_id: str,
+    outcome_artifacts: tuple[str, ...],
+    actuals: tuple[ExactMetricValue, ...],
+    predicted: tuple[ExactMetricValue, ...],
     label: str,
 ):
-    metric_source = _source_id(store, f"{label}-metric-source")
-    metric = EvaluationMetricResult(
-        metric=EvaluationMetric.MINUTES_MAE,
-        target=OutcomeTarget.MINUTES,
-        cohort="ALL",
-        direction=MetricDirection.LOWER_IS_BETTER,
-        sample_count=2,
-        value=ExactMetricValue(value),
-        interval_lower=None,
-        interval_upper=None,
-        source_artifact_ids=(metric_source,),
+    if len(actuals) != len(predicted) or len(actuals) != len(outcome_artifacts):
+        raise AssertionError("synthetic learning rows must align")
+    training, training_artifact = _training(store=store, model_id=model_id, label=label)
+    prediction_artifacts = tuple(
+        _source_id(store, f"{label}-prediction-{index}")
+        for index in range(len(predicted))
     )
-    report = ModelEvaluationReport(
-        candidate_model_id=model_id,
-        training_run_id=TrainingRunId(_source_id(store, f"{label}-training-run")),
-        evaluation_dataset_id=EvaluationDatasetId(_source_id(store, f"{label}-dataset")),
-        evaluation_truth_set_id=truth_set_id,
-        evaluation_realized_truth_set_id=realized_truth_set_id,
-        observation_set_id=EvaluationObservationSetId(
-            _source_id(store, f"{label}-observations")
+    cases = tuple(
+        EvaluationCase(
+            forecast_id=ForecastId(f"synthetic-{label}-forecast-{index}"),
+            feature_snapshot_id=FeatureSnapshotId(f"synthetic-{label}-features-{index}"),
+            model_artifact_id=model_id,
+            target=OutcomeTarget.MINUTES,
+            player_id=OfficialPlayerId(index + 1),
+            gameweek=1,
+            prediction_sealed_at=PREDICTED_AT,
+            outcome_first_available_at=OUTCOME_AT,
+            prediction_artifact_id=prediction_artifacts[index],
+            outcome_artifact_id=outcome_artifacts[index],
+        )
+        for index in range(len(predicted))
+    )
+    dataset = EvaluationDataset(
+        season=season,
+        truth_registry_id=truth_registry.truth_registry_id,
+        cases=cases,
+        source_artifact_ids=prediction_artifacts + outcome_artifacts,
+    )
+    dataset_artifact = store_learning_object(dataset, store=store).artifact_id
+    observations = EvaluationObservationSet(
+        evaluation_dataset_id=dataset.dataset_id,
+        evaluation_truth_set_id=dataset.truth_set_id,
+        observations=tuple(
+            EvaluationObservation(
+                case_id=case.case_id,
+                truth_case_id=case.truth_case_id,
+                target=OutcomeTarget.MINUTES,
+                predicted_value=predicted[index],
+                actual_value=actuals[index],
+            )
+            for index, case in enumerate(cases)
         ),
-        policy_id=policy.policy_id,
-        use_mode=LearningUseMode.PRODUCTION,
-        metrics=(metric,),
-        status=LearningEvaluationStatus.COMPLETE,
-        blockers=(),
-        source_artifact_ids=(metric_source,),
     )
-    stored = store_learning_object(report, store=store)
-    return report, stored.artifact_id
+    observation_artifact = store_learning_object(observations, store=store).artifact_id
+    report = evaluate_model(
+        training_run=training,
+        training_run_artifact_id=training_artifact,
+        dataset=dataset,
+        evaluation_dataset_artifact_id=dataset_artifact,
+        observation_set=observations,
+        observation_set_artifact_id=observation_artifact,
+        truth_registry=truth_registry,
+        truth_registry_artifact_id=truth_registry_artifact_id,
+        policy=policy,
+        policy_artifact_id=policy_artifact_id,
+        policy_registry=registry,
+        policy_registry_artifact_id=registry_artifact_id,
+        store=store,
+        production=True,
+    )
+    stored_report = store_learning_object(report, store=store)
+    return report, stored_report.artifact_id
 
 
 def synthetic_promoted_model_registry_generation(
@@ -148,31 +239,44 @@ def synthetic_promoted_model_registry_generation(
     candidate_model_id: str,
     authorized_at: str,
 ) -> str:
-    """Create a mechanism-only registry through the real V2 promotion functions."""
+    """Create mechanism-only champion lineage through the real truth-governed V2 path."""
 
-    policy, registry, registry_artifact = _policy_bundle(store=store, season=season)
+    policy, policy_artifact, registry, registry_artifact = _policy_bundle(
+        store=store,
+        season=season,
+    )
+    truth_registry, truth_registry_artifact = _truth(store)
+    outcome_artifacts, actuals = _official_minutes_outcomes(store)
     candidate_id = ModelArtifactId(candidate_model_id)
     incumbent_id = ModelArtifactId(_source_id(store, "incumbent-model"))
-    truth_set_id = EvaluationTruthSetId(_source_id(store, "shared-truth-set"))
-    realized_truth_set_id = EvaluationRealizedTruthSetId(
-        _source_id(store, "shared-realized-truth-set")
-    )
     candidate, candidate_artifact = _evaluation(
         store=store,
+        season=season,
         model_id=candidate_id,
         policy=policy,
-        truth_set_id=truth_set_id,
-        realized_truth_set_id=realized_truth_set_id,
-        value=1,
+        policy_artifact_id=policy_artifact,
+        registry=registry,
+        registry_artifact_id=registry_artifact,
+        truth_registry=truth_registry,
+        truth_registry_artifact_id=truth_registry_artifact,
+        outcome_artifacts=outcome_artifacts,
+        actuals=actuals,
+        predicted=(ExactMetricValue(60), ExactMetricValue(70)),
         label="candidate",
     )
     incumbent, incumbent_artifact = _evaluation(
         store=store,
+        season=season,
         model_id=incumbent_id,
         policy=policy,
-        truth_set_id=truth_set_id,
-        realized_truth_set_id=realized_truth_set_id,
-        value=6,
+        policy_artifact_id=policy_artifact,
+        registry=registry,
+        registry_artifact_id=registry_artifact,
+        truth_registry=truth_registry,
+        truth_registry_artifact_id=truth_registry_artifact,
+        outcome_artifacts=outcome_artifacts,
+        actuals=actuals,
+        predicted=(ExactMetricValue(55), ExactMetricValue(75)),
         label="incumbent",
     )
     comparison = compare_model_evaluations(
