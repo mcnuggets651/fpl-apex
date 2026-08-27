@@ -22,24 +22,30 @@ The planning bundle must match season, entry, gameweek and world. The retained r
 
 The authority-root registry is independently qualified and its qualification artifact is part of the manifest. Production requires the runtime registry backend identity and qualification scope to match that immutable qualification. Filesystem/in-memory mechanism tests do not constitute production qualification. The target production path is the PostgreSQL authority-root registry with persistent shared history and atomic compare-and-swap semantics.
 
-## Current pointer and TOCTOU protection
+## Current pointer, publication linearization and TOCTOU protection
 
 At validation start the exact season `current_root_id` is captured and must equal the manifest root. There is no synthetic generation counter used as a substitute for authority identity.
 
-Publication re-reads the root pointer immediately before the release current-pointer compare-and-swap and once more after the transaction. Answer resolution re-reads both the release current pointer and the root current pointer immediately before returning `CURRENT`. Any change is fail-closed.
+For the real PostgreSQL production adapters, release publication is linearized against the current authority root in one database transaction. The cutover transaction locks the season row in `authority_root_pointers` with `SELECT ... FOR UPDATE`, verifies the exact expected root, and compare-and-swaps the release pointer before releasing that root lock. A concurrent root CAS therefore cannot commit between root verification and release-pointer publication: it linearizes before publication and causes cutover to fail, or after publication has committed.
+
+The public cutover also performs a final root-pointer recheck after the publication transaction. A root rotation immediately after a valid publication is not treated as an atomic-publication failure, but it makes the old manifest/root closure non-current; the answer-serving gate therefore withholds it. Reference and mechanism-only non-PostgreSQL registries retain the portable before-CAS and after-transaction root checks, but they are not production qualification evidence.
+
+Answer resolution captures the exact release and root current pointers and re-reads both immediately before returning `CURRENT`. Any change during serving is fail-closed.
 
 ## Validity
 
 Root validity is half-open: `[valid_from, valid_until)`. Cutover requires the root to cover the release's complete declared validity horizon, not only the publication instant. Answer resolution replays the root, champion authority and release at the caller's actual `as_of`. A release that was valid when published therefore becomes non-actionable when any required authority expires.
 
-## Publication surface
+## Publication and serving surfaces
 
-`apex_fpl.control.production_cutover.execute_production_cutover` is the only supported production publication entry point. The historical transaction implementation is private (`_production_cutover_legacy.py`) and exists only to preserve its detailed proof/certificate mechanics beneath the rooted façade and to retain low-level regression coverage. Source tests reject unapproved imports of the private engine.
+`apex_fpl.control.production_cutover.execute_production_cutover` is the only supported V2 production publication entry point. The historical transaction implementation is private (`_production_cutover_legacy.py`) and exists only to preserve its detailed proof/certificate mechanics beneath the rooted façade and to retain low-level regression coverage. Source tests reject unapproved imports of the private engine.
 
-`apex_fpl.control.production_authority.resolve_production_answer_authority` is the production serving gate. It returns `CURRENT` only after release, manifest, root, champion and backend authority all reconcile at the requested `as_of`; otherwise it returns `UNAVAILABLE` with no actionable bundle.
+`apex_fpl.control.production_authority.resolve_production_answer_authority` is the V2 production serving gate. It returns `CURRENT` only after release, manifest, root, champion and backend authority all reconcile at the requested `as_of`; otherwise it returns `UNAVAILABLE` with no actionable bundle.
+
+The existing scheduled `Apex Unified` workflow still seals a transitional filesystem runtime packet through `scripts/stage_runtime_release.py`. That bridge is explicitly V1-compatible and is not V2 production activation. It must not be interpreted as satisfying PostgreSQL root-registry qualification or the rooted V2 cutover contract. Production activation requires an operator/runtime path that loads the qualified PostgreSQL adapters and invokes the public rooted cutover and serving gates.
 
 ## Certification and activation
 
-Certification is SHA-specific. A green run for an ancestor commit is not certification for a later head. Engineering certification requires the final frozen SHA to pass the repository's unit, backend-contract, lint, governance and build/provenance checks plus the authority-root adversarial tests.
+Certification is SHA-specific. A green run for an ancestor commit is not certification for a later head. Engineering certification requires the final frozen SHA to pass the repository's unit, backend-contract, lint, governance and build/provenance checks plus the authority-root adversarial and PostgreSQL atomic-publication tests. The dedicated backend-contract job carries these authority tests explicitly so they fail fast on production-control regressions rather than relying only on the broad suite.
 
 Engineering certification must be reported as **ENGINEERING CERTIFIED / WITHHELD** unless genuine target PostgreSQL evidence, current root, production candidate/champion and publication evidence exist for that same production context. CI success must never fabricate those artifacts, silently weaken qualification, merge the PR, switch a current production pointer, or make an FPL recommendation actionable.
