@@ -11,7 +11,7 @@ def replace_once(path: str, old: str, new: str) -> None:
 
 
 # Stored publication authorization replay must bind the same exact champion learning
-# evaluation/promotion subjects as issuance.  Replaying only the champion generation but
+# evaluation/promotion subjects as issuance. Replaying only the champion generation but
 # dropping its derived empirical bindings would make post-publication verification weaker.
 path = "src/apex_fpl/control/production_cutover.py"
 old = '''    empirical_bindings = _bundle_empirical_bindings(verified_bundle)\n    if authorization.champion_generation_artifact_id is not None:\n        if verified_bundle is None:\n            load_production_champion_generation(\n                authorization.champion_generation_artifact_id,\n                as_of=authorization.created_at,\n                store=artifact_store,\n            )\n        else:\n            verify_bundle_champion_authority(\n                authorization.champion_generation_artifact_id,\n                verified_bundle=verified_bundle,\n                as_of=authorization.created_at,\n                store=artifact_store,\n            )\n'''
@@ -56,8 +56,8 @@ replace_once(
 
 # Keep the design record explicit that issuance and replay use the same derived bindings.
 path = "docs/APEX_CHAMPION_AUTHORITY_V2.md"
-needle = "The production publication authorization stores the exact champion-generation artifact ID, and answer-authority replay verifies it again before a release may be considered current.\n"
-replacement = needle + "Stored publication-authorization replay re-derives the same forecast champion learning evidence used at issuance and rebuilds the exact model-evaluation/model-promotion empirical bindings; a valid but unrelated learning qualification is rejected both before publication and during later authority replay.\n"
+needle = "When a generation is supplied, cutover verifies its immutable artifact and independently replays it against the already verified production planning bundle before sealing authorization. The champion-generation artifact is retained in publication lineage.\n"
+replacement = needle + "\nStored publication-authorization replay re-derives the same forecast champion learning evidence used at issuance and rebuilds the exact model-evaluation/model-promotion empirical bindings; a valid but unrelated learning qualification is rejected both before publication and during later authority replay.\n"
 replace_once(path, needle, replacement)
 
 print("champion authorization replay parity patched")
