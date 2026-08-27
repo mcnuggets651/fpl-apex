@@ -35,7 +35,6 @@ from apex_fpl.core.reference_solver_worker import (
 )
 from apex_fpl.workers.reference_solver_planning import solve_planning_reference_request
 
-from immutable_fixture_cache import restore_cached_fixture, retain_cached_fixture
 from reference_solver_planning_finance_case import store_finance_qualification_case
 
 
@@ -81,17 +80,6 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
     The publication certificate is then built for the exact current PlanningResult. This is
     synthetic mechanism evidence only and never production qualification evidence.
     """
-
-    cache_key = str(fixture.bundle.bundle_id)
-    cached = restore_cached_fixture(
-        "planning-reference-solver-material",
-        cache_key,
-        store=store,
-    )
-    if cached is not None:
-        if not isinstance(cached, SyntheticPlanningParityMaterial):
-            raise TypeError("planning parity fixture cache type mismatch")
-        return cached
 
     verified = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
     policy = verified.decision_policy
@@ -215,7 +203,7 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         horizon_gameweeks=policy.horizon_gameweeks,
     )
 
-    material = SyntheticPlanningParityMaterial(
+    return SyntheticPlanningParityMaterial(
         planning_result_id=str(verified.decision.planning_result_id),
         certificate_artifact_id=stored_certificate.artifact_id,
         certificate_id=str(certificate.certificate_id),
@@ -226,12 +214,3 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         corpus_artifact_id=corpus_artifact_id,
         worker_code_artifact_id=worker_code_artifact_id,
     )
-    cached_material = retain_cached_fixture(
-        "planning-reference-solver-material",
-        cache_key,
-        material,
-        store=store,
-    )
-    if not isinstance(cached_material, SyntheticPlanningParityMaterial):
-        raise TypeError("planning parity fixture cache type mismatch")
-    return cached_material

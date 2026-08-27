@@ -13,6 +13,7 @@ from reference_solver_planning_helpers import SyntheticPlanningParityMaterial
 
 PARITY_PROOF_ID = "PO-REFERENCE-SOLVER-PARITY-001"
 _TARGET_MODULES = {
+    "test_v2_champion_authority",
     "test_v2_production_cutover",
     "test_v2_production_authority",
     "test_v2_production_planning_bundle",
