@@ -106,3 +106,7 @@ The test suite constructs mechanism-only authority artifacts so replay, stale-wr
 ## Production status
 
 Engineering implementation of the authority mechanism does not create a real champion. Actual V2 production remains WITHHELD until genuine prospective qualifications/reviews, exact deployed backend Plane-B evidence, a real production planning bundle, complete AssuranceCase, exact reference-solver authority and the full replayed publication chain pass inside the release validity window.
+
+## Engineering certification scope
+
+PR #87 may be called engineering-certified only from one exact human-authored frozen head that completes both normal Apex CI and V2 Shadow Production. `action_required`, cancelled, superseded or intermediate heads are not certification evidence. Apex CI must include the focused champion-authority/cutover/answer-authority contracts, full pytest, full Ruff, upstream pins, governance consistency and immutable build/SBOM/provenance evidence. That engineering certificate never substitutes for the genuine production evidence required above.
