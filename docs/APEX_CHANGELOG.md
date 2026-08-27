@@ -2,6 +2,15 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-27 — V2 explicit replayed champion authority chain
+- Added immutable reviewed `ChampionAdmissionCertificate` and parent-linked `ProductionChampionGeneration` contracts that keep empirical qualification separate from production selection authority.
+- Forecast champion authority now reuses and independently replays the existing learning-governance chain: exact candidate/incumbent production evaluations, common truth, comparison rows, qualified champion learning-policy registry and promotion rules must re-derive `PROMOTE`; a hand-authored PROMOTE certificate is insufficient.
+- DecisionPolicy, scenario-generator and scenario-policy champions require exact typed empirical qualification plus separate retained reviewed admissions; review and generation authorization timestamps are timezone-aware and point-in-time replayed.
+- Production publication authorization is schema v2 and binds the exact champion-generation artifact. Cutover and answer authority independently replay it against the exact schema-v2 planning bundle; missing or mismatched authority is non-actionable.
+- Added adversarial chronology, stale-writer, swapped-candidate, exact-qualification and forged-promotion tests; runtime publication remains verifier-only and cannot create admissions/promotions/generations.
+- Added focused Apex CI and V2 Shadow trigger coverage, `APEX_CHAMPION_AUTHORITY_V2.md`, D036, constitutional invariant/requirement traceability and cutover runbook integration.
+- This mechanism does not fabricate real production champions, prospective outcomes, deployed Plane-B backend evidence or a PUBLISHED V2 release. Production remains WITHHELD.
+
 ## 2026-08-26 — V2 prospective empirical operations plane
 - Added fail-closed production PostgreSQL runtime selection through `APEX_PRODUCTION_POSTGRES_DSN` with no filesystem fallback and credential-safe persisted backend identity reporting.
 - Added immutable SHADOW forecast-model and receding-horizon DecisionPolicy candidate materialization; operator execution time owns candidate availability and candidate commands never mutate champion registries.

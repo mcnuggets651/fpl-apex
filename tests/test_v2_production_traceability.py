@@ -16,9 +16,13 @@ PLANNER_REQUIREMENT_ID = "REQ-RECEDING-HORIZON-PLANNER"
 ASSURANCE_REQUIREMENT_ID = "REQ-INDEPENDENT-DECISION-ASSURANCE"
 CUTOVER = ROOT / "src/apex_fpl/control/production_cutover.py"
 AUTHORITY = ROOT / "src/apex_fpl/control/production_authority.py"
+CHAMPION_AUTHORITY = ROOT / "src/apex_fpl/control/champion_authority.py"
+PROMOTION_REPLAY = ROOT / "src/apex_fpl/control/learning_promotion_replay.py"
+CHAMPION_DOC = ROOT / "docs/APEX_CHAMPION_AUTHORITY_V2.md"
 INVARIANTS = {
     "INV-PRODUCTION-CERTIFICATE-ONLY",
     "INV-PRODUCTION-PLANNING-AUTHORITY",
+    "INV-PRODUCTION-CHAMPION-AUTHORITY",
     "INV-PRODUCTION-BACKEND-QUALIFIED",
     "INV-PRODUCTION-CAS-ATOMIC",
     "INV-PRODUCTION-WITHHELD-NON-ACTIONABLE",
@@ -45,7 +49,8 @@ def _test_functions(path: Path) -> set[str]:
     return {
         node.name
         for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
     }
 
 
@@ -57,12 +62,14 @@ def _assert_declared_paths_exist(requirement: dict[str, object]) -> None:
 
 
 def test_slice13_production_proof_requirement_and_invariant_traceability_is_closed() -> None:
-    proofs = _yaml(ROOT / "config" / "proof_obligations.yaml")["proof_obligations"]
-    requirements = _yaml(ROOT / "config" / "requirements.yaml")["requirements"]
+    proofs = _yaml(ROOT / "config/proof_obligations.yaml")["proof_obligations"]
+    requirements = _yaml(ROOT / "config/requirements.yaml")["requirements"]
     assert isinstance(proofs, list) and isinstance(requirements, list)
 
     proof = next(row for row in proofs if row["proof_id"] == PROOF_ID)
-    requirement = next(row for row in requirements if row["requirement_id"] == REQUIREMENT_ID)
+    requirement = next(
+        row for row in requirements if row["requirement_id"] == REQUIREMENT_ID
+    )
     assert proof["release_policy"] == "REQUIRED"
     assert proof["scope"] == "production_control_plane_build"
     assert "ProductionCutoverReport" not in set(proof["required_evidence"])
@@ -70,13 +77,17 @@ def test_slice13_production_proof_requirement_and_invariant_traceability_is_clos
     assert "ProductionPlanningBundle" in set(proof["required_evidence"])
     assert "PlanningResultId" in set(proof["required_evidence"])
     assert "PlanningReferenceSolverCertificateId" in set(proof["required_evidence"])
+    assert "ProductionChampionGeneration" in set(proof["required_evidence"])
+    assert "ModelRegistryGenerationId" in set(proof["required_evidence"])
+    assert "ModelPromotionId" in set(proof["required_evidence"])
+    assert "ModelEvaluationId" in set(proof["required_evidence"])
     assert "ProductionDecisionBundle" not in set(proof["required_evidence"])
     assert requirement["critical"] is True
     assert PROOF_ID in requirement["proof_obligations"]
     assert REFERENCE_SOLVER_PROOF_ID in requirement["proof_obligations"]
     assert INVARIANTS.issubset(set(requirement["invariants"]))
 
-    invariant_text = (ROOT / "docs" / "APEX_INVARIANTS.md").read_text(encoding="utf-8")
+    invariant_text = (ROOT / "docs/APEX_INVARIANTS.md").read_text(encoding="utf-8")
     for invariant in INVARIANTS:
         assert f"**{invariant}**" in invariant_text
 
@@ -100,8 +111,60 @@ def test_cutover_and_answer_authority_both_replay_exact_production_bundle() -> N
     assert "load_production_decision_bundle" not in authority
 
 
+def test_cutover_and_answer_authority_both_replay_exact_champion_authority() -> None:
+    cutover = CUTOVER.read_text(encoding="utf-8")
+    authority = AUTHORITY.read_text(encoding="utf-8")
+    champion = CHAMPION_AUTHORITY.read_text(encoding="utf-8")
+    promotion = PROMOTION_REPLAY.read_text(encoding="utf-8")
+
+    assert "verify_bundle_champion_authority(" in cutover
+    assert "verify_bundle_champion_authority(" in authority
+    assert "verify_forecast_registry_champion(" in champion
+    assert "verify_model_evaluation_replay(" in promotion
+    assert "evaluate_model(" in promotion
+    assert "apply_model_promotion(" in promotion
+    assert "registry.verify_policy(" in promotion
+    assert "production=True" in promotion
+    assert "did not exist at replay as_of" in champion
+
+
+def test_runtime_publication_paths_are_champion_verifier_only() -> None:
+    forbidden = (
+        "issue_champion_admission(",
+        "create_production_champion_generation(",
+        "issue_model_promotion_certificate(",
+        "apply_model_promotion(",
+    )
+    for path in (CUTOVER, AUTHORITY):
+        text = path.read_text(encoding="utf-8")
+        for symbol in forbidden:
+            assert symbol not in text
+
+    champion_doc = CHAMPION_DOC.read_text(encoding="utf-8")
+    assert "verifier-only" in champion_doc
+    assert "Qualification" in champion_doc
+    assert "champion" in champion_doc
+
+
+def test_champion_authority_is_explicitly_owned_by_production_requirement() -> None:
+    requirements = _yaml(ROOT / "config/requirements.yaml")["requirements"]
+    assert isinstance(requirements, list)
+    requirement = next(
+        row for row in requirements if row["requirement_id"] == REQUIREMENT_ID
+    )
+    assert "INV-PRODUCTION-CHAMPION-AUTHORITY" in set(requirement["invariants"])
+    assert {
+        "src/apex_fpl/core/champion_authority.py",
+        "src/apex_fpl/control/champion_authority.py",
+        "src/apex_fpl/control/learning_promotion_replay.py",
+        "docs/APEX_CHAMPION_AUTHORITY_V2.md",
+    }.issubset(set(requirement["implementation"]))
+    assert "tests/test_v2_champion_authority.py" in set(requirement["tests"])
+    _assert_declared_paths_exist(requirement)
+
+
 def test_receding_horizon_planner_has_explicit_constitutional_ownership() -> None:
-    requirements = _yaml(ROOT / "config" / "requirements.yaml")["requirements"]
+    requirements = _yaml(ROOT / "config/requirements.yaml")["requirements"]
     assert isinstance(requirements, list)
     planner = next(
         row for row in requirements if row["requirement_id"] == PLANNER_REQUIREMENT_ID
@@ -122,18 +185,22 @@ def test_receding_horizon_planner_has_explicit_constitutional_ownership() -> Non
     }.issubset(set(planner["tests"]))
     _assert_declared_paths_exist(planner)
 
-    invariant_text = (ROOT / "docs" / "APEX_INVARIANTS.md").read_text(encoding="utf-8")
+    invariant_text = (ROOT / "docs/APEX_INVARIANTS.md").read_text(encoding="utf-8")
     for invariant in PLANNER_INVARIANTS:
         assert f"**{invariant}**" in invariant_text
 
 
 def test_independent_production_assurance_is_planning_v2_bound() -> None:
-    proofs = _yaml(ROOT / "config" / "proof_obligations.yaml")["proof_obligations"]
-    requirements = _yaml(ROOT / "config" / "requirements.yaml")["requirements"]
+    proofs = _yaml(ROOT / "config/proof_obligations.yaml")["proof_obligations"]
+    requirements = _yaml(ROOT / "config/requirements.yaml")["requirements"]
     assert isinstance(proofs, list) and isinstance(requirements, list)
-    proof = next(row for row in proofs if row["proof_id"] == REFERENCE_SOLVER_PROOF_ID)
+    proof = next(
+        row for row in proofs if row["proof_id"] == REFERENCE_SOLVER_PROOF_ID
+    )
     assurance = next(
-        row for row in requirements if row["requirement_id"] == ASSURANCE_REQUIREMENT_ID
+        row
+        for row in requirements
+        if row["requirement_id"] == ASSURANCE_REQUIREMENT_ID
     )
 
     assert proof["release_policy"] == "REQUIRED"
@@ -160,7 +227,7 @@ def test_independent_production_assurance_is_planning_v2_bound() -> None:
 
 
 def test_production_constitutional_proof_surface_tracks_every_required_obligation() -> None:
-    proofs = _yaml(ROOT / "config" / "proof_obligations.yaml")["proof_obligations"]
+    proofs = _yaml(ROOT / "config/proof_obligations.yaml")["proof_obligations"]
     assert isinstance(proofs, list)
     required = {
         str(row["proof_id"])

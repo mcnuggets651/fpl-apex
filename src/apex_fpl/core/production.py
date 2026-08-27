@@ -165,6 +165,7 @@ class ProductionPublicationAuthorization:
     created_at: str
     valid_until: str | None
     artifact_manifest_id: str
+    champion_generation_artifact_id: str | None
     assurance_case_id: str
     assurance_case_artifact_id: str
     proof_obligations_artifact_id: str
@@ -174,16 +175,18 @@ class ProductionPublicationAuthorization:
     backend_qualification_id: str
     backend_qualification_snapshot_artifact_id: str
     backend_qualification_artifact_ids: tuple[str, ...]
-    schema_version: int = 1
+    schema_version: int = 2
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if self.schema_version != 2:
             raise ValueError("unsupported ProductionPublicationAuthorization schema_version")
         season = str(self.season).strip()
         runtime_digest = str(self.runtime_digest).strip()
         created_at = str(self.created_at).strip()
         valid_until = None if self.valid_until is None else str(self.valid_until).strip()
         manifest_id = str(self.artifact_manifest_id).strip()
+        champion_raw = self.champion_generation_artifact_id
+        champion_artifact = None if champion_raw is None else str(champion_raw).strip()
         case_id = str(self.assurance_case_id).strip()
         case_artifact = str(self.assurance_case_artifact_id).strip()
         proof_artifact = str(self.proof_obligations_artifact_id).strip()
@@ -193,6 +196,16 @@ class ProductionPublicationAuthorization:
             raise ValueError("production authorization requires season/runtime/time/manifest")
         if self.valid_until is not None and not valid_until:
             raise ValueError("production authorization valid_until cannot be empty")
+        if champion_raw is not None and not champion_artifact:
+            raise ValueError("production authorization champion generation cannot be empty")
+        if champion_artifact is not None:
+            algorithm, separator, digest = champion_artifact.partition(":")
+            if algorithm != "sha256" or not separator or len(digest) != 64:
+                raise ValueError("production authorization champion generation must be sha256 identity")
+            try:
+                int(digest, 16)
+            except ValueError as exc:
+                raise ValueError("production authorization champion generation digest is invalid") from exc
         if isinstance(self.entry, bool) or not isinstance(self.entry, int) or self.entry <= 0:
             raise ValueError("production authorization entry must be positive integer")
         if isinstance(self.gameweek, bool) or not isinstance(self.gameweek, int) or self.gameweek <= 0:
@@ -229,6 +242,7 @@ class ProductionPublicationAuthorization:
         object.__setattr__(self, "created_at", created_at)
         object.__setattr__(self, "valid_until", valid_until)
         object.__setattr__(self, "artifact_manifest_id", manifest_id)
+        object.__setattr__(self, "champion_generation_artifact_id", champion_artifact)
         object.__setattr__(self, "assurance_case_id", case_id)
         object.__setattr__(self, "assurance_case_artifact_id", case_artifact)
         object.__setattr__(self, "proof_obligations_artifact_id", proof_artifact)
@@ -247,6 +261,7 @@ class ProductionPublicationAuthorization:
             and self.bundle_id is not None
             and self.world_id is not None
             and self.valid_until is not None
+            and self.champion_generation_artifact_id is not None
         )
 
     def semantic_payload(self) -> dict[str, object]:
@@ -262,6 +277,7 @@ class ProductionPublicationAuthorization:
             "created_at": self.created_at,
             "valid_until": self.valid_until,
             "artifact_manifest_id": self.artifact_manifest_id,
+            "champion_generation_artifact_id": self.champion_generation_artifact_id,
             "assurance_case_id": self.assurance_case_id,
             "assurance_case_artifact_id": self.assurance_case_artifact_id,
             "proof_obligations_artifact_id": self.proof_obligations_artifact_id,

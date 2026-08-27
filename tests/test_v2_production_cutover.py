@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.champion_authority import verify_bundle_champion_authority
 from apex_fpl.control.experiment_registry import (
     ExperimentRegistration,
     ExperimentRegistry,
@@ -14,16 +16,21 @@ from apex_fpl.control.experiment_registry import (
     store_experiment_registry,
     store_experiment_result,
 )
+from apex_fpl.control.learning_promotion_replay import verify_forecast_registry_champion
 from apex_fpl.control.production_cutover import (
+    _seal_release_policy,
     execute_production_cutover,
     load_production_cutover_report,
+    load_production_publication_authorization,
 )
+from apex_fpl.control.production_planning_bundle import load_production_planning_bundle
 from apex_fpl.control.release_registry import (
     CompareAndSwapConflict,
     FileSystemReleaseRegistry,
     ReleaseKey,
     ReleaseStatus,
 )
+from apex_fpl.core.canonical import canonical_json_bytes
 from apex_fpl.core.experiments import (
     ExactQualificationValue,
     ExperimentDefinition,
@@ -52,9 +59,12 @@ from apex_fpl.core.proofs import (
 )
 
 from backend_qualification_helpers import synthetic_production_backend_qualification
+from champion_authority_helpers import synthetic_production_champion_authority
+from empirical_qualification_helpers import synthetic_supported_qualification_artifact
 from production_bundle_helpers import synthetic_production_bundle
 from production_planning_bundle_helpers import (
     DirectQualificationMaterial,
+    _qualification_material,
     synthetic_production_planning_bundle,
 )
 from reference_solver_planning_helpers import synthetic_planning_parity_material
@@ -250,9 +260,56 @@ def _case(
     missing: str | None = None,
     inconclusive: str | None = None,
     scope: str = SCOPE,
+    unrelated_learning_proof: str | None = None,
 ) -> AssuranceCase:
     fixture = _fixture(store)
-    direct = fixture.direct_qualifications
+    authority = synthetic_production_champion_authority(
+        store=store,
+        fixture=fixture,
+        reviewed_at=CREATED_AT,
+    )
+    verified_bundle = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
+    verified_generation = verify_bundle_champion_authority(
+        authority.generation.artifact_id,
+        verified_bundle=verified_bundle,
+        as_of=CREATED_AT,
+        store=store,
+    )
+    learning = verify_forecast_registry_champion(
+        verified_generation.generation.forecast_registry_generation_artifact_id,
+        season=SEASON,
+        as_of=verified_generation.generation.authorized_at,
+        store=store,
+    )
+    direct = dict(fixture.direct_qualifications)
+    evaluation = learning.promotion.candidate.report
+    evaluation_qualification = synthetic_supported_qualification_artifact(
+        store=store,
+        subject_payload=evaluation.semantic_payload(),
+        subject_kind="apex.model-evaluation",
+        proof_id="PO-MODEL-EVALUATION-001",
+        season=SEASON,
+        valid_until=VALID_UNTIL,
+    )
+    direct["PO-MODEL-EVALUATION-001"] = _qualification_material(
+        store=store,
+        artifact_id=evaluation_qualification,
+        semantic_evidence_id=str(evaluation.evaluation_id),
+    )
+    promotion = learning.promotion.certificate
+    promotion_qualification = synthetic_supported_qualification_artifact(
+        store=store,
+        subject_payload=promotion.semantic_payload(),
+        subject_kind="apex.model-promotion",
+        proof_id="PO-MODEL-PROMOTION-001",
+        season=SEASON,
+        valid_until=VALID_UNTIL,
+    )
+    direct["PO-MODEL-PROMOTION-001"] = _qualification_material(
+        store=store,
+        artifact_id=promotion_qualification,
+        semantic_evidence_id=str(promotion.promotion_id),
+    )
     parity = (
         None
         if missing == PARITY_PROOF_ID or inconclusive == PARITY_PROOF_ID
@@ -266,7 +323,7 @@ def _case(
         artifact_ids = [claim_artifact]
         evidence_ids = ["synthetic-evidence"]
         if empirical and proof_id != inconclusive:
-            if proof_id in direct:
+            if proof_id in direct and proof_id != unrelated_learning_proof:
                 qualification_artifact, subject_id, experiment_id, semantic_id = (
                     _direct_claim_evidence(direct[proof_id])
                 )
@@ -323,10 +380,18 @@ def _execute(
     store=None,
     registry=None,
     valid_until: str | None = VALID_UNTIL,
+    with_champion_authority: bool = True,
 ):
     store = store or _DurableArtifactStore(tmp_path / "artifacts")
     registry = registry or _DurableReleaseRegistry(tmp_path / "production")
     fixture = _fixture(store)
+    champion_artifact_id = (
+        synthetic_production_champion_authority(
+            store=store, fixture=fixture, reviewed_at=CREATED_AT
+        ).generation.artifact_id
+        if with_champion_authority
+        else None
+    )
     manifest = _artifact(store, "manifest")
     claim_artifact = _artifact(store, "claim")
     return store, registry, execute_production_cutover(
@@ -344,6 +409,7 @@ def _execute(
         backend_qualification=backend or _backend(store, registry),
         artifact_store=store,
         production_registry=registry,
+        champion_generation_artifact_id=champion_artifact_id,
     )
 
 
@@ -368,6 +434,104 @@ def test_production_cutover_publishes_only_after_complete_pass_and_exact_cas(tmp
         artifact_store=store,
     )
     assert replayed.report_id == outcome.report.report_id
+
+
+def test_missing_champion_authority_is_withheld_without_pointer_write(tmp_path: Path) -> None:
+    store, registry, outcome = _execute(tmp_path, with_champion_authority=False)
+    assert outcome.report.status is ProductionCutoverStatus.WITHHELD
+    assert outcome.release_record.status is ReleaseStatus.WITHHELD
+    assert any("champion authority is missing" in item for item in outcome.report.cutover_blockers)
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+
+
+@pytest.mark.parametrize(
+    "proof_id",
+    ("PO-MODEL-EVALUATION-001", "PO-MODEL-PROMOTION-001"),
+)
+def test_unrelated_valid_learning_empirical_proof_cannot_authorize_champion_chain(
+    tmp_path: Path,
+    proof_id: str,
+) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    claim_artifact = _artifact(store, "claim")
+    case = _case(
+        store,
+        claim_artifact,
+        unrelated_learning_proof=proof_id,
+    )
+    with pytest.raises(ValueError, match=rf"matching typed qualification evidence: {proof_id}"):
+        _execute(
+            tmp_path,
+            case=case,
+            store=store,
+            registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+@pytest.mark.parametrize(
+    "proof_id",
+    ("PO-MODEL-EVALUATION-001", "PO-MODEL-PROMOTION-001"),
+)
+def test_stored_authorization_replay_rejects_unrelated_valid_learning_proof(
+    tmp_path: Path,
+    proof_id: str,
+) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    _, _, outcome = _execute(
+        tmp_path,
+        store=store,
+        registry=registry,
+    )
+    authorization_artifact_id = (
+        outcome.release_record.publication_authorization_artifact_id
+    )
+    assert authorization_artifact_id is not None
+    authorization = load_production_publication_authorization(
+        authorization_artifact_id,
+        artifact_store=store,
+    )
+
+    unrelated_case = _case(
+        store,
+        _artifact(store, f"replay-unrelated-claim:{proof_id}"),
+        unrelated_learning_proof=proof_id,
+    )
+    case_artifact_id, proof_artifact_id = _seal_release_policy(
+        unrelated_case,
+        _obligations(),
+        store=store,
+    )
+    forged = replace(
+        authorization,
+        assurance_case_id=unrelated_case.case_id,
+        assurance_case_artifact_id=case_artifact_id,
+        proof_obligations_artifact_id=proof_artifact_id,
+    )
+    forged_ref = store.put_bytes(
+        canonical_json_bytes(
+            {
+                "schema_name": "apex-stored-production-publication-authorization",
+                "schema_version": 1,
+                "authorization_id": forged.authorization_id,
+                "payload": forged.semantic_payload(),
+            }
+        ),
+        media_type="application/json",
+        schema_name="apex-stored-production-publication-authorization",
+        schema_version="1",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=rf"matching typed qualification evidence: {proof_id}",
+    ):
+        load_production_publication_authorization(
+            forged_ref.artifact_id,
+            artifact_store=store,
+        )
 
 
 def test_legacy_v1_bundle_is_rejected_before_pointer_write(tmp_path: Path) -> None:
@@ -690,26 +854,13 @@ def test_missing_required_proof_withholds_and_never_moves_production_pointer(tmp
 def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
-    fixture = _fixture(store)
-    manifest = _artifact(store, "manifest")
-    claim = _artifact(store, "claim")
     backend = _backend(store, registry, qualified=False)
     assert backend.qualified is False
-    outcome = execute_production_cutover(
-        season=SEASON,
-        entry=ENTRY,
-        gameweek=GAMEWEEK,
-        bundle_id=fixture.bundle.bundle_id,
-        world_id=fixture.bundle.world_id,
-        runtime_digest="sha256:v2-runtime",
-        created_at=CREATED_AT,
-        valid_until=VALID_UNTIL,
-        artifact_manifest_id=manifest,
-        assurance_case=_case(store, claim),
-        obligations=_obligations(),
-        backend_qualification=backend,
-        artifact_store=store,
-        production_registry=registry,
+    _, _, outcome = _execute(
+        tmp_path,
+        backend=backend,
+        store=store,
+        registry=registry,
     )
 
     assert outcome.report.release_certificate_status == "PASS"
@@ -848,25 +999,12 @@ def test_stale_writer_fails_closed_and_cannot_become_current(tmp_path: Path) -> 
     qualification_registry = _DurableReleaseRegistry(root)
     backend = _backend(store, qualification_registry)
     registry = _StaleRegistry(root)
-    fixture = _fixture(store)
-    manifest = _artifact(store, "manifest")
-    claim = _artifact(store, "claim")
     with pytest.raises(CompareAndSwapConflict, match="stale production"):
-        execute_production_cutover(
-            season=SEASON,
-            entry=ENTRY,
-            gameweek=GAMEWEEK,
-            bundle_id=fixture.bundle.bundle_id,
-            world_id=fixture.bundle.world_id,
-            runtime_digest="sha256:v2-runtime",
-            created_at=CREATED_AT,
-            valid_until=VALID_UNTIL,
-            artifact_manifest_id=manifest,
-            assurance_case=_case(store, claim),
-            obligations=_obligations(),
-            backend_qualification=backend,
-            artifact_store=store,
-            production_registry=registry,
+        _execute(
+            tmp_path,
+            backend=backend,
+            store=store,
+            registry=registry,
         )
     assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 

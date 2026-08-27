@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Protocol
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.champion_authority import verify_bundle_champion_authority
 from apex_fpl.control.production_backend_qualification import (
     load_production_backend_qualification,
 )
@@ -172,6 +173,17 @@ def resolve_production_answer_authority(
         return _unavailable(key, "production planning bundle scope does not match ReleaseRecord")
     if str(bundle.world_id) != record.world_id:
         return _unavailable(key, "production planning bundle world does not match ReleaseRecord")
+    if authorization.champion_generation_artifact_id is None:
+        return _unavailable(key, "publication authorization lacks production champion authority")
+    try:
+        verify_bundle_champion_authority(
+            authorization.champion_generation_artifact_id,
+            verified_bundle=verified_bundle,
+            as_of=authorization.created_at,
+            store=artifact_store,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        return _unavailable(key, f"current production champion authority is invalid: {exc}")
 
     try:
         qualification = load_production_backend_qualification(

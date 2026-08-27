@@ -1,6 +1,14 @@
 # Apex FPL project status
 
-**Status date:** 7 August 2026
+**Status date:** 27 August 2026
+
+## V2 control-plane status — 27 August 2026
+
+Apex V2 is in a stacked engineering-certification migration, not live production cutover. PRs #75–#86 remain the preceding unmerged V2 stack; #86 is engineering-certified but production is WITHHELD. PR #87 adds explicit champion selection authority so a qualified candidate or mutable registry/configuration row cannot become production authority by implication.
+
+#87 now binds production publication and answer authority to one immutable point-in-time `ProductionChampionGeneration`. Forecast champion authority must be independently re-derived from exact retained learning evaluation/comparison/policy evidence; DecisionPolicy, scenario-generator and scenario-policy champions require separate reviewed admissions with typed empirical qualifications. The exact generation must match the schema-v2 production planning bundle and is retained in schema-v2 `ProductionPublicationAuthorization`. Synthetic fixtures prove mechanism only.
+
+No real 2026/27 forecast champion, DecisionPolicy champion, scenario champion, planning reference-solver champion, deployed production PostgreSQL Plane-B evidence, prospective future qualification outcome or PUBLISHED V2 release is asserted. Until those genuine authorities exist and the full cutover chain passes, `ready_to_act` and `safe_to_act` remain false for V2 production.
 
 ## Current state
 
