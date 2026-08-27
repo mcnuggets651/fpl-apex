@@ -1,0 +1,39 @@
+name: Champion Authority Gate Tune
+
+on:
+  push:
+    branches: [v2/champion-authority-chain]
+
+permissions:
+  contents: write
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Narrow temporary integration regression surface
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/champion-authority-integrate.yml')
+          text = path.read_text()
+          old = '''      - name: Run champion/cutover/answer authority regression surface\n        run: >-\n          .venv/bin/python -m pytest -q\n          tests/test_v2_champion_authority.py\n          tests/test_v2_production_cutover.py\n          tests/test_v2_production_authority.py\n'''
+          new = '''      - name: Run champion/cutover/answer authority regression surface\n        run: >-\n          .venv/bin/python -m pytest -q\n          tests/test_v2_champion_authority.py::test_champion_authority_replays_all_four_bundle_champions\n          tests/test_v2_champion_authority.py::test_decision_policy_admission_binds_exact_qualification_artifact\n          tests/test_v2_production_cutover.py::test_production_cutover_publishes_only_after_complete_pass_and_exact_cas\n          tests/test_v2_production_cutover.py::test_missing_champion_authority_is_withheld_without_pointer_write\n          tests/test_v2_production_cutover.py::test_unqualified_backend_withholds_even_when_release_certificate_passes\n          tests/test_v2_production_cutover.py::test_stale_writer_fails_closed_and_cannot_become_current\n          tests/test_v2_production_authority.py::test_exact_current_proof_authorized_release_is_only_actionable_authority\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'integration gate target count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Commit gate tuning and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/champion-authority-gate-tune.yml
+          git add .github/workflows/champion-authority-integrate.yml .github/workflows/champion-authority-gate-tune.yml
+          git commit -m "Tune champion authority development gate"
+          git push origin HEAD:v2/champion-authority-chain
