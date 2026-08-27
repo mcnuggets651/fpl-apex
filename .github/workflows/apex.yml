@@ -52,6 +52,7 @@ jobs:
           tests/test_v2_production_backend_runtime.py
           tests/test_v2_prospective_empirical_operations.py
           tests/test_v2_champion_authority.py
+          tests/test_v2_learning_promotion_replay.py
           tests/test_v2_production_cutover.py
           tests/test_v2_production_authority.py
           tests/test_v2_production_traceability.py
@@ -84,6 +85,7 @@ jobs:
           tests/test_v2_production_backend_runtime.py
           tests/test_v2_prospective_empirical_operations.py
           tests/test_v2_champion_authority.py
+          tests/test_v2_learning_promotion_replay.py
           tests/test_v2_production_cutover.py
           tests/test_v2_production_authority.py
           tests/test_v2_production_traceability.py
