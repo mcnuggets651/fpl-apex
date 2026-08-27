@@ -1,0 +1,50 @@
+name: Land immutable test fixture cache
+
+on:
+  push:
+    branches: [v2/champion-authority-chain]
+    paths:
+      - scripts/land_immutable_test_fixture_cache.py
+      - .github/workflows/land-immutable-test-fixture-cache.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: land-immutable-test-fixture-cache
+  cancel-in-progress: true
+
+jobs:
+  land:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Apply immutable fixture cache refactor
+        run: python scripts/land_immutable_test_fixture_cache.py
+      - name: Validate permanent diff
+        shell: bash
+        run: |
+          python -m compileall -q \
+            tests/immutable_fixture_cache.py \
+            tests/production_planning_bundle_helpers.py \
+            tests/champion_authority_helpers.py \
+            tests/reference_solver_planning_helpers.py \
+            tests/test_v2_production_cutover.py
+          git diff --check
+          test -f tests/immutable_fixture_cache.py
+      - name: Commit permanent refactor and retire landing machinery
+        shell: bash
+        run: |
+          rm scripts/land_immutable_test_fixture_cache.py
+          rm .github/workflows/land-immutable-test-fixture-cache.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --cached --quiet; then
+            echo "No changes to land"
+            exit 1
+          fi
+          git commit -m "Cache immutable synthetic control-plane fixtures"
+          git push origin HEAD:v2/champion-authority-chain
