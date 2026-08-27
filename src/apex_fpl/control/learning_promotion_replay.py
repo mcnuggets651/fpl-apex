@@ -1,23 +1,83 @@
-"""Replay verification for forecast-model promotion authority.
+"""Replay verification for forecast-model champion authority.
 
-The learning engine owns promotion semantics. This verifier consumes only retained
-content-addressed outputs and re-derives the final promotion decision from the exact
-candidate/incumbent evaluation rows, comparison rows and qualified champion learning
-policy that were available when production champion authority was authorized.
+Production champion authority must not trust a caller-authored ``COMPLETE`` evaluation,
+``PROMOTE`` certificate or registry row.  This module reconstructs the retained learning
+inputs, re-runs the canonical evaluator/comparison/promotion functions and replays each
+parent-linked model-registry transition before a forecast champion can be accepted.
 """
 
 from __future__ import annotations
 
-from fractions import Fraction
+from dataclasses import dataclass
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.learning_evaluator import evaluate_model
 from apex_fpl.control.learning_policy_registry import (
     LearningPolicyRegistry,
     load_learning_policy_registry_bytes,
 )
+from apex_fpl.control.learning_promotion import (
+    apply_model_promotion,
+    compare_model_evaluations,
+    issue_model_promotion_certificate,
+)
 from apex_fpl.control.learning_store import StoredLearningObject, load_learning_object
-from apex_fpl.core.learning_common import ModelPromotionDecision
-from apex_fpl.core.learning_policy import LearningEvaluationPolicy, MetricPromotionRule
+from apex_fpl.control.outcome_truth_registry import load_outcome_truth_registry_bytes
+from apex_fpl.core.identity import OfficialPlayerId
+from apex_fpl.core.ids import (
+    EvaluationDatasetId,
+    EvaluationObservationSetId,
+    EvaluationTruthSetId,
+    FeatureSnapshotId,
+    ForecastId,
+    LearningPolicyId,
+    ModelArtifactId,
+    ModelComparisonId,
+    ModelEvaluationId,
+    ModelPromotionId,
+    ModelRegistryGenerationId,
+    OutcomeTruthRegistryId,
+)
+from apex_fpl.core.learning_common import (
+    ExactMetricValue,
+    ModelPromotionDecision,
+    instant,
+)
+from apex_fpl.core.learning_dataset import EvaluationCase, EvaluationDataset
+from apex_fpl.core.learning_evaluation import ModelEvaluationReport
+from apex_fpl.core.learning_observations import EvaluationObservation, EvaluationObservationSet
+from apex_fpl.core.learning_policy import LearningEvaluationPolicy
+from apex_fpl.core.learning_promotion import ModelPromotionCertificate, ModelRegistryGeneration
+from apex_fpl.core.learning_training import ModelTrainingRun
+from apex_fpl.core.outcome_truth import OutcomeTarget, OutcomeTruthRegistry
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedModelEvaluationReplay:
+    stored: StoredLearningObject
+    report: ModelEvaluationReport
+    policy: LearningEvaluationPolicy
+    policy_registry: LearningPolicyRegistry
+    policy_registry_artifact_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedModelPromotionReplay:
+    stored: StoredLearningObject
+    certificate: ModelPromotionCertificate
+    candidate: VerifiedModelEvaluationReplay
+    incumbent: VerifiedModelEvaluationReplay
+    comparison_artifact_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedForecastChampionEvidence:
+    registry_generation_artifact_id: str
+    registry_generation: ModelRegistryGeneration
+    champion_model_id: str
+    promotion_artifact_id: str
+    promotion: VerifiedModelPromotionReplay
+
 
 
 def _strict_int(value: object, *, label: str) -> int:
@@ -26,57 +86,36 @@ def _strict_int(value: object, *, label: str) -> int:
     return value
 
 
-def _exact(value: object, *, label: str) -> Fraction:
-    if not isinstance(value, dict):
-        raise ValueError(f"{label} must be exact-value object")
-    numerator = _strict_int(value.get("numerator"), label=f"{label} numerator")
-    denominator = _strict_int(value.get("denominator"), label=f"{label} denominator")
-    if denominator == 0:
-        raise ValueError(f"{label} denominator cannot be zero")
-    return Fraction(numerator, denominator)
-
-
-def _rows(value: object, *, label: str) -> list[dict[str, object]]:
-    if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
-        raise ValueError(f"{label} must be array of objects")
-    return [dict(row) for row in value]
-
-
-def _source_ids(
-    stored: StoredLearningObject,
-    *,
-    label: str,
-) -> tuple[str, ...]:
-    raw = stored.payload.get("source_artifact_ids")
-    if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
-        raise ValueError(f"{label} payload source artifacts must be string array")
-    canonical = tuple(sorted(set(raw)))
-    if len(canonical) != len(raw):
-        raise ValueError(f"{label} payload source artifacts must be unique/canonical")
-    if canonical != stored.source_artifact_ids:
-        raise ValueError(f"{label} envelope/payload source artifacts disagree")
+def _string_list(value: object, *, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError(f"{label} must be string array")
+    canonical = tuple(sorted(set(value)))
+    if canonical != tuple(value):
+        raise ValueError(f"{label} must be canonical sorted unique array")
     return canonical
 
 
-def _metric_key(row: dict[str, object], *, label: str) -> tuple[str, str, str]:
-    metric = str(row.get("metric") or "").strip()
-    target = str(row.get("target") or "").strip()
-    cohort = str(row.get("cohort") or "").strip()
-    if not all((metric, target, cohort)):
-        raise ValueError(f"{label} metric key is incomplete")
-    return metric, target, cohort
+def _metric_value(value: object, *, label: str) -> ExactMetricValue:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be exact-value object")
+    return ExactMetricValue(
+        _strict_int(value.get("numerator"), label=f"{label} numerator"),
+        _strict_int(value.get("denominator"), label=f"{label} denominator"),
+    )
 
 
-def _row_map(value: object, *, label: str) -> dict[tuple[str, str, str], dict[str, object]]:
-    result: dict[tuple[str, str, str], dict[str, object]] = {}
-    for row in _rows(value, label=label):
-        key = _metric_key(row, label=label)
-        if key in result:
-            raise ValueError(f"{label} contains duplicate metric key")
-        result[key] = row
-    if not result:
-        raise ValueError(f"{label} cannot be empty")
-    return result
+def _optional_metric_value(value: object, *, label: str) -> ExactMetricValue | None:
+    return None if value is None else _metric_value(value, label=label)
+
+
+def _source_ids(stored: StoredLearningObject, *, label: str) -> tuple[str, ...]:
+    payload_sources = _string_list(
+        stored.payload.get("source_artifact_ids"),
+        label=f"{label} payload source artifacts",
+    )
+    if payload_sources != stored.source_artifact_ids:
+        raise ValueError(f"{label} envelope/payload source artifacts disagree")
+    return payload_sources
 
 
 def _find_learning_source(
@@ -126,11 +165,11 @@ def _policy_authority(
             matches.append((registry, policy, artifact_id))
     if len(matches) != 1:
         raise ValueError(
-            "forecast promotion must replay exactly one retained learning-policy registry"
+            "forecast learning replay must find exactly one retained learning-policy registry"
         )
     registry, policy, artifact_id = matches[0]
     if registry.season != season:
-        raise ValueError("forecast promotion learning-policy registry season mismatch")
+        raise ValueError("forecast learning-policy registry season mismatch")
     registry.verify_policy(
         policy,
         store=store,
@@ -141,82 +180,310 @@ def _policy_authority(
     return registry, policy, artifact_id
 
 
-def _interval(
-    row: dict[str, object],
+def _truth_authority(
+    source_artifact_ids: tuple[str, ...],
     *,
-    label: str,
-) -> tuple[Fraction, Fraction] | None:
-    lower = row.get("interval_lower")
-    upper = row.get("interval_upper")
-    if lower is None and upper is None:
-        return None
-    if lower is None or upper is None:
-        raise ValueError(f"{label} interval must provide both bounds")
-    low = _exact(lower, label=f"{label} interval lower")
-    high = _exact(upper, label=f"{label} interval upper")
-    if low > high:
-        raise ValueError(f"{label} interval lower exceeds upper")
-    return low, high
+    truth_registry_id: str,
+    store: ArtifactStore,
+) -> tuple[OutcomeTruthRegistry, str]:
+    matches: list[tuple[OutcomeTruthRegistry, str]] = []
+    for artifact_id in source_artifact_ids:
+        try:
+            registry = load_outcome_truth_registry_bytes(store.read_bytes(artifact_id))
+        except (FileNotFoundError, TypeError, ValueError):
+            continue
+        if str(registry.truth_registry_id) == truth_registry_id:
+            matches.append((registry, artifact_id))
+    if len(matches) != 1:
+        raise ValueError(
+            "forecast evaluation replay must find exactly one retained outcome-truth registry"
+        )
+    return matches[0]
 
 
-def _expected_interval_superiority(
-    rule: MetricPromotionRule,
-    candidate: dict[str, object],
-    incumbent: dict[str, object],
-) -> bool | None:
-    if not rule.require_interval_superiority:
-        return None
-    candidate_interval = _interval(candidate, label="candidate metric")
-    incumbent_interval = _interval(incumbent, label="incumbent metric")
-    if candidate_interval is None or incumbent_interval is None:
-        return None
-    c_low, c_high = candidate_interval
-    i_low, i_high = incumbent_interval
-    if rule.direction.value == "LOWER_IS_BETTER":
-        return c_high < i_low
-    if rule.direction.value == "HIGHER_IS_BETTER":
-        return c_low > i_high
-    if rule.direction.value == "CLOSER_TO_ZERO":
-        candidate_max_abs = max(abs(c_low), abs(c_high))
-        incumbent_min_abs = Fraction(0, 1) if i_low <= 0 <= i_high else min(abs(i_low), abs(i_high))
-        return candidate_max_abs < incumbent_min_abs
-    raise ValueError("forecast promotion rule has unknown direction")
+def _typed_training(stored: StoredLearningObject) -> ModelTrainingRun:
+    payload = stored.payload
+    if payload.get("schema_name") != "apex-model-training-run":
+        raise ValueError("forecast training replay has wrong schema")
+    value = ModelTrainingRun(
+        model_artifact_id=ModelArtifactId(str(payload.get("model_artifact_id") or "")),
+        training_cutoff=str(payload.get("training_cutoff") or ""),
+        first_available_at=str(payload.get("first_available_at") or ""),
+        training_dataset_artifact_ids=_string_list(
+            payload.get("training_dataset_artifact_ids"),
+            label="training dataset artifacts",
+        ),
+        trainer_code_artifact_id=str(payload.get("trainer_code_artifact_id") or ""),
+        parameter_artifact_ids=_string_list(
+            payload.get("parameter_artifact_ids"),
+            label="training parameter artifacts",
+        ),
+        source_artifact_ids=_string_list(
+            payload.get("source_artifact_ids"),
+            label="training source artifacts",
+        ),
+        schema_version=_strict_int(payload.get("schema_version"), label="training schema_version"),
+    )
+    if value.semantic_payload() != payload or str(value.training_run_id) != stored.semantic_id:
+        raise ValueError("forecast training replay semantic identity mismatch")
+    return value
 
 
-def _expected_improvement(
-    direction: str,
-    candidate: Fraction,
-    incumbent: Fraction,
-) -> Fraction:
-    if direction == "LOWER_IS_BETTER":
-        return incumbent - candidate
-    if direction == "HIGHER_IS_BETTER":
-        return candidate - incumbent
-    if direction == "CLOSER_TO_ZERO":
-        return abs(incumbent) - abs(candidate)
-    raise ValueError("forecast comparison has unknown direction")
+def _typed_dataset(stored: StoredLearningObject) -> EvaluationDataset:
+    payload = stored.payload
+    if payload.get("schema_name") != "apex-evaluation-dataset":
+        raise ValueError("forecast evaluation dataset replay has wrong schema")
+    rows = payload.get("cases")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("forecast evaluation dataset cases must be object array")
+    cases = tuple(
+        EvaluationCase(
+            forecast_id=ForecastId(str(row.get("forecast_id") or "")),
+            feature_snapshot_id=FeatureSnapshotId(str(row.get("feature_snapshot_id") or "")),
+            model_artifact_id=ModelArtifactId(str(row.get("model_artifact_id") or "")),
+            target=OutcomeTarget(str(row.get("target") or "")),
+            player_id=OfficialPlayerId(
+                _strict_int(row.get("player_id"), label="evaluation player_id")
+            ),
+            gameweek=_strict_int(row.get("gameweek"), label="evaluation gameweek"),
+            prediction_sealed_at=str(row.get("prediction_sealed_at") or ""),
+            outcome_first_available_at=str(row.get("outcome_first_available_at") or ""),
+            prediction_artifact_id=str(row.get("prediction_artifact_id") or ""),
+            outcome_artifact_id=str(row.get("outcome_artifact_id") or ""),
+        )
+        for row in rows
+    )
+    value = EvaluationDataset(
+        season=str(payload.get("season") or ""),
+        truth_registry_id=OutcomeTruthRegistryId(str(payload.get("truth_registry_id") or "")),
+        cases=cases,
+        source_artifact_ids=_string_list(
+            payload.get("source_artifact_ids"),
+            label="evaluation dataset source artifacts",
+        ),
+        schema_version=_strict_int(
+            payload.get("schema_version"), label="evaluation dataset schema_version"
+        ),
+    )
+    if value.semantic_payload() != payload or str(value.dataset_id) != stored.semantic_id:
+        raise ValueError("forecast evaluation dataset semantic identity mismatch")
+    return value
 
 
-def _require_complete_production_report(
-    stored: StoredLearningObject,
+def _typed_observations(stored: StoredLearningObject) -> EvaluationObservationSet:
+    payload = stored.payload
+    if payload.get("schema_name") != "apex-evaluation-observation-set":
+        raise ValueError("forecast observation replay has wrong schema")
+    rows = payload.get("observations")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("forecast observations must be object array")
+    observations = tuple(
+        EvaluationObservation(
+            case_id=str(row.get("case_id") or ""),
+            truth_case_id=str(row.get("truth_case_id") or ""),
+            target=OutcomeTarget(str(row.get("target") or "")),
+            predicted_value=_optional_metric_value(
+                row.get("predicted_value"), label="evaluation predicted value"
+            ),
+            actual_value=_metric_value(
+                row.get("actual_value"), label="evaluation actual value"
+            ),
+            interval_lower=_optional_metric_value(
+                row.get("interval_lower"), label="evaluation interval lower"
+            ),
+            interval_upper=_optional_metric_value(
+                row.get("interval_upper"), label="evaluation interval upper"
+            ),
+        )
+        for row in rows
+    )
+    value = EvaluationObservationSet(
+        evaluation_dataset_id=EvaluationDatasetId(
+            str(payload.get("evaluation_dataset_id") or "")
+        ),
+        evaluation_truth_set_id=EvaluationTruthSetId(
+            str(payload.get("evaluation_truth_set_id") or "")
+        ),
+        observations=observations,
+        schema_version=_strict_int(
+            payload.get("schema_version"), label="observation schema_version"
+        ),
+    )
+    if value.semantic_payload() != payload or str(value.observation_set_id) != stored.semantic_id:
+        raise ValueError("forecast observation semantic identity mismatch")
+    return value
+
+
+def _typed_promotion(stored: StoredLearningObject) -> ModelPromotionCertificate:
+    payload = stored.payload
+    if payload.get("schema_name") != "apex-model-promotion-certificate":
+        raise ValueError("forecast promotion replay has wrong schema")
+    value = ModelPromotionCertificate(
+        candidate_model_id=ModelArtifactId(str(payload.get("candidate_model_id") or "")),
+        incumbent_model_id=ModelArtifactId(str(payload.get("incumbent_model_id") or "")),
+        candidate_evaluation_id=ModelEvaluationId(
+            str(payload.get("candidate_evaluation_id") or "")
+        ),
+        incumbent_evaluation_id=ModelEvaluationId(
+            str(payload.get("incumbent_evaluation_id") or "")
+        ),
+        comparison_id=ModelComparisonId(str(payload.get("comparison_id") or "")),
+        policy_id=LearningPolicyId(str(payload.get("policy_id") or "")),
+        decision=ModelPromotionDecision(str(payload.get("decision") or "")),
+        reason=str(payload.get("reason") or ""),
+        source_artifact_ids=_string_list(
+            payload.get("source_artifact_ids"),
+            label="promotion source artifacts",
+        ),
+        schema_version=_strict_int(
+            payload.get("schema_version"), label="promotion schema_version"
+        ),
+    )
+    if value.semantic_payload() != payload or str(value.promotion_id) != stored.semantic_id:
+        raise ValueError("forecast promotion semantic identity mismatch")
+    return value
+
+
+def _typed_registry_generation(stored: StoredLearningObject) -> ModelRegistryGeneration:
+    payload = stored.payload
+    if payload.get("schema_name") != "apex-model-registry-generation":
+        raise ValueError("forecast model registry replay has wrong schema")
+    parent_raw = payload.get("parent_generation_id")
+    champion_raw = payload.get("champion_model_id")
+    promotion_raw = payload.get("promotion_id")
+    registered = payload.get("registered_model_ids")
+    if not isinstance(registered, list) or any(not isinstance(item, str) for item in registered):
+        raise ValueError("forecast model registry registered models must be string array")
+    value = ModelRegistryGeneration(
+        season=str(payload.get("season") or ""),
+        generation=_strict_int(payload.get("generation"), label="model registry generation"),
+        parent_generation_id=(
+            None if parent_raw is None else ModelRegistryGenerationId(str(parent_raw))
+        ),
+        registered_model_ids=tuple(ModelArtifactId(item) for item in registered),
+        champion_model_id=(
+            None if champion_raw is None else ModelArtifactId(str(champion_raw))
+        ),
+        promotion_id=None if promotion_raw is None else ModelPromotionId(str(promotion_raw)),
+        source_artifact_ids=_string_list(
+            payload.get("source_artifact_ids"),
+            label="model registry source artifacts",
+        ),
+        schema_version=_strict_int(
+            payload.get("schema_version"), label="model registry schema_version"
+        ),
+    )
+    if value.semantic_payload() != payload or str(value.generation_id) != stored.semantic_id:
+        raise ValueError("forecast model registry semantic identity mismatch")
+    return value
+
+
+def verify_model_evaluation_replay(
+    report_artifact_id: str,
     *,
-    expected_model_id: str,
-    expected_policy_id: str,
-    label: str,
-) -> dict[tuple[str, str, str], dict[str, object]]:
+    season: str,
+    as_of: str,
+    store: ArtifactStore,
+) -> VerifiedModelEvaluationReplay:
+    """Re-run the exact truth-governed evaluator behind one retained COMPLETE report."""
+
+    stored = load_learning_object(
+        report_artifact_id,
+        store=store,
+        expected_object_type="MODEL_EVALUATION_REPORT",
+    )
     payload = stored.payload
     if payload.get("schema_name") != "apex-model-evaluation-report":
-        raise ValueError(f"{label} has wrong schema")
-    if payload.get("candidate_model_id") != expected_model_id:
-        raise ValueError(f"{label} model identity mismatch")
-    if payload.get("policy_id") != expected_policy_id:
-        raise ValueError(f"{label} policy identity mismatch")
+        raise ValueError("forecast model evaluation has wrong schema")
     if payload.get("use_mode") != "PRODUCTION":
-        raise ValueError(f"{label} is not PRODUCTION mode")
+        raise ValueError("forecast model evaluation is not PRODUCTION mode")
     if payload.get("status") != "COMPLETE" or payload.get("blockers") != []:
-        raise ValueError(f"{label} is not COMPLETE")
-    _source_ids(stored, label=label)
-    return _row_map(payload.get("metrics"), label=f"{label} metrics")
+        raise ValueError("forecast model evaluation is not COMPLETE")
+    sources = _source_ids(stored, label="forecast model evaluation")
+    training_id = str(payload.get("training_run_id") or "")
+    dataset_id = str(payload.get("evaluation_dataset_id") or "")
+    observation_id = str(payload.get("observation_set_id") or "")
+    policy_id = str(payload.get("policy_id") or "")
+    if not all((training_id, dataset_id, observation_id, policy_id)):
+        raise ValueError("forecast model evaluation identities are incomplete")
+
+    training_stored = _find_learning_source(
+        sources,
+        object_type="MODEL_TRAINING_RUN",
+        semantic_id=training_id,
+        store=store,
+        label="forecast training run",
+    )
+    dataset_stored = _find_learning_source(
+        sources,
+        object_type="EVALUATION_DATASET",
+        semantic_id=dataset_id,
+        store=store,
+        label="forecast evaluation dataset",
+    )
+    observations_stored = _find_learning_source(
+        sources,
+        object_type="EVALUATION_OBSERVATION_SET",
+        semantic_id=observation_id,
+        store=store,
+        label="forecast evaluation observations",
+    )
+    policy_stored = _find_learning_source(
+        sources,
+        object_type="LEARNING_EVALUATION_POLICY",
+        semantic_id=policy_id,
+        store=store,
+        label="forecast learning policy",
+    )
+
+    training = _typed_training(training_stored)
+    dataset = _typed_dataset(dataset_stored)
+    observations = _typed_observations(observations_stored)
+    if dataset.season != season:
+        raise ValueError("forecast model evaluation season mismatch")
+    if any(instant(case.outcome_first_available_at) > instant(as_of) for case in dataset.cases):
+        raise ValueError("forecast model evaluation uses outcome unavailable at replay as_of")
+
+    policy_registry, policy, policy_registry_artifact_id = _policy_authority(
+        sources,
+        policy_id=policy_id,
+        season=season,
+        as_of=as_of,
+        store=store,
+    )
+    if policy_stored.payload != policy.semantic_payload():
+        raise ValueError("forecast retained learning policy disagrees with champion registry")
+    truth_registry, truth_registry_artifact_id = _truth_authority(
+        sources,
+        truth_registry_id=str(dataset.truth_registry_id),
+        store=store,
+    )
+
+    report = evaluate_model(
+        training_run=training,
+        training_run_artifact_id=training_stored.artifact_id,
+        dataset=dataset,
+        evaluation_dataset_artifact_id=dataset_stored.artifact_id,
+        observation_set=observations,
+        observation_set_artifact_id=observations_stored.artifact_id,
+        truth_registry=truth_registry,
+        truth_registry_artifact_id=truth_registry_artifact_id,
+        policy=policy,
+        policy_artifact_id=policy_stored.artifact_id,
+        policy_registry=policy_registry,
+        policy_registry_artifact_id=policy_registry_artifact_id,
+        store=store,
+        production=True,
+    )
+    if report.semantic_payload() != payload or str(report.evaluation_id) != stored.semantic_id:
+        raise ValueError("forecast model evaluation does not re-derive from retained truth inputs")
+    return VerifiedModelEvaluationReplay(
+        stored=stored,
+        report=report,
+        policy=policy,
+        policy_registry=policy_registry,
+        policy_registry_artifact_id=policy_registry_artifact_id,
+    )
 
 
 def verify_model_promotion_replay(
@@ -225,216 +492,215 @@ def verify_model_promotion_replay(
     season: str,
     as_of: str,
     store: ArtifactStore,
-) -> StoredLearningObject:
-    """Re-derive one retained forecast promotion certificate at authorization time."""
+) -> VerifiedModelPromotionReplay:
+    """Re-run exact evaluation, comparison and promotion semantics for one certificate."""
 
-    promotion = load_learning_object(
+    stored = load_learning_object(
         promotion_artifact_id,
         store=store,
         expected_object_type="MODEL_PROMOTION_CERTIFICATE",
     )
-    payload = promotion.payload
-    if payload.get("schema_name") != "apex-model-promotion-certificate":
-        raise ValueError("forecast promotion certificate has wrong schema")
-    sources = _source_ids(promotion, label="forecast promotion certificate")
-    candidate_model_id = str(payload.get("candidate_model_id") or "")
-    incumbent_model_id = str(payload.get("incumbent_model_id") or "")
-    candidate_evaluation_id = str(payload.get("candidate_evaluation_id") or "")
-    incumbent_evaluation_id = str(payload.get("incumbent_evaluation_id") or "")
-    comparison_id = str(payload.get("comparison_id") or "")
-    policy_id = str(payload.get("policy_id") or "")
-    if not all(
-        (
-            candidate_model_id,
-            incumbent_model_id,
-            candidate_evaluation_id,
-            incumbent_evaluation_id,
-            comparison_id,
-            policy_id,
-        )
-    ):
-        raise ValueError("forecast promotion certificate identities are incomplete")
-
-    candidate = _find_learning_source(
+    declared = _typed_promotion(stored)
+    sources = _source_ids(stored, label="forecast promotion certificate")
+    candidate_stored = _find_learning_source(
         sources,
         object_type="MODEL_EVALUATION_REPORT",
-        semantic_id=candidate_evaluation_id,
+        semantic_id=str(declared.candidate_evaluation_id),
         store=store,
         label="forecast candidate evaluation",
     )
-    incumbent = _find_learning_source(
+    incumbent_stored = _find_learning_source(
         sources,
         object_type="MODEL_EVALUATION_REPORT",
-        semantic_id=incumbent_evaluation_id,
+        semantic_id=str(declared.incumbent_evaluation_id),
         store=store,
         label="forecast incumbent evaluation",
     )
-    comparison = _find_learning_source(
+    comparison_stored = _find_learning_source(
         sources,
         object_type="MODEL_COMPARISON_REPORT",
-        semantic_id=comparison_id,
+        semantic_id=str(declared.comparison_id),
         store=store,
         label="forecast model comparison",
     )
-    _, policy, policy_registry_artifact_id = _policy_authority(
-        sources,
-        policy_id=policy_id,
+    if set(comparison_stored.parent_artifact_ids) != {
+        candidate_stored.artifact_id,
+        incumbent_stored.artifact_id,
+    }:
+        raise ValueError("forecast comparison parent lineage does not bind exact evaluations")
+    if stored.parent_artifact_ids != (comparison_stored.artifact_id,):
+        raise ValueError("forecast promotion parent lineage does not bind exact comparison")
+
+    candidate = verify_model_evaluation_replay(
+        candidate_stored.artifact_id,
         season=season,
         as_of=as_of,
         store=store,
     )
-
-    candidate_metrics = _require_complete_production_report(
-        candidate,
-        expected_model_id=candidate_model_id,
-        expected_policy_id=policy_id,
-        label="forecast candidate evaluation",
+    incumbent = verify_model_evaluation_replay(
+        incumbent_stored.artifact_id,
+        season=season,
+        as_of=as_of,
+        store=store,
     )
-    incumbent_metrics = _require_complete_production_report(
-        incumbent,
-        expected_model_id=incumbent_model_id,
-        expected_policy_id=policy_id,
-        label="forecast incumbent evaluation",
+    if candidate.policy.semantic_payload() != incumbent.policy.semantic_payload():
+        raise ValueError("forecast promotion evaluations use different learning policies")
+    if candidate.policy_registry_artifact_id != incumbent.policy_registry_artifact_id:
+        raise ValueError("forecast promotion evaluations use different policy registries")
+    policy = candidate.policy
+    policy_registry = candidate.policy_registry
+    policy_registry_artifact_id = candidate.policy_registry_artifact_id
+
+    comparison = compare_model_evaluations(
+        candidate=candidate.report,
+        incumbent=incumbent.report,
+        candidate_report_artifact_id=candidate.stored.artifact_id,
+        incumbent_report_artifact_id=incumbent.stored.artifact_id,
+        policy=policy,
+        policy_registry=policy_registry,
+        policy_registry_artifact_id=policy_registry_artifact_id,
+        policy_cutoff=as_of,
+        store=store,
+        production=True,
     )
-    candidate_payload = candidate.payload
-    incumbent_payload = incumbent.payload
-    truth_fields = (
-        "evaluation_truth_set_id",
-        "evaluation_realized_truth_set_id",
+    if (
+        comparison.semantic_payload() != comparison_stored.payload
+        or str(comparison.comparison_id) != comparison_stored.semantic_id
+    ):
+        raise ValueError("forecast model comparison does not re-derive from exact evaluations")
+
+    certificate = issue_model_promotion_certificate(
+        comparison=comparison,
+        comparison_artifact_id=comparison_stored.artifact_id,
+        candidate=candidate.report,
+        candidate_report_artifact_id=candidate.stored.artifact_id,
+        incumbent=incumbent.report,
+        incumbent_report_artifact_id=incumbent.stored.artifact_id,
+        policy=policy,
+        policy_registry=policy_registry,
+        policy_registry_artifact_id=policy_registry_artifact_id,
+        promotion_cutoff=as_of,
+        store=store,
     )
-    for field in truth_fields:
-        if candidate_payload.get(field) != incumbent_payload.get(field):
-            raise ValueError("forecast promotion evaluations do not share exact truth")
-
-    comparison_payload = comparison.payload
-    if comparison_payload.get("schema_name") != "apex-model-comparison-report":
-        raise ValueError("forecast comparison has wrong schema")
-    if comparison_payload.get("candidate_model_id") != candidate_model_id:
-        raise ValueError("forecast comparison candidate model mismatch")
-    if comparison_payload.get("incumbent_model_id") != incumbent_model_id:
-        raise ValueError("forecast comparison incumbent model mismatch")
-    if comparison_payload.get("candidate_evaluation_id") != candidate_evaluation_id:
-        raise ValueError("forecast comparison candidate evaluation mismatch")
-    if comparison_payload.get("incumbent_evaluation_id") != incumbent_evaluation_id:
-        raise ValueError("forecast comparison incumbent evaluation mismatch")
-    if comparison_payload.get("policy_id") != policy_id:
-        raise ValueError("forecast comparison policy mismatch")
-    if comparison_payload.get("use_mode") != "PRODUCTION":
-        raise ValueError("forecast comparison is not PRODUCTION mode")
-    if comparison_payload.get("status") != "COMPLETE" or comparison_payload.get("blockers") != []:
-        raise ValueError("forecast comparison is not COMPLETE")
-    for field in truth_fields:
-        if comparison_payload.get(field) != candidate_payload.get(field):
-            raise ValueError("forecast comparison truth identity mismatch")
-    comparison_sources = _source_ids(comparison, label="forecast model comparison")
-    required_comparison_sources = {
-        candidate.artifact_id,
-        incumbent.artifact_id,
-        policy_registry_artifact_id,
-    }
-    if not required_comparison_sources.issubset(set(comparison_sources)):
-        raise ValueError("forecast comparison is missing exact retained source artifacts")
-
-    comparison_rows = _row_map(
-        comparison_payload.get("comparisons"),
-        label="forecast comparison rows",
-    )
-    rule_keys = {
-        (rule.metric.value, rule.target.value, rule.cohort)
-        for rule in policy.promotion_rules
-    }
-    if set(comparison_rows) != rule_keys:
-        raise ValueError("forecast comparison rows do not equal predeclared promotion rules")
-
-    failed: list[str] = []
-    inconclusive: list[str] = []
-    for rule in policy.promotion_rules:
-        key = (rule.metric.value, rule.target.value, rule.cohort)
-        candidate_row = candidate_metrics.get(key)
-        incumbent_row = incumbent_metrics.get(key)
-        comparison_row = comparison_rows[key]
-        if candidate_row is None or incumbent_row is None:
-            raise ValueError("forecast evaluation lacks metric required by promotion rule")
-        if candidate_row.get("direction") != rule.direction.value:
-            raise ValueError("forecast candidate metric direction mismatch")
-        if incumbent_row.get("direction") != rule.direction.value:
-            raise ValueError("forecast incumbent metric direction mismatch")
-        if comparison_row.get("direction") != rule.direction.value:
-            raise ValueError("forecast comparison metric direction mismatch")
-
-        candidate_value = _exact(candidate_row.get("value"), label="candidate metric value")
-        incumbent_value = _exact(incumbent_row.get("value"), label="incumbent metric value")
-        if _exact(comparison_row.get("candidate_value"), label="comparison candidate value") != candidate_value:
-            raise ValueError("forecast comparison candidate value disagrees with evaluation")
-        if _exact(comparison_row.get("incumbent_value"), label="comparison incumbent value") != incumbent_value:
-            raise ValueError("forecast comparison incumbent value disagrees with evaluation")
-        candidate_count = _strict_int(
-            candidate_row.get("sample_count"),
-            label="candidate sample count",
-        )
-        incumbent_count = _strict_int(
-            incumbent_row.get("sample_count"),
-            label="incumbent sample count",
-        )
-        if comparison_row.get("candidate_sample_count") != candidate_count:
-            raise ValueError("forecast comparison candidate sample count mismatch")
-        if comparison_row.get("incumbent_sample_count") != incumbent_count:
-            raise ValueError("forecast comparison incumbent sample count mismatch")
-
-        improvement = _expected_improvement(
-            rule.direction.value,
-            candidate_value,
-            incumbent_value,
-        )
-        if _exact(comparison_row.get("improvement"), label="comparison improvement") != improvement:
-            raise ValueError("forecast comparison improvement does not re-derive")
-        interval_superiority = _expected_interval_superiority(
-            rule,
-            candidate_row,
-            incumbent_row,
-        )
-        if comparison_row.get("interval_superiority") != interval_superiority:
-            raise ValueError("forecast comparison interval superiority does not re-derive")
-        if improvement < rule.minimum_improvement.as_fraction():
-            failed.append(
-                f"{rule.metric.value}/{rule.target.value}/{rule.cohort} improvement below threshold"
-            )
-        if rule.require_interval_superiority:
-            if interval_superiority is None:
-                inconclusive.append(
-                    f"{rule.metric.value}/{rule.target.value}/{rule.cohort} interval evidence missing"
-                )
-            elif interval_superiority is False:
-                failed.append(
-                    f"{rule.metric.value}/{rule.target.value}/{rule.cohort} interval superiority failed"
-                )
-
-    if inconclusive:
-        expected_decision = ModelPromotionDecision.INCONCLUSIVE
-        expected_reason = "; ".join(inconclusive + failed)
-    elif failed:
-        expected_decision = ModelPromotionDecision.RETAIN
-        expected_reason = "; ".join(failed)
-    else:
-        expected_decision = ModelPromotionDecision.PROMOTE
-        expected_reason = "all predeclared promotion rules passed"
-    if payload.get("decision") != expected_decision.value:
-        raise ValueError("forecast promotion decision does not re-derive from retained evidence")
-    if payload.get("reason") != expected_reason:
-        raise ValueError("forecast promotion reason does not re-derive from retained evidence")
-    if expected_decision is not ModelPromotionDecision.PROMOTE:
+    if certificate.semantic_payload() != stored.payload or certificate.promotion_id != declared.promotion_id:
+        raise ValueError("forecast promotion certificate does not re-derive from retained evidence")
+    if certificate.decision is not ModelPromotionDecision.PROMOTE:
         raise ValueError("forecast champion evidence does not re-derive PROMOTE")
+    return VerifiedModelPromotionReplay(
+        stored=stored,
+        certificate=certificate,
+        candidate=candidate,
+        incumbent=incumbent,
+        comparison_artifact_id=comparison_stored.artifact_id,
+    )
 
-    required_promotion_sources = {
-        candidate.artifact_id,
-        incumbent.artifact_id,
-        comparison.artifact_id,
-        policy_registry_artifact_id,
-    }
-    if policy.qualification_artifact_id is not None:
-        required_promotion_sources.add(policy.qualification_artifact_id)
-    if policy.promotion_rule_artifact_id is not None:
-        required_promotion_sources.add(policy.promotion_rule_artifact_id)
-    if not required_promotion_sources.issubset(set(sources)):
-        raise ValueError("forecast promotion certificate is missing exact retained authority sources")
-    return promotion
+
+def _verify_registry_transition(
+    stored: StoredLearningObject,
+    *,
+    season: str,
+    as_of: str,
+    store: ArtifactStore,
+) -> tuple[ModelRegistryGeneration, VerifiedModelPromotionReplay | None, str | None]:
+    generation = _typed_registry_generation(stored)
+    if generation.season != season:
+        raise ValueError("forecast model registry season mismatch")
+    if generation.generation == 1:
+        if stored.parent_artifact_ids:
+            raise ValueError("forecast bootstrap registry generation cannot have parent artifact")
+        if generation.champion_model_id is not None or generation.promotion_id is not None:
+            raise ValueError("forecast bootstrap registry generation cannot start with champion")
+        return generation, None, None
+
+    if generation.parent_generation_id is None or generation.promotion_id is None:
+        raise ValueError("forecast champion registry transition lacks parent/promotion identity")
+    parent_matches: list[StoredLearningObject] = []
+    for artifact_id in stored.parent_artifact_ids:
+        try:
+            parent = load_learning_object(
+                artifact_id,
+                store=store,
+                expected_object_type="MODEL_REGISTRY_GENERATION",
+                expected_semantic_id=str(generation.parent_generation_id),
+            )
+        except (FileNotFoundError, ValueError):
+            continue
+        parent_matches.append(parent)
+    if len(parent_matches) != 1 or len(stored.parent_artifact_ids) != 1:
+        raise ValueError("forecast model registry transition must bind exactly one semantic parent")
+    parent_stored = parent_matches[0]
+    parent, _, _ = _verify_registry_transition(
+        parent_stored,
+        season=season,
+        as_of=as_of,
+        store=store,
+    )
+    if parent.generation + 1 != generation.generation:
+        raise ValueError("forecast model registry generation lineage is not contiguous")
+
+    promotion_matches: list[str] = []
+    for artifact_id in stored.source_artifact_ids:
+        try:
+            promotion = load_learning_object(
+                artifact_id,
+                store=store,
+                expected_object_type="MODEL_PROMOTION_CERTIFICATE",
+                expected_semantic_id=str(generation.promotion_id),
+            )
+        except (FileNotFoundError, ValueError):
+            continue
+        promotion_matches.append(promotion.artifact_id)
+    if len(promotion_matches) != 1:
+        raise ValueError("forecast model registry transition must bind exactly one promotion")
+    promotion_artifact_id = promotion_matches[0]
+    verified_promotion = verify_model_promotion_replay(
+        promotion_artifact_id,
+        season=season,
+        as_of=as_of,
+        store=store,
+    )
+    derived = apply_model_promotion(
+        current=parent,
+        promotion=verified_promotion.certificate,
+        expected_parent_generation_id=parent.generation_id,
+        current_generation_artifact_id=parent_stored.artifact_id,
+        promotion_artifact_id=promotion_artifact_id,
+        store=store,
+    )
+    if derived.semantic_payload() != generation.semantic_payload():
+        raise ValueError("forecast model registry transition does not re-derive via CAS promotion")
+    return generation, verified_promotion, promotion_artifact_id
+
+
+def verify_forecast_registry_champion(
+    registry_generation_artifact_id: str,
+    *,
+    season: str,
+    as_of: str,
+    store: ArtifactStore,
+) -> VerifiedForecastChampionEvidence:
+    """Replay the full model-registry transition chain and return exact champion evidence."""
+
+    stored = load_learning_object(
+        registry_generation_artifact_id,
+        store=store,
+        expected_object_type="MODEL_REGISTRY_GENERATION",
+    )
+    generation, promotion, promotion_artifact_id = _verify_registry_transition(
+        stored,
+        season=season,
+        as_of=as_of,
+        store=store,
+    )
+    if generation.champion_model_id is None or promotion is None or promotion_artifact_id is None:
+        raise ValueError("forecast registry generation has no replay-derived champion")
+    champion_model_id = str(generation.champion_model_id)
+    if str(promotion.certificate.candidate_model_id) != champion_model_id:
+        raise ValueError("forecast registry champion does not match replay-derived promoted candidate")
+    return VerifiedForecastChampionEvidence(
+        registry_generation_artifact_id=registry_generation_artifact_id,
+        registry_generation=generation,
+        champion_model_id=champion_model_id,
+        promotion_artifact_id=promotion_artifact_id,
+        promotion=promotion,
+    )
