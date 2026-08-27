@@ -53,3 +53,7 @@ Production publication authorization schema v2 binds the exact champion-generati
 ## Production boundary
 
 A green implementation branch, green CI database, SHADOW candidate, SUPPORTED certificate, QUALIFIED candidate or synthetic champion generation is not independently sufficient for publication. Production requires genuine reviewed champion authority, exact qualified deployed backend identities, a replay-valid schema-v2 planning bundle, complete AssuranceCase, exact reference-solver authority, publication authorization and atomic PUBLISHED release. Until that chain exists, V2 remains WITHHELD.
+
+## Production champion authority
+
+Production qualification and production selection authority are distinct. The production control plane accepts only one immutable point-in-time `ProductionChampionGeneration` matching the exact forecast model, DecisionPolicy, scenario generator and scenario policy in the replayed planning bundle. Forecast champion authority re-derives the existing learning promotion chain from retained evaluation/comparison/policy evidence; DecisionPolicy and scenario authorities replay separate reviewed admissions. Cutover and answer resolution are verifier-only and bind the exact generation artifact through schema-v2 publication authorization.

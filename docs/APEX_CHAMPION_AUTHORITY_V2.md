@@ -21,11 +21,11 @@ The exact identities must match the already replayed schema-v2 `ProductionPlanni
 
 Forecast authority reuses the existing learning-governance chain rather than inventing a second model registry:
 
-`empirical evaluation -> comparison -> ModelPromotionCertificate(PROMOTE) -> ModelRegistryGeneration -> forecast champion`
+`production evaluation -> exact comparison -> ModelPromotionCertificate -> ModelRegistryGeneration -> forecast champion`
 
-Runtime replay requires the model-registry generation to name a champion and promotion identity, exactly one retained source to replay as that promotion certificate, the promotion decision to equal `PROMOTE`, and the promoted candidate model to equal the declared champion.
+A retained `PROMOTE` label is not sufficient. Runtime replay locates the exact retained candidate and incumbent `ModelEvaluationReport` artifacts, the exact `ModelComparisonReport`, and the exact retained qualified champion `LearningPolicyRegistry` used by the promotion. It reconstructs those typed objects, reconciles their semantic identities and common-truth lineage, checks the comparison rows against the retained evaluation metrics, replays the learning policy at the generation authorization time, and re-runs the existing promotion threshold/interval logic. The registry champion is accepted only when that independent replay derives the same promotion identity and still derives `PROMOTE` for the exact candidate named as champion.
 
-A model evaluation, comparison, QUALIFIED model artifact or arbitrary registry row cannot by itself change the production model champion.
+A hand-authored promotion certificate, a model evaluation, a comparison, a QUALIFIED model artifact or an arbitrary registry row therefore cannot establish forecast champion authority.
 
 ## DecisionPolicy, scenario-generator and scenario-policy authority
 
@@ -51,11 +51,13 @@ The four authorities are composed into one immutable `ProductionChampionGenerati
 - exact forecast model-registry generation and resulting model champion;
 - exact admission artifacts and candidate identities for DecisionPolicy, scenario generator and scenario policy;
 - retained change-control evidence;
-- authorizer identity, authorization time and reason.
+- authorizer identity, timezone-aware authorization time and reason.
 
 Generation creation is stale-writer-safe. If a current generation exists, the caller must supply the exact expected parent semantic identity. A stale writer cannot create the next authoritative generation.
 
-Replay verifies parent continuity, season, retained change-control evidence, forecast promotion lineage, all three reviewed admissions and their empirical qualifications.
+Authority is also point-in-time. Review and generation authorization timestamps must be timezone-aware. An admission cannot replay before its own review time; a generation cannot replay before its own authorization time; and every component admission plus the parent generation must already have been valid at the child generation's authorization time. Future review or authorization evidence cannot leak backward into an earlier production decision.
+
+Replay verifies recursive parent continuity, season, retained change-control evidence, independently re-derived forecast promotion lineage, and all three reviewed admissions with their typed empirical qualifications.
 
 ## Bundle reconciliation
 

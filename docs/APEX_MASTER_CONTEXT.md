@@ -28,6 +28,7 @@ Build the strongest auditable Fantasy Premier League decision engine possible: m
 14. Git/CI engineering evidence never substitutes for the current V2 production authority chain.
 15. Empirical production qualification is prospective/no-hindsight: candidate semantics, evaluator, thresholds and window must be committed before outcomes.
 16. Qualification and champion promotion are separate reviewed operations; no operator command may auto-promote a champion.
+17. Production champion authority is point-in-time and replay-derived: forecast promotion must be independently re-derived from exact retained learning evidence, non-model champions require reviewed admissions, and cutover/answer authority must exact-match the resulting `ProductionChampionGeneration` to the production planning bundle.
 17. Production runtime storage must fail closed to the exact qualified shared backend; there is no local-filesystem production fallback.
 
 ## Current V2 engineering lineage
