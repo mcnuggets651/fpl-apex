@@ -984,21 +984,31 @@ def load_production_publication_authorization(
         gameweek=authorization.gameweek,
         store=artifact_store,
     )
-    empirical_bindings = _bundle_empirical_bindings(verified_bundle)
+    champion_evidence: VerifiedForecastChampionEvidence | None = None
     if authorization.champion_generation_artifact_id is not None:
         if verified_bundle is None:
-            load_production_champion_generation(
+            stored_champion = load_production_champion_generation(
                 authorization.champion_generation_artifact_id,
                 as_of=authorization.created_at,
                 store=artifact_store,
             )
         else:
-            verify_bundle_champion_authority(
+            stored_champion = verify_bundle_champion_authority(
                 authorization.champion_generation_artifact_id,
                 verified_bundle=verified_bundle,
                 as_of=authorization.created_at,
                 store=artifact_store,
             )
+        champion_evidence = verify_forecast_registry_champion(
+            stored_champion.generation.forecast_registry_generation_artifact_id,
+            season=stored_champion.generation.season,
+            as_of=stored_champion.generation.authorized_at,
+            store=artifact_store,
+        )
+    empirical_bindings = _bundle_empirical_bindings(
+        verified_bundle,
+        champion_evidence=champion_evidence,
+    )
     case = _replay_assurance_case(
         authorization.assurance_case_artifact_id, artifact_store=artifact_store
     )

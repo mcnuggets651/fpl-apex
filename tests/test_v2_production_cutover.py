@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,10 @@ from apex_fpl.control.experiment_registry import (
 )
 from apex_fpl.control.learning_promotion_replay import verify_forecast_registry_champion
 from apex_fpl.control.production_cutover import (
+    _seal_release_policy,
     execute_production_cutover,
     load_production_cutover_report,
+    load_production_publication_authorization,
 )
 from apex_fpl.control.production_planning_bundle import load_production_planning_bundle
 from apex_fpl.control.release_registry import (
@@ -27,6 +30,7 @@ from apex_fpl.control.release_registry import (
     ReleaseKey,
     ReleaseStatus,
 )
+from apex_fpl.core.canonical import canonical_json_bytes
 from apex_fpl.core.experiments import (
     ExactQualificationValue,
     ExperimentDefinition,
@@ -465,6 +469,70 @@ def test_unrelated_valid_learning_empirical_proof_cannot_authorize_champion_chai
             registry=registry,
         )
     assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
+
+@pytest.mark.parametrize(
+    "proof_id",
+    ("PO-MODEL-EVALUATION-001", "PO-MODEL-PROMOTION-001"),
+)
+def test_stored_authorization_replay_rejects_unrelated_valid_learning_proof(
+    tmp_path: Path,
+    proof_id: str,
+) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    _, _, outcome = _execute(
+        tmp_path,
+        store=store,
+        registry=registry,
+    )
+    authorization_artifact_id = (
+        outcome.release_record.publication_authorization_artifact_id
+    )
+    assert authorization_artifact_id is not None
+    authorization = load_production_publication_authorization(
+        authorization_artifact_id,
+        artifact_store=store,
+    )
+
+    unrelated_case = _case(
+        store,
+        _artifact(store, f"replay-unrelated-claim:{proof_id}"),
+        unrelated_learning_proof=proof_id,
+    )
+    case_artifact_id, proof_artifact_id = _seal_release_policy(
+        unrelated_case,
+        _obligations(),
+        store=store,
+    )
+    forged = replace(
+        authorization,
+        assurance_case_id=unrelated_case.case_id,
+        assurance_case_artifact_id=case_artifact_id,
+        proof_obligations_artifact_id=proof_artifact_id,
+    )
+    forged_ref = store.put_bytes(
+        canonical_json_bytes(
+            {
+                "schema_name": "apex-stored-production-publication-authorization",
+                "schema_version": 1,
+                "authorization_id": forged.authorization_id,
+                "payload": forged.semantic_payload(),
+            }
+        ),
+        media_type="application/json",
+        schema_name="apex-stored-production-publication-authorization",
+        schema_version="1",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=rf"matching typed qualification evidence: {proof_id}",
+    ):
+        load_production_publication_authorization(
+            forged_ref.artifact_id,
+            artifact_store=store,
+        )
+
 
 def test_legacy_v1_bundle_is_rejected_before_pointer_write(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")

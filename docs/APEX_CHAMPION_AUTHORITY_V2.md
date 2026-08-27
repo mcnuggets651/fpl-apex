@@ -78,6 +78,8 @@ A WITHHELD attempt may retain no champion generation so the failed attempt remai
 
 When a generation is supplied, cutover verifies its immutable artifact and independently replays it against the already verified production planning bundle before sealing authorization. The champion-generation artifact is retained in publication lineage.
 
+Stored publication-authorization replay re-derives the same forecast champion learning evidence used at issuance and rebuilds the exact model-evaluation/model-promotion empirical bindings; a valid but unrelated learning qualification is rejected both before publication and during later authority replay.
+
 Missing, corrupt, expired, wrong-season or bundle-mismatched champion authority fails closed and cannot advance the production current pointer.
 
 ## Answer-authority replay
