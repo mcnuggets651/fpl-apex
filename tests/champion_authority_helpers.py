@@ -9,12 +9,16 @@ from apex_fpl.control.champion_authority import (
     create_production_champion_generation,
     issue_champion_admission,
 )
+from apex_fpl.control.learning_promotion_replay import verify_forecast_registry_champion
 from apex_fpl.core.champion_authority import ChampionRole
 from apex_fpl.decision.scenario_store import load_robustness_report, load_scenario_set
 
 from empirical_qualification_helpers import synthetic_supported_qualification_artifact
 from learning_promotion_helpers import synthetic_promoted_model_registry_generation
-from production_planning_bundle_helpers import SyntheticPlanningBundleFixture
+from production_planning_bundle_helpers import (
+    SyntheticPlanningBundleFixture,
+    _qualification_material,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +41,60 @@ def _json_at(store, artifact_id: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise AssertionError("synthetic champion semantic artifact must be JSON object")
     return dict(value)
+
+
+def _attach_exact_learning_release_qualifications(
+    *,
+    store,
+    fixture: SyntheticPlanningBundleFixture,
+    registry_artifact_id: str,
+    reviewed_at: str,
+) -> None:
+    """Bind release-proof fixtures to the exact replayed forecast champion evidence.
+
+    Production cutover does not accept a generic model-evaluation/model-promotion qualification:
+    those release claims must name the exact candidate evaluation and promotion certificate
+    independently replayed from the retained champion model-registry generation. The synthetic
+    planning fixture is shared by cutover/answer-authority tests, so attach those exact typed
+    qualifications once at champion construction rather than letting individual tests invent
+    weaker substitutes.
+    """
+
+    learning = verify_forecast_registry_champion(
+        registry_artifact_id,
+        season=fixture.bundle.season,
+        as_of=reviewed_at,
+        store=store,
+    )
+    evaluation = learning.promotion.candidate.report
+    evaluation_qualification = synthetic_supported_qualification_artifact(
+        store=store,
+        subject_payload=evaluation.semantic_payload(),
+        subject_kind="apex.model-evaluation",
+        proof_id="PO-MODEL-EVALUATION-001",
+        season=fixture.bundle.season,
+        valid_until="2026-08-29T10:00:00Z",
+    )
+    fixture.direct_qualifications["PO-MODEL-EVALUATION-001"] = _qualification_material(
+        store=store,
+        artifact_id=evaluation_qualification,
+        semantic_evidence_id=str(evaluation.evaluation_id),
+    )
+
+    promotion = learning.promotion.certificate
+    promotion_qualification = synthetic_supported_qualification_artifact(
+        store=store,
+        subject_payload=promotion.semantic_payload(),
+        subject_kind="apex.model-promotion",
+        proof_id="PO-MODEL-PROMOTION-001",
+        season=fixture.bundle.season,
+        valid_until="2026-08-29T10:00:00Z",
+    )
+    fixture.direct_qualifications["PO-MODEL-PROMOTION-001"] = _qualification_material(
+        store=store,
+        artifact_id=promotion_qualification,
+        semantic_evidence_id=str(promotion.promotion_id),
+    )
 
 
 def synthetic_production_champion_authority(
@@ -128,6 +186,12 @@ def synthetic_production_champion_authority(
         season=season,
         candidate_model_id=str(fixture.bundle.forecast_model_id),
         authorized_at=reviewed_at,
+    )
+    _attach_exact_learning_release_qualifications(
+        store=store,
+        fixture=fixture,
+        registry_artifact_id=registry_artifact_id,
+        reviewed_at=reviewed_at,
     )
     stored_generation = create_production_champion_generation(
         season=season,
