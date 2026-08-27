@@ -113,8 +113,8 @@ replace_once(
 )
 replace_once(
     path,
-    '''    return SyntheticPlanningBundleFixture(\n        bundle=bundle,\n        manager_state=manager_state,\n        direct_qualifications=direct,\n    )\n''',
-    '''    fixture = SyntheticPlanningBundleFixture(\n        bundle=bundle,\n        manager_state=manager_state,\n        direct_qualifications=direct,\n    )\n    cached_fixture = retain_cached_fixture(\n        "production-planning-bundle",\n        cache_key,\n        fixture,\n        store=store,\n    )\n    if not isinstance(cached_fixture, SyntheticPlanningBundleFixture):\n        raise TypeError("production planning fixture cache type mismatch")\n    return cached_fixture\n''',
+    '''    return SyntheticPlanningBundleFixture(\n        bundle=bundle,\n        manager_state=manager_state,\n        direct_qualifications=direct,\n    )''',
+    '''    fixture = SyntheticPlanningBundleFixture(\n        bundle=bundle,\n        manager_state=manager_state,\n        direct_qualifications=direct,\n    )\n    cached_fixture = retain_cached_fixture(\n        "production-planning-bundle",\n        cache_key,\n        fixture,\n        store=store,\n    )\n    if not isinstance(cached_fixture, SyntheticPlanningBundleFixture):\n        raise TypeError("production planning fixture cache type mismatch")\n    return cached_fixture''',
 )
 
 # Cache synthetic champion-admission/generation construction, never its production verifier.
@@ -132,8 +132,8 @@ replace_once(
 )
 replace_once(
     path,
-    '''    return SyntheticChampionAuthorityFixture(\n        generation=stored_generation,\n        forecast_registry_generation_artifact_id=registry_artifact_id,\n        decision_policy_admission=policy_admission,\n        scenario_generator_admission=generator_admission,\n        scenario_policy_admission=scenario_policy_admission,\n    )\n''',
-    '''    authority_fixture = SyntheticChampionAuthorityFixture(\n        generation=stored_generation,\n        forecast_registry_generation_artifact_id=registry_artifact_id,\n        decision_policy_admission=policy_admission,\n        scenario_generator_admission=generator_admission,\n        scenario_policy_admission=scenario_policy_admission,\n    )\n    cached_fixture = retain_cached_fixture(\n        "production-champion-authority",\n        cache_key,\n        authority_fixture,\n        store=store,\n    )\n    if not isinstance(cached_fixture, SyntheticChampionAuthorityFixture):\n        raise TypeError("champion authority fixture cache type mismatch")\n    return cached_fixture\n''',
+    '''    return SyntheticChampionAuthorityFixture(\n        generation=stored_generation,\n        forecast_registry_generation_artifact_id=registry_artifact_id,\n        decision_policy_admission=policy_admission,\n        scenario_generator_admission=generator_admission,\n        scenario_policy_admission=scenario_policy_admission,\n    )''',
+    '''    authority_fixture = SyntheticChampionAuthorityFixture(\n        generation=stored_generation,\n        forecast_registry_generation_artifact_id=registry_artifact_id,\n        decision_policy_admission=policy_admission,\n        scenario_generator_admission=generator_admission,\n        scenario_policy_admission=scenario_policy_admission,\n    )\n    cached_fixture = retain_cached_fixture(\n        "production-champion-authority",\n        cache_key,\n        authority_fixture,\n        store=store,\n    )\n    if not isinstance(cached_fixture, SyntheticChampionAuthorityFixture):\n        raise TypeError("champion authority fixture cache type mismatch")\n    return cached_fixture''',
 )
 
 # Cache deterministic reference-solver evidence generation; replay remains uncached at cutover.
@@ -151,12 +151,12 @@ replace_once(
 )
 replace_once(
     path,
-    '''    return SyntheticPlanningParityMaterial(\n        planning_result_id=str(verified.decision.planning_result_id),\n        certificate_artifact_id=stored_certificate.artifact_id,\n        certificate_id=str(certificate.certificate_id),\n        authorization_artifact_id=authorization.artifact_id,\n        authorization_id=authorization.authorization.authorization_id,\n        qualification_artifact_id=qualification_artifact_id,\n        registry_artifact_id=authorization.authorization.registry_artifact_id,\n        corpus_artifact_id=corpus_artifact_id,\n        worker_code_artifact_id=worker_code_artifact_id,\n    )\n''',
-    '''    material = SyntheticPlanningParityMaterial(\n        planning_result_id=str(verified.decision.planning_result_id),\n        certificate_artifact_id=stored_certificate.artifact_id,\n        certificate_id=str(certificate.certificate_id),\n        authorization_artifact_id=authorization.artifact_id,\n        authorization_id=authorization.authorization.authorization_id,\n        qualification_artifact_id=qualification_artifact_id,\n        registry_artifact_id=authorization.authorization.registry_artifact_id,\n        corpus_artifact_id=corpus_artifact_id,\n        worker_code_artifact_id=worker_code_artifact_id,\n    )\n    cached_material = retain_cached_fixture(\n        "planning-reference-solver-material",\n        cache_key,\n        material,\n        store=store,\n    )\n    if not isinstance(cached_material, SyntheticPlanningParityMaterial):\n        raise TypeError("planning parity fixture cache type mismatch")\n    return cached_material\n''',
+    '''    return SyntheticPlanningParityMaterial(\n        planning_result_id=str(verified.decision.planning_result_id),\n        certificate_artifact_id=stored_certificate.artifact_id,\n        certificate_id=str(certificate.certificate_id),\n        authorization_artifact_id=authorization.artifact_id,\n        authorization_id=authorization.authorization.authorization_id,\n        qualification_artifact_id=qualification_artifact_id,\n        registry_artifact_id=authorization.authorization.registry_artifact_id,\n        corpus_artifact_id=corpus_artifact_id,\n        worker_code_artifact_id=worker_code_artifact_id,\n    )''',
+    '''    material = SyntheticPlanningParityMaterial(\n        planning_result_id=str(verified.decision.planning_result_id),\n        certificate_artifact_id=stored_certificate.artifact_id,\n        certificate_id=str(certificate.certificate_id),\n        authorization_artifact_id=authorization.artifact_id,\n        authorization_id=authorization.authorization.authorization_id,\n        qualification_artifact_id=qualification_artifact_id,\n        registry_artifact_id=authorization.authorization.registry_artifact_id,\n        corpus_artifact_id=corpus_artifact_id,\n        worker_code_artifact_id=worker_code_artifact_id,\n    )\n    cached_material = retain_cached_fixture(\n        "planning-reference-solver-material",\n        cache_key,\n        material,\n        store=store,\n    )\n    if not isinstance(cached_material, SyntheticPlanningParityMaterial):\n        raise TypeError("planning parity fixture cache type mismatch")\n    return cached_material''',
 )
 
-# Remove the duplicate planning + champion construction inside _case when _execute already
-# has the exact fixture/authority. This changes only test evidence setup, not cutover semantics.
+# Remove duplicate planning/champion construction inside _case when _execute already owns it.
+# This changes test evidence setup only; publication and replay verifiers stay uncached.
 path = "tests/test_v2_production_cutover.py"
 replace_once(
     path,
@@ -165,8 +165,13 @@ replace_once(
 )
 replace_once(
     path,
+    '''    fixture = _fixture(store)\n    champion_artifact_id = (\n        synthetic_production_champion_authority(\n            store=store, fixture=fixture, reviewed_at=CREATED_AT\n        ).generation.artifact_id\n        if with_champion_authority\n        else None\n    )\n    manifest = _artifact(store, "manifest")\n''',
+    '''    fixture = _fixture(store)\n    authority = (\n        synthetic_production_champion_authority(\n            store=store,\n            fixture=fixture,\n            reviewed_at=CREATED_AT,\n        )\n        if with_champion_authority\n        else None\n    )\n    champion_artifact_id = None if authority is None else authority.generation.artifact_id\n    manifest = _artifact(store, "manifest")\n''',
+)
+replace_once(
+    path,
     '''        assurance_case=case or _case(store, claim_artifact),\n''',
-    '''        assurance_case=case or _case(\n            store,\n            claim_artifact,\n            fixture=fixture,\n            authority=(\n                None\n                if champion_artifact_id is None\n                else synthetic_production_champion_authority(\n                    store=store,\n                    fixture=fixture,\n                    reviewed_at=CREATED_AT,\n                )\n            ),\n        ),\n''',
+    '''        assurance_case=case or _case(\n            store,\n            claim_artifact,\n            fixture=fixture,\n            authority=authority,\n        ),\n''',
 )
 
 # Remove imports that became unnecessary after eliminating bundle-authority replay in _case.
