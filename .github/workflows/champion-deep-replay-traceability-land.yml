@@ -1,0 +1,36 @@
+name: Champion Deep Replay Traceability Land
+
+on:
+  push:
+    branches: [v2/champion-authority-chain]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: champion-deep-replay-traceability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  land:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Apply deep replay traceability
+        run: python scripts/land_champion_deep_replay_traceability.py
+      - name: Validate diff
+        run: git diff --check
+      - name: Commit traceability and retire landing files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm scripts/land_champion_deep_replay_traceability.py
+          rm .github/workflows/champion-deep-replay-traceability-land.yml
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Close deep champion replay traceability"
+          git push origin HEAD:v2/champion-authority-chain
