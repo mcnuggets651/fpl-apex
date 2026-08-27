@@ -162,6 +162,7 @@ def test_decision_policy_admission_binds_exact_qualification_artifact(tmp_path: 
         subject_kind="apex.decision-policy",
         proof_id="PO-DECISION-POLICY-QUALIFICATION-001",
         season=fixture.bundle.season,
+        valid_until="2026-10-31T00:00:00Z",
     )
     review = store.put_bytes(b"decision policy review evidence").artifact_id
 
