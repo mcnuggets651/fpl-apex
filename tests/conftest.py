@@ -41,6 +41,12 @@ class _CachedPlanningFixture:
     artifacts: tuple[_RecordedArtifact, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _CachedChampionAuthority:
+    authority: object
+    artifacts: tuple[_RecordedArtifact, ...]
+
+
 class _RecordingArtifactStore:
     """Record immutable test-fixture writes while delegating all store semantics."""
 
@@ -76,6 +82,16 @@ class _RecordingArtifactStore:
 
 
 _PLANNING_FIXTURE_CACHE: dict[tuple[str, str, int, int], _CachedPlanningFixture] = {}
+_CHAMPION_AUTHORITY_CACHE: dict[
+    tuple[str, str, str | None, str | None], _CachedChampionAuthority
+] = {}
+
+
+def _restore_artifacts(store, artifacts: tuple[_RecordedArtifact, ...], *, label: str) -> None:
+    for item in artifacts:
+        ref = store.put_bytes(item.content, **dict(item.kwargs))
+        if ref.artifact_id != item.artifact_id:
+            raise ValueError(f"cached synthetic {label} artifact identity drifted")
 
 
 def _cached_planning_fixture(
@@ -92,10 +108,7 @@ def _cached_planning_fixture(
     key = (cache_variant, str(season), int(entry), int(gameweek))
     cached = _PLANNING_FIXTURE_CACHE.get(key)
     if cached is not None:
-        for item in cached.artifacts:
-            ref = store.put_bytes(item.content, **dict(item.kwargs))
-            if ref.artifact_id != item.artifact_id:
-                raise ValueError("cached synthetic planning fixture artifact identity drifted")
+        _restore_artifacts(store, cached.artifacts, label="planning fixture")
         return cached.fixture
 
     recording = _RecordingArtifactStore(store)
@@ -110,6 +123,48 @@ def _cached_planning_fixture(
         artifacts=recording.artifacts,
     )
     return fixture
+
+
+def _cached_champion_authority(
+    original: Callable[..., object],
+    *,
+    store,
+    fixture,
+    reviewed_at: str = "2026-08-24T12:00:00Z",
+    current_generation_artifact_id: str | None = None,
+    expected_parent_generation_id: str | None = None,
+):
+    """Reuse immutable baseline authority construction, never its replay/verifier execution.
+
+    The key includes chronology and parent/CAS inputs. Adversarial stale-writer or alternate-
+    generation calls therefore execute the real constructor independently. Cached artifact bytes
+    are replayed through each isolated store before the immutable result object is reused.
+    """
+
+    key = (
+        str(fixture.bundle.bundle_id),
+        str(reviewed_at),
+        current_generation_artifact_id,
+        expected_parent_generation_id,
+    )
+    cached = _CHAMPION_AUTHORITY_CACHE.get(key)
+    if cached is not None:
+        _restore_artifacts(store, cached.artifacts, label="champion authority")
+        return cached.authority
+
+    recording = _RecordingArtifactStore(store)
+    authority = original(
+        store=recording,
+        fixture=fixture,
+        reviewed_at=reviewed_at,
+        current_generation_artifact_id=current_generation_artifact_id,
+        expected_parent_generation_id=expected_parent_generation_id,
+    )
+    _CHAMPION_AUTHORITY_CACHE[key] = _CachedChampionAuthority(
+        authority=authority,
+        artifacts=recording.artifacts,
+    )
+    return authority
 
 
 def _lightweight_parity_dependency(claim, *, verified_bundle, store) -> bool:
@@ -178,6 +233,26 @@ def _isolate_planning_assurance_cost(monkeypatch, request):
                 season=season,
                 entry=entry,
                 gameweek=gameweek,
+            ),
+        )
+
+    original_authority = getattr(module, "synthetic_production_champion_authority", None)
+    if callable(original_authority):
+        monkeypatch.setattr(
+            module,
+            "synthetic_production_champion_authority",
+            lambda *,
+            store,
+            fixture,
+            reviewed_at="2026-08-24T12:00:00Z",
+            current_generation_artifact_id=None,
+            expected_parent_generation_id=None: _cached_champion_authority(
+                original_authority,
+                store=store,
+                fixture=fixture,
+                reviewed_at=reviewed_at,
+                current_generation_artifact_id=current_generation_artifact_id,
+                expected_parent_generation_id=expected_parent_generation_id,
             ),
         )
 
