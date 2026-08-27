@@ -26,7 +26,6 @@ from apex_fpl.control.outcome_truth_registry import load_outcome_truth_registry_
 from apex_fpl.core.identity import OfficialPlayerId
 from apex_fpl.core.ids import (
     EvaluationDatasetId,
-    EvaluationObservationSetId,
     EvaluationTruthSetId,
     FeatureSnapshotId,
     ForecastId,
@@ -77,7 +76,6 @@ class VerifiedForecastChampionEvidence:
     champion_model_id: str
     promotion_artifact_id: str
     promotion: VerifiedModelPromotionReplay
-
 
 
 def _strict_int(value: object, *, label: str) -> int:
