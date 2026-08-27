@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
-from apex_fpl.control.champion_authority import verify_bundle_champion_authority
 from apex_fpl.control.experiment_registry import (
     ExperimentRegistration,
     ExperimentRegistry,
@@ -23,7 +22,6 @@ from apex_fpl.control.production_cutover import (
     load_production_cutover_report,
     load_production_publication_authorization,
 )
-from apex_fpl.control.production_planning_bundle import load_production_planning_bundle
 from apex_fpl.control.release_registry import (
     CompareAndSwapConflict,
     FileSystemReleaseRegistry,
@@ -261,24 +259,19 @@ def _case(
     inconclusive: str | None = None,
     scope: str = SCOPE,
     unrelated_learning_proof: str | None = None,
+    fixture=None,
+    authority=None,
 ) -> AssuranceCase:
-    fixture = _fixture(store)
-    authority = synthetic_production_champion_authority(
+    fixture = fixture or _fixture(store)
+    authority = authority or synthetic_production_champion_authority(
         store=store,
         fixture=fixture,
         reviewed_at=CREATED_AT,
     )
-    verified_bundle = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
-    verified_generation = verify_bundle_champion_authority(
-        authority.generation.artifact_id,
-        verified_bundle=verified_bundle,
-        as_of=CREATED_AT,
-        store=store,
-    )
     learning = verify_forecast_registry_champion(
-        verified_generation.generation.forecast_registry_generation_artifact_id,
+        authority.forecast_registry_generation_artifact_id,
         season=SEASON,
-        as_of=verified_generation.generation.authorized_at,
+        as_of=CREATED_AT,
         store=store,
     )
     direct = dict(fixture.direct_qualifications)
@@ -385,13 +378,16 @@ def _execute(
     store = store or _DurableArtifactStore(tmp_path / "artifacts")
     registry = registry or _DurableReleaseRegistry(tmp_path / "production")
     fixture = _fixture(store)
-    champion_artifact_id = (
+    authority = (
         synthetic_production_champion_authority(
-            store=store, fixture=fixture, reviewed_at=CREATED_AT
-        ).generation.artifact_id
+            store=store,
+            fixture=fixture,
+            reviewed_at=CREATED_AT,
+        )
         if with_champion_authority
         else None
     )
+    champion_artifact_id = None if authority is None else authority.generation.artifact_id
     manifest = _artifact(store, "manifest")
     claim_artifact = _artifact(store, "claim")
     return store, registry, execute_production_cutover(
@@ -404,7 +400,12 @@ def _execute(
         created_at=CREATED_AT,
         valid_until=valid_until,
         artifact_manifest_id=manifest,
-        assurance_case=case or _case(store, claim_artifact),
+        assurance_case=case or _case(
+            store,
+            claim_artifact,
+            fixture=fixture,
+            authority=authority,
+        ),
         obligations=obligations or _obligations(),
         backend_qualification=backend or _backend(store, registry),
         artifact_store=store,

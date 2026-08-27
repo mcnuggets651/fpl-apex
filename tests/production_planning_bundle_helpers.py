@@ -71,6 +71,7 @@ from apex_fpl.decision.store import store_candidate_universe
 from apex_fpl.forecast.forecast_store import store_forecast
 
 from empirical_qualification_helpers import synthetic_supported_qualification_artifact
+from immutable_fixture_cache import restore_cached_fixture, retain_cached_fixture
 
 
 OWNED_POSITIONS = {
@@ -139,6 +140,17 @@ def synthetic_production_planning_bundle(
     prefers banking the first free transfer and executing a real financed transfer later.
     Positive chip option values also force a non-zero retained terminal reserve.
     """
+
+    cache_key = (season, entry, gameweek)
+    cached = restore_cached_fixture(
+        "production-planning-bundle",
+        cache_key,
+        store=store,
+    )
+    if cached is not None:
+        if not isinstance(cached, SyntheticPlanningBundleFixture):
+            raise TypeError("production planning fixture cache type mismatch")
+        return cached
 
     ruleset = load_ruleset(Path("config/rules/2026-2027.yaml"))
     ruleset_artifact = store_ruleset(ruleset, store=store)
@@ -495,8 +507,17 @@ def synthetic_production_planning_bundle(
             semantic_evidence_id=str(report.robustness_report_id),
         ),
     }
-    return SyntheticPlanningBundleFixture(
+    fixture = SyntheticPlanningBundleFixture(
         bundle=bundle,
         manager_state=manager_state,
         direct_qualifications=direct,
     )
+    cached_fixture = retain_cached_fixture(
+        "production-planning-bundle",
+        cache_key,
+        fixture,
+        store=store,
+    )
+    if not isinstance(cached_fixture, SyntheticPlanningBundleFixture):
+        raise TypeError("production planning fixture cache type mismatch")
+    return cached_fixture

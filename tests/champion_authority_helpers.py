@@ -13,6 +13,7 @@ from apex_fpl.core.champion_authority import ChampionRole
 from apex_fpl.decision.scenario_store import load_robustness_report, load_scenario_set
 
 from empirical_qualification_helpers import synthetic_supported_qualification_artifact
+from immutable_fixture_cache import restore_cached_fixture, retain_cached_fixture
 from learning_promotion_helpers import synthetic_promoted_model_registry_generation
 from production_planning_bundle_helpers import SyntheticPlanningBundleFixture
 
@@ -50,6 +51,22 @@ def synthetic_production_champion_authority(
     """Build mechanism-only authority evidence; never real production admission evidence."""
 
     season = fixture.bundle.season
+    cache_key = (
+        season,
+        str(fixture.bundle.bundle_id),
+        reviewed_at,
+        current_generation_artifact_id,
+        expected_parent_generation_id,
+    )
+    cached = restore_cached_fixture(
+        "production-champion-authority",
+        cache_key,
+        store=store,
+    )
+    if cached is not None:
+        if not isinstance(cached, SyntheticChampionAuthorityFixture):
+            raise TypeError("champion authority fixture cache type mismatch")
+        return cached
     policy_payload = _json_at(store, str(fixture.bundle.decision_policy_id))
     policy_qualification = fixture.direct_qualifications[
         "PO-DECISION-POLICY-QUALIFICATION-001"
@@ -146,10 +163,19 @@ def synthetic_production_champion_authority(
         expected_parent_generation_id=expected_parent_generation_id,
         store=store,
     )
-    return SyntheticChampionAuthorityFixture(
+    authority_fixture = SyntheticChampionAuthorityFixture(
         generation=stored_generation,
         forecast_registry_generation_artifact_id=registry_artifact_id,
         decision_policy_admission=policy_admission,
         scenario_generator_admission=generator_admission,
         scenario_policy_admission=scenario_policy_admission,
     )
+    cached_fixture = retain_cached_fixture(
+        "production-champion-authority",
+        cache_key,
+        authority_fixture,
+        store=store,
+    )
+    if not isinstance(cached_fixture, SyntheticChampionAuthorityFixture):
+        raise TypeError("champion authority fixture cache type mismatch")
+    return cached_fixture
