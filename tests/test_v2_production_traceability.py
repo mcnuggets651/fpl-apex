@@ -77,6 +77,10 @@ def test_slice13_production_proof_requirement_and_invariant_traceability_is_clos
     assert "ProductionPlanningBundle" in set(proof["required_evidence"])
     assert "PlanningResultId" in set(proof["required_evidence"])
     assert "PlanningReferenceSolverCertificateId" in set(proof["required_evidence"])
+    assert "ProductionChampionGeneration" in set(proof["required_evidence"])
+    assert "ModelRegistryGenerationId" in set(proof["required_evidence"])
+    assert "ModelPromotionId" in set(proof["required_evidence"])
+    assert "ModelEvaluationId" in set(proof["required_evidence"])
     assert "ProductionDecisionBundle" not in set(proof["required_evidence"])
     assert requirement["critical"] is True
     assert PROOF_ID in requirement["proof_obligations"]
@@ -115,7 +119,10 @@ def test_cutover_and_answer_authority_both_replay_exact_champion_authority() -> 
 
     assert "verify_bundle_champion_authority(" in cutover
     assert "verify_bundle_champion_authority(" in authority
-    assert "verify_model_promotion_replay(" in champion
+    assert "verify_forecast_registry_champion(" in champion
+    assert "verify_model_evaluation_replay(" in promotion
+    assert "evaluate_model(" in promotion
+    assert "apply_model_promotion(" in promotion
     assert "registry.verify_policy(" in promotion
     assert "production=True" in promotion
     assert "did not exist at replay as_of" in champion

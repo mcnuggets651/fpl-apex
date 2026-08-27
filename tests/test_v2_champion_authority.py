@@ -383,10 +383,20 @@ def test_forecast_champion_rejects_hand_authored_promote_certificate(
         ),
     )
     forged_artifact = store_learning_object(forged, store=store).artifact_id
-    forged_registry = ModelRegistryGeneration(
+    bootstrap = ModelRegistryGeneration(
         season=fixture.bundle.season,
         generation=1,
         parent_generation_id=None,
+        registered_model_ids=(candidate_model_id, incumbent_model_id),
+        champion_model_id=None,
+        promotion_id=None,
+        source_artifact_ids=(store.put_bytes(b"forged registry bootstrap").artifact_id,),
+    )
+    bootstrap_artifact = store_learning_object(bootstrap, store=store).artifact_id
+    forged_registry = ModelRegistryGeneration(
+        season=fixture.bundle.season,
+        generation=2,
+        parent_generation_id=bootstrap.generation_id,
         registered_model_ids=(candidate_model_id, incumbent_model_id),
         champion_model_id=candidate_model_id,
         promotion_id=forged.promotion_id,
@@ -395,6 +405,7 @@ def test_forecast_champion_rejects_hand_authored_promote_certificate(
     forged_registry_artifact = store_learning_object(
         forged_registry,
         store=store,
+        parent_artifact_ids=(bootstrap_artifact,),
     ).artifact_id
 
     with pytest.raises(ValueError, match="MODEL_EVALUATION_REPORT"):
