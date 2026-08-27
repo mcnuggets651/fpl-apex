@@ -40,6 +40,16 @@ PR #86 adds an operator adapter above the existing pure empirical contracts rath
 
 The operator adapter records candidate availability, experiment declaration and result availability at execution time. Those chronology fields are not caller-controlled. It refuses declarations after the evaluation window starts and outcomes before the window ends. Qualification cannot mutate a champion; candidate materialization returns a reviewable registry row only. The `apex-v2` CLI has no filesystem production fallback and never performs cutover. See `docs/APEX_PROSPECTIVE_EMPIRICAL_OPERATIONS_V2.md`.
 
+## Champion authority plane
+
+PR #87 closes the trust gap between `QUALIFIED` and “selected for production”. Qualification does not confer champion authority.
+
+Forecast-model authority reuses the existing immutable learning chain: a retained `ModelPromotionCertificate` with decision `PROMOTE` must be the exact source of the `ModelRegistryGeneration` that names the forecast champion. DecisionPolicy, scenario-generator and scenario-policy candidates require their own exact typed empirical qualification plus a separate immutable reviewed `ChampionAdmissionCertificate`.
+
+Those four authorities are composed into one parent-linked `ProductionChampionGeneration`. Generation transitions are stale-writer-safe and retain review/change-control evidence. Runtime publication code is verifier-only: it replays the generation and exact-matches the forecast model, DecisionPolicy, `ScenarioSet.scenario_generator_id` and `RobustnessReport.scenario_policy_id` in the already replayed production planning bundle. Runtime code cannot issue admissions or create generations.
+
+Production publication authorization schema v2 binds the exact champion-generation artifact. A missing generation may be retained only on a WITHHELD attempt; authorization cannot become actionable without one. Answer authority independently replays the same generation against the bundle again before exposing a current recommendation. See `docs/APEX_CHAMPION_AUTHORITY_V2.md`.
+
 ## Production boundary
 
-A green implementation branch, green CI database, SHADOW candidate, SUPPORTED certificate or QUALIFIED candidate is not independently sufficient for publication. Production still requires exact registered champions, exact qualified deployed backend identities, a replay-valid schema-v2 planning bundle, complete AssuranceCase, publication authorization and atomic PUBLISHED release. Until that chain exists, V2 remains WITHHELD.
+A green implementation branch, green CI database, SHADOW candidate, SUPPORTED certificate, QUALIFIED candidate or synthetic champion generation is not independently sufficient for publication. Production requires genuine reviewed champion authority, exact qualified deployed backend identities, a replay-valid schema-v2 planning bundle, complete AssuranceCase, exact reference-solver authority, publication authorization and atomic PUBLISHED release. Until that chain exists, V2 remains WITHHELD.
