@@ -1,6 +1,6 @@
 """Administrative champion admission and runtime replay for Apex V2.
 
-This module deliberately separates *qualification* from *selection authority*.  Runtime
+This module deliberately separates *qualification* from *selection authority*. Runtime
 publication code may call only the replay/verification functions; admission and generation
 creation are administrative operations and are guarded by architecture tests.
 """
@@ -8,6 +8,7 @@ creation are administrative operations and are guarded by architecture tests.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import json
 from typing import Mapping
 
@@ -17,6 +18,7 @@ from apex_fpl.control.empirical_qualification_admission import (
     SCENARIO_POLICY_QUALIFICATION_ID,
     verify_typed_empirical_qualification,
 )
+from apex_fpl.control.learning_promotion_replay import verify_model_promotion_replay
 from apex_fpl.control.learning_store import load_learning_object
 from apex_fpl.control.production_planning_bundle import VerifiedProductionPlanningBundle
 from apex_fpl.core.canonical import canonical_json_bytes, canonical_sha256
@@ -56,6 +58,19 @@ class StoredChampionGeneration:
     artifact_id: str
 
 
+def _instant(value: str, *, label: str) -> datetime:
+    text = str(value).strip()
+    if not text:
+        raise ValueError(f"{label} cannot be empty")
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label} must be valid ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{label} must be timezone-aware")
+    return parsed
+
+
 def _read_json(artifact_id: str, *, store: ArtifactStore, label: str) -> dict[str, object]:
     try:
         content = store.read_bytes(artifact_id)
@@ -78,7 +93,11 @@ def _verify_artifact(artifact_id: str, *, store: ArtifactStore, label: str) -> s
 
 
 def _candidate_payload(candidate_id: str, *, store: ArtifactStore) -> dict[str, object]:
-    payload = _read_json(candidate_id, store=store, label="champion candidate semantic artifact")
+    payload = _read_json(
+        candidate_id,
+        store=store,
+        label="champion candidate semantic artifact",
+    )
     if canonical_sha256(payload) != candidate_id:
         raise ValueError("champion candidate semantic identity mismatch")
     if canonical_json_bytes(payload) != store.read_bytes(candidate_id):
@@ -92,7 +111,16 @@ def _verify_admission_certificate(
     as_of: str,
     store: ArtifactStore,
 ) -> dict[str, object]:
-    _verify_artifact(certificate.review_artifact_id, store=store, label="champion review evidence")
+    if _instant(as_of, label="champion admission replay as_of") < _instant(
+        certificate.reviewed_at,
+        label="champion admission reviewed_at",
+    ):
+        raise ValueError("champion admission did not exist at replay as_of")
+    _verify_artifact(
+        certificate.review_artifact_id,
+        store=store,
+        label="champion review evidence",
+    )
     payload = _candidate_payload(certificate.candidate_id, store=store)
     subject_kind, proof_id = _ROLE_CONTRACT[certificate.role]
     verify_typed_empirical_qualification(
@@ -166,7 +194,10 @@ def load_champion_admission(
     store: ArtifactStore,
 ) -> StoredChampionAdmission:
     raw = _read_json(artifact_id, store=store, label="champion admission")
-    if raw.get("schema_name") != "apex-stored-champion-admission" or raw.get("schema_version") != 1:
+    if (
+        raw.get("schema_name") != "apex-stored-champion-admission"
+        or raw.get("schema_version") != 1
+    ):
         raise ValueError("unsupported champion admission schema")
     payload = raw.get("payload")
     declared = raw.get("admission_id")
@@ -193,6 +224,7 @@ def _forecast_champion(
     registry_generation_artifact_id: str,
     *,
     season: str,
+    as_of: str,
     store: ArtifactStore,
 ) -> str:
     generation = load_learning_object(
@@ -201,6 +233,16 @@ def _forecast_champion(
         expected_object_type="MODEL_REGISTRY_GENERATION",
     )
     payload = generation.payload
+    raw_sources = payload.get("source_artifact_ids")
+    if not isinstance(raw_sources, list) or any(
+        not isinstance(item, str) for item in raw_sources
+    ):
+        raise ValueError("forecast registry generation source artifacts are invalid")
+    canonical_sources = tuple(sorted(set(raw_sources)))
+    if len(canonical_sources) != len(raw_sources):
+        raise ValueError("forecast registry generation sources are not canonical unique set")
+    if canonical_sources != generation.source_artifact_ids:
+        raise ValueError("forecast registry generation envelope/payload sources disagree")
     if payload.get("season") != season:
         raise ValueError("forecast champion registry season mismatch")
     champion = payload.get("champion_model_id")
@@ -209,7 +251,7 @@ def _forecast_champion(
         raise ValueError("forecast registry generation has no champion")
     if not isinstance(promotion_id, str) or not promotion_id:
         raise ValueError("forecast champion has no promotion certificate identity")
-    matches = []
+    matches: list[str] = []
     for source_artifact_id in generation.source_artifact_ids:
         try:
             promotion = load_learning_object(
@@ -220,14 +262,17 @@ def _forecast_champion(
             )
         except (ValueError, FileNotFoundError):
             continue
-        matches.append(promotion)
+        matches.append(promotion.artifact_id)
     if len(matches) != 1:
         raise ValueError("forecast champion must replay exactly one promotion certificate")
-    promotion_payload = matches[0].payload
-    if promotion_payload.get("decision") != "PROMOTE":
-        raise ValueError("forecast champion promotion certificate is not PROMOTE")
-    if promotion_payload.get("candidate_model_id") != champion:
-        raise ValueError("forecast champion does not match promoted candidate")
+    promotion = verify_model_promotion_replay(
+        matches[0],
+        season=season,
+        as_of=as_of,
+        store=store,
+    )
+    if promotion.payload.get("candidate_model_id") != champion:
+        raise ValueError("forecast champion does not match replay-derived promoted candidate")
     return champion
 
 
@@ -237,7 +282,10 @@ def _load_generation_contract(
     store: ArtifactStore,
 ) -> ProductionChampionGeneration:
     raw = _read_json(artifact_id, store=store, label="production champion generation")
-    if raw.get("schema_name") != "apex-stored-production-champion-generation" or raw.get("schema_version") != 1:
+    if (
+        raw.get("schema_name") != "apex-stored-production-champion-generation"
+        or raw.get("schema_version") != 1
+    ):
         raise ValueError("unsupported stored production champion generation schema")
     payload = raw.get("payload")
     declared = raw.get("generation_id")
@@ -272,7 +320,9 @@ def _load_generation_contract(
             payload.get("scenario_policy_admission_artifact_id") or ""
         ),
         scenario_policy_id=str(payload.get("scenario_policy_id") or ""),
-        change_control_artifact_id=str(payload.get("change_control_artifact_id") or ""),
+        change_control_artifact_id=str(
+            payload.get("change_control_artifact_id") or ""
+        ),
         authorized_by=str(payload.get("authorized_by") or ""),
         authorized_at=str(payload.get("authorized_at") or ""),
         reason=str(payload.get("reason") or ""),
@@ -290,21 +340,33 @@ def load_production_champion_generation(
     store: ArtifactStore,
 ) -> StoredChampionGeneration:
     generation = _load_generation_contract(artifact_id, store=store)
+    replay_at = _instant(as_of, label="champion generation replay as_of")
+    authorized_at = _instant(
+        generation.authorized_at,
+        label="champion generation authorized_at",
+    )
+    if replay_at < authorized_at:
+        raise ValueError("production champion generation did not exist at replay as_of")
     _verify_artifact(
         generation.change_control_artifact_id,
         store=store,
         label="champion generation change-control evidence",
     )
     if generation.parent_generation_artifact_id is not None:
-        parent = _load_generation_contract(
+        parent = load_production_champion_generation(
             generation.parent_generation_artifact_id,
+            as_of=generation.authorized_at,
             store=store,
-        )
-        if parent.season != generation.season or parent.generation + 1 != generation.generation:
+        ).generation
+        if (
+            parent.season != generation.season
+            or parent.generation + 1 != generation.generation
+        ):
             raise ValueError("production champion parent lineage is not contiguous")
     forecast_champion = _forecast_champion(
         generation.forecast_registry_generation_artifact_id,
         season=generation.season,
+        as_of=generation.authorized_at,
         store=store,
     )
     if forecast_champion != generation.forecast_model_id:
@@ -327,11 +389,19 @@ def load_production_champion_generation(
         ),
     )
     for role, admission_artifact_id, expected_candidate_id in role_bindings:
-        admission = load_champion_admission(
+        admitted_at_authorization = load_champion_admission(
             admission_artifact_id,
-            as_of=as_of,
+            as_of=generation.authorized_at,
             store=store,
         ).certificate
+        if replay_at > authorized_at:
+            admission = load_champion_admission(
+                admission_artifact_id,
+                as_of=as_of,
+                store=store,
+            ).certificate
+        else:
+            admission = admitted_at_authorization
         if admission.role is not role:
             raise ValueError("production champion admission role mismatch")
         if admission.season != generation.season:
@@ -358,10 +428,11 @@ def create_production_champion_generation(
 ) -> StoredChampionGeneration:
     """Administratively create a parent-linked champion generation.
 
-    ``expected_parent_generation_id`` is the stale-writer guard: when a current generation
-    exists its semantic identity must exactly equal the caller's expected parent.
+    ``expected_parent_generation_id`` is the stale-writer guard: when a supplied current
+    generation exists its semantic identity must exactly equal the caller's expected parent.
     """
 
+    _instant(authorized_at, label="champion generation authorized_at")
     if current_generation_artifact_id is None:
         if expected_parent_generation_id is not None:
             raise ValueError("initial champion generation cannot declare expected parent")
@@ -374,7 +445,9 @@ def create_production_champion_generation(
             store=store,
         ).generation
         if expected_parent_generation_id != current.generation_id:
-            raise ValueError("stale champion-generation writer: expected parent does not match current")
+            raise ValueError(
+                "stale champion-generation writer: expected parent does not match current"
+            )
         if current.season != season:
             raise ValueError("champion generation cannot cross season boundary")
         generation_number = current.generation + 1
@@ -383,10 +456,15 @@ def create_production_champion_generation(
     forecast_model_id = _forecast_champion(
         forecast_registry_generation_artifact_id,
         season=season,
+        as_of=authorized_at,
         store=store,
     )
     admissions = {
-        role: load_champion_admission(artifact_id, as_of=authorized_at, store=store).certificate
+        role: load_champion_admission(
+            artifact_id,
+            as_of=authorized_at,
+            store=store,
+        ).certificate
         for role, artifact_id in (
             (ChampionRole.DECISION_POLICY, decision_policy_admission_artifact_id),
             (ChampionRole.SCENARIO_GENERATOR, scenario_generator_admission_artifact_id),
@@ -400,11 +478,17 @@ def create_production_champion_generation(
         season=season,
         generation=generation_number,
         parent_generation_artifact_id=parent_artifact_id,
-        forecast_registry_generation_artifact_id=forecast_registry_generation_artifact_id,
+        forecast_registry_generation_artifact_id=(
+            forecast_registry_generation_artifact_id
+        ),
         forecast_model_id=forecast_model_id,
-        decision_policy_admission_artifact_id=decision_policy_admission_artifact_id,
+        decision_policy_admission_artifact_id=(
+            decision_policy_admission_artifact_id
+        ),
         decision_policy_id=admissions[ChampionRole.DECISION_POLICY].candidate_id,
-        scenario_generator_admission_artifact_id=scenario_generator_admission_artifact_id,
+        scenario_generator_admission_artifact_id=(
+            scenario_generator_admission_artifact_id
+        ),
         scenario_generator_id=admissions[ChampionRole.SCENARIO_GENERATOR].candidate_id,
         scenario_policy_admission_artifact_id=scenario_policy_admission_artifact_id,
         scenario_policy_id=admissions[ChampionRole.SCENARIO_POLICY].candidate_id,
@@ -431,7 +515,11 @@ def create_production_champion_generation(
         schema_version="1",
     )
     stored = StoredChampionGeneration(generation, ref.artifact_id)
-    load_production_champion_generation(ref.artifact_id, as_of=authorized_at, store=store)
+    load_production_champion_generation(
+        ref.artifact_id,
+        as_of=authorized_at,
+        store=store,
+    )
     return stored
 
 
@@ -465,7 +553,9 @@ def verify_bundle_champion_authority(
         "scenario generator": generation.scenario_generator_id,
         "scenario policy": generation.scenario_policy_id,
     }
-    mismatches = [label for label in expected if expected[label] != authorized[label]]
+    mismatches = [
+        label for label in expected if expected[label] != authorized[label]
+    ]
     if mismatches:
         raise ValueError(
             "production bundle uses champion identities not authorized by replayed generation: "
