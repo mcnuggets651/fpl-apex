@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from apex_fpl.control.artifact_store import FileSystemArtifactStore
+from apex_fpl.control.champion_authority import verify_bundle_champion_authority
 from apex_fpl.control.experiment_registry import (
     ExperimentRegistration,
     ExperimentRegistry,
@@ -14,10 +15,12 @@ from apex_fpl.control.experiment_registry import (
     store_experiment_registry,
     store_experiment_result,
 )
+from apex_fpl.control.learning_promotion_replay import verify_forecast_registry_champion
 from apex_fpl.control.production_cutover import (
     execute_production_cutover,
     load_production_cutover_report,
 )
+from apex_fpl.control.production_planning_bundle import load_production_planning_bundle
 from apex_fpl.control.release_registry import (
     CompareAndSwapConflict,
     FileSystemReleaseRegistry,
@@ -53,9 +56,11 @@ from apex_fpl.core.proofs import (
 
 from backend_qualification_helpers import synthetic_production_backend_qualification
 from champion_authority_helpers import synthetic_production_champion_authority
+from empirical_qualification_helpers import synthetic_supported_qualification_artifact
 from production_bundle_helpers import synthetic_production_bundle
 from production_planning_bundle_helpers import (
     DirectQualificationMaterial,
+    _qualification_material,
     synthetic_production_planning_bundle,
 )
 from reference_solver_planning_helpers import synthetic_planning_parity_material
@@ -251,9 +256,56 @@ def _case(
     missing: str | None = None,
     inconclusive: str | None = None,
     scope: str = SCOPE,
+    unrelated_learning_proof: str | None = None,
 ) -> AssuranceCase:
     fixture = _fixture(store)
-    direct = fixture.direct_qualifications
+    authority = synthetic_production_champion_authority(
+        store=store,
+        fixture=fixture,
+        reviewed_at=CREATED_AT,
+    )
+    verified_bundle = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
+    verified_generation = verify_bundle_champion_authority(
+        authority.generation.artifact_id,
+        verified_bundle=verified_bundle,
+        as_of=CREATED_AT,
+        store=store,
+    )
+    learning = verify_forecast_registry_champion(
+        verified_generation.generation.forecast_registry_generation_artifact_id,
+        season=SEASON,
+        as_of=verified_generation.generation.authorized_at,
+        store=store,
+    )
+    direct = dict(fixture.direct_qualifications)
+    evaluation = learning.promotion.candidate.report
+    evaluation_qualification = synthetic_supported_qualification_artifact(
+        store=store,
+        subject_payload=evaluation.semantic_payload(),
+        subject_kind="apex.model-evaluation",
+        proof_id="PO-MODEL-EVALUATION-001",
+        season=SEASON,
+        valid_until=VALID_UNTIL,
+    )
+    direct["PO-MODEL-EVALUATION-001"] = _qualification_material(
+        store=store,
+        artifact_id=evaluation_qualification,
+        semantic_evidence_id=str(evaluation.evaluation_id),
+    )
+    promotion = learning.promotion.certificate
+    promotion_qualification = synthetic_supported_qualification_artifact(
+        store=store,
+        subject_payload=promotion.semantic_payload(),
+        subject_kind="apex.model-promotion",
+        proof_id="PO-MODEL-PROMOTION-001",
+        season=SEASON,
+        valid_until=VALID_UNTIL,
+    )
+    direct["PO-MODEL-PROMOTION-001"] = _qualification_material(
+        store=store,
+        artifact_id=promotion_qualification,
+        semantic_evidence_id=str(promotion.promotion_id),
+    )
     parity = (
         None
         if missing == PARITY_PROOF_ID or inconclusive == PARITY_PROOF_ID
@@ -267,7 +319,7 @@ def _case(
         artifact_ids = [claim_artifact]
         evidence_ids = ["synthetic-evidence"]
         if empirical and proof_id != inconclusive:
-            if proof_id in direct:
+            if proof_id in direct and proof_id != unrelated_learning_proof:
                 qualification_artifact, subject_id, experiment_id, semantic_id = (
                     _direct_claim_evidence(direct[proof_id])
                 )
@@ -387,6 +439,32 @@ def test_missing_champion_authority_is_withheld_without_pointer_write(tmp_path: 
     assert any("champion authority is missing" in item for item in outcome.report.cutover_blockers)
     assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 
+
+
+@pytest.mark.parametrize(
+    "proof_id",
+    ("PO-MODEL-EVALUATION-001", "PO-MODEL-PROMOTION-001"),
+)
+def test_unrelated_valid_learning_empirical_proof_cannot_authorize_champion_chain(
+    tmp_path: Path,
+    proof_id: str,
+) -> None:
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    claim_artifact = _artifact(store, "claim")
+    case = _case(
+        store,
+        claim_artifact,
+        unrelated_learning_proof=proof_id,
+    )
+    with pytest.raises(ValueError, match=rf"matching typed qualification evidence: {proof_id}"):
+        _execute(
+            tmp_path,
+            case=case,
+            store=store,
+            registry=registry,
+        )
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 
 def test_legacy_v1_bundle_is_rejected_before_pointer_write(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")

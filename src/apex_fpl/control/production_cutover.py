@@ -17,6 +17,10 @@ from apex_fpl.control.champion_authority import (
     verify_bundle_champion_authority,
 )
 from apex_fpl.control.experiment_registry import load_empirical_qualification_certificate
+from apex_fpl.control.learning_promotion_replay import (
+    VerifiedForecastChampionEvidence,
+    verify_forecast_registry_champion,
+)
 from apex_fpl.control.production_planning_bundle import (
     VerifiedProductionPlanningBundle,
     load_production_planning_bundle,
@@ -150,30 +154,50 @@ def _validate_backend_binding(
 
 def _bundle_empirical_bindings(
     verified: VerifiedProductionPlanningBundle | None,
+    *,
+    champion_evidence: VerifiedForecastChampionEvidence | None = None,
 ) -> dict[str, _EmpiricalReleaseBinding]:
-    if verified is None:
-        return {}
-    model = verified.forecast_model
-    policy = verified.decision_policy
-    report = verified.robustness_report
-    if model.qualification_artifact_id is None or policy.qualification_artifact_id is None:
-        raise ValueError("production bundle direct empirical subjects lack qualification artifacts")
-    return {
-        "PO-FORECAST-QUALIFICATION-001": _EmpiricalReleaseBinding(
-            subject_id=qualification_subject_id(model.semantic_payload()),
-            semantic_evidence_id=str(model.model_artifact_id),
-            qualification_artifact_id=model.qualification_artifact_id,
-        ),
-        "PO-DECISION-POLICY-QUALIFICATION-001": _EmpiricalReleaseBinding(
-            subject_id=qualification_subject_id(policy.semantic_payload()),
-            semantic_evidence_id=str(policy.decision_policy_id),
-            qualification_artifact_id=policy.qualification_artifact_id,
-        ),
-        "PO-SCENARIO-CONVERGENCE-001": _EmpiricalReleaseBinding(
-            subject_id=qualification_subject_id(report.semantic_payload()),
-            semantic_evidence_id=str(report.robustness_report_id),
-        ),
-    }
+    bindings: dict[str, _EmpiricalReleaseBinding] = {}
+    if verified is not None:
+        model = verified.forecast_model
+        policy = verified.decision_policy
+        report = verified.robustness_report
+        if model.qualification_artifact_id is None or policy.qualification_artifact_id is None:
+            raise ValueError("production bundle direct empirical subjects lack qualification artifacts")
+        bindings.update(
+            {
+                "PO-FORECAST-QUALIFICATION-001": _EmpiricalReleaseBinding(
+                    subject_id=qualification_subject_id(model.semantic_payload()),
+                    semantic_evidence_id=str(model.model_artifact_id),
+                    qualification_artifact_id=model.qualification_artifact_id,
+                ),
+                "PO-DECISION-POLICY-QUALIFICATION-001": _EmpiricalReleaseBinding(
+                    subject_id=qualification_subject_id(policy.semantic_payload()),
+                    semantic_evidence_id=str(policy.decision_policy_id),
+                    qualification_artifact_id=policy.qualification_artifact_id,
+                ),
+                "PO-SCENARIO-CONVERGENCE-001": _EmpiricalReleaseBinding(
+                    subject_id=qualification_subject_id(report.semantic_payload()),
+                    semantic_evidence_id=str(report.robustness_report_id),
+                ),
+            }
+        )
+    if champion_evidence is not None:
+        candidate_report = champion_evidence.promotion.candidate.report
+        promotion = champion_evidence.promotion.certificate
+        bindings.update(
+            {
+                "PO-MODEL-EVALUATION-001": _EmpiricalReleaseBinding(
+                    subject_id=qualification_subject_id(candidate_report.semantic_payload()),
+                    semantic_evidence_id=str(candidate_report.evaluation_id),
+                ),
+                "PO-MODEL-PROMOTION-001": _EmpiricalReleaseBinding(
+                    subject_id=qualification_subject_id(promotion.semantic_payload()),
+                    semantic_evidence_id=str(promotion.promotion_id),
+                ),
+            }
+        )
+    return bindings
 
 
 def _verified_bundle_for_release(
@@ -526,9 +550,39 @@ def execute_production_cutover(
         gameweek=gameweek,
         store=artifact_store,
     )
-    empirical_bindings = _bundle_empirical_bindings(verified_bundle)
     manifest_id = _verify_artifact(
         artifact_store, artifact_manifest_id, label="production artifact manifest"
+    )
+    champion_artifact_id: str | None = None
+    champion_evidence: VerifiedForecastChampionEvidence | None = None
+    if champion_generation_artifact_id is not None:
+        champion_artifact_id = _verify_artifact(
+            artifact_store,
+            champion_generation_artifact_id,
+            label="production champion generation",
+        )
+        if verified_bundle is None:
+            stored_champion = load_production_champion_generation(
+                champion_artifact_id,
+                as_of=created_at,
+                store=artifact_store,
+            )
+        else:
+            stored_champion = verify_bundle_champion_authority(
+                champion_artifact_id,
+                verified_bundle=verified_bundle,
+                as_of=created_at,
+                store=artifact_store,
+            )
+        champion_evidence = verify_forecast_registry_champion(
+            stored_champion.generation.forecast_registry_generation_artifact_id,
+            season=stored_champion.generation.season,
+            as_of=stored_champion.generation.authorized_at,
+            store=artifact_store,
+        )
+    empirical_bindings = _bundle_empirical_bindings(
+        verified_bundle,
+        champion_evidence=champion_evidence,
     )
     claim_artifacts = _claim_artifacts(
         assurance_case,
@@ -539,26 +593,6 @@ def execute_production_cutover(
         empirical_bindings=empirical_bindings,
         verified_bundle=verified_bundle,
     )
-    champion_artifact_id: str | None = None
-    if champion_generation_artifact_id is not None:
-        champion_artifact_id = _verify_artifact(
-            artifact_store,
-            champion_generation_artifact_id,
-            label="production champion generation",
-        )
-        if verified_bundle is None:
-            load_production_champion_generation(
-                champion_artifact_id,
-                as_of=created_at,
-                store=artifact_store,
-            )
-        else:
-            verify_bundle_champion_authority(
-                champion_artifact_id,
-                verified_bundle=verified_bundle,
-                as_of=created_at,
-                store=artifact_store,
-            )
     backend_artifacts = (
         _verify_artifact(
             artifact_store,
