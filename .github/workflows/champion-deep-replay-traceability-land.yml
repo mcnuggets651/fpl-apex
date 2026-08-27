@@ -35,11 +35,12 @@ jobs:
           python scripts/land_champion_deep_replay_traceability.py
       - name: Validate diff
         run: git diff --check
-      - name: Commit traceability and retire landing files
+      - name: Commit non-workflow traceability and retire landing files
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -- .github/workflows/apex.yml .github/workflows/v2-shadow-production.yml
           rm scripts/land_champion_deep_replay_traceability.py
           rm .github/workflows/champion-deep-replay-traceability-land.yml
           git add -A
