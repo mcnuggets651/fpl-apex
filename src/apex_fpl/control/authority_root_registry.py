@@ -37,6 +37,17 @@ def _optional_text(value: object, *, label: str) -> str | None:
     return value.strip()
 
 
+def _root_digest(root_id: object) -> str:
+    algorithm, separator, digest = str(root_id).partition(":")
+    if algorithm != "sha256" or not separator or len(digest) != 64:
+        raise ValueError("authority root ID must be sha256 identity")
+    try:
+        int(digest, 16)
+    except ValueError as exc:
+        raise ValueError("authority root digest is invalid") from exc
+    return digest.lower()
+
+
 def authority_root_bytes(root: ProductionAuthorityRoot) -> bytes:
     return canonical_json_bytes(root.semantic_payload())
 
@@ -107,9 +118,7 @@ class FileSystemAuthorityRootRegistry:
         )
 
     def _root_path(self, root_id: str) -> Path:
-        digest = str(root_id).removeprefix("sha256:")
-        if len(digest) != 64:
-            raise ValueError("authority root ID must be sha256 identity")
+        digest = _root_digest(root_id)
         return self.root / "authority-roots" / f"{digest}.json"
 
     def _pointer_path(self, season: str) -> Path:
@@ -178,10 +187,14 @@ class FileSystemAuthorityRootRegistry:
             raise ValueError("authority root pointer is not valid JSON") from exc
         if not isinstance(payload, dict) or payload.get("schema_name") != "apex-authority-root-pointer":
             raise ValueError("authority root pointer has wrong schema")
+        if _strict_int(payload.get("schema_version"), label="authority root pointer schema_version") != 1:
+            raise ValueError("unsupported authority root pointer schema")
         if payload.get("season") != str(season):
             raise ValueError("authority root pointer season mismatch")
         value = payload.get("root_id")
-        return None if value is None else str(value)
+        if not isinstance(value, str):
+            raise ValueError("authority root pointer root_id must be string")
+        return f"sha256:{_root_digest(value)}"
 
     def current_root(self, season: str) -> ProductionAuthorityRoot | None:
         root_id = self.current_root_id(season)
