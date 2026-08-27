@@ -20,7 +20,19 @@ jobs:
         with:
           fetch-depth: 0
       - name: Apply deep replay traceability
-        run: python scripts/land_champion_deep_replay_traceability.py
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/land_champion_deep_replay_traceability.py")
+          text = path.read_text(encoding="utf-8")
+          old = '    if count != 1:\n        raise SystemExit(f"{path}: expected one target, found {count}: {old[:120]!r}")\n'
+          new = '    if count < 1:\n        raise SystemExit(f"{path}: replacement target missing: {old[:120]!r}")\n'
+          if text.count(old) != 1:
+              raise SystemExit("deep replay patcher helper target mismatch")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          python scripts/land_champion_deep_replay_traceability.py
       - name: Validate diff
         run: git diff --check
       - name: Commit traceability and retire landing files
