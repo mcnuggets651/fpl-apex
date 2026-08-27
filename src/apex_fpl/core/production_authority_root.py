@@ -2,8 +2,9 @@
 
 The root does not replace component governance. It binds the exact retained artifacts
 whose own loaders independently re-prove champion selection, FPL rules, learning policy,
-outcome truth, reference-solver authority and build provenance. Roots are parent-linked;
-a separate CAS registry selects the unique current root for a season.
+outcome truth and build provenance. Release-specific solver authorization remains in the
+release manifest/proof surface. Roots are parent-linked; a dedicated CAS registry selects
+the unique current root for a season.
 """
 
 from __future__ import annotations
@@ -45,7 +46,8 @@ def _aware_datetime(value: object, *, label: str) -> datetime:
 
 
 def _aware_timestamp(value: object, *, label: str) -> str:
-    return _text(value, label=label) if _aware_datetime(value, label=label) else ""
+    _aware_datetime(value, label=label)
+    return _text(value, label=label)
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,8 +64,6 @@ class ProductionAuthorityRoot:
     learning_policy_id: str
     outcome_truth_registry_artifact_id: str
     outcome_truth_registry_id: str
-    reference_solver_authorization_artifact_id: str
-    reference_solver_authorization_id: str
     build_manifest_artifact_id: str
     build_manifest_id: str
     change_control_artifact_id: str
@@ -99,8 +99,6 @@ class ProductionAuthorityRoot:
             "learning_policy_id",
             "outcome_truth_registry_artifact_id",
             "outcome_truth_registry_id",
-            "reference_solver_authorization_artifact_id",
-            "reference_solver_authorization_id",
             "build_manifest_artifact_id",
             "build_manifest_id",
             "change_control_artifact_id",
@@ -153,8 +151,6 @@ class ProductionAuthorityRoot:
             "learning_policy_id": self.learning_policy_id,
             "outcome_truth_registry_artifact_id": self.outcome_truth_registry_artifact_id,
             "outcome_truth_registry_id": self.outcome_truth_registry_id,
-            "reference_solver_authorization_artifact_id": self.reference_solver_authorization_artifact_id,
-            "reference_solver_authorization_id": self.reference_solver_authorization_id,
             "build_manifest_artifact_id": self.build_manifest_artifact_id,
             "build_manifest_id": self.build_manifest_id,
             "change_control_artifact_id": self.change_control_artifact_id,
