@@ -18,8 +18,7 @@ from apex_fpl.control.empirical_qualification_admission import (
     SCENARIO_POLICY_QUALIFICATION_ID,
     verify_typed_empirical_qualification,
 )
-from apex_fpl.control.learning_promotion_replay import verify_model_promotion_replay
-from apex_fpl.control.learning_store import load_learning_object
+from apex_fpl.control.learning_promotion_replay import verify_forecast_registry_champion
 from apex_fpl.control.production_planning_bundle import VerifiedProductionPlanningBundle
 from apex_fpl.core.canonical import canonical_json_bytes, canonical_sha256
 from apex_fpl.core.champion_authority import (
@@ -227,53 +226,13 @@ def _forecast_champion(
     as_of: str,
     store: ArtifactStore,
 ) -> str:
-    generation = load_learning_object(
+    evidence = verify_forecast_registry_champion(
         registry_generation_artifact_id,
-        store=store,
-        expected_object_type="MODEL_REGISTRY_GENERATION",
-    )
-    payload = generation.payload
-    raw_sources = payload.get("source_artifact_ids")
-    if not isinstance(raw_sources, list) or any(
-        not isinstance(item, str) for item in raw_sources
-    ):
-        raise ValueError("forecast registry generation source artifacts are invalid")
-    canonical_sources = tuple(sorted(set(raw_sources)))
-    if len(canonical_sources) != len(raw_sources):
-        raise ValueError("forecast registry generation sources are not canonical unique set")
-    if canonical_sources != generation.source_artifact_ids:
-        raise ValueError("forecast registry generation envelope/payload sources disagree")
-    if payload.get("season") != season:
-        raise ValueError("forecast champion registry season mismatch")
-    champion = payload.get("champion_model_id")
-    promotion_id = payload.get("promotion_id")
-    if not isinstance(champion, str) or not champion:
-        raise ValueError("forecast registry generation has no champion")
-    if not isinstance(promotion_id, str) or not promotion_id:
-        raise ValueError("forecast champion has no promotion certificate identity")
-    matches: list[str] = []
-    for source_artifact_id in generation.source_artifact_ids:
-        try:
-            promotion = load_learning_object(
-                source_artifact_id,
-                store=store,
-                expected_object_type="MODEL_PROMOTION_CERTIFICATE",
-                expected_semantic_id=promotion_id,
-            )
-        except (ValueError, FileNotFoundError):
-            continue
-        matches.append(promotion.artifact_id)
-    if len(matches) != 1:
-        raise ValueError("forecast champion must replay exactly one promotion certificate")
-    promotion = verify_model_promotion_replay(
-        matches[0],
         season=season,
         as_of=as_of,
         store=store,
     )
-    if promotion.payload.get("candidate_model_id") != champion:
-        raise ValueError("forecast champion does not match replay-derived promoted candidate")
-    return champion
+    return evidence.champion_model_id
 
 
 def _load_generation_contract(
