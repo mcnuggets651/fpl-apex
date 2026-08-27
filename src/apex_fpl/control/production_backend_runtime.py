@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import os
 from typing import Mapping
 
+from apex_fpl.control.postgres_authority_root_registry import PostgresAuthorityRootRegistry
 from apex_fpl.control.postgres_backend import PostgresArtifactStore, PostgresReleaseRegistry
 
 
@@ -23,6 +24,7 @@ DEFAULT_PRODUCTION_POSTGRES_SCHEMA = "apex_v2"
 class ProductionBackendRuntime:
     artifact_store: PostgresArtifactStore
     release_registry: PostgresReleaseRegistry
+    authority_root_registry: PostgresAuthorityRootRegistry
     schema: str
 
     def identity_payload(self) -> dict[str, object]:
@@ -35,6 +37,7 @@ class ProductionBackendRuntime:
             "schema": self.schema,
             "artifact_store_backend_id": self.artifact_store.backend_id,
             "release_registry_backend_id": self.release_registry.backend_id,
+            "authority_root_registry_backend_id": self.authority_root_registry.backend_id,
         }
 
 
@@ -45,7 +48,7 @@ def load_production_backend_runtime(
 
     Schema/bootstrap is intentionally an administrative operation. This loader only opens an
     already-initialised control plane and fails closed if the production DSN is missing, invalid
-    or points at an uninitialised schema.
+    or points at an uninitialised schema, including the authority-root registry migration.
     """
 
     env = os.environ if environ is None else environ
@@ -63,13 +66,19 @@ def load_production_backend_runtime(
 
     artifact_store: PostgresArtifactStore | None = None
     release_registry: PostgresReleaseRegistry | None = None
+    authority_root_registry: PostgresAuthorityRootRegistry | None = None
     try:
         artifact_store = PostgresArtifactStore(dsn, schema=schema)
         release_registry = PostgresReleaseRegistry(dsn, schema=schema)
+        authority_root_registry = PostgresAuthorityRootRegistry(dsn, schema=schema)
     except Exception:
-        # Do not retain the credential-bearing driver exception as __cause__ or __context__.
+        # Do not retain credential-bearing driver exceptions as __cause__ or __context__.
         pass
-    if artifact_store is None or release_registry is None:
+    if (
+        artifact_store is None
+        or release_registry is None
+        or authority_root_registry is None
+    ):
         raise RuntimeError("production PostgreSQL control plane is unavailable or uninitialised")
 
     if not artifact_store.backend_id.startswith("apex.production.postgres-artifact-store.v1:"):
@@ -78,9 +87,16 @@ def load_production_backend_runtime(
         "apex.production.postgres-release-registry.v1:"
     ):
         raise RuntimeError("production ReleaseRegistry identity is not a PostgreSQL production ID")
+    if not authority_root_registry.backend_id.startswith(
+        "apex.production.postgres-authority-root-registry.v1:"
+    ):
+        raise RuntimeError(
+            "production AuthorityRootRegistry identity is not a PostgreSQL production ID"
+        )
 
     return ProductionBackendRuntime(
         artifact_store=artifact_store,
         release_registry=release_registry,
+        authority_root_registry=authority_root_registry,
         schema=schema,
     )
