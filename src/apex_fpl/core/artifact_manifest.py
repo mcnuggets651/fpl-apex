@@ -1,8 +1,8 @@
 """Typed release-level artifact closure for Apex V2 production publication.
 
 A content-addressed object is not, by itself, proof that a complete production release
-closure exists.  ``ArtifactManifest`` binds the exact decision/runtime scope to a
-role-unique set of retained content-addressed artifacts.  The manifest is itself stored
+closure exists. ``ArtifactManifest`` binds the exact decision/runtime scope to a
+role-unique set of retained content-addressed artifacts. The manifest is itself stored
 as its canonical semantic payload, so ``manifest_id`` is also its ArtifactStore identity.
 """
 
@@ -37,6 +37,7 @@ class ArtifactManifestRole(StrEnum):
     """Decision-critical artifact roles that must be unique inside one release closure."""
 
     PLANNING_BUNDLE = "PLANNING_BUNDLE"
+    WORLD = "WORLD"
     ASSURANCE_CASE = "ASSURANCE_CASE"
     PROOF_OBLIGATIONS = "PROOF_OBLIGATIONS"
     BACKEND_QUALIFICATION = "BACKEND_QUALIFICATION"
@@ -134,6 +135,8 @@ class ArtifactManifest:
         by_role = {item.role: item for item in entries}
         if by_role[ArtifactManifestRole.PLANNING_BUNDLE].artifact_id != self.bundle_id:
             raise ValueError("artifact manifest planning bundle does not match bundle_id")
+        if by_role[ArtifactManifestRole.WORLD].artifact_id != self.world_id:
+            raise ValueError("artifact manifest world member does not match world_id")
         if by_role[ArtifactManifestRole.AUTHORITY_ROOT].artifact_id != self.authority_root_artifact_id:
             raise ValueError("artifact manifest authority-root member does not match scope")
         object.__setattr__(self, "entries", entries)
