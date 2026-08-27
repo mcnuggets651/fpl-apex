@@ -690,26 +690,13 @@ def test_missing_required_proof_withholds_and_never_moves_production_pointer(tmp
 def test_unqualified_backend_withholds_even_when_release_certificate_passes(tmp_path: Path) -> None:
     store = _DurableArtifactStore(tmp_path / "artifacts")
     registry = _DurableReleaseRegistry(tmp_path / "production")
-    fixture = _fixture(store)
-    manifest = _artifact(store, "manifest")
-    claim = _artifact(store, "claim")
     backend = _backend(store, registry, qualified=False)
     assert backend.qualified is False
-    outcome = execute_production_cutover(
-        season=SEASON,
-        entry=ENTRY,
-        gameweek=GAMEWEEK,
-        bundle_id=fixture.bundle.bundle_id,
-        world_id=fixture.bundle.world_id,
-        runtime_digest="sha256:v2-runtime",
-        created_at=CREATED_AT,
-        valid_until=VALID_UNTIL,
-        artifact_manifest_id=manifest,
-        assurance_case=_case(store, claim),
-        obligations=_obligations(),
-        backend_qualification=backend,
-        artifact_store=store,
-        production_registry=registry,
+    _, _, outcome = _execute(
+        tmp_path,
+        backend=backend,
+        store=store,
+        registry=registry,
     )
 
     assert outcome.report.release_certificate_status == "PASS"
@@ -848,25 +835,12 @@ def test_stale_writer_fails_closed_and_cannot_become_current(tmp_path: Path) -> 
     qualification_registry = _DurableReleaseRegistry(root)
     backend = _backend(store, qualification_registry)
     registry = _StaleRegistry(root)
-    fixture = _fixture(store)
-    manifest = _artifact(store, "manifest")
-    claim = _artifact(store, "claim")
     with pytest.raises(CompareAndSwapConflict, match="stale production"):
-        execute_production_cutover(
-            season=SEASON,
-            entry=ENTRY,
-            gameweek=GAMEWEEK,
-            bundle_id=fixture.bundle.bundle_id,
-            world_id=fixture.bundle.world_id,
-            runtime_digest="sha256:v2-runtime",
-            created_at=CREATED_AT,
-            valid_until=VALID_UNTIL,
-            artifact_manifest_id=manifest,
-            assurance_case=_case(store, claim),
-            obligations=_obligations(),
-            backend_qualification=backend,
-            artifact_store=store,
-            production_registry=registry,
+        _execute(
+            tmp_path,
+            backend=backend,
+            store=store,
+            registry=registry,
         )
     assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 
