@@ -9,19 +9,11 @@ from apex_fpl.control.champion_authority import (
     create_production_champion_generation,
     issue_champion_admission,
 )
-from apex_fpl.control.learning_store import store_learning_object
 from apex_fpl.core.champion_authority import ChampionRole
-from apex_fpl.core.ids import (
-    LearningPolicyId,
-    ModelArtifactId,
-    ModelComparisonId,
-    ModelEvaluationId,
-)
-from apex_fpl.core.learning_common import ModelPromotionDecision
-from apex_fpl.core.learning_promotion import ModelPromotionCertificate, ModelRegistryGeneration
 from apex_fpl.decision.scenario_store import load_robustness_report, load_scenario_set
 
 from empirical_qualification_helpers import synthetic_supported_qualification_artifact
+from learning_promotion_helpers import synthetic_promoted_model_registry_generation
 from production_planning_bundle_helpers import SyntheticPlanningBundleFixture
 
 
@@ -35,7 +27,9 @@ class SyntheticChampionAuthorityFixture:
 
 
 def _source_id(store, label: str) -> str:
-    return store.put_bytes(f"synthetic-champion-authority:{label}".encode("utf-8")).artifact_id
+    return store.put_bytes(
+        f"synthetic-champion-authority:{label}".encode("utf-8")
+    ).artifact_id
 
 
 def _json_at(store, artifact_id: str) -> dict[str, object]:
@@ -43,43 +37,6 @@ def _json_at(store, artifact_id: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise AssertionError("synthetic champion semantic artifact must be JSON object")
     return dict(value)
-
-
-def _forecast_registry_generation(*, store, fixture: SyntheticPlanningBundleFixture) -> str:
-    candidate_model_id = ModelArtifactId(str(fixture.bundle.forecast_model_id))
-    incumbent_model_id = ModelArtifactId(_source_id(store, "incumbent-model"))
-    candidate_evaluation_id = ModelEvaluationId(_source_id(store, "candidate-evaluation"))
-    incumbent_evaluation_id = ModelEvaluationId(_source_id(store, "incumbent-evaluation"))
-    comparison_id = ModelComparisonId(_source_id(store, "model-comparison"))
-    policy_id = LearningPolicyId(_source_id(store, "learning-policy"))
-    certificate_sources = (
-        str(candidate_evaluation_id),
-        str(incumbent_evaluation_id),
-        str(comparison_id),
-        str(policy_id),
-    )
-    certificate = ModelPromotionCertificate(
-        candidate_model_id=candidate_model_id,
-        incumbent_model_id=incumbent_model_id,
-        candidate_evaluation_id=candidate_evaluation_id,
-        incumbent_evaluation_id=incumbent_evaluation_id,
-        comparison_id=comparison_id,
-        policy_id=policy_id,
-        decision=ModelPromotionDecision.PROMOTE,
-        reason="synthetic mechanism-only production champion promotion",
-        source_artifact_ids=certificate_sources,
-    )
-    stored_certificate = store_learning_object(certificate, store=store)
-    generation = ModelRegistryGeneration(
-        season=fixture.bundle.season,
-        generation=1,
-        parent_generation_id=None,
-        registered_model_ids=(incumbent_model_id, candidate_model_id),
-        champion_model_id=candidate_model_id,
-        promotion_id=certificate.promotion_id,
-        source_artifact_ids=(stored_certificate.artifact_id,),
-    )
-    return store_learning_object(generation, store=store).artifact_id
 
 
 def synthetic_production_champion_authority(
@@ -166,14 +123,22 @@ def synthetic_production_champion_authority(
         store=store,
     )
 
-    registry_artifact_id = _forecast_registry_generation(store=store, fixture=fixture)
+    registry_artifact_id = synthetic_promoted_model_registry_generation(
+        store=store,
+        season=season,
+        candidate_model_id=str(fixture.bundle.forecast_model_id),
+        authorized_at=reviewed_at,
+    )
     stored_generation = create_production_champion_generation(
         season=season,
         forecast_registry_generation_artifact_id=registry_artifact_id,
         decision_policy_admission_artifact_id=policy_admission.artifact_id,
         scenario_generator_admission_artifact_id=generator_admission.artifact_id,
         scenario_policy_admission_artifact_id=scenario_policy_admission.artifact_id,
-        change_control_artifact_id=_source_id(store, "champion-generation-change-control"),
+        change_control_artifact_id=_source_id(
+            store,
+            "champion-generation-change-control",
+        ),
         authorized_by="synthetic-authorizer",
         authorized_at=reviewed_at,
         reason="synthetic mechanism-only production champion generation",
