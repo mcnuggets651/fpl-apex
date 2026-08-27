@@ -1,8 +1,8 @@
 """Season-level immutable trust root for Apex V2 production authority.
 
-The root does not replace component governance.  It binds the exact retained artifacts
+The root does not replace component governance. It binds the exact retained artifacts
 whose own loaders independently re-prove champion selection, FPL rules, learning policy,
-outcome truth, reference-solver authority and build provenance.  Roots are parent-linked;
+outcome truth, reference-solver authority and build provenance. Roots are parent-linked;
 a separate CAS registry selects the unique current root for a season.
 """
 
@@ -33,7 +33,7 @@ def _sha256_id(value: object, *, label: str) -> str:
     return text
 
 
-def _aware_timestamp(value: object, *, label: str) -> str:
+def _aware_datetime(value: object, *, label: str) -> datetime:
     text = _text(value, label=label)
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
@@ -41,17 +41,23 @@ def _aware_timestamp(value: object, *, label: str) -> str:
         raise ValueError(f"{label} must be valid ISO-8601 timestamp") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError(f"{label} must be timezone-aware")
-    return text
+    return parsed
+
+
+def _aware_timestamp(value: object, *, label: str) -> str:
+    return _text(value, label=label) if _aware_datetime(value, label=label) else ""
 
 
 @dataclass(frozen=True, slots=True)
 class ProductionAuthorityRoot:
+    """Parent-linked, review-bound season authority selected by a dedicated CAS pointer."""
+
     season: str
     generation: int
     parent_root_artifact_id: str | None
     champion_generation_artifact_id: str
-    ruleset_registry_artifact_id: str
     ruleset_artifact_id: str
+    ruleset_id: str
     learning_policy_registry_artifact_id: str
     learning_policy_id: str
     outcome_truth_registry_artifact_id: str
@@ -63,6 +69,8 @@ class ProductionAuthorityRoot:
     change_control_artifact_id: str
     authorized_by: str
     authorized_at: str
+    valid_from: str
+    valid_until: str
     reason: str
     schema_version: int = 1
 
@@ -85,8 +93,8 @@ class ProductionAuthorityRoot:
             )
         for field in (
             "champion_generation_artifact_id",
-            "ruleset_registry_artifact_id",
             "ruleset_artifact_id",
+            "ruleset_id",
             "learning_policy_registry_artifact_id",
             "learning_policy_id",
             "outcome_truth_registry_artifact_id",
@@ -107,10 +115,27 @@ class ProductionAuthorityRoot:
             "authorized_by",
             _text(self.authorized_by, label="authority root authorizer"),
         )
+        authorized_at = _aware_datetime(self.authorized_at, label="authority root authorized_at")
+        valid_from = _aware_datetime(self.valid_from, label="authority root valid_from")
+        valid_until = _aware_datetime(self.valid_until, label="authority root valid_until")
+        if authorized_at > valid_from:
+            raise ValueError("authority root cannot become valid before authorization")
+        if valid_until <= valid_from:
+            raise ValueError("authority root valid_until must be after valid_from")
         object.__setattr__(
             self,
             "authorized_at",
             _aware_timestamp(self.authorized_at, label="authority root authorized_at"),
+        )
+        object.__setattr__(
+            self,
+            "valid_from",
+            _aware_timestamp(self.valid_from, label="authority root valid_from"),
+        )
+        object.__setattr__(
+            self,
+            "valid_until",
+            _aware_timestamp(self.valid_until, label="authority root valid_until"),
         )
         object.__setattr__(self, "reason", _text(self.reason, label="authority root reason"))
 
@@ -122,8 +147,8 @@ class ProductionAuthorityRoot:
             "generation": self.generation,
             "parent_root_artifact_id": self.parent_root_artifact_id,
             "champion_generation_artifact_id": self.champion_generation_artifact_id,
-            "ruleset_registry_artifact_id": self.ruleset_registry_artifact_id,
             "ruleset_artifact_id": self.ruleset_artifact_id,
+            "ruleset_id": self.ruleset_id,
             "learning_policy_registry_artifact_id": self.learning_policy_registry_artifact_id,
             "learning_policy_id": self.learning_policy_id,
             "outcome_truth_registry_artifact_id": self.outcome_truth_registry_artifact_id,
@@ -135,9 +160,20 @@ class ProductionAuthorityRoot:
             "change_control_artifact_id": self.change_control_artifact_id,
             "authorized_by": self.authorized_by,
             "authorized_at": self.authorized_at,
+            "valid_from": self.valid_from,
+            "valid_until": self.valid_until,
             "reason": self.reason,
         }
 
     @property
     def root_id(self) -> str:
         return canonical_sha256(self.semantic_payload())
+
+    def require_valid_at(self, as_of: str) -> None:
+        """Fail closed outside the half-open authority window ``[valid_from, valid_until)``."""
+
+        instant = _aware_datetime(as_of, label="authority root as_of")
+        if instant < _aware_datetime(self.valid_from, label="authority root valid_from"):
+            raise ValueError("production authority root is not yet valid")
+        if instant >= _aware_datetime(self.valid_until, label="authority root valid_until"):
+            raise ValueError("production authority root has expired")
