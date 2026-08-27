@@ -58,6 +58,7 @@ jobs:
           tests/test_v2_production_authority_root.py
           tests/test_v2_production_authority_enforcement.py
           tests/test_v2_postgres_atomic_publication.py
+          tests/test_v2_operations_authority_cli.py
           tests/test_v2_production_traceability.py
       - name: Ruff production control contract surface
         run: >-
@@ -106,6 +107,7 @@ jobs:
           tests/test_v2_production_authority_root.py
           tests/test_v2_production_authority_enforcement.py
           tests/test_v2_postgres_atomic_publication.py
+          tests/test_v2_operations_authority_cli.py
           tests/test_v2_production_traceability.py
 
   test:
