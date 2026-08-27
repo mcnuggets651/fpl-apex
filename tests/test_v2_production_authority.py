@@ -45,6 +45,7 @@ from apex_fpl.core.proofs import (
 )
 
 from backend_qualification_helpers import synthetic_production_backend_qualification
+from champion_authority_helpers import synthetic_production_champion_authority
 from production_planning_bundle_helpers import synthetic_production_planning_bundle
 from reference_solver_planning_helpers import synthetic_planning_parity_material
 
@@ -193,6 +194,9 @@ def _qualified_cutover(tmp_path: Path):
         gameweek=GAMEWEEK,
     )
     parity = synthetic_planning_parity_material(store=store, fixture=fixture)
+    champion = synthetic_production_champion_authority(
+        store=store, fixture=fixture, reviewed_at=CREATED_AT
+    )
     evidence = _artifact(store, "proof-evidence")
     manifest = _artifact(store, "manifest")
     obligations = tuple(
@@ -264,6 +268,7 @@ def _qualified_cutover(tmp_path: Path):
         backend_qualification=backend,
         artifact_store=store,
         production_registry=registry,
+        champion_generation_artifact_id=champion.generation.artifact_id,
     )
     return store, registry, outcome
 

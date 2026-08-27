@@ -52,6 +52,7 @@ from apex_fpl.core.proofs import (
 )
 
 from backend_qualification_helpers import synthetic_production_backend_qualification
+from champion_authority_helpers import synthetic_production_champion_authority
 from production_bundle_helpers import synthetic_production_bundle
 from production_planning_bundle_helpers import (
     DirectQualificationMaterial,
@@ -323,10 +324,18 @@ def _execute(
     store=None,
     registry=None,
     valid_until: str | None = VALID_UNTIL,
+    with_champion_authority: bool = True,
 ):
     store = store or _DurableArtifactStore(tmp_path / "artifacts")
     registry = registry or _DurableReleaseRegistry(tmp_path / "production")
     fixture = _fixture(store)
+    champion_artifact_id = (
+        synthetic_production_champion_authority(
+            store=store, fixture=fixture, reviewed_at=CREATED_AT
+        ).generation.artifact_id
+        if with_champion_authority
+        else None
+    )
     manifest = _artifact(store, "manifest")
     claim_artifact = _artifact(store, "claim")
     return store, registry, execute_production_cutover(
@@ -344,6 +353,7 @@ def _execute(
         backend_qualification=backend or _backend(store, registry),
         artifact_store=store,
         production_registry=registry,
+        champion_generation_artifact_id=champion_artifact_id,
     )
 
 
@@ -368,6 +378,14 @@ def test_production_cutover_publishes_only_after_complete_pass_and_exact_cas(tmp
         artifact_store=store,
     )
     assert replayed.report_id == outcome.report.report_id
+
+
+def test_missing_champion_authority_is_withheld_without_pointer_write(tmp_path: Path) -> None:
+    store, registry, outcome = _execute(tmp_path, with_champion_authority=False)
+    assert outcome.report.status is ProductionCutoverStatus.WITHHELD
+    assert outcome.release_record.status is ReleaseStatus.WITHHELD
+    assert any("champion authority is missing" in item for item in outcome.report.cutover_blockers)
+    assert registry.current_release_id(ReleaseKey(SEASON, ENTRY, GAMEWEEK)) is None
 
 
 def test_legacy_v1_bundle_is_rejected_before_pointer_write(tmp_path: Path) -> None:

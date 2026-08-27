@@ -12,6 +12,10 @@ from apex_fpl.control.backend_operational_qualification import (
     verify_backend_qualification_evidence,
     verify_stored_backend_qualification_evidence,
 )
+from apex_fpl.control.champion_authority import (
+    load_production_champion_generation,
+    verify_bundle_champion_authority,
+)
 from apex_fpl.control.experiment_registry import load_empirical_qualification_certificate
 from apex_fpl.control.production_planning_bundle import (
     VerifiedProductionPlanningBundle,
@@ -428,6 +432,7 @@ def _cutover_blockers(
     valid_until: str | None,
     assurance_case: AssuranceCase,
     backend_qualification: ProductionBackendQualification,
+    champion_generation_artifact_id: str | None,
 ) -> tuple[str, ...]:
     scope = f"{season}:{entry}:{gameweek}:production"
     blockers: list[str] = []
@@ -447,6 +452,8 @@ def _cutover_blockers(
         blockers.append("production bundle identity is missing")
     if world_id is None:
         blockers.append("production GlobalWorld identity is missing")
+    if champion_generation_artifact_id is None:
+        blockers.append("production champion authority is missing")
 
     created: datetime | None = None
     try:
@@ -482,6 +489,7 @@ def execute_production_cutover(
     backend_qualification: ProductionBackendQualification,
     artifact_store: ArtifactStore,
     production_registry: ProductionReleaseRegistry,
+    champion_generation_artifact_id: str | None = None,
 ) -> ProductionCutoverOutcome:
     """Attempt the one explicit V2 production cutover."""
 
@@ -531,6 +539,26 @@ def execute_production_cutover(
         empirical_bindings=empirical_bindings,
         verified_bundle=verified_bundle,
     )
+    champion_artifact_id: str | None = None
+    if champion_generation_artifact_id is not None:
+        champion_artifact_id = _verify_artifact(
+            artifact_store,
+            champion_generation_artifact_id,
+            label="production champion generation",
+        )
+        if verified_bundle is None:
+            load_production_champion_generation(
+                champion_artifact_id,
+                as_of=created_at,
+                store=artifact_store,
+            )
+        else:
+            verify_bundle_champion_authority(
+                champion_artifact_id,
+                verified_bundle=verified_bundle,
+                as_of=created_at,
+                store=artifact_store,
+            )
     backend_artifacts = (
         _verify_artifact(
             artifact_store,
@@ -560,6 +588,7 @@ def execute_production_cutover(
         valid_until=valid_until,
         assurance_case=assurance_case,
         backend_qualification=backend_qualification,
+        champion_generation_artifact_id=champion_artifact_id,
     )
     authorization = ProductionPublicationAuthorization(
         season=season,
@@ -571,6 +600,7 @@ def execute_production_cutover(
         created_at=created_at,
         valid_until=valid_until,
         artifact_manifest_id=manifest_id,
+        champion_generation_artifact_id=champion_artifact_id,
         assurance_case_id=certificate.assurance_case_id,
         assurance_case_artifact_id=case_artifact_id,
         proof_obligations_artifact_id=proof_artifact_id,
@@ -638,6 +668,7 @@ def execute_production_cutover(
                 authorization_artifact_id,
                 release_record_artifact_id,
                 *((str(bundle_id),) if bundle_id is not None else ()),
+                *((champion_artifact_id,) if champion_artifact_id is not None else ()),
                 *backend_artifacts,
                 *claim_artifacts,
             }
@@ -873,6 +904,10 @@ def load_production_publication_authorization(
             label="authorization valid_until",
         ),
         artifact_manifest_id=str(payload.get("artifact_manifest_id") or ""),
+        champion_generation_artifact_id=_optional_string(
+            payload.get("champion_generation_artifact_id"),
+            label="authorization champion_generation_artifact_id",
+        ),
         assurance_case_id=str(payload.get("assurance_case_id") or ""),
         assurance_case_artifact_id=str(payload.get("assurance_case_artifact_id") or ""),
         proof_obligations_artifact_id=str(payload.get("proof_obligations_artifact_id") or ""),
@@ -916,6 +951,20 @@ def load_production_publication_authorization(
         store=artifact_store,
     )
     empirical_bindings = _bundle_empirical_bindings(verified_bundle)
+    if authorization.champion_generation_artifact_id is not None:
+        if verified_bundle is None:
+            load_production_champion_generation(
+                authorization.champion_generation_artifact_id,
+                as_of=authorization.created_at,
+                store=artifact_store,
+            )
+        else:
+            verify_bundle_champion_authority(
+                authorization.champion_generation_artifact_id,
+                verified_bundle=verified_bundle,
+                as_of=authorization.created_at,
+                store=artifact_store,
+            )
     case = _replay_assurance_case(
         authorization.assurance_case_artifact_id, artifact_store=artifact_store
     )
@@ -964,6 +1013,7 @@ def load_production_publication_authorization(
         valid_until=authorization.valid_until,
         assurance_case=case,
         backend_qualification=qualification,
+        champion_generation_artifact_id=authorization.champion_generation_artifact_id,
     )
     if expected_blockers != authorization.cutover_blockers:
         raise ValueError("authorization cutover blockers do not reconcile")

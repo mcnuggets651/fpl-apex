@@ -28,14 +28,12 @@ def _qualification_subject_payload(
 ) -> dict[str, object]:
     """Return the immutable empirical subject, excluding self-referential authority fields.
 
-    DecisionPolicy embeds its qualification artifact in its own semantic payload. A
-    certificate therefore cannot hash the already-qualified payload without requiring an
-    impossible SHA fixed point. The empirical candidate is the exact substantive policy
-    before admission: SHADOW with no qualification artifact. Production replay first
-    requires that the materialized policy is QUALIFIED by the *same* retained certificate,
-    then normalizes only those two authority fields back to the candidate semantics.
-
-    Other subject kinds remain byte-for-byte semantic subjects.
+    The experiment core already derives a stable pre-qualification subject identity
+    by excluding qualification-state/artifact fields. This control-layer guard adds a stricter
+    production binding: a materialized DecisionPolicy must be QUALIFIED and must name the exact
+    retained certificate being replayed. Normalizing these two authority fields before calling
+    the central subject-identity helper is therefore redundant for identity but explicit about
+    the production transition being verified. Other subject kinds remain unchanged here.
     """
 
     payload = dict(subject_payload)
