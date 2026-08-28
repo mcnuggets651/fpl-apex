@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from apex_fpl.config import load_settings
 from apex_fpl.services.player_truth import audit_player_truth
 
 
@@ -41,10 +42,12 @@ def main() -> None:
         except Exception:
             expected_players = None
 
+    settings = load_settings()
     payload = audit_player_truth(
         pd.read_csv(players_path),
         pd.read_csv(projections_path),
         expected_players,
+        champion_provider=settings.champion_provider,
     )
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -53,7 +56,9 @@ def main() -> None:
 
     print(
         f"Player truth: ready={payload['ready']} players={payload['player_count']} "
-        f"hard_fact_coverage={payload['hard_fact_coverage']:.2%}"
+        f"hard_fact_coverage={payload['hard_fact_coverage']:.2%} "
+        f"champion={payload['champion_provider']} "
+        f"champion_coverage={payload['champion_projection_pair_coverage']:.2%}"
     )
     for blocker in payload["blockers"]:
         print("BLOCKER:", blocker)
