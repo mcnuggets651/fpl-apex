@@ -26,7 +26,10 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] The final Official FPL hash is reacquired before freeze and must exactly match the pre-provider hash.
 - [ ] An Official-hash mismatch aborts before team/provider qualification and requires a new run attempt.
 - [ ] Both Official acquisition hashes are persisted in the frozen run provenance.
-- [ ] Dastan/OpenFPL stay non-serving until current-scoring live exports pass the same contract.
+- [ ] Dastan is generated before the shared freeze in an isolated runtime and remains non-serving while prospectively unqualified.
+- [ ] OpenFPL's exact pinned reference checkout passes its structural preflight without being relabelled as current scoring.
+- [ ] Any future OpenFPL current model declares `fpl-2026-27-v1`, uses a separately hashed training/model artifact, trains only through GW < target GW, proves future-placeholder invariance, reaches 100% Official DecisionUniverse coverage, and explicitly does not reuse legacy reference weights as current weights.
+- [ ] Dastan/OpenFPL stay non-serving until current-scoring live exports pass the same operational and prospective contract.
 
 ## Team mechanics
 - [ ] Exact legal 15/XI/club limits pass property tests.
@@ -37,6 +40,7 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] H1-only evidence withholds discretionary transfers.
 - [ ] Incomplete selling-price state withholds discretionary transfers.
 - [ ] Secondary tie-break prefers fewer transfers without reducing primary EV.
+- [ ] Transfer optimiser infeasibility is returned as typed `INFEASIBLE`, persisted in the DecisionBundle diagnostics, and certifies fail-closed as `BLOCKED` / `DECISION_ILLEGAL` rather than surfacing as an unhandled exception.
 
 ## Snapshot/persistence
 - [ ] Intent release is created before external acquisition.
@@ -59,9 +63,10 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] One genuine pre-deadline V2 intent is published.
 - [ ] Official pre-provider seal succeeds.
 - [ ] Fresh AIrsenal generation succeeds.
+- [ ] Optional challenger generation occurs before freeze and cannot invalidate the serving incumbent merely by failing.
 - [ ] Official post-provider seal exactly matches the pre-provider seal.
 - [ ] Official final anchor and snapshot freeze succeed.
-- [ ] Solver completes from frozen state.
+- [ ] Solver completes from frozen state or emits a typed/persisted blocking decision diagnostic.
 - [ ] Final release becomes immutable and verifies.
 - [ ] Recommendation is legal and certification is coherent.
 - [ ] After the GW, outcome/evaluation releases are produced.
