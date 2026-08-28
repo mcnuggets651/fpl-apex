@@ -115,11 +115,25 @@ def optimise_transfer_horizon(
     max_free_transfers = season_rules(
         official.season
     ).max_rolled_free_transfers
+    if not 0 <= int(team.free_transfers) <= max_free_transfers:
+        return TransferOptimisationResult(
+            None,
+            (),
+            "INFEASIBLE",
+            None,
+            {
+                "reason": (
+                    "current free-transfer state outside supported range: "
+                    f"{team.free_transfers}"
+                )
+            },
+        )
+    free_transfer_state_count = max_free_transfers + 1
     max_transfers = 16
     state_base = bank_base + horizon_count
     variable_count = (
         state_base
-        + horizon_count * max_free_transfers * max_transfers
+        + horizon_count * free_transfer_state_count * max_transfers
     )
 
     def player_var(base, index, period):
@@ -128,7 +142,7 @@ def optimise_transfer_horizon(
     def state_var(period, free_transfers, transfers):
         return (
             state_base
-            + (period * max_free_transfers + (free_transfers - 1))
+            + (period * free_transfer_state_count + free_transfers)
             * max_transfers
             + transfers
         )
@@ -147,7 +161,7 @@ def optimise_transfer_horizon(
             transfer_count_objective[
                 player_var(transfer_in_base, index, period)
             ] = 1
-        for free_transfers in range(1, max_free_transfers + 1):
+        for free_transfers in range(max_free_transfers + 1):
             for transfers in range(max_transfers):
                 expected_value[
                     state_var(period, free_transfers, transfers)
@@ -285,7 +299,7 @@ def optimise_transfer_horizon(
         add(
             {
                 state_var(period, free_transfers, transfers): 1
-                for free_transfers in range(1, max_free_transfers + 1)
+                for free_transfers in range(max_free_transfers + 1)
                 for transfers in range(max_transfers)
             },
             1,
@@ -298,7 +312,7 @@ def optimise_transfer_horizon(
         transfer_counter.update(
             {
                 state_var(period, free_transfers, transfers): -transfers
-                for free_transfers in range(1, max_free_transfers + 1)
+                for free_transfers in range(max_free_transfers + 1)
                 for transfers in range(max_transfers)
             }
         )
@@ -306,19 +320,19 @@ def optimise_transfer_horizon(
         if period == 0:
             add(
                 {
-                    state_var(period, team.free_transfers, transfers): 1
+                    state_var(period, int(team.free_transfers), transfers): 1
                     for transfers in range(max_transfers)
                 },
                 1,
                 1,
             )
         else:
-            for current_ft in range(1, max_free_transfers + 1):
+            for current_ft in range(max_free_transfers + 1):
                 coefficients = {
                     state_var(period, current_ft, transfers): 1
                     for transfers in range(max_transfers)
                 }
-                for previous_ft in range(1, max_free_transfers + 1):
+                for previous_ft in range(max_free_transfers + 1):
                     for previous_transfers in range(max_transfers):
                         next_ft = min(
                             max_free_transfers,
@@ -409,7 +423,7 @@ def optimise_transfer_horizon(
     solution = second.x if second.x is not None else first.x
 
     weeks = []
-    free_transfer_state = team.free_transfers
+    free_transfer_state = int(team.free_transfers)
     for period, horizon in enumerate(horizons):
         squad = tuple(
             sorted(
