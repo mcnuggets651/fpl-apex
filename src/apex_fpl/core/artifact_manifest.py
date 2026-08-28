@@ -49,7 +49,7 @@ def _semantic_id(value: object, *, label: str) -> str:
 
     text = _text(value, label=label)
     if len(text) > 512 or any(character.isspace() for character in text):
-        raise ValueError(f"{label} must be a compact semantic identity")
+        raise ValueError(f"{label} must be a compact sha256 or typed sha256 semantic identity")
     if text.startswith("sha256:"):
         return _sha256_id(text, label=label)
 
