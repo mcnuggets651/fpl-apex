@@ -10,7 +10,9 @@ from apex_fpl.control.artifact_store import ArtifactStore
 from apex_fpl.control.reference_solver_planning_qualification import (
     store_planning_reference_solver_qualification_case,
 )
+from apex_fpl.core.canonical import canonical_sha256
 from apex_fpl.core.decision import CandidateUniverse, CandidateUniverseScope, DecisionUseMode
+from apex_fpl.core.ids import FeatureSnapshotId, GlobalWorldId, PredictionBatchId
 from apex_fpl.core.reference_solver_planning_qualification import (
     PlanningReferenceSolverQualificationCase,
 )
@@ -36,11 +38,13 @@ def store_full_surface_qualification_case(
     publication's combinatorial candidate set. This case keeps the exact 15-player owned squad as
     a complete synthetic FULL_OFFICIAL world. With no external transfer candidate, all four chips,
     multi-Gameweek continuation, terminal reserve, exact XI/captain/bench mechanics and the
-    declared 15-transfer action contract remain present while the redundant transfer combinations
-    are absent. The separate finance case proves banked transfers and sale-vs-purchase arithmetic.
+    declared 15-transfer action contract remain present while redundant transfer combinations are
+    absent. The separate finance case proves banked transfers and sale-vs-purchase arithmetic.
 
-    The real publication request is still solved independently, zero-gap, at its certified exact
-    search budget before a publication authorization can be created.
+    This case owns a distinct deterministic world/feature/batch identity so FULL_OFFICIAL means
+    every player in this synthetic proof world; it never masquerades as the 16-player publication
+    world. The real publication request is still solved independently, zero-gap, at its certified
+    exact search budget before a publication authorization can be created.
     """
 
     owned_ids = {row.player_id for row in verified.manager_state.squad}
@@ -50,9 +54,19 @@ def store_full_surface_qualification_case(
     if len(players) != 15 or {row.player_id for row in players} != owned_ids:
         raise ValueError("planning surface qualification requires the exact owned 15-player squad")
 
-    source = store.put_bytes(b"synthetic-planning-full-surface-universe-v1").artifact_id
+    ordered_owned_ids = tuple(sorted(int(player_id) for player_id in owned_ids))
+    world_id = GlobalWorldId(
+        canonical_sha256(
+            {
+                "schema_name": "synthetic-planning-full-surface-world",
+                "source_world_id": str(verified.candidate_universe.global_world_id),
+                "player_ids": list(ordered_owned_ids),
+            }
+        )
+    )
+    source = store.put_bytes(b"synthetic-planning-full-surface-universe-v2").artifact_id
     universe = CandidateUniverse(
-        global_world_id=verified.candidate_universe.global_world_id,
+        global_world_id=world_id,
         scope=CandidateUniverseScope.FULL_OFFICIAL,
         players=players,
         official_player_count=len(players),
@@ -62,6 +76,23 @@ def store_full_surface_qualification_case(
 
     forecast = replace(
         verified.forecast,
+        global_world_id=world_id,
+        feature_snapshot_id=FeatureSnapshotId(
+            canonical_sha256(
+                {
+                    "schema_name": "synthetic-planning-full-surface-feature-snapshot",
+                    "world_id": str(world_id),
+                }
+            )
+        ),
+        prediction_batch_id=PredictionBatchId(
+            canonical_sha256(
+                {
+                    "schema_name": "synthetic-planning-full-surface-prediction-batch",
+                    "world_id": str(world_id),
+                }
+            )
+        ),
         rows=tuple(
             row for row in verified.forecast.rows if row.target.player_id in owned_ids
         ),
