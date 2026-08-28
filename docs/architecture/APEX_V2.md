@@ -31,6 +31,15 @@ Any future ensemble must:
 
 No automatic promotion is implemented.
 
+## OpenFPL adaptation boundary
+OpenFPL has three independent gates. Passing a later-sounding engineering step never implies passing the next governance step.
+
+1. **Reference reproducibility.** Apex pins the exact upstream OpenFPL commit, runtime dependencies, five cross-validation folds, five position groups, feature/scaler artifacts and median-ensemble reference logic. Passing this gate proves only that the historical reference implementation is intact.
+2. **Current-training readiness.** The published reference was developed on old FPL scoring seasons and uses score-dependent historical feature families including FPL points, BPS and bonus over 1/3/5/10/38-match windows. Legacy weights or old feature rows therefore cannot be relabelled `fpl-2026-27-v1`. Apex separately pins exact 2026/27 history and records the completed pre-target gameweeks. No minimum training sample is invented in code: a governed training-policy version must explicitly set that minimum. A current model artifact must bind to that policy, declare the exact-rule gameweeks used, train strictly before the target GW, use separately hashed training/model artifacts, prove future-placeholder invariance and reach 100% Official DecisionUniverse forecast coverage.
+3. **Prospective serving promotion.** Even a valid current-rules OpenFPL model remains `SHADOW`, `serve_authorized=false` and prospectively unqualified. It must then accumulate genuine pre-deadline forecasts and pass the same tournament/promotion governance as every other challenger before production authority can change.
+
+Current-rule training readiness is not a shortcut around the prospective tournament, and prospective accuracy can never retroactively validate a leakage-prone or incorrectly labelled training artifact.
+
 ## Run lifecycle
 1. Publish immutable attempt **intent**.
 2. Acquire all candidate provider outputs and external evidence.
