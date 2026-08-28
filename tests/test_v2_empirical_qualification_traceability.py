@@ -24,6 +24,7 @@ QUALIFICATION_TEST_FILES = (
     ROOT / "tests/test_v2_empirical_qualification_plane.py",
     ROOT / "tests/test_v2_empirical_qualification_edges.py",
     ROOT / "tests/test_v2_production_cutover.py",
+    ROOT / "tests/_legacy_v2_production_cutover.py",
 )
 
 
@@ -132,6 +133,8 @@ def test_empirical_proof_required_tests_exist_in_registered_test_files() -> None
         for row in rows
         if isinstance(row, dict)
     }
+    harness = (ROOT / "tests/test_v2_production_cutover.py").read_text(encoding="utf-8")
+    assert 'importlib.import_module("_legacy_v2_production_cutover")' in harness
     implemented = _test_names(QUALIFICATION_TEST_FILES)
     empirical_tests = {
         test_name
@@ -167,6 +170,9 @@ def test_empirical_core_and_cutover_static_boundaries_are_present() -> None:
     cutover_source = (ROOT / "src/apex_fpl/control/production_cutover.py").read_text(
         encoding="utf-8"
     )
+    transaction_source = (
+        ROOT / "src/apex_fpl/control/_production_cutover_legacy.py"
+    ).read_text(encoding="utf-8")
     reference_solver_source = (
         ROOT / "src/apex_fpl/control/reference_solver_registry.py"
     ).read_text(encoding="utf-8")
@@ -174,6 +180,7 @@ def test_empirical_core_and_cutover_static_boundaries_are_present() -> None:
     assert "PRODUCTION_EMPIRICAL_SUBJECT_KIND" in experiment_source
     assert "_validate_production_empirical_subject" in experiment_source
     assert "PRODUCTION_PROOF_CLASSES" in contract_source
-    assert "load_empirical_qualification_certificate" in cutover_source
-    assert "mandatory production proof class drifted" in cutover_source
+    assert "verify_production_authority_closure(" in cutover_source
+    assert "load_empirical_qualification_certificate" in transaction_source
+    assert "mandatory production proof class drifted" in transaction_source
     assert "empirical_qualification_admission" not in reference_solver_source
