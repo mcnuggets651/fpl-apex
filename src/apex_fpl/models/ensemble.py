@@ -202,7 +202,12 @@ def blend_projection(
     weights: dict[str, float],
     risk_penalty: float,
 ) -> pd.DataFrame:
-    """Blend expert forecasts while keeping expected value separate from risk.
+    """Apply projection authority, retaining legacy blending only for research configs.
+
+    With the production one-hot AIrsenal contract this function returns AIrsenal xP
+    directly and never falls back to Apex. Missing canonical rows therefore fail the
+    downstream production coverage gate. Non-production research weights retain the
+    legacy comparison behaviour.
 
     Missing AIrsenal rows retain the explicit Apex fallback contract. Market xP has
     no fallback.  Apex-specific reliability can reduce only the *direct* Apex vote,
@@ -210,6 +215,112 @@ def blend_projection(
     remains diagnostic and cannot turn the optimiser into a nailed-minutes selector.
     """
     out = _allocate_gameweek_experts(base.copy())
+    production_weights = {
+        key: max(float(weights.get(key, 0.0)), 0.0) for key in EXPERT_COLUMNS
+    }
+    strict_airsenal_authority = (
+        abs(production_weights.get("airsenal", 0.0) - 1.0) <= 1e-12
+        and all(
+            abs(production_weights.get(key, 0.0)) <= 1e-12
+            for key in ("apex_model", "official_ep", "market")
+        )
+    )
+    if strict_airsenal_authority:
+        # This is deliberately not an ensemble. Preserve every challenger surface,
+        # but canonical expected points are the validated AIrsenal number exactly.
+        n = len(out)
+        air = pd.to_numeric(
+            out.get("airsenal_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
+        )
+        apex = pd.to_numeric(
+            out.get("apex_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
+        )
+        official = pd.to_numeric(
+            out.get("official_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
+        )
+        market = pd.to_numeric(
+            out.get("market_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
+        )
+        out["apex_shadow_xp"] = apex
+        out["production_xp"] = air
+        out["xp"] = air
+        out["canonical_ev_xp"] = air
+        out["risk_adjusted_xp"] = air
+        out["projection_provider"] = "AIrsenal"
+        out["projection_authority"] = "production"
+        out["apex_projection_authority"] = "shadow"
+
+        challenger_frame = pd.concat(
+            [air.rename("airsenal"), apex.rename("apex_shadow"), official.rename("official_ep"), market.rename("market")],
+            axis=1,
+        )
+        out["expert_count"] = challenger_frame.notna().sum(axis=1).astype(int)
+        out["expert_coverage"] = air.notna().astype(float)
+        out["expert_disagreement_sd"] = challenger_frame.std(axis=1, ddof=0, skipna=True).fillna(0.0)
+        out["model_disagreement_spread"] = (
+            challenger_frame.max(axis=1, skipna=True) - challenger_frame.min(axis=1, skipna=True)
+        ).fillna(0.0)
+        out["model_disagreement"] = np.select(
+            [out["model_disagreement_spread"] >= 3.0, out["model_disagreement_spread"] >= 1.5],
+            ["high", "medium"],
+            default="low",
+        )
+        out["configured_weight_total"] = 1.0
+        out["available_or_fallback_weight"] = air.notna().astype(float)
+        out["airsenal_source_absent"] = air.isna()
+        out["airsenal_zero_role_conflict"] = False
+        out["airsenal_abstained_role_conflict"] = False
+        out["effective_weight_airsenal_fallback_apex"] = 0.0
+        out["xp_expert_airsenal_fallback_apex"] = 0.0
+
+        for key, series in {
+            "apex_model": apex,
+            "official_ep": official,
+            "airsenal": air,
+            "market": market,
+        }.items():
+            present = series.notna()
+            out[f"source_present_{key}"] = present
+            out[f"source_usable_{key}"] = present if key != "airsenal" else air.notna()
+            out[f"configured_weight_{key}"] = production_weights.get(key, 0.0)
+            if key == "airsenal":
+                out[f"effective_weight_{key}"] = air.notna().astype(float)
+                out[f"xp_expert_{key}"] = air
+            else:
+                out[f"effective_weight_{key}"] = 0.0
+                out[f"xp_expert_{key}"] = 0.0
+
+        out["xp_expert_apex_model_direct"] = 0.0
+        out["effective_weight_apex_model_direct"] = 0.0
+        out["apex_model_reliability"] = pd.to_numeric(
+            out.get("apex_model_reliability", pd.Series(1.0, index=out.index)), errors="coerce"
+        ).fillna(1.0)
+        out["apex_reliability_conflict"] = False
+        out["apex_reliability_conflict_inherited"] = False
+        out["apex_reliability_conflict_direction"] = 0
+        out["apex_reliability_weight_multiplier"] = 0.0
+        out["independent_expert_count"] = challenger_frame[["official_ep", "airsenal", "market"]].notna().sum(axis=1).astype(int)
+        out["independent_consensus_xp"] = challenger_frame[["official_ep", "airsenal", "market"]].median(axis=1, skipna=True)
+        out["independent_consensus_lower"] = challenger_frame[["official_ep", "airsenal", "market"]].min(axis=1, skipna=True)
+        out["independent_consensus_upper"] = challenger_frame[["official_ep", "airsenal", "market"]].max(axis=1, skipna=True)
+        out["independent_consensus_margin"] = out["model_disagreement_spread"]
+
+        minutes_conf = pd.to_numeric(
+            out.get("minutes_confidence", pd.Series(0.65, index=out.index)), errors="coerce"
+        ).fillna(0.65)
+        role_conf = pd.to_numeric(
+            out.get("role_confidence", pd.Series(0.65, index=out.index)), errors="coerce"
+        ).fillna(0.65)
+        source_conf = (0.55 + 0.30 * minutes_conf + 0.15 * role_conf).clip(0.05, 0.99)
+        out["projection_confidence"] = np.where(air.notna(), source_conf, 0.0)
+        out["forecast_uncertainty_sd"] = out["expert_disagreement_sd"]
+        out["projection_sd"] = out["expert_disagreement_sd"]
+        out["downside_adjusted_xp"] = np.maximum(
+            air - risk_penalty * out["projection_sd"] * (1.15 - 0.30 * source_conf), 0
+        )
+        out["projection_floor_80"] = np.maximum(air - 1.2816 * out["projection_sd"], 0)
+        out["projection_ceiling_80"] = air + 1.2816 * out["projection_sd"]
+        return out
     n = len(out)
     total_configured_weight = (
         sum(max(float(weights.get(k, 0)), 0) for k in EXPERT_COLUMNS) or 1.0

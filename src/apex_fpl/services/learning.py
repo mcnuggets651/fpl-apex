@@ -76,6 +76,8 @@ def aggregate_deadline_forecast(
         col
         for col in [
             *EXPERT_COLUMNS,
+            "apex_shadow_xp",
+            "production_xp",
             "xp",
             "risk_adjusted_xp",
             "projection_sd",

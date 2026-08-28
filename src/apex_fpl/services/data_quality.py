@@ -16,9 +16,10 @@ OFFICIAL_STRENGTH_COLUMNS = (
     "strength_defence_away",
 )
 
-# FPL can append new players between FPL Core refreshes. Core remains a required
-# enrichment source, but Official FPL is canonical identity and the complete Apex
-# projection surface is independently required. Permit only a tiny *trailing* ID
+# FPL can append new players between FPL Core refreshes. Core is important
+# enrichment but is not a canonical-xP dependency while AIrsenal has production
+# authority. We still validate and disclose every gap; severity follows dependency.
+# Official FPL is canonical identity and the complete production projection surface is required. Permit only a tiny *trailing* ID
 # block so this cannot hide arbitrary holes inside Core's established universe.
 MAX_CORE_REGISTRATION_LAG_PLAYERS = 5
 MIN_CORE_REGISTRATION_LAG_COVERAGE = 0.99
@@ -143,7 +144,7 @@ def _core_playerstats_check(
         return QualityCheck(
             "fpl_core_playerstats",
             "pass",
-            True,
+            False,
             f"official-player coverage={coverage:.1%}",
             coverage,
             minimum_core_coverage,
@@ -165,7 +166,7 @@ def _core_playerstats_check(
         return QualityCheck(
             "fpl_core_playerstats",
             "fallback",
-            True,
+            False,
             (
                 f"official-player coverage={coverage:.1%}; bounded trailing Official "
                 f"registration lag missing_ids={missing}; Core values remain absent "
@@ -194,7 +195,7 @@ def _core_playerstats_check(
     return QualityCheck(
         "fpl_core_playerstats",
         "fail",
-        True,
+        False,
         detail,
         coverage,
         minimum_core_coverage,
@@ -286,7 +287,7 @@ def _fixture_surface_check(
         return QualityCheck(
             "fixture_projection_surface",
             "fail",
-            True,
+            False,
             f"official FPL has no fixtures in requested Gameweeks {gameweeks}",
             0.0,
             1.0,
@@ -297,7 +298,7 @@ def _fixture_surface_check(
         return QualityCheck(
             "fixture_projection_surface",
             "fail",
-            True,
+            False,
             f"fixture model missing required rows/columns: {missing}",
             0.0,
             1.0,
@@ -317,7 +318,7 @@ def _fixture_surface_check(
     return QualityCheck(
         "fixture_projection_surface",
         "pass" if coverage >= 1.0 else "fail",
-        True,
+        False,
         f"{len(unique)}/{expected} official team-fixture sides have finite goal/clean-sheet priors",
         coverage,
         1.0,
@@ -396,8 +397,8 @@ def assess_data_quality(
             QualityCheck(
                 "official_team_strength",
                 "fail",
-                True,
-                f"{strength_detail}; no validated fallback fixture model is active",
+                False,
+                f"{strength_detail}; internal fixture-strength enrichment unavailable; canonical AIrsenal xP remains independent",
                 0.0,
                 1.0,
             )
@@ -425,6 +426,6 @@ def assess_data_quality(
         f"data quality {check.status}: {check.name}: {check.detail}"
         for check in checks
         if not (check.required and check.status == "fail")
-        and check.status in {"warning", "unavailable", "fallback"}
+        and check.status in {"fail", "warning", "unavailable", "fallback"}
     )
     return DataQualityAssessment(not blockers, blockers, warnings, tuple(checks))

@@ -10,10 +10,13 @@ MAX_OFFICIAL_AGE_HOURS = 12.0
 MAX_SOURCE_AGE_HOURS = 12.0
 REQUIRED_SOURCES = {
     "official_fpl",
-    "fpl_core_playerstats",
-    "fixture_model",
     "airsenal",
     "news_feeds",
+}
+OPTIONAL_ENRICHMENT_SOURCES = {
+    "fpl_core_playerstats",
+    "fixture_model",
+    "understat_team_model",
 }
 FINAL_SELECTORS = {
     "adaptive_gw1_launch_with_transfer_option_value",
@@ -199,6 +202,7 @@ def build_answer_context(
             "checked_at": source.get("checked_at"),
             "age_hours": age,
             "version": source.get("version"),
+            "detail": source.get("detail"),
         }
         source_health.append(row)
         if row["name"] in REQUIRED_SOURCES and (
@@ -208,6 +212,13 @@ def build_answer_context(
             or age > MAX_SOURCE_AGE_HOURS
         ):
             blockers.append(f"required/configured source is unhealthy or stale: {row['name']}")
+        elif row["name"] in OPTIONAL_ENRICHMENT_SOURCES and (
+            not row["configured"]
+            or not row["ok"]
+            or age is None
+            or age > MAX_SOURCE_AGE_HOURS
+        ):
+            warnings.append(f"optional enrichment is unhealthy or stale: {row['name']}")
 
     robust = pinnacle.get("robust_cvar_scenarios")
     if not isinstance(robust, dict) or not robust:
@@ -301,6 +312,22 @@ def build_answer_context(
     if not safe and not blockers:
         blockers.append("canonical or Pinnacle production gate is not green")
 
+    source_by_name = {str(row.get("name")): row for row in source_health}
+    airsenal_health = source_by_name.get("airsenal", {})
+    core_health = source_by_name.get("fpl_core_playerstats", {})
+    understat_health = source_by_name.get("understat_team_model", {})
+
+    def fresh_status(row: dict[str, Any], *, fresh_label: str = "fresh") -> str:
+        if not row or not row.get("configured"):
+            return "temporarily_unavailable"
+        if not row.get("ok"):
+            detail = str(row.get("detail") or "").casefold()
+            return "schema_invalid" if any(token in detail for token in ("schema", "malformed", "empty", "invalid")) else "temporarily_unavailable"
+        age = row.get("age_hours")
+        if age is None or float(age) > MAX_SOURCE_AGE_HOURS:
+            return "stale"
+        return fresh_label
+
     return {
         "contract": ANSWER_CONTRACT,
         "generated_at": now.isoformat(),
@@ -320,6 +347,48 @@ def build_answer_context(
             "decision_bundle_id": canonical_bundle,
         },
         "source_health": source_health,
+        "authority_chain": [
+            "official_fpl:factual_truth",
+            "airsenal:production_statistical_xp",
+            "football_enrichment_and_evidence",
+            "apex_optimizer:decision_authority",
+            "apex_and_challengers:shadow",
+            "prospective_calibration:promotion_judge",
+        ],
+        "official_fpl": {
+            "authority": "factual_truth",
+            "status": "fresh" if official_age is not None and official_age <= MAX_OFFICIAL_AGE_HOURS else "stale",
+            "snapshot_id": canonical_snapshot.get("snapshot_id"),
+            "retrieved_at": canonical_snapshot.get("retrieved_at"),
+            "bootstrap_sha256": canonical_snapshot.get("bootstrap_sha256"),
+            "fixtures_sha256": canonical_snapshot.get("fixtures_sha256"),
+        },
+        "canonical_projection": {
+            "provider": "AIrsenal",
+            "authority": "production",
+            "status": fresh_status(airsenal_health),
+            "generated_at": airsenal_health.get("checked_at"),
+            "version": airsenal_health.get("version"),
+            "fallback_authority": None,
+        },
+        "enrichment": {
+            "understat": {
+                "authority": "enrichment_shadow_input",
+                "status": fresh_status(understat_health, fresh_label="fresh_current_season"),
+                "version": understat_health.get("version"),
+            },
+            "fpl_core": {
+                "authority": "enrichment",
+                "status": fresh_status(core_health),
+                "version": core_health.get("version"),
+            },
+        },
+        "shadow_projections": {
+            "apex": {"provider": "Apex proprietary", "authority": "shadow", "status": "available"},
+            "openfpl": {"provider": "OpenFPL", "authority": "shadow", "status": "not_integrated"},
+        },
+        "optimizer": {"authority": "decision", "status": "optimal" if safe else "blocked"},
+        "decision": {"status": "actionable" if safe else "blocked"},
         "diagnostics": {
             "cvar": robust,
             "selection_regret": pinnacle.get("selection_regret"),

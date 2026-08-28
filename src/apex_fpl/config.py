@@ -86,10 +86,12 @@ class Settings:
     max_per_team: int = 3
     fixture_decay: float = 0.90
     risk_penalty: float = 0.15
+    # Production statistical authority is intentionally one-hot until a challenger
+    # passes genuine prospective promotion. These are authority weights, not a hand-tuned blend.
     weights: dict[str, float] = field(default_factory=lambda: {
-        "official_ep": 0.2666666667,
-        "apex_model": 0.5111111111,
-        "airsenal": 0.2222222222,
+        "official_ep": 0.0,
+        "apex_model": 0.0,
+        "airsenal": 1.0,
         "market": 0.0,
     })
     approximate_bench_weight: float = 0.08
@@ -111,8 +113,6 @@ class Settings:
     upstreams_lock_path: Path = Path("upstreams.lock.json")
     required_sources: list[str] = field(default_factory=lambda: [
         "official_fpl",
-        "fpl_core_playerstats",
-        "fixture_model",
         "airsenal",
         "news_feeds",
     ])

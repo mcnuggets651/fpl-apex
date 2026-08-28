@@ -26,6 +26,7 @@ from apex_fpl.services.learning import (
     parse_event_live_points,
     write_learning_report,
 )
+from apex_fpl.services.prospective_ledger import provider_ledger_from_forecast
 
 
 def _deadline(row: pd.Series) -> pd.Timestamp | None:
@@ -98,6 +99,22 @@ def main() -> None:
             capture_path = capture_dir / f"{bundle_id}.csv"
             if not capture_path.exists():
                 capture_path.write_bytes(csv_bytes)
+            source_versions = {}
+            for source in latest.get("sources") or []:
+                if not isinstance(source, dict):
+                    continue
+                name = str(source.get("name") or "")
+                if name == "airsenal":
+                    source_versions["AIrsenal"] = str(source.get("version") or "")
+                elif name == "official_fpl":
+                    source_versions["Official FPL EP"] = str(source.get("version") or "")
+            source_versions["Apex proprietary"] = str(latest.get("model_version") or "")
+            provider_ledger = provider_ledger_from_forecast(
+                frame, season=settings.season, source_versions=source_versions
+            )
+            provider_path = capture_dir / f"{bundle_id}_providers.csv"
+            if not provider_path.exists():
+                provider_path.write_text(provider_ledger.to_csv(index=False), encoding="utf-8")
             if not path.exists() or path.read_bytes() != csv_bytes:
                 path.write_bytes(csv_bytes)
             metadata = {
