@@ -27,10 +27,15 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] An Official-hash mismatch aborts before team/provider qualification and requires a new run attempt.
 - [ ] Both Official acquisition hashes are persisted in the frozen run provenance.
 - [ ] Dastan is generated before the shared freeze in an isolated runtime and remains non-serving while prospectively unqualified.
-- [ ] OpenFPL's exact pinned reference checkout passes its structural preflight without being relabelled as current scoring.
+- [ ] OpenFPL's exact pinned reference checkout passes its structural/inference preflight without being relabelled as current scoring or falsely described as a published trainer.
+- [ ] The reference preflight records `INFERENCE_ONLY`, `TRAINING_PIPELINE_NOT_PUBLISHED` and `SAMPLE_CONSTRUCTION_NOT_PUBLISHED` unless newly published upstream source is separately audited.
+- [ ] Any Apex-built current-rules implementation uses the distinct identity `apex-openfpl-method-derivative`; it never claims exact upstream training reproduction merely because the paper or reference inference assets are available.
+- [ ] `config/openfpl_method_contract.yaml` validates against the pinned OpenFPL and Dastan commits, the 235-column reference sample accounting, exact 1/3/5/10/38 rolling windows, position feature counts, training search space and 50-model median ensemble.
+- [ ] Dastan's feature rebuild may be used only as a non-authoritative independent semantics cross-check; its different model architecture is not relabelled as OpenFPL.
 - [ ] OpenFPL exact 2026/27 history readiness is pinned and audited independently of the Dastan history role; target/future GW contamination fails closed.
 - [ ] `openfpl-current-training-v1` is the governed current-rules construction policy: minimum 10 completed exact-rule GWs, labels only from 2026/27, legacy FPL-points/relevant-points/BPS/bonus feature families excluded, and historical context score-independent only.
-- [ ] Any future OpenFPL current model declares `fpl-2026-27-v1`, binds to the exact governed policy SHA-256 and `openfpl-current-nonscore-v1` feature contract, declares the exact-rule gameweeks used, meets the 10-GW minimum, uses separately hashed training/model artifacts, trains only through GW < target GW, proves future-placeholder invariance, reaches 100% Official DecisionUniverse coverage, and explicitly does not reuse legacy reference weights as current weights.
+- [ ] The governed derivative feature surface is exactly 176 features for GK and 186 for DEF/MID/FWD unless a reviewed contract version changes both code and acceptance tests.
+- [ ] Any future current-rules derivative declares `fpl-2026-27-v1`, binds to the exact governed policy and method-contract hashes plus `openfpl-current-nonscore-v1`, declares the exact-rule gameweeks used, meets the 10-GW minimum, uses separately hashed training/model artifacts, trains only through GW < target GW, independently validates its feature construction against reference semantics, proves future-placeholder invariance, reaches 100% Official DecisionUniverse coverage, and explicitly does not reuse legacy reference weights as current weights.
 - [ ] Meeting the OpenFPL 10-GW construction floor authorizes only SHADOW model construction; serving authority still requires prospective qualification and an explicit governance change.
 - [ ] Dastan/OpenFPL stay non-serving until current-scoring live exports pass the same operational and prospective contract.
 
