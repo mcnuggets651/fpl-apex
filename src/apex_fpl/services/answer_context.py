@@ -194,12 +194,16 @@ def build_answer_context(
     for source in pinnacle.get("sources") or []:
         if not isinstance(source, dict):
             continue
-        age = _age_hours(source.get("checked_at"), now)
+        name = source.get("name")
+        freshness_at = source.get("generated_at") if name == "airsenal" else source.get("checked_at")
+        age = _age_hours(freshness_at, now)
         row = {
-            "name": source.get("name"),
+            "name": name,
             "ok": source.get("ok") is True,
             "configured": source.get("configured") is True,
             "checked_at": source.get("checked_at"),
+            "generated_at": source.get("generated_at"),
+            "freshness_at": freshness_at,
             "age_hours": age,
             "version": source.get("version"),
             "detail": source.get("detail"),
@@ -219,6 +223,10 @@ def build_answer_context(
             or age > MAX_SOURCE_AGE_HOURS
         ):
             warnings.append(f"optional enrichment is unhealthy or stale: {row['name']}")
+
+    present_sources = {str(row.get("name")) for row in source_health}
+    for required_source in sorted(REQUIRED_SOURCES - present_sources):
+        blockers.append(f"required source status is missing: {required_source}")
 
     robust = pinnacle.get("robust_cvar_scenarios")
     if not isinstance(robust, dict) or not robust:
@@ -367,7 +375,9 @@ def build_answer_context(
             "provider": "AIrsenal",
             "authority": "production",
             "status": fresh_status(airsenal_health),
-            "generated_at": airsenal_health.get("checked_at"),
+            "generated_at": airsenal_health.get("generated_at"),
+            "checked_at": airsenal_health.get("checked_at"),
+            "age_hours": airsenal_health.get("age_hours"),
             "version": airsenal_health.get("version"),
             "fallback_authority": None,
         },
