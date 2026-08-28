@@ -36,11 +36,20 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 ## Team mechanics
 - [ ] Exact legal 15/XI/club limits pass property tests.
 - [ ] Rolled free-transfer transitions are versioned by season.
+- [ ] Current-period free-transfer state supports 0 through the season maximum; a new transfer with 0 remaining FTs incurs the first hit correctly.
 - [ ] Selling price uses purchase-price half-profit rules.
 - [ ] Existing team value above £100m is not falsely declared illegal.
 - [ ] Transfer cash flow and hit cost are exact.
+- [ ] Authenticated Official `/me/` must identify the configured Apex entry before `/my-team/{entry_id}/` can be trusted.
+- [ ] Authenticated `/my-team/{entry_id}/` must provide 15 unique Official IDs, all purchase/selling prices, current bank and coherent transfer state.
+- [ ] Every authenticated selling price is cross-checked against purchase price, the frozen Official current price and the exact half-profit rule.
+- [ ] Team-state credentials are injected only during Official acquisition/freeze and are never logged, persisted in snapshots or exposed to forecast/solve code.
+- [ ] A configured but rejected/wrong-entry/incoherent credential fails acquisition; Apex does not silently downgrade to public picks.
+- [ ] With no credential, public last-deadline picks remain transaction-incomplete unconditionally and discretionary transfers are withheld.
+- [ ] Unlimited/null-limit authenticated transfer windows are withheld from the ordinary transfer optimiser until chip-aware mechanics are explicitly implemented.
 - [ ] H1-only evidence withholds discretionary transfers.
 - [ ] Incomplete selling-price state withholds discretionary transfers.
+- [ ] Execution overlays update squad, bank, owned purchase/selling-price maps and remaining current-period FTs atomically.
 - [ ] Secondary tie-break prefers fewer transfers without reducing primary EV.
 - [ ] Transfer optimiser infeasibility is returned as typed `INFEASIBLE`, persisted in the DecisionBundle diagnostics, and certifies fail-closed as `BLOCKED` / `DECISION_ILLEGAL` rather than surfacing as an unhandled exception.
 
@@ -68,6 +77,7 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Optional challenger generation occurs before freeze and cannot invalidate the serving incumbent merely by failing.
 - [ ] Official post-provider seal exactly matches the pre-provider seal.
 - [ ] Official final anchor and snapshot freeze succeed.
+- [ ] If authenticated team-state credentials are configured, the frozen team state is current, exact and complete for ordinary transfers; otherwise the diagnostic explicitly withholds discretionary transfers.
 - [ ] Solver completes from frozen state or emits a typed/persisted blocking decision diagnostic.
 - [ ] Final release becomes immutable and verifies.
 - [ ] Recommendation is legal and certification is coherent.
