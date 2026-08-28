@@ -10,12 +10,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from apex.forecast.openfpl_current import (
     CURRENT_EXACT_RULE_SEASON,
+    CURRENT_FEATURE_CONTRACT_VERSION,
     CURRENT_SCORING_RULES_VERSION,
+    CURRENT_TRAINING_POLICY_VERSION,
     REFERENCE_ROLLING_WINDOWS,
     SCORE_DEPENDENT_REFERENCE_FEATURE_FAMILIES,
     exact_rule_history_readiness,
+    training_policy_errors,
+    training_policy_sha256,
 )
 from apex.sources.official import fetch_official_snapshot
 
@@ -54,13 +60,32 @@ def _github_directory(repository: str, commit: str, path: str) -> list[dict[str,
     return payload
 
 
+def _load_policy(path: Path) -> dict[str, Any]:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("OpenFPL training policy must be a mapping")
+    errors = training_policy_errors(raw)
+    if errors:
+        raise ValueError("invalid OpenFPL training policy: " + "; ".join(errors))
+    return raw
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Audit exact 2026/27 label history available for OpenFPL retraining."
+        description="Audit exact 2026/27 label history against governed OpenFPL policy."
     )
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--minimum-exact-rule-gameweeks", type=int, default=None)
+    parser.add_argument(
+        "--policy",
+        type=Path,
+        default=ROOT / "config/openfpl_training_policy.yaml",
+    )
     args = parser.parse_args()
+
+    policy_path = args.policy if args.policy.is_absolute() else ROOT / args.policy
+    policy = _load_policy(policy_path)
+    policy_digest = training_policy_sha256(policy)
+    governed_minimum = int(policy["minimum_exact_rule_gameweeks"])
 
     lock = json.loads((ROOT / "upstreams.lock.json").read_text(encoding="utf-8"))[
         "sources"
@@ -96,13 +121,13 @@ def main() -> None:
     readiness = exact_rule_history_readiness(
         tuple(gameweeks),
         target_gameweek=target,
-        minimum_exact_rule_gameweeks=args.minimum_exact_rule_gameweeks,
+        minimum_exact_rule_gameweeks=governed_minimum,
     )
     source_manifest_hash = hashlib.sha256(
         json.dumps(source_rows, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "provider": "openfpl",
         "scoring_rules_version": CURRENT_SCORING_RULES_VERSION,
         "exact_rule_season": CURRENT_EXACT_RULE_SEASON,
@@ -118,6 +143,18 @@ def main() -> None:
         "score_dependent_reference_feature_families": list(
             SCORE_DEPENDENT_REFERENCE_FEATURE_FAMILIES
         ),
+        "training_policy": {
+            "path": str(policy_path.relative_to(ROOT)),
+            "policy_version": CURRENT_TRAINING_POLICY_VERSION,
+            "sha256": policy_digest,
+            "minimum_exact_rule_gameweeks": governed_minimum,
+            "feature_contract_version": CURRENT_FEATURE_CONTRACT_VERSION,
+            "excluded_score_dependent_feature_families": list(
+                policy["excluded_score_dependent_feature_families"]
+            ),
+            "valid": True,
+        },
+        "model_construction_authorized": bool(readiness["training_ready"]),
         "legacy_reference_weights_reused": False,
         "serve_authorized": False,
         "predictive_status": "INSUFFICIENT_HISTORY",
@@ -133,8 +170,8 @@ def main() -> None:
     if readiness["state"] == "HISTORY_LEAKAGE":
         raise SystemExit(1)
     if readiness["training_ready"]:
-        # This only means the governed history threshold was met. It does not promote,
-        # serve, or certify a model; the current-model artifact contract is separate.
+        # This authorizes only a current-rules SHADOW model build. It does not
+        # promote, serve, or certify OpenFPL for production authority.
         print("OpenFPL exact-rule history threshold satisfied; model build remains shadow-only")
 
 
