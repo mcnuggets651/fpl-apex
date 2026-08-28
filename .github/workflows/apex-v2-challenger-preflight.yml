@@ -173,6 +173,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/openfpl_current_readiness.py \
+            --policy config/openfpl_training_policy.yaml \
             --output artifacts/v2/challengers/openfpl_current_readiness.json
           python - <<'PY'
           import json
@@ -180,12 +181,29 @@ jobs:
               'artifacts/v2/challengers/openfpl_current_readiness.json',
               encoding='utf-8',
           ))
-          assert report['state'] == 'TRAINING_POLICY_UNSET'
-          assert report['training_ready'] is False
+          policy = report['training_policy']
+          assert policy['valid'] is True
+          assert policy['policy_version'] == 'openfpl-current-training-v1'
+          assert policy['feature_contract_version'] == 'openfpl-current-nonscore-v1'
+          assert policy['minimum_exact_rule_gameweeks'] == 10
+          assert len(policy['sha256']) == 64
           assert report['serve_authorized'] is False
           assert report['legacy_reference_weights_reused'] is False
           assert report['exact_rule_gameweek_count'] >= 1
-          assert all(gw < report['target_gameweek'] for gw in report['completed_exact_rule_gameweeks'])
+          assert all(
+              gw < report['target_gameweek']
+              for gw in report['completed_exact_rule_gameweeks']
+          )
+          minimum = report['minimum_exact_rule_gameweeks']
+          count = report['exact_rule_gameweek_count']
+          if count < minimum:
+              assert report['state'] == 'CURRENT_LABEL_HISTORY_INSUFFICIENT'
+              assert report['training_ready'] is False
+              assert report['model_construction_authorized'] is False
+          else:
+              assert report['state'] == 'CURRENT_LABEL_HISTORY_READY'
+              assert report['training_ready'] is True
+              assert report['model_construction_authorized'] is True
           print(json.dumps(report, sort_keys=True))
           PY
 
@@ -197,4 +215,5 @@ jobs:
           path: |
             artifacts/v2/challengers/openfpl_reference_preflight.json
             artifacts/v2/challengers/openfpl_current_readiness.json
+            config/openfpl_training_policy.yaml
           retention-days: 30
