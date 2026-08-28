@@ -64,6 +64,9 @@ jobs:
             tests/test_evidence_eligibility.py \
             tests/test_solver_parity_contract.py
 
+      - name: Remove one-shot workflow before final governance/full-suite test
+        run: rm .github/workflows/final-production-cutover.yml
+
       - name: Run full repository test suite
         run: pytest -q
 
@@ -87,7 +90,6 @@ jobs:
         run: |
           set -euo pipefail
           rm scripts/apply_final_production_cutover.py
-          rm .github/workflows/final-production-cutover.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
