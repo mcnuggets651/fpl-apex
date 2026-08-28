@@ -19,6 +19,27 @@ from apex.forecast.openfpl_current import (
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# The pinned upstream repository explicitly advertises models + inference code and
+# tells users to construct custom samples themselves from FPL/Understat data. These
+# markers let CI prove that we have not silently started treating an inference-only
+# checkout as a published training pipeline.
+README_CUSTOM_SAMPLE_MARKERS = (
+    "you need to construct samples based on data from FPL and Understat APIs",
+    "see *data/samples.csv* and [paper]",
+)
+INFERENCE_NOTEBOOK_MARKERS = (
+    "samples_df = pd.read_csv",
+    "joblib.load",
+    "np.median(position_predictions, axis=0)",
+)
+TRAINING_NOTEBOOK_MARKERS = (
+    ".fit(",
+    "GridSearchCV",
+    "KBestSearch",
+    "KBinsDiscretizer",
+    "compute_sample_weight",
+)
+
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -38,6 +59,90 @@ def git_head(root: Path) -> str:
 def sample_header(path: Path) -> list[str]:
     with path.open(newline="", encoding="utf-8") as handle:
         return next(csv.reader(handle))
+
+
+def _published_code_inventory(root: Path) -> list[str]:
+    suffixes = {".py", ".ipynb", ".r", ".R", ".jl"}
+    return sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix in suffixes
+    )
+
+
+def _reference_reproducibility(root: Path) -> dict:
+    readme = (
+        (root / "README.md").read_text(encoding="utf-8")
+        if (root / "README.md").is_file()
+        else ""
+    )
+    notebook = (
+        (root / "play.ipynb").read_text(encoding="utf-8")
+        if (root / "play.ipynb").is_file()
+        else ""
+    )
+    inventory = _published_code_inventory(root)
+    readme_delegates_sample_construction = all(
+        marker in readme for marker in README_CUSTOM_SAMPLE_MARKERS
+    )
+    inference_markers_present = all(
+        marker in notebook for marker in INFERENCE_NOTEBOOK_MARKERS
+    )
+    training_markers_present = [
+        marker for marker in TRAINING_NOTEBOOK_MARKERS if marker in notebook
+    ]
+    published_training_sources = [
+        path
+        for path in inventory
+        if path != "play.ipynb"
+        and any(token in path.casefold() for token in ("train", "feature", "sample", "data"))
+    ]
+
+    pipeline_published = bool(published_training_sources or training_markers_present)
+    sample_construction_published = bool(
+        published_training_sources
+        and not readme_delegates_sample_construction
+    )
+    if pipeline_published:
+        scope = "TRAINING_SOURCE_PRESENT_REQUIRES_AUDIT"
+        pipeline_state = "TRAINING_SOURCE_PRESENT_REQUIRES_AUDIT"
+    else:
+        scope = "INFERENCE_ONLY"
+        pipeline_state = "TRAINING_PIPELINE_NOT_PUBLISHED"
+
+    return {
+        "reference_reproducibility_scope": scope,
+        "reference_inference_state": (
+            "REFERENCE_INFERENCE_REPRODUCIBLE"
+            if inference_markers_present
+            else "REFERENCE_INFERENCE_CONTRACT_CHANGED"
+        ),
+        "training_pipeline_state": pipeline_state,
+        "training_pipeline_published": pipeline_published,
+        "sample_construction_state": (
+            "SAMPLE_CONSTRUCTION_PUBLISHED_REQUIRES_AUDIT"
+            if sample_construction_published
+            else "SAMPLE_CONSTRUCTION_NOT_PUBLISHED"
+        ),
+        "sample_construction_published": sample_construction_published,
+        "readme_delegates_sample_construction": readme_delegates_sample_construction,
+        "published_code_inventory": inventory,
+        "published_training_source_candidates": published_training_sources,
+        "inference_markers_present": inference_markers_present,
+        "training_markers_present": training_markers_present,
+        "provenance_contract": {
+            "exact_upstream_reference_identity": "openfpl-reference-inference",
+            "future_current_rules_identity": "apex-openfpl-method-derivative",
+            "derivative_may_claim_exact_upstream_training_reproduction": False,
+            "reason": (
+                "The pinned upstream publishes trained models and inference code, "
+                "while its README delegates custom sample construction to users. "
+                "A current-rules implementation derived from the paper must therefore "
+                "carry a distinct provenance identity unless upstream later publishes "
+                "the missing construction/training source."
+            ),
+        },
+    }
 
 
 def main() -> None:
@@ -101,13 +206,20 @@ def main() -> None:
             f"OpenFPL sample feature surface unexpectedly small: {len(columns)} columns"
         )
 
+    reproducibility = _reference_reproducibility(openfpl_root)
+    if reproducibility["reference_inference_state"] != "REFERENCE_INFERENCE_REPRODUCIBLE":
+        errors.append("OpenFPL inference notebook markers are incomplete")
+    # A missing training pipeline is an explicit governance blocker for exact upstream
+    # retraining, not a failure of the published inference reference. Do not turn the
+    # known upstream omission into a false CI failure.
+
     model_directories = [
         f"models/cv{fold}_{position}"
         for fold in REFERENCE_CV_FOLDS
         for position in REFERENCE_POSITIONS
     ]
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "provider": "openfpl",
         "repository": str(lock["repository"]),
         "expected_commit": expected_commit,
@@ -141,15 +253,25 @@ def main() -> None:
             else None
         ),
         "ensemble_contract": "five-fold position-specific models; median across loaded candidate predictions",
+        **reproducibility,
         "serve_authorized": False,
         "predictive_status": "INSUFFICIENT_HISTORY",
+        "qualification_blockers": [
+            "LEGACY_SCORING_REFERENCE",
+            "TRAINING_PIPELINE_NOT_PUBLISHED",
+            "CURRENT_RULE_HISTORY_GATE",
+            "PROSPECTIVE_QUALIFICATION_REQUIRED",
+        ],
         "qualification_blocker": (
-            "reference artifacts target legacy scoring/features; a separately trained "
-            "fpl-2026-27-v1 model plus leakage-safe live feature exporter is required"
+            "reference inference artifacts target legacy scoring/features; exact "
+            "upstream sample-construction/training source is not published; a "
+            "separately identified current-rules derivative plus leakage-safe live "
+            "feature exporter and prospective qualification are required"
         ),
         "next_required_artifacts": [
             "current-rules chronological training dataset",
-            "current-rules model artifact manifest",
+            "Apex OpenFPL-method derivative feature-construction manifest",
+            "current-rules derivative model artifact manifest",
             "leakage-safe live feature exporter",
             "future-placeholder invariance proof",
             "100% Official DecisionUniverse H1 shadow export",
