@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from apex.decision.transfers import optimise_transfer_horizon
 from apex.domain.models import (
     OfficialPlayer,
@@ -129,3 +131,44 @@ def test_h2_uses_transfer_when_multiweek_ev_beats_hit_and_cash():
     assert len(result.decision.transfers_in) == len(
         result.decision.transfers_out
     )
+
+
+def test_zero_remaining_free_transfers_charges_first_new_transfer_as_hit():
+    official, team, _ = setup()
+    team = replace(team, free_transfers=0)
+    rows = []
+    for player in official.players:
+        points = 15.0 if player.element_id == 20 else 3.0
+        rows.extend(
+            (
+                ProjectionRow(player.element_id, 2, 1, points),
+                ProjectionRow(player.element_id, 3, 2, points),
+            )
+        )
+    surface = ProductionProjectionSurface(
+        1,
+        "p",
+        "v",
+        "2026-08-28T10:00:00Z",
+        official.season,
+        official.source_hash,
+        "2026-2027",
+        (1, 2),
+        tuple(rows),
+    )
+
+    result = optimise_transfer_horizon(
+        official,
+        surface,
+        team,
+        max_horizon=2,
+    )
+
+    assert result.status == "OPTIMAL"
+    assert result.decision is not None
+    assert result.decision.transfers_in == (20,)
+    assert len(result.decision.transfers_out) == 1
+    assert result.decision.transfer_hits == 1
+    assert result.weeks[0].free_transfers == 0
+    assert result.weeks[0].hits == 1
+    assert result.weeks[1].free_transfers == 1
