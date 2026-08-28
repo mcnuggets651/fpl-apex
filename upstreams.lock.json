@@ -32,6 +32,15 @@
       "serving_authorized": false,
       "scoring_compatibility": "pre-2025-26 scoring release; requires explicit 2026-27 retraining/adaptation before predictive qualification"
     },
+    "openfpl_current_history": {
+      "repository": "vaastav/Fantasy-Premier-League",
+      "commit": "9779cdbc0c07f6c900c2d0c181ddf6bb9c800f88",
+      "committed_at": "2026-08-28T09:47:53Z",
+      "role": "openfpl_current_rules_readiness_input",
+      "required_for_full_apex": false,
+      "exact_scoring_season": "2026-27",
+      "coverage_note": "pinned independently from Dastan semantics; GW1 is the only exact 2026-27 completed gameweek at this revision and this source does not itself authorize model training or serving"
+    },
     "bpl": {
       "repository": "anguswilliams91/bpl-next",
       "commit": "e238f742d1ea1f72a6ce8b8466f9989d6b53a819",
