@@ -117,6 +117,11 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
     serving_h1 = policy.get(1)
     decision = None
     warnings = []
+    decision_optimisation = {
+        "kind": "NONE",
+        "status": "NOT_RUN",
+        "solver": {},
+    }
 
     evidence_rows = snapshot.read_json("evidence.json")
     records = tuple(
@@ -149,6 +154,13 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
                 excluded_ids=excluded,
             )
             decision = result.decision
+            decision_optimisation = {
+                "kind": "INITIAL_SQUAD",
+                "status": result.status,
+                "solver": result.raw_solver,
+            }
+            if result.status == "INFEASIBLE":
+                warnings.append("initial optimiser infeasible")
         else:
             transfer_result = optimise_transfer_horizon(
                 official,
@@ -158,8 +170,19 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
                 excluded_h1=excluded,
             )
             decision = transfer_result.decision
+            decision_optimisation = {
+                "kind": "TRANSFER_HORIZON",
+                "status": transfer_result.status,
+                "primary_objective": transfer_result.primary_objective,
+                "solver": transfer_result.solver,
+                "week_count": len(transfer_result.weeks),
+            }
             reason = transfer_result.solver.get("reason")
-            if reason:
+            message = transfer_result.solver.get("message")
+            if transfer_result.status == "INFEASIBLE":
+                detail = reason or message or "solver returned no feasible solution"
+                warnings.append(f"transfer optimiser infeasible: {detail}")
+            elif reason:
                 warnings.append(reason)
 
         horizon_rows = {
@@ -178,6 +201,11 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
         canonical_hash = projection_surface_hash(canonical)
     else:
         canonical_hash = ""
+        decision_optimisation = {
+            "kind": "NONE",
+            "status": "NOT_RUN_NO_SERVING_PROVIDER",
+            "solver": {},
+        }
         warnings.append("no authorized complete H1 serving provider")
 
     for status in statuses:
@@ -229,6 +257,7 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
                 str(horizon): provider.provider_id
                 for horizon, provider in policy.items()
             },
+            "decision_optimisation": decision_optimisation,
         },
         {
             "hard_evidence_count": len(records),
