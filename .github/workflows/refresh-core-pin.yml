@@ -2,6 +2,10 @@ name: Refresh FPL Core data pin
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/refresh-core-pin.yml"
   schedule:
     # FPL Core documents two daily data refreshes. Resolve its moving data branch
     # shortly before each six-hour Apex production run so enrichment stays current
