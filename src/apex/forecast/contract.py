@@ -107,7 +107,7 @@ def validate_projection_surface(
         _validate_optional_probability(
             errors,
             label="p60",
-            value=row.p60,
+            value=row.p_60,
             key=key,
         )
         if row.p_appearance is not None:
@@ -117,10 +117,10 @@ def validate_projection_surface(
                     f"p_start exceeds p_appearance for {key}: "
                     f"{row.p_start} > {row.p_appearance}"
                 )
-            if row.p60 is not None and float(row.p60) > appearance + PROBABILITY_TOLERANCE:
+            if row.p_60 is not None and float(row.p_60) > appearance + PROBABILITY_TOLERANCE:
                 errors.append(
                     f"p60 exceeds p_appearance for {key}: "
-                    f"{row.p60} > {row.p_appearance}"
+                    f"{row.p_60} > {row.p_appearance}"
                 )
     missing = sorted(
         horizon
