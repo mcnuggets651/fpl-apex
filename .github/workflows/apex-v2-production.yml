@@ -123,6 +123,9 @@ jobs:
 
       - name: Re-anchor Official truth and freeze all inputs once
         id: freeze
+        env:
+          FPL_SESSION_COOKIE: ${{ secrets.FPL_SESSION_COOKIE }}
+          FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}
         shell: bash
         run: |
           set -euo pipefail
@@ -287,6 +290,9 @@ jobs:
 
       - name: Re-anchor Official truth and freeze all inputs once
         id: freeze
+        env:
+          FPL_SESSION_COOKIE: ${{ secrets.FPL_SESSION_COOKIE }}
+          FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}
         shell: bash
         run: |
           set -euo pipefail
