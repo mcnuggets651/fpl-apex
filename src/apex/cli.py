@@ -22,6 +22,23 @@ def _store():
     return GitHubReleaseStore(repo, token)
 
 
+def _private_store():
+    from apex.runtime.releases import GitHubReleaseStore
+
+    repo = os.environ.get("APEX_PRIVATE_GITHUB_REPOSITORY")
+    token = os.environ.get("APEX_PRIVATE_GITHUB_TOKEN")
+    if not repo or not token:
+        raise typer.BadParameter(
+            "authenticated manager publication requires "
+            "APEX_PRIVATE_GITHUB_REPOSITORY and APEX_PRIVATE_GITHUB_TOKEN"
+        )
+    if repo == os.environ.get("GITHUB_REPOSITORY"):
+        raise typer.BadParameter(
+            "private manager store must be a separate repository"
+        )
+    return GitHubReleaseStore(repo, token)
+
+
 @app.command()
 def intent(
     run_id: str = typer.Option(..., "--run-id"),
@@ -31,6 +48,12 @@ def intent(
     output: Path = Path("artifacts/v2/intent.json"),
     publish: bool = True,
 ):
+    from apex.runtime.publication import (
+        INTENT_RELEASE_ASSETS_V1,
+        assert_exact_asset_set,
+        validate_intent_payload,
+    )
+
     now = datetime.now(timezone.utc).isoformat()
     payload = {
         "schema_version": 1,
@@ -40,13 +63,19 @@ def intent(
         "code_sha": code_sha,
         "started_at": now,
     }
+    validate_intent_payload(payload)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    output.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    files = {"intent.json": output}
+    assert_exact_asset_set(files, INTENT_RELEASE_ASSETS_V1, "intent release")
     if publish:
         tag = f"apex-v2/intent/{season}/{run_id}"
         _store().create_once(
             tag,
-            {"intent.json": output},
+            files,
             target_commitish=code_sha,
             name=f"Apex V2 intent {season} GW{gameweek} {run_id}",
             body=(
@@ -145,34 +174,39 @@ def publish(
     code_sha: str = typer.Option(..., "--code-sha"),
     artifact_dir: Path = Path("artifacts/v2"),
 ):
-    from apex.runtime.releases import create_bundle_archive, write_attestation
+    from apex.runtime.publication import build_publication_materials
 
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    bundle = artifact_dir / "bundle.tar.gz"
-    attestation = artifact_dir / "attestation.json"
-    payload = create_bundle_archive(snapshot, decision, bundle)
-    payload.update(
-        {
-            "run_id": run_id,
-            "season": season,
-            "gameweek": gameweek,
-            "code_sha": code_sha,
-        }
-    )
-    write_attestation(attestation, payload)
+    material = build_publication_materials(snapshot, decision, artifact_dir)
+
+    # Persist owner-private state first. If it cannot be stored immutably, the
+    # public final release is never created. This is the authenticated-run
+    # kill switch and prevents a future fallback to the public repository.
+    if material.authenticated_manager_state:
+        private_ref = _private_store().create_once(
+            f"apex-v2/private/{season}/{run_id}",
+            material.private_files,
+            target_commitish=code_sha,
+            name=(
+                f"Apex V2 private manager attempt {season} "
+                f"GW{gameweek} {run_id}"
+            ),
+            body=(
+                "Owner-private immutable manager attempt. Never mirror these "
+                "assets into the public Apex repository."
+            ),
+        )
+        if not private_ref.immutable:
+            raise RuntimeError("private manager release is not immutable")
+
     tag = f"apex-v2/final/{season}/{run_id}"
     ref = _store().create_once(
         tag,
-        {
-            "bundle.tar.gz": bundle,
-            "attestation.json": attestation,
-            "decision_bundle.json": decision,
-        },
+        material.public_files,
         target_commitish=code_sha,
         name=f"Apex V2 final {season} GW{gameweek} {run_id}",
         body=(
-            "Immutable completed production attempt. Certification may be actionable "
-            "or blocked; both are valid completed outcomes."
+            "Immutable public production/audit attempt. Personalized manager "
+            "state and decisions are structurally excluded from this release."
         ),
     )
     typer.echo(ref.html_url)
