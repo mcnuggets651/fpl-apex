@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import json
+import subprocess
+from pathlib import Path
+
+from apex.forecast.openfpl_current import (
+    CURRENT_SCORING_RULES_VERSION,
+    REFERENCE_CV_FOLDS,
+    REFERENCE_POSITIONS,
+    REFERENCE_RUNTIME_DEPENDENCIES,
+    REFERENCE_SCORING_RULES_VERSION,
+    reference_asset_errors,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def git_head(root: Path) -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        text=True,
+    ).strip()
+
+
+def sample_header(path: Path) -> list[str]:
+    with path.open(newline="", encoding="utf-8") as handle:
+        return next(csv.reader(handle))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Verify the pinned OpenFPL reference implementation without falsely "
+            "qualifying its legacy model for current FPL scoring."
+        )
+    )
+    parser.add_argument("--openfpl-root", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args()
+
+    openfpl_root = args.openfpl_root.resolve()
+    lock = json.loads((ROOT / "upstreams.lock.json").read_text(encoding="utf-8"))[
+        "sources"
+    ]["openfpl"]
+    expected_commit = str(lock["commit"])
+    actual_commit = git_head(openfpl_root)
+
+    errors = list(reference_asset_errors(openfpl_root))
+    if actual_commit != expected_commit:
+        errors.append(
+            f"OpenFPL checkout commit mismatch: expected {expected_commit}, got {actual_commit}"
+        )
+
+    plug = tuple(
+        line.strip()
+        for line in (openfpl_root / "plug.txt").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ) if (openfpl_root / "plug.txt").is_file() else ()
+    if plug != REFERENCE_RUNTIME_DEPENDENCIES:
+        errors.append(
+            "OpenFPL pinned runtime dependencies differ from the audited reference contract"
+        )
+
+    notebook = (
+        (openfpl_root / "play.ipynb").read_text(encoding="utf-8")
+        if (openfpl_root / "play.ipynb").is_file()
+        else ""
+    )
+    required_notebook_markers = (
+        "num_cvs = 5",
+        "positions = ['GK', 'DEF', 'MID', 'FWD', 'AM']",
+        "xscaler.save",
+        "yscaler.save",
+        "features.save",
+        "np.median(position_predictions, axis=0)",
+    )
+    missing_markers = [marker for marker in required_notebook_markers if marker not in notebook]
+    if missing_markers:
+        errors.append(
+            "OpenFPL reference notebook contract changed/missing markers: "
+            + "; ".join(missing_markers)
+        )
+
+    samples = openfpl_root / "data" / "samples.csv"
+    columns = sample_header(samples) if samples.is_file() else []
+    if len(columns) < 200:
+        errors.append(
+            f"OpenFPL sample feature surface unexpectedly small: {len(columns)} columns"
+        )
+
+    model_directories = [
+        f"models/cv{fold}_{position}"
+        for fold in REFERENCE_CV_FOLDS
+        for position in REFERENCE_POSITIONS
+    ]
+    report = {
+        "schema_version": 1,
+        "provider": "openfpl",
+        "repository": str(lock["repository"]),
+        "expected_commit": expected_commit,
+        "checkout_commit": actual_commit,
+        "reference_assets_valid": not errors,
+        "reference_errors": errors,
+        "reference_scoring_rules_version": REFERENCE_SCORING_RULES_VERSION,
+        "current_scoring_rules_version": CURRENT_SCORING_RULES_VERSION,
+        "current_rules_compatible": False,
+        "reference_runtime_dependencies": list(plug),
+        "reference_cv_folds": list(REFERENCE_CV_FOLDS),
+        "reference_positions": list(REFERENCE_POSITIONS),
+        "reference_model_directories": model_directories,
+        "sample_column_count": len(columns),
+        "sample_schema_sha256": hashlib.sha256(
+            "\n".join(columns).encode("utf-8")
+        ).hexdigest(),
+        "features_artifact_sha256": (
+            sha256_file(openfpl_root / "models" / "features.save")
+            if (openfpl_root / "models" / "features.save").is_file()
+            else None
+        ),
+        "xscaler_artifact_sha256": (
+            sha256_file(openfpl_root / "models" / "xscaler.save")
+            if (openfpl_root / "models" / "xscaler.save").is_file()
+            else None
+        ),
+        "yscaler_artifact_sha256": (
+            sha256_file(openfpl_root / "models" / "yscaler.save")
+            if (openfpl_root / "models" / "yscaler.save").is_file()
+            else None
+        ),
+        "ensemble_contract": "five-fold position-specific models; median across loaded candidate predictions",
+        "serve_authorized": False,
+        "predictive_status": "INSUFFICIENT_HISTORY",
+        "qualification_blocker": (
+            "reference artifacts target legacy scoring/features; a separately trained "
+            "fpl-2026-27-v1 model plus leakage-safe live feature exporter is required"
+        ),
+        "next_required_artifacts": [
+            "current-rules chronological training dataset",
+            "current-rules model artifact manifest",
+            "leakage-safe live feature exporter",
+            "future-placeholder invariance proof",
+            "100% Official DecisionUniverse H1 shadow export",
+        ],
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(json.dumps(report, sort_keys=True))
+    if errors:
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
