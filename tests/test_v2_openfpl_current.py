@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -7,9 +8,11 @@ import yaml
 
 from apex.forecast.openfpl_current import (
     CURRENT_FEATURE_CONTRACT_VERSION,
+    CURRENT_IMPLEMENTATION_ID,
     CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS,
     CURRENT_SCORING_RULES_VERSION,
     CURRENT_TRAINING_POLICY_VERSION,
+    CURRENT_UPSTREAM_REFERENCE_ID,
     current_model_manifest_errors,
     exact_rule_history_readiness,
     score_dependent_feature_columns,
@@ -30,19 +33,31 @@ def governed_policy() -> dict:
     )
 
 
+def method_contract_sha256() -> str:
+    return hashlib.sha256(
+        (ROOT / "config/openfpl_method_contract.yaml").read_bytes()
+    ).hexdigest()
+
+
 def current_manifest() -> dict:
     return {
         "provider": "openfpl",
         "provider_version": "current-model-sha",
+        "implementation_id": CURRENT_IMPLEMENTATION_ID,
+        "upstream_reference_identity": CURRENT_UPSTREAM_REFERENCE_ID,
+        "exact_upstream_training_reproduction_claim": False,
         "scoring_rules_version": CURRENT_SCORING_RULES_VERSION,
         "source_snapshot": "official-seal",
         "target_gameweek": 11,
         "training_max_gameweek": 10,
         "training_policy_version": CURRENT_TRAINING_POLICY_VERSION,
         "training_policy_sha256": training_policy_sha256(governed_policy()),
+        "method_contract_sha256": method_contract_sha256(),
         "minimum_exact_rule_gameweeks": CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS,
         "exact_rule_gameweeks": list(range(1, 11)),
         "feature_contract_version": CURRENT_FEATURE_CONTRACT_VERSION,
+        "feature_construction_validation": True,
+        "reference_sample_semantics_validation": True,
         "model_artifact_sha256": _sha("a"),
         "training_dataset_sha256": _sha("b"),
         "placeholder_invariance": True,
@@ -58,6 +73,7 @@ def manifest_errors(manifest: dict) -> tuple[str, ...]:
         target_gameweek=11,
         source_snapshot="official-seal",
         expected_training_policy_sha256=training_policy_sha256(governed_policy()),
+        expected_method_contract_sha256=method_contract_sha256(),
     )
 
 
@@ -67,11 +83,36 @@ def test_governed_openfpl_training_policy_is_self_consistent():
     assert policy["minimum_exact_rule_gameweeks"] == 10
     assert policy["policy_version"] == CURRENT_TRAINING_POLICY_VERSION
     assert policy["feature_contract_version"] == CURRENT_FEATURE_CONTRACT_VERSION
+    identity = policy["implementation_identity"]
+    assert identity["current_rules_identity"] == CURRENT_IMPLEMENTATION_ID
+    assert identity["upstream_reference_identity"] == CURRENT_UPSTREAM_REFERENCE_ID
+    assert identity["exact_upstream_training_reproduction_claim"] is False
     assert len(training_policy_sha256(policy)) == 64
 
 
 def test_current_openfpl_manifest_can_pass_operational_contract_after_history_floor():
     assert manifest_errors(current_manifest()) == ()
+
+
+def test_current_manifest_must_use_derivative_implementation_identity():
+    manifest = current_manifest()
+    manifest["implementation_id"] = "openfpl"
+    errors = manifest_errors(manifest)
+    assert any("current implementation must be" in error for error in errors)
+
+
+def test_current_manifest_must_identify_inference_only_upstream_reference():
+    manifest = current_manifest()
+    manifest["upstream_reference_identity"] = "openfpl-upstream-trainer"
+    errors = manifest_errors(manifest)
+    assert any("upstream reference identity must be" in error for error in errors)
+
+
+def test_current_manifest_cannot_claim_exact_upstream_training_reproduction():
+    manifest = current_manifest()
+    manifest["exact_upstream_training_reproduction_claim"] = True
+    errors = manifest_errors(manifest)
+    assert any("cannot claim exact upstream training reproduction" in error for error in errors)
 
 
 def test_current_openfpl_manifest_must_bind_exact_governed_policy_hash():
@@ -81,11 +122,32 @@ def test_current_openfpl_manifest_must_bind_exact_governed_policy_hash():
     assert any("different governed policy hash" in error for error in errors)
 
 
+def test_current_openfpl_manifest_must_bind_exact_governed_method_hash():
+    manifest = current_manifest()
+    manifest["method_contract_sha256"] = _sha("c")
+    errors = manifest_errors(manifest)
+    assert any("different governed method-contract hash" in error for error in errors)
+
+
 def test_current_openfpl_manifest_must_use_governed_feature_contract():
     manifest = current_manifest()
     manifest["feature_contract_version"] = "legacy-reference-features"
     errors = manifest_errors(manifest)
     assert any("feature contract" in error for error in errors)
+
+
+def test_current_model_requires_independent_feature_construction_validation():
+    manifest = current_manifest()
+    manifest["feature_construction_validation"] = False
+    errors = manifest_errors(manifest)
+    assert any("feature construction" in error for error in errors)
+
+
+def test_current_model_requires_reference_sample_semantics_validation():
+    manifest = current_manifest()
+    manifest["reference_sample_semantics_validation"] = False
+    errors = manifest_errors(manifest)
+    assert any("reference-sample semantics" in error for error in errors)
 
 
 def test_legacy_openfpl_weights_cannot_be_relabelled_as_current():
@@ -168,6 +230,13 @@ def test_policy_rejects_missing_score_dependent_exclusion():
     policy["excluded_score_dependent_feature_families"] = ["player fpl points"]
     errors = training_policy_errors(policy)
     assert any("does not exclude all legacy scoring" in error for error in errors)
+
+
+def test_policy_rejects_upstream_reproduction_claim():
+    policy = governed_policy()
+    policy["implementation_identity"]["exact_upstream_training_reproduction_claim"] = True
+    errors = training_policy_errors(policy)
+    assert any("cannot claim exact upstream training reproduction" in error for error in errors)
 
 
 def test_exact_rule_history_without_loaded_policy_fails_closed():
