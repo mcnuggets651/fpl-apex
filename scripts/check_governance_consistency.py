@@ -174,8 +174,8 @@ def main() -> None:
     for selector in FINAL_SELECTORS:
         if selector not in canonical_policy:
             failures.append(f"canonical decision policy is stale for selector: {selector}")
-    if "GW1-first" not in architecture or "receding-horizon" not in architecture:
-        failures.append("architecture document does not describe the final adaptive strategy")
+        if selector not in architecture:
+            failures.append(f"architecture document is stale for selector: {selector}")
     if "adverse-evidence-only" not in operating:
         failures.append("operating manual does not preserve the EV-first evidence policy")
     if "architecture freeze" not in operating.casefold():
