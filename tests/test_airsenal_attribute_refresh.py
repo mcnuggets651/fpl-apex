@@ -16,6 +16,11 @@ REFRESH = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(REFRESH)
 
 
+class _Session:
+    def __init__(self, autoflush: bool):
+        self.autoflush = autoflush
+
+
 def _db(tmp_path: Path) -> Path:
     path = tmp_path / "data.db"
     with sqlite3.connect(path) as connection:
@@ -53,6 +58,35 @@ def _rows(path: Path) -> list[tuple[int, str, int, int]]:
             "SELECT player_id, season, gameweek, price "
             "FROM player_attributes ORDER BY season, player_id, gameweek"
         ).fetchall()
+
+
+def test_refiller_autoflush_is_scoped_and_restored() -> None:
+    session = _Session(False)
+    with REFRESH.refiller_autoflush(session):
+        assert session.autoflush is True
+    assert session.autoflush is False
+
+
+def test_refiller_autoflush_restores_existing_true_value() -> None:
+    session = _Session(True)
+    with REFRESH.refiller_autoflush(session):
+        assert session.autoflush is True
+    assert session.autoflush is True
+
+
+def test_refiller_autoflush_restores_after_failure() -> None:
+    session = _Session(False)
+    with pytest.raises(RuntimeError, match="boom"):
+        with REFRESH.refiller_autoflush(session):
+            assert session.autoflush is True
+            raise RuntimeError("boom")
+    assert session.autoflush is False
+
+
+def test_refiller_autoflush_requires_session_contract() -> None:
+    with pytest.raises(TypeError, match="autoflush"):
+        with REFRESH.refiller_autoflush(object()):
+            pass
 
 
 def test_rewind_removes_only_current_season_mutable_window(tmp_path: Path) -> None:
