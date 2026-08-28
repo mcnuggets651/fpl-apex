@@ -90,12 +90,27 @@ def _payloads():
         "decision_bundle_id": "bundle-a",
         "sources": [
             {
+                "name": "official_fpl",
+                "ok": True,
+                "configured": True,
+                "checked_at": "2026-08-11T07:05:00+00:00",
+                "version": "official-1",
+            },
+            {
+                "name": "airsenal",
+                "ok": True,
+                "configured": True,
+                "checked_at": "2026-08-11T07:45:00+00:00",
+                "generated_at": "2026-08-11T06:45:00+00:00",
+                "version": "airsenal-1",
+            },
+            {
                 "name": "news_feeds",
                 "ok": True,
                 "configured": True,
                 "checked_at": "2026-08-11T07:30:00+00:00",
                 "version": "news-1",
-            }
+            },
         ],
         "robust_cvar_scenarios": {"unrestricted": {"status": "Optimal"}},
         "selection_regret": [{"player_id": 1, "regret": 1.2}],
@@ -119,6 +134,9 @@ def test_complete_final_context_is_only_green_answer_contract():
     assert context["only_input_for_apex_answers"] is True
     assert context["production_result"] is not None
     assert context["decision_bundle_id"] == "bundle-a"
+    assert context["canonical_projection"]["generated_at"] == "2026-08-11T06:45:00+00:00"
+    assert context["canonical_projection"]["checked_at"] == "2026-08-11T07:45:00+00:00"
+    assert context["canonical_projection"]["age_hours"] == 1.25
     reason = context["selected_player_reasons"][0]
     assert reason["selector"] == "adaptive_gw1_launch_with_transfer_option_value"
     assert reason["selection_regret"] is None
@@ -168,6 +186,30 @@ def test_stale_or_missing_diagnostics_withhold_production_result():
     assert context["production_result"] is None
     assert any("stale" in blocker for blocker in context["blockers"])
     assert any("solver parity" in blocker for blocker in context["blockers"])
+
+
+def test_stale_airsenal_generation_blocks_even_after_fresh_health_check():
+    canonical, pinnacle = _payloads()
+    for source in pinnacle["sources"]:
+        if source["name"] == "airsenal":
+            source["checked_at"] = "2026-08-11T07:59:00+00:00"
+            source["generated_at"] = "2026-08-10T18:00:00+00:00"
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+
+    assert context["safe_to_act"] is False
+    assert context["canonical_projection"]["status"] == "stale"
+    assert any("airsenal" in blocker for blocker in context["blockers"])
+
+
+def test_missing_required_source_status_blocks_answer_contract():
+    canonical, pinnacle = _payloads()
+    pinnacle["sources"] = [
+        source for source in pinnacle["sources"] if source["name"] != "airsenal"
+    ]
+    context = build_answer_context(canonical, pinnacle, now=NOW)
+
+    assert context["safe_to_act"] is False
+    assert any("required source status is missing: airsenal" == row for row in context["blockers"])
 
 
 def test_incomplete_all_player_truth_blocks_answer_contract():
