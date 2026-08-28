@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 4 * * *"
+  pull_request:
+    types: [labeled]
 
 permissions:
   contents: write
@@ -14,12 +16,31 @@ concurrency:
 
 jobs:
   produce:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.number == 90 &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'agent/apex-v2-cleanroom' &&
+       github.event.label.name == 'enhancement')
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      APEX_CODE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.APEX_CODE_SHA }}
           fetch-depth: 0
+
+      - name: Verify PR rehearsal identity
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "pull_request"
+          test "$APEX_CODE_SHA" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$APEX_CODE_SHA"
+          echo "PR-scoped Apex V2 rehearsal pinned to $APEX_CODE_SHA"
 
       - uses: actions/setup-python@v5
         with:
@@ -37,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           RUN_KEY="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          STARTED="$(apex-v2 intent --run-id "$RUN_KEY" --season 2026-2027 --gameweek 0 --code-sha "$GITHUB_SHA")"
+          STARTED="$(apex-v2 intent --run-id "$RUN_KEY" --season 2026-2027 --gameweek 0 --code-sha "$APEX_CODE_SHA")"
           echo "run_key=$RUN_KEY" >> "$GITHUB_OUTPUT"
           echo "started=$STARTED" >> "$GITHUB_OUTPUT"
 
@@ -100,7 +121,7 @@ jobs:
           SNAPSHOT="$(apex-v2 acquire \
             --config config/apex_v2.yaml \
             --run-id '${{ steps.intent.outputs.run_key }}' \
-            --code-sha "$GITHUB_SHA" \
+            --code-sha "$APEX_CODE_SHA" \
             --run-started-at '${{ steps.intent.outputs.started }}' \
             --expected-official-hash '${{ steps.official_seal.outputs.hash }}')"
           echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
@@ -134,7 +155,7 @@ jobs:
             --season 2026-2027 \
             --gameweek "$GW" \
             --run-id '${{ steps.intent.outputs.run_key }}' \
-            --code-sha "$GITHUB_SHA"
+            --code-sha "$APEX_CODE_SHA"
 
       - name: Upload diagnostic copy
         if: always()
