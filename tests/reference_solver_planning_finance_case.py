@@ -38,13 +38,11 @@ _FINANCE_CLUB_OWNED_IDS = frozenset({3, 4, 8})
 
 
 def _finance_candidate_universe(verified, *, store: ArtifactStore) -> tuple[CandidateUniverse, str]:
-    """Build the smallest legal finance surface while preserving the required semantics.
+    """Return the compatibility finance universe with the retained £5.1m MID target.
 
-    The publication fixture separately proves the complete FULL_OFFICIAL/chip action surface.
-    This focused case only needs to prove banking and authoritative selling-vs-purchase finance.
-    Three owned players deliberately share the target club, so importing player 16 is legal only
-    when the intended MID (player 8) leaves. That preserves exact transfer mechanics while
-    preventing unrelated same-position swaps from multiplying the qualification search tree.
+    This helper intentionally preserves the original reuse/inject contract because older focused
+    fixtures use it directly. Search-surface shaping belongs to the qualification-only helper
+    below and must not silently rewrite generic fixture identity.
     """
 
     base = verified.candidate_universe
@@ -52,31 +50,68 @@ def _finance_candidate_universe(verified, *, store: ArtifactStore) -> tuple[Cand
         (row for row in base.players if row.player_id == _FINANCE_EXTRA_PLAYER),
         None,
     )
-    if existing is not None and (
-        existing.position != "MID" or existing.current_price_tenths != 51
-    ):
+    if existing is not None:
+        if (
+            existing.team_id != 16
+            or existing.position != "MID"
+            or existing.current_price_tenths != 51
+        ):
+            raise ValueError(
+                "focused finance case player 16 must remain the £5.1m MID qualification target"
+            )
+        stored = store_candidate_universe(base, store=store)
+        return base, stored.artifact_id
+
+    source = store.put_bytes(b"synthetic-planning-finance-universe-source").artifact_id
+    universe = CandidateUniverse(
+        global_world_id=base.global_world_id,
+        scope=CandidateUniverseScope.FULL_OFFICIAL,
+        players=(
+            *base.players,
+            CandidatePlayer(
+                player_id=_FINANCE_EXTRA_PLAYER,
+                team_id=16,
+                position="MID",
+                current_price_tenths=51,
+            ),
+        ),
+        official_player_count=len(base.players) + 1,
+        source_artifact_ids=(source,),
+    )
+    stored = store_candidate_universe(universe, store=store)
+    return universe, stored.artifact_id
+
+
+def _focused_finance_candidate_universe(
+    verified,
+    *,
+    store: ArtifactStore,
+) -> tuple[CandidateUniverse, str]:
+    """Shape only the exact qualification case to one legally relevant financed MID swap.
+
+    The publication case separately proves the complete FULL_OFFICIAL/chip action surface. This
+    finance case proves banking and sale-vs-purchase arithmetic. Players 3, 4 and 8 saturate the
+    target club, so importing MID 16 is legal only when MID 8 leaves. No search budget or FPL rule
+    is weakened; irrelevant legal dead ends are removed by fixture construction.
+    """
+
+    base, _ = _finance_candidate_universe(verified, store=store)
+    required_ids = {*_FINANCE_CLUB_OWNED_IDS, int(_FINANCE_EXTRA_PLAYER)}
+    present_ids = {int(player.player_id) for player in base.players}
+    missing = sorted(required_ids - present_ids)
+    if missing:
         raise ValueError(
-            "focused finance case player 16 must remain the £5.1m MID qualification target"
+            "focused finance qualification universe lacks required players: "
+            + ",".join(str(player_id) for player_id in missing)
         )
 
     source = store.put_bytes(b"synthetic-planning-finance-universe-source-v2").artifact_id
     shaped_players = tuple(
         replace(player, team_id=_FINANCE_CLUB_ID)
-        if int(player.player_id) in (*_FINANCE_CLUB_OWNED_IDS, int(_FINANCE_EXTRA_PLAYER))
+        if int(player.player_id) in required_ids
         else player
         for player in base.players
     )
-    if existing is None:
-        shaped_players = (
-            *shaped_players,
-            CandidatePlayer(
-                player_id=_FINANCE_EXTRA_PLAYER,
-                team_id=_FINANCE_CLUB_ID,
-                position="MID",
-                current_price_tenths=51,
-            ),
-        )
-
     universe = CandidateUniverse(
         global_world_id=base.global_world_id,
         scope=CandidateUniverseScope.FULL_OFFICIAL,
@@ -199,9 +234,6 @@ def _finance_forecast(verified, universe: CandidateUniverse) -> Forecast:
                 )
                 continue
             template = _row_for_depth(verified, player_id=player_id, depth=depth)
-            # Player 8 is deliberately good in GW7 (10 xP in the source fixture), while
-            # the £5.1m MID target is 12 xP. Banking first and transferring only in GW7 is
-            # therefore uniquely better than sacrificing current-GW points for an early move.
             rows.append(
                 _retarget_row(
                     template,
@@ -244,15 +276,12 @@ def store_finance_qualification_case(
     candidate_policy,
     max_search_nodes: int = 500,
 ) -> str:
-    """Store a focused finance/banking case for planning-worker qualification.
+    """Store the focused bank-then-finance case for planning-worker qualification."""
 
-    Current-set chips are all validly consumed in prior GWs, removing chip branching from this
-    case. The publication case proves the complete chip/full-action surface. Club saturation in
-    this focused case leaves one legally relevant financed MID replacement, so qualification
-    proves the intended mechanism without wasting exact-search nodes on unrelated swaps.
-    """
-
-    universe, universe_artifact_id = _finance_candidate_universe(verified, store=store)
+    universe, universe_artifact_id = _focused_finance_candidate_universe(
+        verified,
+        store=store,
+    )
     manager_state = _finance_manager_state(verified, universe, store=store)
     forecast = _finance_forecast(verified, universe)
     policy = verified.decision_policy
