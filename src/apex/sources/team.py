@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,6 +17,83 @@ from apex.domain.rules import (
 )
 
 BASE = "https://fantasy.premierleague.com/api"
+
+
+@dataclass(frozen=True)
+class TeamStateAcquisition:
+    """Non-secret provenance for the manager-state acquisition boundary.
+
+    Public FPL manager pages are deadline snapshots for other viewers. They are
+    useful evidence, but they cannot prove the owner's editable pre-deadline team.
+    Authentication material is never stored here; only whether it was present.
+    """
+
+    state: TeamState | None
+    mode: str
+    credential_present: bool
+    target_gameweek: int | None
+    public_transfers: tuple[dict[str, Any], ...] = ()
+    public_transfer_error: str | None = None
+    detail: str = ""
+
+    def provenance(self) -> dict[str, Any]:
+        rows = list(self.public_transfers)
+        encoded = json.dumps(
+            rows,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode()
+        events = sorted(
+            {
+                int(row["event"])
+                for row in rows
+                if row.get("event") is not None
+            }
+        )
+        target_rows = (
+            sum(
+                1
+                for row in rows
+                if row.get("event") is not None
+                and int(row["event"]) == int(self.target_gameweek)
+            )
+            if self.target_gameweek is not None
+            else 0
+        )
+        state = self.state
+        return {
+            "schema_version": 1,
+            "mode": self.mode,
+            "credential_present": self.credential_present,
+            "target_gameweek": self.target_gameweek,
+            "published_gw": state.published_gw if state else None,
+            "state_complete_for_transfers": (
+                state.state_complete_for_transfers if state else False
+            ),
+            "purchase_price_count": (
+                len(state.purchase_prices_tenths) if state else 0
+            ),
+            "selling_price_count": (
+                len(state.selling_prices_tenths) if state else 0
+            ),
+            "public_transfer_ledger": {
+                "available": self.public_transfer_error is None,
+                "row_count": len(rows),
+                "events": events,
+                "last_visible_event": max(events) if events else None,
+                "target_gameweek_row_count": target_rows,
+                "sha256": hashlib.sha256(encoded).hexdigest(),
+                "error": self.public_transfer_error,
+                "visibility_contract": (
+                    "OWNER_AUTHENTICATED_CURRENT_STATE"
+                    if self.mode == "AUTHENTICATED_MY_TEAM"
+                    else "PUBLIC_OTHER_VIEWERS_DEADLINE_REDACTED"
+                ),
+            },
+            "detail": self.detail,
+        }
 
 
 def _dt(value):
@@ -282,14 +362,38 @@ def _public_team_state(
     )
 
 
-def fetch_team_state(
+def _public_transfer_ledger(
+    entry_id: int,
+    *,
+    http,
+    timeout: float,
+) -> tuple[tuple[dict[str, Any], ...], str | None]:
+    """Acquire public transfer history as evidence, never as current-state proof."""
+    try:
+        response = http.get(
+            f"{BASE}/entry/{int(entry_id)}/transfers/",
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            return (), f"HTTP {response.status_code}"
+        payload = response.json()
+        if not isinstance(payload, list):
+            return (), "public transfer endpoint returned a non-list payload"
+        rows = tuple(dict(row) for row in payload if isinstance(row, dict))
+        return rows, None
+    except Exception as exc:
+        return (), f"{type(exc).__name__}: {exc}"
+
+
+def acquire_team_state(
     entry_id: int,
     official: OfficialSnapshot,
     *,
     session: requests.Session | None = None,
     timeout=20.0,
     now: datetime | None = None,
-) -> TeamState | None:
+) -> TeamStateAcquisition:
+    """Acquire manager state plus non-secret provenance for the frozen snapshot."""
     http = session or requests.Session()
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     elapsed = sorted(
@@ -300,9 +404,16 @@ def fetch_team_state(
         ),
         reverse=True,
     )
+    future = sorted(
+        gw
+        for gw, deadline in official.deadlines.items()
+        if _dt(deadline) > now
+    )
+    target_gameweek = future[0] if future else None
+
     headers = _authenticated_headers()
     if headers is not None:
-        return _authenticated_team_state(
+        state = _authenticated_team_state(
             entry_id,
             official,
             http=http,
@@ -310,15 +421,71 @@ def fetch_team_state(
             timeout=float(timeout),
             published_gw=elapsed[0] if elapsed else 0,
         )
+        return TeamStateAcquisition(
+            state=state,
+            mode="AUTHENTICATED_MY_TEAM",
+            credential_present=True,
+            target_gameweek=target_gameweek,
+            detail=(
+                "Official authenticated /my-team state acquired and bound to the "
+                "configured entry; purchase/selling prices, bank and remaining FT "
+                "state are exact for the editable current team."
+            ),
+        )
+
     if not elapsed:
-        return None
-    return _public_team_state(
+        return TeamStateAcquisition(
+            state=None,
+            mode="NO_PUBLIC_DEADLINE",
+            credential_present=False,
+            target_gameweek=target_gameweek,
+            detail="No elapsed Official FPL deadline; no public 15-player team exists yet.",
+        )
+
+    state = _public_team_state(
         entry_id,
         official,
         http=http,
         timeout=float(timeout),
         elapsed=elapsed,
     )
+    public_transfers, transfer_error = _public_transfer_ledger(
+        entry_id,
+        http=http,
+        timeout=float(timeout),
+    )
+    return TeamStateAcquisition(
+        state=state,
+        mode="PUBLIC_DEADLINE_FALLBACK",
+        credential_present=False,
+        target_gameweek=target_gameweek,
+        public_transfers=public_transfers,
+        public_transfer_error=transfer_error,
+        detail=(
+            "Public manager state is a locked last-deadline snapshot. Official FPL "
+            "redacts another manager's post-deadline transfers until the next "
+            "deadline, so this path cannot certify the editable current team and "
+            "must withhold discretionary transfer optimisation."
+        ),
+    )
+
+
+def fetch_team_state(
+    entry_id: int,
+    official: OfficialSnapshot,
+    *,
+    session: requests.Session | None = None,
+    timeout=20.0,
+    now: datetime | None = None,
+) -> TeamState | None:
+    """Compatibility wrapper returning only the acquired state."""
+    return acquire_team_state(
+        entry_id,
+        official,
+        session=session,
+        timeout=timeout,
+        now=now,
+    ).state
 
 
 def apply_execution_overlay(
