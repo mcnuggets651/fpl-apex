@@ -216,6 +216,29 @@ def test_artifact_manifest_requires_authority_root_registry_qualification() -> N
         )
 
 
+def test_artifact_manifest_accepts_typed_sha256_semantic_identity() -> None:
+    artifact_id = _sha("reference-solver-authorization-artifact")
+    semantic_id = f"reference-solver-authorization:{_sha('authorization-semantic')}"
+
+    entry = ArtifactManifestEntry(
+        role=ArtifactManifestRole.REFERENCE_SOLVER_AUTHORIZATION,
+        artifact_id=artifact_id,
+        semantic_id=semantic_id,
+    )
+
+    assert entry.artifact_id == artifact_id
+    assert entry.semantic_id == semantic_id
+
+
+def test_artifact_manifest_rejects_malformed_typed_semantic_identity() -> None:
+    with pytest.raises(ValueError, match="typed sha256 semantic identity"):
+        ArtifactManifestEntry(
+            role=ArtifactManifestRole.REFERENCE_SOLVER_AUTHORIZATION,
+            artifact_id=_sha("reference-solver-authorization-artifact"),
+            semantic_id="reference solver authorization:sha256:not-a-digest",
+        )
+
+
 def test_filesystem_pointer_rejects_malformed_root_identity(tmp_path: Path) -> None:
     registry = FileSystemAuthorityRootRegistry(tmp_path / "roots")
     pointer = registry._pointer_path(SEASON)  # noqa: SLF001 - adversarial persistence test
