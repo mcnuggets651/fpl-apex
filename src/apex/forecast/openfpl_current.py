@@ -9,6 +9,8 @@ CURRENT_SCORING_RULES_VERSION = "fpl-2026-27-v1"
 CURRENT_EXACT_RULE_SEASON = "2026-27"
 CURRENT_TRAINING_POLICY_VERSION = "openfpl-current-training-v1"
 CURRENT_FEATURE_CONTRACT_VERSION = "openfpl-current-nonscore-v1"
+CURRENT_IMPLEMENTATION_ID = "apex-openfpl-method-derivative"
+CURRENT_UPSTREAM_REFERENCE_ID = "openfpl-reference-inference"
 CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS = 10
 REFERENCE_SCORING_RULES_VERSION = "openfpl-2024-25-rules"
 REFERENCE_POSITIONS = ("GK", "DEF", "MID", "FWD", "AM")
@@ -36,9 +38,17 @@ def _normalise_feature_name(value: Any) -> str:
     return " ".join(str(value).strip().casefold().replace("_", " ").split())
 
 
+def _is_sha256(value: Any) -> bool:
+    digest = str(value).lower()
+    return len(digest) == 64 and all(ch in "0123456789abcdef" for ch in digest)
+
+
 def score_dependent_feature_columns(columns: Iterable[Any]) -> tuple[str, ...]:
     """Return reference columns that encode legacy FPL scoring outcomes."""
-    banned = tuple(_normalise_feature_name(value) for value in SCORE_DEPENDENT_REFERENCE_FEATURE_FAMILIES)
+    banned = tuple(
+        _normalise_feature_name(value)
+        for value in SCORE_DEPENDENT_REFERENCE_FEATURE_FAMILIES
+    )
     found: list[str] = []
     for raw in columns:
         name = str(raw)
@@ -81,10 +91,40 @@ def training_policy_errors(policy: dict[str, Any]) -> tuple[str, ...]:
         errors.append(
             f"OpenFPL training policy scoring must be {CURRENT_SCORING_RULES_VERSION}"
         )
-    if str(policy.get("feature_contract_version", "")) != CURRENT_FEATURE_CONTRACT_VERSION:
+    if (
+        str(policy.get("feature_contract_version", ""))
+        != CURRENT_FEATURE_CONTRACT_VERSION
+    ):
         errors.append(
             f"OpenFPL feature contract must be {CURRENT_FEATURE_CONTRACT_VERSION}"
         )
+
+    identity = policy.get("implementation_identity") or {}
+    if str(identity.get("provider_family", "")) != "openfpl":
+        errors.append("OpenFPL training policy provider family must be openfpl")
+    if (
+        str(identity.get("upstream_reference_identity", ""))
+        != CURRENT_UPSTREAM_REFERENCE_ID
+    ):
+        errors.append(
+            f"OpenFPL upstream reference identity must be {CURRENT_UPSTREAM_REFERENCE_ID}"
+        )
+    if (
+        str(identity.get("current_rules_identity", ""))
+        != CURRENT_IMPLEMENTATION_ID
+    ):
+        errors.append(
+            f"OpenFPL current-rules implementation must be {CURRENT_IMPLEMENTATION_ID}"
+        )
+    if identity.get("exact_upstream_training_reproduction_claim") is not False:
+        errors.append(
+            "OpenFPL current-rules policy cannot claim exact upstream training reproduction"
+        )
+    if identity.get("source_construction_requires_independent_validation") is not True:
+        errors.append(
+            "OpenFPL current-rules policy must require independent source-construction validation"
+        )
+
     try:
         minimum = int(policy.get("minimum_exact_rule_gameweeks"))
     except (TypeError, ValueError):
@@ -117,7 +157,9 @@ def training_policy_errors(policy: dict[str, Any]) -> tuple[str, ...]:
             + ", ".join(missing)
         )
 
-    windows = tuple(int(value) for value in policy.get("reference_rolling_windows", ()))
+    windows = tuple(
+        int(value) for value in policy.get("reference_rolling_windows", ())
+    )
     if windows != REFERENCE_ROLLING_WINDOWS:
         errors.append(
             "OpenFPL policy rolling-window contract does not match the pinned reference"
@@ -167,10 +209,14 @@ def reference_asset_errors(root: str | Path) -> tuple[str, ...]:
         for position in REFERENCE_POSITIONS:
             directory = root / "models" / f"cv{fold}_{position}"
             if not directory.is_dir():
-                errors.append(f"missing model directory {directory.relative_to(root)}")
+                errors.append(
+                    f"missing model directory {directory.relative_to(root)}"
+                )
                 continue
             if not (directory / "search.txt").is_file():
-                errors.append(f"missing search log {(directory / 'search.txt').relative_to(root)}")
+                errors.append(
+                    f"missing search log {(directory / 'search.txt').relative_to(root)}"
+                )
     return tuple(errors)
 
 
@@ -186,8 +232,12 @@ def exact_rule_history_readiness(
     fail-closed TRAINING_POLICY_UNSET result. Production readiness loads the versioned
     policy file and passes its approved floor explicitly.
     """
-    gameweeks = tuple(sorted({int(gameweek) for gameweek in completed_gameweeks}))
-    future = tuple(gameweek for gameweek in gameweeks if gameweek >= int(target_gameweek))
+    gameweeks = tuple(
+        sorted({int(gameweek) for gameweek in completed_gameweeks})
+    )
+    future = tuple(
+        gameweek for gameweek in gameweeks if gameweek >= int(target_gameweek)
+    )
     if future:
         return {
             "state": "HISTORY_LEAKAGE",
@@ -209,7 +259,9 @@ def exact_rule_history_readiness(
             "exact_rule_gameweek_count": 0,
             "target_gameweek": int(target_gameweek),
             "minimum_exact_rule_gameweeks": minimum_exact_rule_gameweeks,
-            "reasons": ["no completed 2026/27 exact-rule gameweeks are available"],
+            "reasons": [
+                "no completed 2026/27 exact-rule gameweeks are available"
+            ],
         }
     if minimum_exact_rule_gameweeks is None:
         return {
@@ -256,21 +308,28 @@ def current_model_manifest_errors(
     target_gameweek: int,
     source_snapshot: str,
     expected_training_policy_sha256: str | None = None,
+    expected_method_contract_sha256: str | None = None,
 ) -> tuple[str, ...]:
-    """Fail closed unless an OpenFPL adaptation is genuinely current and leakage-safe."""
+    """Fail closed unless a derivative model is current, bound and leakage-safe."""
     errors: list[str] = []
     required = (
         "provider",
         "provider_version",
+        "implementation_id",
+        "upstream_reference_identity",
+        "exact_upstream_training_reproduction_claim",
         "scoring_rules_version",
         "source_snapshot",
         "target_gameweek",
         "training_max_gameweek",
         "training_policy_version",
         "training_policy_sha256",
+        "method_contract_sha256",
         "minimum_exact_rule_gameweeks",
         "exact_rule_gameweeks",
         "feature_contract_version",
+        "feature_construction_validation",
+        "reference_sample_semantics_validation",
         "model_artifact_sha256",
         "training_dataset_sha256",
         "placeholder_invariance",
@@ -283,14 +342,34 @@ def current_model_manifest_errors(
             errors.append(f"missing manifest field {key}")
 
     if str(manifest.get("provider", "")) != "openfpl":
-        errors.append("provider must be openfpl")
-    if str(manifest.get("scoring_rules_version", "")) != CURRENT_SCORING_RULES_VERSION:
+        errors.append("provider family must be openfpl")
+    if str(manifest.get("implementation_id", "")) != CURRENT_IMPLEMENTATION_ID:
+        errors.append(
+            f"OpenFPL current implementation must be {CURRENT_IMPLEMENTATION_ID}"
+        )
+    if (
+        str(manifest.get("upstream_reference_identity", ""))
+        != CURRENT_UPSTREAM_REFERENCE_ID
+    ):
+        errors.append(
+            f"OpenFPL upstream reference identity must be {CURRENT_UPSTREAM_REFERENCE_ID}"
+        )
+    if manifest.get("exact_upstream_training_reproduction_claim") is not False:
+        errors.append(
+            "OpenFPL derivative cannot claim exact upstream training reproduction"
+        )
+    if (
+        str(manifest.get("scoring_rules_version", ""))
+        != CURRENT_SCORING_RULES_VERSION
+    ):
         errors.append(
             "OpenFPL current model must be retrained/evaluated under "
             f"{CURRENT_SCORING_RULES_VERSION}"
         )
     if str(manifest.get("source_snapshot", "")) != str(source_snapshot):
-        errors.append("OpenFPL source_snapshot does not match Official authority seal")
+        errors.append(
+            "OpenFPL source_snapshot does not match Official authority seal"
+        )
     try:
         manifest_target = int(manifest.get("target_gameweek"))
     except (TypeError, ValueError):
@@ -311,13 +390,26 @@ def current_model_manifest_errors(
             f"OpenFPL training policy version must be {CURRENT_TRAINING_POLICY_VERSION}"
         )
     policy_digest = str(manifest.get("training_policy_sha256", "")).lower()
-    if len(policy_digest) != 64 or any(ch not in "0123456789abcdef" for ch in policy_digest):
+    if not _is_sha256(policy_digest):
         errors.append("training_policy_sha256 must be a SHA-256 hex digest")
     if (
         expected_training_policy_sha256 is not None
         and policy_digest != str(expected_training_policy_sha256).lower()
     ):
-        errors.append("OpenFPL training model is bound to a different governed policy hash")
+        errors.append(
+            "OpenFPL training model is bound to a different governed policy hash"
+        )
+
+    method_digest = str(manifest.get("method_contract_sha256", "")).lower()
+    if not _is_sha256(method_digest):
+        errors.append("method_contract_sha256 must be a SHA-256 hex digest")
+    if (
+        expected_method_contract_sha256 is not None
+        and method_digest != str(expected_method_contract_sha256).lower()
+    ):
+        errors.append(
+            "OpenFPL training model is bound to a different governed method-contract hash"
+        )
 
     try:
         minimum_exact = int(manifest.get("minimum_exact_rule_gameweeks"))
@@ -326,7 +418,9 @@ def current_model_manifest_errors(
                 "OpenFPL model minimum exact-rule history must equal governed floor "
                 f"{CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS}"
             )
-        exact_gameweeks = tuple(int(value) for value in manifest.get("exact_rule_gameweeks", ()))
+        exact_gameweeks = tuple(
+            int(value) for value in manifest.get("exact_rule_gameweeks", ())
+        )
         readiness = exact_rule_history_readiness(
             exact_gameweeks,
             target_gameweek=target_gameweek,
@@ -334,7 +428,8 @@ def current_model_manifest_errors(
         )
         if not readiness["training_ready"]:
             errors.extend(
-                f"OpenFPL training readiness: {reason}" for reason in readiness["reasons"]
+                f"OpenFPL training readiness: {reason}"
+                for reason in readiness["reasons"]
             )
         unique_exact = tuple(sorted(set(exact_gameweeks)))
         if unique_exact and training_max != max(unique_exact):
@@ -342,11 +437,24 @@ def current_model_manifest_errors(
                 "training_max_gameweek does not match the maximum declared exact-rule gameweek"
             )
     except (TypeError, ValueError) as exc:
-        errors.append(f"invalid OpenFPL training policy/history declaration: {exc}")
+        errors.append(
+            f"invalid OpenFPL training policy/history declaration: {exc}"
+        )
 
-    if str(manifest.get("feature_contract_version", "")) != CURRENT_FEATURE_CONTRACT_VERSION:
+    if (
+        str(manifest.get("feature_contract_version", ""))
+        != CURRENT_FEATURE_CONTRACT_VERSION
+    ):
         errors.append(
             f"OpenFPL feature contract must be {CURRENT_FEATURE_CONTRACT_VERSION}"
+        )
+    if manifest.get("feature_construction_validation") is not True:
+        errors.append(
+            "OpenFPL derivative feature construction has not passed independent validation"
+        )
+    if manifest.get("reference_sample_semantics_validation") is not True:
+        errors.append(
+            "OpenFPL derivative has not passed pinned reference-sample semantics validation"
         )
     if manifest.get("placeholder_invariance") is not True:
         errors.append("OpenFPL future-placeholder leakage audit did not pass")
@@ -355,13 +463,21 @@ def current_model_manifest_errors(
     except (TypeError, ValueError):
         coverage = -1.0
     if abs(coverage - 1.0) > 1e-12:
-        errors.append("OpenFPL current model lacks 100% Official DecisionUniverse coverage")
+        errors.append(
+            "OpenFPL current model lacks 100% Official DecisionUniverse coverage"
+        )
     if manifest.get("legacy_reference_weights_reused") is not False:
-        errors.append("legacy OpenFPL weights cannot be relabelled as a current-rules model")
+        errors.append(
+            "legacy OpenFPL weights cannot be relabelled as a current-rules model"
+        )
     if manifest.get("serve_authorized") is not False:
-        errors.append("OpenFPL must remain non-serving during prospective qualification")
-    for key in ("model_artifact_sha256", "training_dataset_sha256"):
-        value = str(manifest.get(key, "")).lower()
-        if len(value) != 64 or any(ch not in "0123456789abcdef" for ch in value):
+        errors.append(
+            "OpenFPL must remain non-serving during prospective qualification"
+        )
+    for key in (
+        "model_artifact_sha256",
+        "training_dataset_sha256",
+    ):
+        if not _is_sha256(manifest.get(key, "")):
             errors.append(f"{key} must be a SHA-256 hex digest")
     return tuple(dict.fromkeys(errors))
