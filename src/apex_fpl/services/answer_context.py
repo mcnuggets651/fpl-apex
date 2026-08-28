@@ -4,20 +4,19 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from apex_fpl.services.projection_registry import PROJECTION_PROVIDERS, normalise_provider_key, provider_spec
 
-ANSWER_CONTRACT = "apex-answer-context-v1"
+
+ANSWER_CONTRACT = "apex-answer-context-v2"
 MAX_OFFICIAL_AGE_HOURS = 12.0
 MAX_SOURCE_AGE_HOURS = 12.0
-REQUIRED_SOURCES = {
-    "official_fpl",
-    "airsenal",
-    "news_feeds",
-}
+BASE_REQUIRED_SOURCES = {"official_fpl"}
 OPTIONAL_ENRICHMENT_SOURCES = {
     "fpl_core_playerstats",
     "fixture_model",
     "understat_team_model",
 }
+EVIDENCE_SOURCES = {"news_feeds", "news_source_health", "tactical_roles"}
 FINAL_SELECTORS = {
     "adaptive_gw1_launch_with_transfer_option_value",
     "receding_horizon_current_team_maximum_ev",
@@ -89,8 +88,6 @@ def selected_player_reasons(canonical: dict[str, Any], pinnacle: dict[str, Any])
                 ),
                 "current_evidence_count": dossier.get("current_evidence_count", 0),
                 "evidence": dossier.get("evidence") or [],
-                # Exact-horizon force/ban regret belongs to the internal static
-                # diagnostic and is not causal evidence for adaptive/receding picks.
                 "selection_regret": None,
                 "alternative": None,
                 "selector": selector,
@@ -147,6 +144,22 @@ def _captain_surfaces(canonical: dict[str, Any], pinnacle: dict[str, Any]) -> di
     }
 
 
+def _fresh_status(row: dict[str, Any], *, fresh_label: str = "fresh") -> str:
+    if not row or not row.get("configured"):
+        return "temporarily_unavailable"
+    if not row.get("ok"):
+        detail = str(row.get("detail") or "").casefold()
+        return (
+            "schema_invalid"
+            if any(token in detail for token in ("schema", "malformed", "empty", "invalid"))
+            else "temporarily_unavailable"
+        )
+    age = row.get("age_hours")
+    if age is None or float(age) > MAX_SOURCE_AGE_HOURS:
+        return "stale"
+    return fresh_label
+
+
 def build_answer_context(
     canonical: dict[str, Any],
     pinnacle: dict[str, Any],
@@ -190,12 +203,51 @@ def build_answer_context(
             f"official FPL snapshot is stale ({official_age:.1f}h > {MAX_OFFICIAL_AGE_HOURS:.1f}h)"
         )
 
+    truth = canonical.get("all_player_truth")
+    champion_key = ""
+    champion = None
+    if not isinstance(truth, dict) or truth.get("ready") is not True:
+        blockers.append("all-player truth audit is missing or not ready")
+    else:
+        try:
+            champion_key = normalise_provider_key(str(truth.get("champion_provider") or ""))
+            champion = provider_spec(champion_key)
+        except ValueError:
+            blockers.append("all-player truth does not identify a valid production champion")
+        if truth.get("contract") != "apex-player-truth-v2":
+            blockers.append("all-player truth contract is not provider-neutral v2")
+        for field in (
+            "hard_fact_coverage",
+            "canonical_projection_pair_coverage",
+            "champion_projection_pair_coverage",
+        ):
+            try:
+                value = float(truth.get(field))
+            except (TypeError, ValueError):
+                value = 0.0
+            if abs(value - 1.0) > 1e-12:
+                blockers.append(f"all-player truth coverage is incomplete: {field}={value:.3f}")
+        warnings.extend(str(row) for row in truth.get("warnings") or [])
+
+    required_sources = set(BASE_REQUIRED_SOURCES)
+    if champion is not None:
+        required_sources.add(champion.source_status_name)
+
+    provider_source_names = {
+        spec.source_status_name for spec in PROJECTION_PROVIDERS.values()
+    }
     source_health: list[dict] = []
     for source in pinnacle.get("sources") or []:
         if not isinstance(source, dict):
             continue
-        name = source.get("name")
-        freshness_at = source.get("generated_at") if name == "airsenal" else source.get("checked_at")
+        name = str(source.get("name") or "")
+        # Forecast freshness is provider-generation freshness, not the later time at
+        # which Apex happened to inspect the provider file.
+        freshness_at = (
+            source.get("generated_at")
+            if name in provider_source_names
+            else source.get("checked_at")
+        )
         age = _age_hours(freshness_at, now)
         row = {
             "name": name,
@@ -209,13 +261,15 @@ def build_answer_context(
             "detail": source.get("detail"),
         }
         source_health.append(row)
-        if row["name"] in REQUIRED_SOURCES and (
+        if row["name"] in required_sources and (
             not row["configured"]
             or not row["ok"]
             or age is None
             or age > MAX_SOURCE_AGE_HOURS
         ):
-            blockers.append(f"required/configured source is unhealthy or stale: {row['name']}")
+            blockers.append(
+                f"required/configured source is unhealthy or stale: {row['name']}"
+            )
         elif row["name"] in OPTIONAL_ENRICHMENT_SOURCES and (
             not row["configured"]
             or not row["ok"]
@@ -223,9 +277,13 @@ def build_answer_context(
             or age > MAX_SOURCE_AGE_HOURS
         ):
             warnings.append(f"optional enrichment is unhealthy or stale: {row['name']}")
+        elif row["name"] in EVIDENCE_SOURCES and row["configured"] and not row["ok"]:
+            warnings.append(
+                f"evidence source is unhealthy; selected-player evidence gate decides materiality: {row['name']}"
+            )
 
     present_sources = {str(row.get("name")) for row in source_health}
-    for required_source in sorted(REQUIRED_SOURCES - present_sources):
+    for required_source in sorted(required_sources - present_sources):
         blockers.append(f"required source status is missing: {required_source}")
 
     robust = pinnacle.get("robust_cvar_scenarios")
@@ -245,23 +303,6 @@ def build_answer_context(
     strategy = pinnacle.get("weekly_strategy") or pinnacle.get("initial_squad_contingencies")
     if not isinstance(strategy, dict):
         blockers.append("strategy/transfer state is missing")
-
-    truth = canonical.get("all_player_truth")
-    if not isinstance(truth, dict) or truth.get("ready") is not True:
-        blockers.append("all-player truth audit is missing or not ready")
-    else:
-        for field in (
-            "hard_fact_coverage",
-            "canonical_projection_pair_coverage",
-            "airsenal_projection_pair_coverage",
-        ):
-            try:
-                value = float(truth.get(field))
-            except (TypeError, ValueError):
-                value = 0.0
-            if abs(value - 1.0) > 1e-12:
-                blockers.append(f"all-player truth coverage is incomplete: {field}={value:.3f}")
-        warnings.extend(str(row) for row in truth.get("warnings") or [])
 
     final_evidence = canonical.get("final_selected_player_evidence")
     if not isinstance(final_evidence, dict):
@@ -296,7 +337,9 @@ def build_answer_context(
 
     for player in selected:
         if player.get("expected_minutes") is None or player.get("start_probability") is None:
-            blockers.append(f"selected player lacks expected-minutes forecast: {player['web_name']}")
+            blockers.append(
+                f"selected player lacks expected-minutes forecast: {player['web_name']}"
+            )
         if not player.get("role_source"):
             blockers.append(f"selected player lacks role provenance: {player['web_name']}")
     inferred_roles = [
@@ -321,21 +364,33 @@ def build_answer_context(
         blockers.append("canonical or Pinnacle production gate is not green")
 
     source_by_name = {str(row.get("name")): row for row in source_health}
-    airsenal_health = source_by_name.get("airsenal", {})
+    champion_health = (
+        source_by_name.get(champion.source_status_name, {}) if champion is not None else {}
+    )
     core_health = source_by_name.get("fpl_core_playerstats", {})
     understat_health = source_by_name.get("understat_team_model", {})
 
-    def fresh_status(row: dict[str, Any], *, fresh_label: str = "fresh") -> str:
-        if not row or not row.get("configured"):
-            return "temporarily_unavailable"
-        if not row.get("ok"):
-            detail = str(row.get("detail") or "").casefold()
-            return "schema_invalid" if any(token in detail for token in ("schema", "malformed", "empty", "invalid")) else "temporarily_unavailable"
-        age = row.get("age_hours")
-        if age is None or float(age) > MAX_SOURCE_AGE_HOURS:
-            return "stale"
-        return fresh_label
+    shadow_projection_status: dict[str, Any] = {}
+    for key, spec in PROJECTION_PROVIDERS.items():
+        if key == champion_key:
+            continue
+        if key == "apex":
+            shadow_projection_status[key] = {
+                "provider": spec.display_name,
+                "authority": "shadow",
+                "status": "available",
+            }
+            continue
+        health = source_by_name.get(spec.source_status_name, {})
+        shadow_projection_status[key] = {
+            "provider": spec.display_name,
+            "authority": "shadow",
+            "status": _fresh_status(health),
+            "version": health.get("version"),
+            "generated_at": health.get("generated_at"),
+        }
 
+    champion_display = champion.display_name if champion is not None else None
     return {
         "contract": ANSWER_CONTRACT,
         "generated_at": now.isoformat(),
@@ -353,51 +408,59 @@ def build_answer_context(
             "bootstrap_sha256": canonical_snapshot.get("bootstrap_sha256"),
             "fixtures_sha256": canonical_snapshot.get("fixtures_sha256"),
             "decision_bundle_id": canonical_bundle,
+            "champion_provider": champion_key or None,
         },
         "source_health": source_health,
         "authority_chain": [
             "official_fpl:factual_truth",
-            "airsenal:production_statistical_xp",
+            f"{champion_key or 'unknown'}:production_statistical_xp",
             "football_enrichment_and_evidence",
             "apex_optimizer:decision_authority",
-            "apex_and_challengers:shadow",
+            "non_champion_providers:shadow",
             "prospective_calibration:promotion_judge",
         ],
         "official_fpl": {
             "authority": "factual_truth",
-            "status": "fresh" if official_age is not None and official_age <= MAX_OFFICIAL_AGE_HOURS else "stale",
+            "status": (
+                "fresh"
+                if official_age is not None and official_age <= MAX_OFFICIAL_AGE_HOURS
+                else "stale"
+            ),
             "snapshot_id": canonical_snapshot.get("snapshot_id"),
             "retrieved_at": canonical_snapshot.get("retrieved_at"),
             "bootstrap_sha256": canonical_snapshot.get("bootstrap_sha256"),
             "fixtures_sha256": canonical_snapshot.get("fixtures_sha256"),
         },
         "canonical_projection": {
-            "provider": "AIrsenal",
+            "provider": champion_display,
+            "provider_key": champion_key or None,
             "authority": "production",
-            "status": fresh_status(airsenal_health),
-            "generated_at": airsenal_health.get("generated_at"),
-            "checked_at": airsenal_health.get("checked_at"),
-            "age_hours": airsenal_health.get("age_hours"),
-            "version": airsenal_health.get("version"),
+            "status": _fresh_status(champion_health),
+            "generated_at": champion_health.get("generated_at"),
+            "checked_at": champion_health.get("checked_at"),
+            "age_hours": champion_health.get("age_hours"),
+            "version": champion_health.get("version"),
             "fallback_authority": None,
         },
         "enrichment": {
             "understat": {
                 "authority": "enrichment_shadow_input",
-                "status": fresh_status(understat_health, fresh_label="fresh_current_season"),
+                "status": _fresh_status(
+                    understat_health, fresh_label="fresh_current_season"
+                ),
                 "version": understat_health.get("version"),
             },
             "fpl_core": {
                 "authority": "enrichment",
-                "status": fresh_status(core_health),
+                "status": _fresh_status(core_health),
                 "version": core_health.get("version"),
             },
         },
-        "shadow_projections": {
-            "apex": {"provider": "Apex proprietary", "authority": "shadow", "status": "available"},
-            "openfpl": {"provider": "OpenFPL", "authority": "shadow", "status": "not_integrated"},
+        "shadow_projections": shadow_projection_status,
+        "optimizer": {
+            "authority": "decision",
+            "status": "optimal" if safe else "blocked",
         },
-        "optimizer": {"authority": "decision", "status": "optimal" if safe else "blocked"},
         "decision": {"status": "actionable" if safe else "blocked"},
         "diagnostics": {
             "cvar": robust,
@@ -415,7 +478,7 @@ def build_answer_context(
             "sources": [
                 row
                 for row in source_health
-                if row["name"] in {"news_feeds", "tactical_roles"}
+                if row["name"] in EVIDENCE_SOURCES
             ],
             "selected_players": selected,
             "coverage": evidence_coverage,
