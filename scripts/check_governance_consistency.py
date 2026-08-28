@@ -22,6 +22,7 @@ FINAL_PROMOTION_ENTRYPOINTS = (
 )
 ACTIVE_WORKFLOWS = {
     "airsenal.yml",
+    "apex-v2-challenger-preflight.yml",
     "apex-v2-ci.yml",
     "apex-v2-evaluation.yml",
     "apex-v2-production.yml",
@@ -45,6 +46,7 @@ ARCHIVED_WORKFLOWS = {
     "understat-player-predictive-audit.yml",
 }
 CONCURRENT_PR_AUDITS = {
+    "apex-v2-challenger-preflight.yml": "github.event.pull_request.number || github.ref",
     "apex-v2-ci.yml": "github.event.pull_request.number || github.ref",
     "apex.yml": "github.event.pull_request.number || github.ref",
     "joint-path-promotion-audit.yml": "github.event.pull_request.number || github.ref",

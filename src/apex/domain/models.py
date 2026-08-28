@@ -31,6 +31,7 @@ class OfficialPlayer:
     price_tenths: int
     status: str
     can_transact: bool = True
+    fpl_code: int | None = None
 
 @dataclass(frozen=True)
 class OfficialFixture:

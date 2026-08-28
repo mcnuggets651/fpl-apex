@@ -35,6 +35,7 @@ def _payloads():
         "elements": [
             {
                 "id": 1,
+                "code": 123456,
                 "web_name": "Player",
                 "team": 1,
                 "element_type": 3,
@@ -102,11 +103,12 @@ def test_market_noise_changes_raw_hash_but_not_authority_seal():
     )
 
 
-def test_price_status_availability_changes_move_authority_seal():
+def test_identity_price_status_availability_changes_move_authority_seal():
     bootstrap, fixtures = _payloads()
     baseline, _ = _snapshot(bootstrap, fixtures)
 
     for field, value in (
+        ("code", 654321),
         ("now_cost", 76),
         ("status", "d"),
         ("can_transact", False),

@@ -16,6 +16,14 @@
       "serving_authorized": false,
       "scoring_compatibility": "2026-27-aware release; live-current feature reconstruction still requires Apex certification"
     },
+    "dastan_live_history": {
+      "repository": "vaastav/Fantasy-Premier-League",
+      "commit": "9779cdbc0c07f6c900c2d0c181ddf6bb9c800f88",
+      "committed_at": "2026-08-28T09:47:53Z",
+      "role": "dastan_live_history_candidate",
+      "required_for_full_apex": false,
+      "coverage_note": "first pinned revision observed with 2026-27 GW1 data; challenger only until Dastan current-feature certification passes"
+    },
     "openfpl": {
       "repository": "daniegr/OpenFPL",
       "commit": "ad055ba7270145ce8ecc1f19581423493b1357e7",

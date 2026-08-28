@@ -39,15 +39,16 @@ def _official_authority_payload(
     payload made a long provider build fail merely because an irrelevant counter moved.
 
     The acquisition sandwich therefore seals the subset Apex is actually allowed to
-    treat as canonical: player identity/team/position/price/availability, transaction
-    state, event deadlines, and fixture identity/schedule/state. Raw payload hashes are
-    retained separately for forensic replay.
+    treat as canonical: stable player identity/team/position/price/availability,
+    transaction state, event deadlines, and fixture identity/schedule/state. Raw
+    payload hashes are retained separately for forensic replay.
     """
     players = []
     for row in bootstrap.get("elements", []):
         players.append(
             {
                 "id": row.get("id"),
+                "code": row.get("code"),
                 "team": row.get("team"),
                 "element_type": row.get("element_type"),
                 "now_cost": row.get("now_cost"),
@@ -127,19 +128,26 @@ def fetch_official_snapshot(
             raise ValueError(
                 f"unknown Official FPL element_type {element_type} for {element_id}"
             )
+        raw_code = row.get("code")
+        if raw_code in (None, ""):
+            raise ValueError(f"Official FPL player {element_id} missing stable code")
         players.append(
             OfficialPlayer(
-                element_id,
-                str(row.get("web_name", element_id)),
-                int(row["team"]),
-                _POSITION[element_type],
-                int(row["now_cost"]),
-                str(row.get("status", "")),
-                bool(row.get("can_transact", True)),
+                element_id=element_id,
+                web_name=str(row.get("web_name", element_id)),
+                team_id=int(row["team"]),
+                position=_POSITION[element_type],
+                price_tenths=int(row["now_cost"]),
+                status=str(row.get("status", "")),
+                can_transact=bool(row.get("can_transact", True)),
+                fpl_code=int(raw_code),
             )
         )
     if len({player.element_id for player in players}) != len(players):
         raise ValueError("Official FPL duplicate element IDs")
+    codes = [player.fpl_code for player in players]
+    if len(set(codes)) != len(codes):
+        raise ValueError("Official FPL duplicate stable player codes")
 
     fixtures = tuple(
         OfficialFixture(
