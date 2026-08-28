@@ -147,7 +147,7 @@ jobs:
           git -C .openfpl checkout --detach FETCH_HEAD
           test "$(git -C .openfpl rev-parse HEAD)" = "$OPENFPL_COMMIT"
 
-      - name: Audit reference implementation and current-rules blocker
+      - name: Audit reference implementation and reproducibility scope
         shell: bash
         run: |
           set -euo pipefail
@@ -162,6 +162,17 @@ jobs:
           ))
           assert report['reference_assets_valid'] is True
           assert report['current_rules_compatible'] is False
+          assert report['reference_reproducibility_scope'] == 'INFERENCE_ONLY'
+          assert report['reference_inference_state'] == 'REFERENCE_INFERENCE_REPRODUCIBLE'
+          assert report['training_pipeline_state'] == 'TRAINING_PIPELINE_NOT_PUBLISHED'
+          assert report['training_pipeline_published'] is False
+          assert report['sample_construction_state'] == 'SAMPLE_CONSTRUCTION_NOT_PUBLISHED'
+          assert report['sample_construction_published'] is False
+          assert report['readme_delegates_sample_construction'] is True
+          assert report['published_code_inventory'] == ['play.ipynb']
+          assert report['provenance_contract']['future_current_rules_identity'] == 'apex-openfpl-method-derivative'
+          assert report['provenance_contract']['derivative_may_claim_exact_upstream_training_reproduction'] is False
+          assert 'TRAINING_PIPELINE_NOT_PUBLISHED' in report['qualification_blockers']
           assert report['serve_authorized'] is False
           assert report['predictive_status'] == 'INSUFFICIENT_HISTORY'
           assert report['sample_column_count'] >= 200
