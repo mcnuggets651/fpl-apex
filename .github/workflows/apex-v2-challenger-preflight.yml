@@ -1,4 +1,4 @@
-name: Apex V2 Dastan Shadow
+name: Apex V2 Challenger Shadows
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: apex-v2-dastan-shadow-${{ github.event.pull_request.number || github.ref }}
+  group: apex-v2-challenger-shadow-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -88,7 +88,7 @@ jobs:
           print(json.dumps(report, sort_keys=True))
           PY
 
-      - name: Upload immutable shadow diagnostic copy
+      - name: Upload immutable Dastan shadow diagnostic copy
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -97,4 +97,81 @@ jobs:
             artifacts/v2/challengers/
             acquisition/providers/dastan.csv
             .dastan-raw/downloads.json
+          retention-days: 30
+
+  openfpl-reference:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.number == 90 &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'agent/apex-v2-cleanroom' &&
+       github.event.label.name == 'help wanted')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APEX_CODE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.APEX_CODE_SHA }}
+          fetch-depth: 0
+
+      - name: Verify shadow-attempt identity
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$APEX_CODE_SHA" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$APEX_CODE_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Apex tooling
+        run: python -m pip install -e '.[dev]'
+
+      - name: Checkout exact OpenFPL reference pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          OPENFPL_COMMIT="$(python - <<'PY'
+          import json
+          print(json.load(open('upstreams.lock.json'))['sources']['openfpl']['commit'])
+          PY
+          )"
+          git init .openfpl
+          git -C .openfpl remote add origin https://github.com/daniegr/OpenFPL.git
+          git -C .openfpl fetch --depth=1 origin "$OPENFPL_COMMIT"
+          git -C .openfpl checkout --detach FETCH_HEAD
+          test "$(git -C .openfpl rev-parse HEAD)" = "$OPENFPL_COMMIT"
+
+      - name: Audit reference implementation and current-rules blocker
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/openfpl_reference_preflight.py \
+            --openfpl-root .openfpl \
+            --output artifacts/v2/challengers/openfpl_reference_preflight.json
+          python - <<'PY'
+          import json
+          report = json.load(open(
+              'artifacts/v2/challengers/openfpl_reference_preflight.json',
+              encoding='utf-8',
+          ))
+          assert report['reference_assets_valid'] is True
+          assert report['current_rules_compatible'] is False
+          assert report['serve_authorized'] is False
+          assert report['predictive_status'] == 'INSUFFICIENT_HISTORY'
+          assert report['sample_column_count'] >= 200
+          print(json.dumps(report, sort_keys=True))
+          PY
+
+      - name: Upload immutable OpenFPL reference diagnostic copy
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v2-openfpl-reference-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/v2/challengers/openfpl_reference_preflight.json
           retention-days: 30
