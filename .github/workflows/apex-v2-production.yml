@@ -113,6 +113,14 @@ jobs:
             --db "$AIRSENAL_DB_FILE" --horizon 8 \
             --output "$GITHUB_WORKSPACE/acquisition/providers/airsenal.csv")
 
+      - name: Acquire Dastan H1 shadow in isolated provider runtime
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/acquire_dastan_shadow.py \
+            --expected-official-hash '${{ steps.official_seal.outputs.hash }}'
+
       - name: Re-anchor Official truth and freeze all inputs once
         id: freeze
         shell: bash
@@ -165,6 +173,7 @@ jobs:
           path: |
             artifacts/v2/
             acquisition/providers/
+            .dastan-raw/downloads.json
           retention-days: 14
 
   diagnose:
@@ -268,6 +277,14 @@ jobs:
             --db "$AIRSENAL_DB_FILE" --horizon 8 \
             --output "$GITHUB_WORKSPACE/acquisition/providers/airsenal.csv")
 
+      - name: Acquire Dastan H1 shadow in isolated provider runtime
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/acquire_dastan_shadow.py \
+            --expected-official-hash '${{ steps.official_seal.outputs.hash }}'
+
       - name: Re-anchor Official truth and freeze all inputs once
         id: freeze
         shell: bash
@@ -314,4 +331,5 @@ jobs:
             artifacts/v2/
             acquisition/providers/
             data/v2/snapshots/
+            .dastan-raw/downloads.json
           retention-days: 14
