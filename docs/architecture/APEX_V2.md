@@ -43,14 +43,23 @@ Current-rule training readiness is not a shortcut around the prospective tournam
 ## Run lifecycle
 1. Publish immutable attempt **intent**.
 2. Acquire all candidate provider outputs and external evidence.
-3. Fetch Official FPL again as the final factual anchor.
-4. Validate provider identity/coverage/freshness against that anchor.
+3. Fetch Official FPL again as the final factual anchor and acquire the manager state from that same authority boundary.
+4. Validate provider identity/coverage/freshness and any authenticated manager price state against that anchor.
 5. Freeze one content-addressed local snapshot. Acquisition is now closed.
 6. Solve from frozen files only. `runtime/solve.py` cannot import source/network modules and the architecture linter enforces this.
 7. Certify once.
 8. Publish the completed attempt as a GitHub **immutable release**, whether actionable or blocked.
 9. After the GW finishes, publish immutable outcome and evaluation releases.
 10. Detect an intent without a final release after the grace period as an operational incident.
+
+## Exact manager-state boundary
+The public `/entry/{id}/event/{gw}/picks/` surface is a locked-deadline record. It can establish the last public squad for HOLD/XI/captain decisions, but it cannot prove the current editable squad, current bank, acquisition prices, selling prices or that no post-deadline transfer has already been made. Public picks therefore never certify `state_complete_for_transfers`.
+
+For discretionary transfer planning, Apex may consume authenticated Official FPL `/me/` plus `/my-team/{entry_id}/` during the final acquisition/re-anchor step. Authentication material is runtime-only and may be supplied as a browser-session cookie or current `X-API-Authorization` access token. `/me/` must bind the credential to the configured entry before `/my-team` is trusted. The returned state must contain 15 unique current Official IDs, exact purchase/selling prices, bank and coherent current transfer state. Selling prices are re-derived using the frozen Official current market price and the exact half-profit rule; disagreement fails acquisition rather than picking one value by consensus.
+
+Credential material is never part of a snapshot, provider environment or solve input. If no credential is configured, the system falls back to the public locked squad and withholds discretionary transfers. If a credential is configured but rejected, belongs to another entry or returns incoherent state, acquisition fails closed; it does not silently fall back. An authenticated unlimited/null-limit transfer window is also not treated as an ordinary FT state until chip-aware optimisation explicitly supports it.
+
+The transfer optimiser supports a current-period FT state of 0 through the season maximum. With zero remaining FTs, the next transfer incurs a hit; after the deadline transition, normal rules restore at least the season's first-post-deadline FT allowance.
 
 ## Persistence
 Git commits are source code, not production state. Production forecasts/decisions/outcomes use GitHub Releases. Repository-level **Release immutability must be enabled before cutover**. Releases are built as drafts, assets are attached, then the release is published. Once GitHub immutability is enabled, its tag and assets are locked and GitHub supplies a release attestation.
@@ -62,12 +71,14 @@ The primary objective is expected submitted FPL points plus captain copy, minus 
 
 If only H1 is qualified, discretionary transfers are withheld. The engine still optimizes the submitted XI/captain/bench for the current squad. It does not invent future xP.
 
-If exact selling-price state is unavailable, discretionary transfer optimization is withheld. The engine does not assume current market price equals sale value.
+If exact current manager-state/selling-price evidence is unavailable, discretionary transfer optimization is withheld. The engine does not assume current market price equals sale value and does not assume the last deadline squad is still the editable squad.
 
 When the serving provider supplies no appearance probabilities, contingent autosub and captain-no-show fallback value are not invented. The decision remains legal and uses unconditional provider xP; certification is degraded with an explicit warning.
 
 ## Failure domains
 - Official truth failure: blocking.
+- Authenticated manager-state mismatch/rejection/incoherence when credentials are configured: blocking acquisition failure.
+- Missing authenticated manager state when no credentials are configured: transfer planning withheld; current-squad HOLD remains possible from public state.
 - Serving forecast stale/incomplete: blocking unless an explicitly authorized standby independently qualifies.
 - Shadow/challenger failure: warning only.
 - Optional enrichment failure: warning only.
