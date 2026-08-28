@@ -28,7 +28,9 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Both Official acquisition hashes are persisted in the frozen run provenance.
 - [ ] Dastan is generated before the shared freeze in an isolated runtime and remains non-serving while prospectively unqualified.
 - [ ] OpenFPL's exact pinned reference checkout passes its structural preflight without being relabelled as current scoring.
-- [ ] Any future OpenFPL current model declares `fpl-2026-27-v1`, uses a separately hashed training/model artifact, trains only through GW < target GW, proves future-placeholder invariance, reaches 100% Official DecisionUniverse coverage, and explicitly does not reuse legacy reference weights as current weights.
+- [ ] OpenFPL exact 2026/27 history readiness is pinned and audited independently of the Dastan history role; target/future GW contamination fails closed.
+- [ ] Apex does not invent an OpenFPL current-training sample threshold. A governed training-policy version must explicitly set the minimum exact-rule history before model construction can be considered ready.
+- [ ] Any future OpenFPL current model declares `fpl-2026-27-v1`, binds to that governed training policy, declares the exact-rule gameweeks used, meets its minimum, uses separately hashed training/model artifacts, trains only through GW < target GW, proves future-placeholder invariance, reaches 100% Official DecisionUniverse coverage, and explicitly does not reuse legacy reference weights as current weights.
 - [ ] Dastan/OpenFPL stay non-serving until current-scoring live exports pass the same operational and prospective contract.
 
 ## Team mechanics
