@@ -6,7 +6,6 @@ import math
 import os
 import shutil
 import subprocess
-import sys
 import venv
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,7 +34,14 @@ def _distribution(values: Iterable[float | None]) -> dict[str, float | int | Non
         if value is not None and math.isfinite(float(value))
     )
     if not clean:
-        return {"count": 0, "min": None, "p50": None, "p95": None, "max": None, "mean": None}
+        return {
+            "count": 0,
+            "min": None,
+            "p50": None,
+            "p95": None,
+            "max": None,
+            "mean": None,
+        }
 
     def percentile(q: float) -> float:
         if len(clean) == 1:
@@ -82,12 +88,15 @@ def _write_qualification_report(
     if manifest.get("scoring_rules_version") != CURRENT_SCORING_RULES_VERSION:
         raise RuntimeError(
             "Dastan manifest scoring rules mismatch: "
-            f"{manifest.get('scoring_rules_version')} != {CURRENT_SCORING_RULES_VERSION}"
+            f"{manifest.get('scoring_rules_version')} != "
+            f"{CURRENT_SCORING_RULES_VERSION}"
         )
     if bool(manifest.get("serve_authorized")):
         raise RuntimeError("Dastan shadow manifest unexpectedly grants serving authority")
     if manifest.get("predictive_status") != "INSUFFICIENT_HISTORY":
-        raise RuntimeError("Dastan shadow predictive status must remain INSUFFICIENT_HISTORY")
+        raise RuntimeError(
+            "Dastan shadow predictive status must remain INSUFFICIENT_HISTORY"
+        )
     if not bool(manifest.get("placeholder_invariance")):
         raise RuntimeError("Dastan future-placeholder invariance proof did not pass")
 
@@ -108,18 +117,20 @@ def _write_qualification_report(
     )
 
     h1 = tuple(row for row in surface.rows if row.horizon == 1)
-    forecast_rows = tuple(row for row in h1 if row.coverage_status.value == "FORECAST")
+    forecast_rows = tuple(
+        row for row in h1 if row.coverage_status.value == "FORECAST"
+    )
     covered_ids = {row.element_id for row in forecast_rows}
     official_ids = set(official.player_ids)
     missing_official_ids = sorted(official_ids - covered_ids)
     extra_ids = sorted(covered_ids - official_ids)
 
     probability_excesses = [
-        float(row.p60) - float(row.p_appearance)
+        float(row.p_60) - float(row.p_appearance)
         for row in forecast_rows
-        if row.p60 is not None
+        if row.p_60 is not None
         and row.p_appearance is not None
-        and float(row.p60) > float(row.p_appearance)
+        and float(row.p_60) > float(row.p_appearance)
     ]
     material_probability_order_violations = [
         excess for excess in probability_excesses if excess > 1e-6
@@ -128,10 +139,19 @@ def _write_qualification_report(
     nonfinite_rows = 0
     minute_range_violations = 0
     for row in forecast_rows:
-        numeric = [row.expected_points, row.expected_minutes, row.p_appearance, row.p_start, row.p60]
-        if any(value is not None and not math.isfinite(float(value)) for value in numeric):
+        numeric = [
+            row.expected_points,
+            row.expected_minutes,
+            row.p_appearance,
+            row.p_start,
+            row.p_60,
+        ]
+        if any(
+            value is not None and not math.isfinite(float(value))
+            for value in numeric
+        ):
             nonfinite_rows += 1
-        for value in (row.p_appearance, row.p_start, row.p60):
+        for value in (row.p_appearance, row.p_start, row.p_60):
             if value is not None and not (-1e-9 <= float(value) <= 1.0 + 1e-9):
                 probability_range_violations += 1
         if row.expected_minutes is not None:
@@ -158,19 +178,25 @@ def _write_qualification_report(
         "forecast_rows": len(forecast_rows),
         "no_forecast_rows": len(h1) - len(forecast_rows),
         "official_forecast_coverage": (
-            len(official_ids & covered_ids) / len(official_ids) if official_ids else 0.0
+            len(official_ids & covered_ids) / len(official_ids)
+            if official_ids
+            else 0.0
         ),
         "missing_official_ids": missing_official_ids,
         "extra_official_ids": extra_ids,
         "xp": _distribution(row.expected_points for row in forecast_rows),
-        "expected_minutes": _distribution(row.expected_minutes for row in forecast_rows),
+        "expected_minutes": _distribution(
+            row.expected_minutes for row in forecast_rows
+        ),
         "p_any": _distribution(row.p_appearance for row in forecast_rows),
-        "p60": _distribution(row.p60 for row in forecast_rows),
+        "p60": _distribution(row.p_60 for row in forecast_rows),
         "nonfinite_rows": nonfinite_rows,
         "probability_range_violations": probability_range_violations,
         "p60_gt_p_any_rows": len(probability_excesses),
         "max_p60_gt_p_any_excess": max(probability_excesses, default=0.0),
-        "material_probability_order_violations": len(material_probability_order_violations),
+        "material_probability_order_violations": len(
+            material_probability_order_violations
+        ),
         "minute_range_violations": minute_range_violations,
         "placeholder_invariance": bool(manifest["placeholder_invariance"]),
         "history_repository": manifest.get("history_repository"),
@@ -179,13 +205,19 @@ def _write_qualification_report(
         "output_sha256": manifest.get("output_sha256"),
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
     if nonfinite_rows:
-        raise RuntimeError(f"Dastan H1 contains {nonfinite_rows} non-finite forecast rows")
+        raise RuntimeError(
+            f"Dastan H1 contains {nonfinite_rows} non-finite forecast rows"
+        )
     if probability_range_violations:
         raise RuntimeError(
-            f"Dastan H1 contains {probability_range_violations} out-of-range probabilities"
+            f"Dastan H1 contains {probability_range_violations} "
+            "out-of-range probabilities"
         )
     if material_probability_order_violations:
         raise RuntimeError(
@@ -193,7 +225,8 @@ def _write_qualification_report(
         )
     if minute_range_violations:
         raise RuntimeError(
-            f"Dastan H1 contains {minute_range_violations} impossible expected-minute rows"
+            f"Dastan H1 contains {minute_range_violations} "
+            "impossible expected-minute rows"
         )
     if missing_official_ids or extra_ids:
         raise RuntimeError(
@@ -214,7 +247,9 @@ def acquire(args: argparse.Namespace) -> dict:
     manifest_path = artifacts / "dastan_shadow_manifest.json"
     qualification_path = artifacts / "dastan_shadow_qualification.json"
 
-    pins = json.loads((root / "upstreams.lock.json").read_text(encoding="utf-8"))["sources"]["dastan"]
+    pins = json.loads(
+        (root / "upstreams.lock.json").read_text(encoding="utf-8")
+    )["sources"]["dastan"]
     repository = str(pins["repository"])
     commit = str(pins["commit"])
 
@@ -227,13 +262,30 @@ def acquire(args: argparse.Namespace) -> dict:
     forecast_path.unlink(missing_ok=True)
     qualification_path.unlink(missing_ok=True)
 
-    _run(["git", "clone", "--filter=blob:none", f"https://github.com/{repository}.git", str(worker)])
+    _run(
+        [
+            "git",
+            "clone",
+            "--filter=blob:none",
+            f"https://github.com/{repository}.git",
+            str(worker),
+        ]
+    )
     _run(["git", "-C", str(worker), "checkout", "--detach", commit])
 
     venv.EnvBuilder(with_pip=True, clear=True).create(venv_dir)
     provider_python = _python_in_venv(venv_dir)
     _run([str(provider_python), "-m", "pip", "install", "-e", str(root)])
-    _run([str(provider_python), "-m", "pip", "install", "-r", str(worker / "requirements-data.txt")])
+    _run(
+        [
+            str(provider_python),
+            "-m",
+            "pip",
+            "install",
+            "-r",
+            str(worker / "requirements-data.txt"),
+        ]
+    )
 
     provider_env = os.environ.copy()
     provider_env["PYTHONPATH"] = str(worker)
@@ -280,7 +332,10 @@ def acquire(args: argparse.Namespace) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Acquire and qualify the pinned Dastan H1 forecast as a non-serving Apex V2 shadow."
+        description=(
+            "Acquire and qualify the pinned Dastan H1 forecast as a "
+            "non-serving Apex V2 shadow."
+        )
     )
     parser.add_argument("--expected-official-hash", required=True)
     parser.add_argument("--repo-root", default=".")
