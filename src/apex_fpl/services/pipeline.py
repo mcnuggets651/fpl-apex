@@ -10,6 +10,7 @@ import pandas as pd
 from apex_fpl.config import Settings
 from apex_fpl.data.airsenal import AIrsenalProjectionAdapter, validate_airsenal_forecast
 from apex_fpl.data.core_insights import FPLCoreClient
+from apex_fpl.data.external_projection import ExternalProjectionAdapter, validate_external_forecast
 from apex_fpl.data.http import CachedHttp
 from apex_fpl.data.news import collect_news_sources, load_manual_signals
 from apex_fpl.data.odds import OddsAdapter
@@ -95,6 +96,83 @@ def _material_frame(frame: pd.DataFrame) -> dict[str, int | str]:
         "rows": int(len(frame)),
         "sha256": dataframe_sha256(frame),
     }
+
+
+def _provider_generated_at(frame: pd.DataFrame, gameweeks: list[int]) -> str:
+    if frame.empty or "generated_at" not in frame.columns:
+        return ""
+    generated = pd.to_datetime(
+        frame.loc[frame["gw"].isin(gameweeks), "generated_at"],
+        utc=True,
+        errors="coerce",
+    ).dropna().drop_duplicates()
+    return generated.iloc[0].isoformat() if len(generated) == 1 else ""
+
+
+def _load_external_provider(
+    *,
+    provider_key: str,
+    path: str | None,
+    players: pd.DataFrame,
+    gameweeks: list[int],
+    pins: dict,
+    max_age_hours: float,
+    champion_provider: str,
+    production_min_coverage: float,
+    shadow_min_coverage: float,
+) -> tuple[pd.DataFrame, SourceStatus]:
+    """Load one governed challenger/champion export without provider-specific logic."""
+    pin = str(pins.get(provider_key, {}).get("commit", ""))
+    adapter = ExternalProjectionAdapter(path, provider_key)
+    try:
+        frame = adapter.load(valid_ids=set(players.player_id.astype(int)))
+        if frame.empty:
+            if path:
+                return frame, _status(
+                    provider_key,
+                    False,
+                    f"configured forecast file missing or empty: {path}",
+                    configured=True,
+                    version=pin,
+                )
+            return frame, _status(
+                provider_key,
+                True,
+                "projection export not configured",
+                configured=False,
+                version=pin,
+            )
+        min_coverage = (
+            production_min_coverage
+            if champion_provider == provider_key
+            else shadow_min_coverage
+        )
+        ok, detail = validate_external_forecast(
+            frame,
+            provider_key,
+            set(players.player_id.astype(int)),
+            gameweeks,
+            expected_source_version=pin,
+            max_age_hours=max_age_hours,
+            min_player_coverage=min_coverage,
+            require_provenance=True,
+        )
+        return frame, _status(
+            provider_key,
+            ok,
+            detail,
+            configured=True,
+            version=pin,
+            generated_at=_provider_generated_at(frame, gameweeks) if ok else "",
+        )
+    except Exception as exc:
+        return pd.DataFrame(), _status(
+            provider_key,
+            False,
+            str(exc),
+            configured=bool(path),
+            version=pin,
+        )
 
 
 def _decision_gameweeks(events: pd.DataFrame, horizon: int) -> list[int]:
@@ -237,6 +315,8 @@ def run_pipeline(
     )
     pins.setdefault("fpl_core_insights", {})["runtime_freshness"] = core_runtime
     air = pd.DataFrame()
+    dastan = pd.DataFrame()
+    openfpl = pd.DataFrame()
     try:
         if not core_ok:
             raise RuntimeError(core_detail)
@@ -614,22 +694,22 @@ def run_pipeline(
     try:
         air = air_adapter.load(valid_ids=set(players.player_id.astype(int)))
         if not air.empty:
+            air_min_coverage = (
+                settings.min_production_provider_coverage
+                if settings.champion_provider == "airsenal"
+                else settings.min_shadow_provider_coverage
+            )
             air_ok, air_detail = validate_airsenal_forecast(
                 air,
                 set(players.player_id.astype(int)),
                 gws,
                 expected_source_version=air_pin,
                 max_age_hours=settings.max_airsenal_age_hours,
-                min_player_coverage=settings.min_airsenal_player_coverage,
+                min_player_coverage=air_min_coverage,
             )
             air_generated_at = ""
             if air_ok:
-                generations = pd.to_datetime(
-                    air.loc[air["gw"].isin(gws), "generated_at"],
-                    utc=True,
-                    errors="raise",
-                ).drop_duplicates()
-                air_generated_at = generations.iloc[0].isoformat()
+                air_generated_at = _provider_generated_at(air, gws)
                 proj = proj.merge(air, on=["player_id", "gw"], how="left")
             sources.append(
                 _status(
@@ -672,6 +752,36 @@ def run_pipeline(
             )
         )
 
+    dastan, dastan_status = _load_external_provider(
+        provider_key="dastan",
+        path=settings.dastan_csv,
+        players=players,
+        gameweeks=gws,
+        pins=pins,
+        max_age_hours=settings.max_dastan_age_hours,
+        champion_provider=settings.champion_provider,
+        production_min_coverage=settings.min_production_provider_coverage,
+        shadow_min_coverage=settings.min_shadow_provider_coverage,
+    )
+    sources.append(dastan_status)
+    if dastan_status.ok and not dastan.empty:
+        proj = proj.merge(dastan, on=["player_id", "gw"], how="left")
+
+    openfpl, openfpl_status = _load_external_provider(
+        provider_key="openfpl",
+        path=settings.openfpl_csv,
+        players=players,
+        gameweeks=gws,
+        pins=pins,
+        max_age_hours=settings.max_openfpl_age_hours,
+        champion_provider=settings.champion_provider,
+        production_min_coverage=settings.min_production_provider_coverage,
+        shadow_min_coverage=settings.min_shadow_provider_coverage,
+    )
+    sources.append(openfpl_status)
+    if openfpl_status.ok and not openfpl.empty:
+        proj = proj.merge(openfpl, on=["player_id", "gw"], how="left")
+
     odds = pd.DataFrame()
     try:
         odds = OddsAdapter(
@@ -694,7 +804,12 @@ def run_pipeline(
     except Exception as exc:
         sources.append(_status("market_odds", False, str(exc), configured=True))
 
-    proj = blend_projection(proj, settings.weights, settings.risk_penalty)
+    proj = blend_projection(
+        proj,
+        settings.weights,
+        settings.risk_penalty,
+        production_provider=settings.champion_provider,
+    )
     decay = {gw: settings.fixture_decay**i for i, gw in enumerate(gws)}
     proj["decay"] = proj["gw"].map(decay)
     proj["weighted_xp"] = proj["risk_adjusted_xp"] * proj["decay"]
@@ -710,6 +825,7 @@ def run_pipeline(
         .merge(summaries, on="player_id", how="left")
     )
     ranked["fixture_decay"] = float(settings.fixture_decay)
+    ranked["projection_provider"] = settings.champion_provider
     for col in [
         "raw_horizon_xp",
         "discounted_horizon_utility",
@@ -879,6 +995,7 @@ def run_pipeline(
         "horizon_xp",
         "fixture_decay",
         "projection_confidence",
+        "projection_provider",
     ]
     ranked_out = ranked[
         [col for col in ranked_cols if col in ranked]
@@ -920,6 +1037,8 @@ def run_pipeline(
         "understat_team_goal_surface": _material_frame(understat_surface),
         "fixture_projection_surface": _material_frame(fx),
         "airsenal_projection_surface": _material_frame(air),
+        "dastan_projection_surface": _material_frame(dastan),
+        "openfpl_projection_surface": _material_frame(openfpl),
         "market_odds_surface": _material_frame(odds),
         "final_projection_matrix": _material_frame(proj),
     }
