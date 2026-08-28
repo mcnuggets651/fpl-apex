@@ -294,6 +294,7 @@ def acquire_and_freeze(
                 )
 
         builder.add_json("qualification_matrix.json", qualification_matrix)
+        frozen_at = datetime.now(timezone.utc).isoformat()
         builder.add_json(
             "run.json",
             {
@@ -303,6 +304,7 @@ def acquire_and_freeze(
                 "config_sha": config_sha(config_path),
                 "run_started_at": run_started_at,
                 "acquired_at": now.isoformat(),
+                "frozen_at": frozen_at,
                 "official_pre_provider_hash": expected_official_hash,
                 "official_final_hash": official.source_hash,
                 "official_acquisition_stable": (
@@ -328,6 +330,7 @@ def acquire_and_freeze(
                 "run_id": run_id,
                 "target_gameweek": target,
                 "code_sha": code_sha,
+                "frozen_at": frozen_at,
                 "official_pre_provider_hash": expected_official_hash,
                 "official_final_hash": official.source_hash,
                 "scoring_rules_version": config.scoring_rules_version,
