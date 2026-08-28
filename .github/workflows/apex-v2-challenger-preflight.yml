@@ -193,13 +193,17 @@ jobs:
               'artifacts/v2/challengers/openfpl_method_contract_preflight.json',
               encoding='utf-8',
           ))
+          assert report['schema_version'] == 2
           assert report['valid'] is True
           assert report['implementation_id'] == 'apex-openfpl-method-derivative'
           assert report['reference_reproducibility_scope'] == 'INFERENCE_ONLY'
           assert report['exact_upstream_training_reproduction_claim'] is False
           assert report['serve_authorized'] is False
+          assert report['digest_semantics'] == 'canonical-json-semantic-v1'
           assert len(report['contract_sha256']) == 64
           assert len(report['training_policy_sha256']) == 64
+          assert len(report['contract_file_sha256']) == 64
+          assert len(report['training_policy_file_sha256']) == 64
           PY
 
       - name: Audit exact current-rule history readiness
@@ -239,6 +243,46 @@ jobs:
               assert report['training_ready'] is True
               assert report['model_construction_authorized'] is True
           print(json.dumps(report, sort_keys=True))
+          PY
+
+      - name: Cross-check OpenFPL governance digest identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import yaml
+
+          from apex.forecast.openfpl_current import training_policy_sha256
+          from apex.forecast.openfpl_governance import method_contract_sha256
+
+          method = json.load(open(
+              'artifacts/v2/challengers/openfpl_method_contract_preflight.json',
+              encoding='utf-8',
+          ))
+          readiness = json.load(open(
+              'artifacts/v2/challengers/openfpl_current_readiness.json',
+              encoding='utf-8',
+          ))
+          contract = yaml.safe_load(open(
+              'config/openfpl_method_contract.yaml', encoding='utf-8'
+          ))
+          policy = yaml.safe_load(open(
+              'config/openfpl_training_policy.yaml', encoding='utf-8'
+          ))
+
+          assert method['schema_version'] == 2
+          assert method['digest_semantics'] == 'canonical-json-semantic-v1'
+          assert method['training_policy_sha256'] == readiness['training_policy']['sha256']
+          assert method['training_policy_sha256'] == training_policy_sha256(policy)
+          assert method['contract_sha256'] == method_contract_sha256(contract)
+          assert len(method['training_policy_file_sha256']) == 64
+          assert len(method['contract_file_sha256']) == 64
+          print(json.dumps({
+              'contract_sha256': method['contract_sha256'],
+              'training_policy_sha256': method['training_policy_sha256'],
+              'digest_semantics': method['digest_semantics'],
+          }, sort_keys=True))
           PY
 
       - name: Upload immutable OpenFPL reference diagnostic copy
