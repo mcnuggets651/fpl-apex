@@ -21,6 +21,37 @@ Every frozen snapshot records this boundary explicitly. `team_state_acquisition.
 
 A current `my-team` transfer state with an unlimited transfer window (for example Wildcard/Free Hit or another null-limit state) is also not treated as an ordinary free-transfer state. Apex freezes the current squad/prices but marks transfer state incomplete until chip-aware optimisation is explicitly supported.
 
+## Cutover platform controls
+V2 cutover is not permitted merely because code CI is green. `config/apex_v2_cutover_platform.yaml` is the machine-readable repository-control contract and `.github/workflows/apex-v2-cutover-platform.yml` freezes live GitHub evidence and certifies it with `scripts/check_v2_cutover_platform.py`.
+
+Before cutover, configure an **active repository branch ruleset** targeting `main` (either `refs/heads/main` or `~DEFAULT_BRANCH`) with no bypass actors and all of the following rules:
+
+- restrict deletion (`deletion`);
+- block non-fast-forward updates / force pushes (`non_fast_forward`);
+- require changes through pull requests (`pull_request`); and
+- require strict/up-to-date status checks (`required_status_checks`).
+
+The required status-check contexts are the GitHub Actions **job names**, exactly:
+
+- `test` — full Apex CI;
+- `contract` — Apex V2 contract suite; and
+- `readiness` — projection-policy audit.
+
+All three must be required simultaneously. A ruleset containing only one or two, a ruleset in evaluate/disabled mode, a ruleset excluding `main`, or a ruleset with bypass actors does not satisfy Apex cutover.
+
+Also enable **release immutability** in repository Settings → Releases → **Enable release immutability**. The cutover workflow checks GitHub's canonical `/repos/{owner}/{repo}/immutable-releases` setting endpoint; HTTP 200 with `enabled=true` is required. HTTP 404 means the setting is disabled. A permission/transport failure is treated as unverifiable and blocks cutover rather than being assumed safe.
+
+Run **Apex V2 Cutover Platform** manually from `agent/apex-v2-cleanroom` after those settings are configured. The workflow freezes:
+
+- `main_branch.json`;
+- the ruleset index and each full ruleset definition;
+- `immutable_releases.json` plus its HTTP status; and
+- `platform_certification.json`.
+
+The evidence artifact is retained for 90 days. `platform_ready=true` is required before the V2 cutover PR can be considered eligible. The workflow is deliberately separate from ordinary development CI: platform settings being off must block production cutover, not prevent continued development of the draft PR.
+
+Current repository controls must be checked live; do not infer them from documentation or an earlier successful run. Release immutability protects only releases created after the setting is enabled, so no pre-setting release is accepted as proof.
+
 ## If AIrsenal fails
 Do not substitute cached xP. If an explicitly authorized standby has a fresh complete qualified H1 surface in the same frozen attempt, serving selection may use it. Otherwise final certification is BLOCKED. Shadow providers do not rescue production.
 
