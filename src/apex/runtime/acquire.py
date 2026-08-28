@@ -19,7 +19,7 @@ from apex.forecast.adapters.openfpl import load_openfpl
 from apex.forecast.qualification import qualify_surface
 from apex.governance.evidence import validate_evidence
 from apex.sources.official import fetch_official_snapshot
-from apex.sources.team import fetch_team_state
+from apex.sources.team import acquire_team_state
 
 from .config import ApexConfig, config_sha
 from .snapshot import SnapshotBuilder
@@ -126,10 +126,11 @@ def acquire_and_freeze(
 
     official, raw_official = _stage("official_reanchor", _reanchor)
     target = _stage("target_gameweek", lambda: _target_gameweek(official, now))
-    team = _stage(
+    team_acquisition = _stage(
         "team_state",
-        lambda: fetch_team_state(config.entry_id, official, now=now),
+        lambda: acquire_team_state(config.entry_id, official, now=now),
     )
+    team = team_acquisition.state
     statuses = []
 
     def _parse_start():
@@ -237,6 +238,14 @@ def acquire_and_freeze(
             dataclass_to_dict(team) if team else None,
         )
         builder.add_json(
+            "team_state_acquisition.json",
+            team_acquisition.provenance(),
+        )
+        builder.add_json(
+            "team_transfers_public.json",
+            list(team_acquisition.public_transfers),
+        )
+        builder.add_json(
             "evidence.json",
             [dataclass_to_dict(record) for record in evidence],
         )
@@ -306,6 +315,10 @@ def acquire_and_freeze(
                 "max_horizon": config.max_horizon,
                 "scoring_rules_version": config.scoring_rules_version,
                 "deadline": official.deadlines[target],
+                "team_state_mode": team_acquisition.mode,
+                "team_state_complete_for_transfers": (
+                    team.state_complete_for_transfers if team else False
+                ),
             },
         )
         builder.add_bytes("config.yaml", Path(config_path).read_bytes())
@@ -318,6 +331,7 @@ def acquire_and_freeze(
                 "official_pre_provider_hash": expected_official_hash,
                 "official_final_hash": official.source_hash,
                 "scoring_rules_version": config.scoring_rules_version,
+                "team_state_mode": team_acquisition.mode,
             },
         )
 
