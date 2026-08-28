@@ -2,20 +2,36 @@
 
 Apex is a reproducible 2026/27 Fantasy Premier League decision system built to answer one question:
 
-> Given everything we can defensibly know before the deadline, what is the single legal FPL decision that best maximises expected points, and how robust is it?
+> Given the strongest defensible pre-deadline evidence, what is the single legal FPL action that best maximises expected points, and how robust is it?
 
 Production personal entry: **63984**.
 
-## One team, one contract
+## One recommendation, one contract
 
-Apex no longer exposes Pinnacle, Elite, CVaR, value or other models as competing user-facing teams.
+Apex does not expose Pinnacle, Elite, CVaR, value or shadow models as competing user-facing teams.
 
-The **only** user-facing recommendation is:
+The only user-facing decision files are:
 
+- `data/generated/apex_answer_context.json`
 - `data/generated/apex_recommendation_latest.json`
 - `data/generated/apex_recommendation_latest.md`
 
-The **only** production command is:
+If `safe_to_act=false` or `ready_to_act=false`, Apex has no actionable recommendation and must report the blockers instead of resurrecting an older squad.
+
+## Production authority
+
+Current production authority is deliberately separated by capability:
+
+1. **Official FPL — factual truth:** current player ID, club, FPL position, price, Official status and fixtures.
+2. **AIrsenal — statistical xP:** canonical production `xp` equals validated AIrsenal xP exactly. Missing/stale/incomplete AIrsenal blocks; Apex does not silently fall back to its own model.
+3. **Current football evidence — role/availability context:** injuries, suspensions, transfers, lineups and set pieces are attributable, freshness-bounded inputs.
+4. **Apex — decision engine:** legal optimisation, current manager state, exact XI/captain/vice/bench/autosubs, solver parity, robustness and receding-horizon first-action selection.
+5. **Apex proprietary xP, FPL Core, Understat and other challengers — shadow/enrichment:** useful for evidence and future learning, but not current production forecast authority.
+6. **Prospective calibration — promotion judge:** future forecast authority must be earned from frozen-before-deadline evidence and later Official outcomes.
+
+The previous fixed Apex/Official-EP/AIrsenal production blend is retired.
+
+## Production command
 
 ```bash
 python scripts/run_apex.py \
@@ -26,58 +42,46 @@ python scripts/run_apex.py \
   --force
 ```
 
-The runner fetches and projects once into a content-addressed sealed decision
-bundle. Pinnacle, Elite and the canonical builder must all carry the same
-`bundle_id`; see `docs/DECISION_BUNDLE.md` for lineage audit and offline replay.
+The runner seals one DecisionBundle. Internal diagnostics must consume that same surface rather than independently refetching live inputs.
 
-If `ready_to_act` is false, Apex withholds a team and reports the blockers instead of choosing manually among diagnostic outputs.
+## Current strategy mode
 
-## Canonical decision policy
+GW1 is complete. Normal production uses `receding_horizon_current_team_maximum_ev`: start from the exact current squad, bank, realised selling values and free transfers, solve the legal future option set, and publish only the first currently executable action.
 
-The production hierarchy is:
-
-1. Official FPL canonical identity/price/status/fixtures.
-2. Validated FPL Core, AIrsenal, historical, preseason, tactical, news and fixture evidence.
-3. First-class expected-minutes/start/appearance model.
-4. Canonical ensemble expected points (`xp`).
-5. Legal maximum-xP MILP shortlist inside a disclosed near-optimal band.
-6. Correlated scenario/CVaR, exact regret, captain stability and independent-solver diagnostics.
-7. Elite 35/20/15/10/10/5/5 as a diagnostic frontier inside a near-optimal xP set.
-8. Epsilon frontier at 0%, 0.25%, 0.5% and 1.0%.
-9. Exact XI/captain/vice/bench/autosub rescoring across every horizon Gameweek produces the sole canonical `Decision`.
-10. Elite convergence cannot substitute a different production 15.
-11. Near-equivalent candidates are disclosed and Apex does not claim an unproven unique optimum.
-12. Publish one recommendation only when readiness and snapshot-consistency gates are green.
-
-Full policy: [`docs/APEX_CANONICAL_DECISION_POLICY.md`](docs/APEX_CANONICAL_DECISION_POLICY.md).
+The historical `adaptive_gw1_launch_with_transfer_option_value` selector remains for replay/history. The one-off GW1 workflow is archived and no longer active.
 
 ## Internal diagnostics — not separate recommendations
 
-The following remain important, but are internal evidence layers:
+Apex retains:
 
-- `pinnacle_latest.*` — maximum-EV and production-readiness diagnostics.
-- `elite_latest.*` — epsilon/lexicographic secondary-selector diagnostics.
-- correlated CVaR solution — lower-tail sensitivity.
-- exact force/ban regret — selection fragility.
-- captain/vice/autosub mechanics — deadline execution.
-- independent solver parity — same-surface optimisation check.
-- Haaland/no-Haaland scenarios — explicit counterfactuals.
+- static exact-horizon/Pinnacle surfaces;
+- Elite epsilon frontier;
+- correlated CVaR scenarios;
+- exact force/ban regret;
+- captain/vice/bench/autosub mechanics;
+- independent solver parity;
+- Apex proprietary/shadow projection surfaces;
+- forced scenarios such as Haaland/no-Haaland when explicitly requested.
 
-Historical standalone selection philosophies are documented under `archive/selection_approaches/` and must not be presented as alternative Apex teams.
+These layers challenge the decision and reveal fragility. They cannot independently set publication authority.
 
-## What Apex uses
+## Source roles
 
-- **Official FPL** — player identity, club, position, price, status, fixtures.
-- **FPL Core Insights** — underlying stats, preseason, Elo/strength, defensive-contribution context.
-- **Pinned AIrsenal** — independent expected-points expert mapped through Official FPL IDs.
-- **Apex xP decomposition** — minutes, attack, clean sheets, saves, DEFCON, penalties/set pieces, tactical role, bonus/BPS.
-- **News/manager/transfer evidence** — availability and role verification.
-- **Projection ensemble** — mean xP, disagreement, confidence, variance, floor/ceiling.
-- **Correlated stochastic scenarios** — team/player/minutes outcome dependence.
-- **Receding-horizon transfer planning** — execute the current action, then refresh and re-solve.
-- **No-hindsight archive** — pre-deadline forecasts stored before outcomes are known.
+- **Official FPL:** factual universe and current prices/fixtures.
+- **Pinned AIrsenal:** current production statistical xP provider.
+- **FPL Core Insights:** validated enrichment for player/preseason/Elo/DEFCON context.
+- **Understat:** underlying-stat enrichment and shadow modelling.
+- **News/manager/transfer evidence:** current availability and role verification.
+- **Historical datasets:** priors, replay and prospective evaluation support.
+- **Independent solvers:** optimisation assurance on the same sealed xP surface.
 
-Exact external revisions are pinned in `upstreams.lock.json`.
+Exact governed revisions are recorded in `upstreams.lock.json`.
+
+## Prospective learning
+
+Production and shadow forecasts are intended to be frozen before each deadline and joined to Official outcomes only after the event. No challenger can be promoted from hindsight.
+
+Current governance requires at least 8 genuine completed Gameweeks and >=200 active rows plus chronological/Gameweek-block/cohort evaluation and explicit review before forecast authority can change. The 28 August 2026 audit found that this deadline archive is not yet operating correctly and calibration still has zero completed genuine Gameweeks, so Apex proprietary xP remains shadow-only.
 
 ## Quick start
 
@@ -89,26 +93,18 @@ export FPL_ENTRY_ID=63984
 python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
 ```
 
-Then read:
-
-```text
-data/generated/apex_recommendation_latest.json
-```
+Then inspect `data/generated/apex_answer_context.json` first.
 
 ## ChatGPT operating rule
 
-When the user asks:
+When asked for the Apex team/action:
 
-> “Give me the Apex team.”
-
-ChatGPT must:
-
-1. load the Project Brain;
-2. read `apex_recommendation_latest.json` first;
-3. present that recommendation if `ready_to_act=true`;
-4. otherwise report blockers;
-5. use Pinnacle/Elite/CVaR only to explain the canonical decision;
-6. never produce several competing Apex teams unless the user explicitly asks for a labelled scenario.
+1. load the Project Brain/current state;
+2. read `apex_answer_context.json` first;
+3. verify freshness, bundle/snapshot identity and final gates;
+4. present `production_result` only when safe/actionable;
+5. otherwise report blockers;
+6. never construct a competing squad from chat memory, generic web lists or stale diagnostics.
 
 ## Project Brain
 
@@ -120,18 +116,14 @@ Start with:
 4. [`docs/APEX_CANONICAL_DECISION_POLICY.md`](docs/APEX_CANONICAL_DECISION_POLICY.md)
 5. [`docs/APEX_OPERATING_MANUAL.md`](docs/APEX_OPERATING_MANUAL.md)
 
-## Current modelling priority
+## V2 boundary
 
-The next forecast-model upgrade is **empirical-Bayes / partial-pooling shrinkage of small-sample player xG90/xA90 and related rates toward role/position priors**. This improves the canonical xP forecast; it does not create another selection philosophy.
+Draft PRs #67–#88 are a separate withheld V2 programme. Their later heads still contain the retired fixed forecast-blend assumption, so they must be rebased/requalified against current authority before any future production merge. PR #66 is superseded V1 archaeology/regression material and must not be merged.
 
-Dixon-Coles/Poisson is a later fixture-expert benchmark and must earn ensemble weight through historical validation.
+## Standard
 
-## Known boundary
-
-Apex improves decision quality; it cannot remove football randomness. Before enough 2026/27 outcomes exist, some covariance/minutes/rate assumptions remain priors and are explicitly tracked for calibration.
-
-The standard is not certainty. The standard is **one consistent, auditable decision from the strongest validated process available**.
+Apex cannot remove football randomness. The standard is a single, current, legal and auditable decision produced from correctly governed factual truth, statistical forecasts, evidence and exact FPL mechanics.
 
 ## Licence
 
-Apex itself is MIT. External workers keep their own licences and are not vendored into this repository.
+Apex itself is MIT. External workers retain their own licences and are not vendored into this repository.
