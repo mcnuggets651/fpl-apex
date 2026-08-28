@@ -1,44 +1,90 @@
 # Apex FPL — Data Sources
 
-## Source hierarchy
-### Tier 1 — Canonical
-**Official FPL**: player IDs, clubs, FPL positions, prices, statuses, fixtures, official points and public manager state. Identity conflicts are resolved in favour of Official FPL.
+## Authority is capability-specific
 
-### Tier 2 — Model experts
-**AIrsenal (pinned genuine upstream)**: independent expected-points expert. Must map through official FPL IDs.
+Apex does not use one universal source ranking. A source is authoritative only for the capability it owns.
 
-**FPL Core Insights**: current underlying player statistics, preseason evidence, Elo/team-strength context and defensive-contribution evidence.
+### Official FPL — factual authority
 
-**Apex native models**: expected minutes, tactical role, attacking rates, fixture translation, clean sheets, saves, DEFCON, set pieces/penalties, bonus/BPS and ensemble uncertainty.
+Official FPL is canonical for current:
 
-### Tier 3 — Historical/validation
-Historical datasets (including the project's historical match/player layers) support priors, backtests and calibration. Historical evidence must not override current club/role identity.
+- player ID;
+- club;
+- FPL position;
+- price;
+- Official availability/status fields;
+- fixtures/deadlines;
+- public manager-state facts exposed by the game.
 
-**Independent open FPL solver**: parity check on the same ensemble-mean xP surface. It validates optimisation, not the forecast itself.
+Identity/price/fixture conflicts are resolved in favour of Official FPL.
 
-### Tier 4 — Short-lived evidence
-Official club injury updates, manager press conferences/interviews, confirmed transfers and trusted news feeds inform availability, role and minutes. They are verification inputs rather than the primary selection engine.
+### AIrsenal — production statistical xP
 
-Official HTML indexes are followed only to same-host HTTPS article pages. Apex accepts
-publication time and article copy only from structured `Article`/`NewsArticle` metadata;
-retrieval time is never substituted for publication time. Automated player matching uses
-full names where available and rejects ambiguous surnames unless the player's official club
-is named in the article. Lineup, availability, tactical-role and set-piece evidence have
-separate expiry windows. A captain or high-uncertainty starter is decision-grade only with
-an official source or two independent trusted-media sources.
+The pinned genuine AIrsenal worker is the current production statistical projection provider. It must map through Official FPL IDs and cover the complete required current player/Gameweek horizon.
 
-### Tier 5 — Planned
-Market odds/implied probabilities, improved Bayesian minutes, ownership/EO and price-movement signals may be added only with source validation and benchmark evidence.
+Production `xp` is AIrsenal exactly. Missing, stale, malformed or incomplete AIrsenal is a hard production blocker. Apex proprietary xP is not a fallback.
+
+### FPL Core Insights — enrichment
+
+FPL Core remains an important supporting source for player statistics, prior/current samples, preseason evidence, Elo/team context and defensive-contribution evidence. Candidate revisions are semantically validated before the immutable pin moves.
+
+Core is **not** currently a canonical-xP dependency. Its health, age and coverage must be disclosed; failure is an enrichment warning unless a future production component explicitly depends on it.
+
+### Understat — enrichment/shadow modelling
+
+Understat supports underlying-stat priors, player/team research and Apex shadow modelling. Empty football payloads are invalid even when HTTP succeeds.
+
+Understat has no current production xP authority and may not become release-critical without explicit promotion evidence.
+
+### Apex native models — shadow/challenger + decision mechanics
+
+Apex's proprietary forecast surfaces—minutes, attacking rates, team/fixture translation, clean sheets, DEFCON, set-piece/bonus components—remain valuable shadow/challenger models and diagnostics.
+
+Apex remains authoritative for the **decision engine**: FPL legality, current-state finance, optimiser mechanics, XI/captain/vice/bench/autosubs, parity and receding-horizon action selection.
+
+### Historical data — priors/evaluation
+
+Historical datasets support priors, replay and calibration. Historical identity may never overwrite current Official identity. Known outcomes cannot be relabelled as prospective evidence.
+
+### Independent solvers — assurance
+
+Pinned independent solver tooling validates optimisation/mechanics on the same sealed projection surface. Solver parity validates the decision implementation, not the projection forecast.
+
+### Current football evidence — short-lived context
+
+Official club injury updates, manager press conferences/interviews, confirmed transfers and trusted current sources may inform availability, minutes, role, lineups, penalties and set pieces.
+
+Requirements:
+
+- attributable source/URL;
+- publication time and freshness/expiry where relevant;
+- exact Official player identity attachment;
+- no ambiguous surname-only mapping when identity is not uniquely proven;
+- no retrieval-time substitution for unknown publication time;
+- no ordinal set-piece rank converted into an invented literal share.
+
+Hard adverse evidence may constrain eligibility. Soft evidence affects forecast uncertainty/scenarios rather than manufacturing point bonuses.
 
 ## Provenance rules
-- Pin upstream revisions in `upstreams.lock.json`.
-- Record source timestamps/freshness in generated state where available.
-- Never silently substitute a similarly named player across sources.
-- Never use stale preseason/news evidence without freshness checks.
-- If a required source fails, readiness gates must surface the blocker.
+
+- Pin governed upstream code/data revisions in `upstreams.lock.json`.
+- Record source timestamps, versions and health in generated decision state.
+- Keep production authority separate from enrichment/shadow status.
+- Never silently substitute a similarly named player.
+- Never silently renormalise around missing canonical AIrsenal rows.
+- Never treat an optional-enrichment outage as a production blocker unless the active production dependency graph actually requires that source.
+- Any source/promotion change must be recorded and tested.
+
+## Prospective forecast ledger
+
+Production and shadow providers should be frozen before each deadline with season, Gameweek, deadline/forecast timestamp, Official snapshot identity, player ID, provider/version, xP and key forecast context. Realised outcomes are joined only after the event.
+
+This ledger is the basis for future provider promotion, rejection or learned ensemble weights. Hand-set weights are not a substitute.
 
 ## Web usage policy
-Web research is supplementary. Use it for current confirmations that repositories/APIs cannot know reliably (injury statements, manager comments, transfers, late team news). Do not browse first and then construct an Apex squad from articles.
+
+Web research is supplementary and current-event focused. Use it to close concrete evidence gaps such as injuries, transfers, manager comments, expected lineups or set-piece changes. Do not browse generic lists and construct a competing Apex squad from articles.
 
 ## Personal state
-Entry `63984` is the production personal manager state. Public picks become available after deadlines; unpublished draft changes are not visible and require explicit manual override.
+
+Entry `63984` is the configured production manager state. Public picks reflect published deadline state; unpublished private moves are not visible and require exact manual/current-state evidence if they must supersede the public state.
