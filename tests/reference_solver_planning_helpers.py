@@ -39,6 +39,12 @@ from apex_fpl.workers.reference_solver_planning import solve_planning_reference_
 from reference_solver_planning_finance_case import store_finance_qualification_case
 
 
+# The independent planning solver's dedicated exact-parity contract is certified at this
+# budget in test_v2_reference_solver_planning.py. Authority qualification must exercise the
+# same declared exact surface instead of silently imposing a lower, non-contractual cap.
+PLANNING_REFERENCE_EXACT_SEARCH_NODES = 5_000
+
+
 @dataclass(frozen=True, slots=True)
 class SyntheticPlanningParityMaterial:
     planning_result_id: str
@@ -78,8 +84,9 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
 
     Coverage is derived from sealed requests/results and aggregated across the corpus. The
     qualification must pass both cases and every mandatory derived coverage tag before any
-    publication certificate/authorization is created. This is synthetic mechanism evidence only
-    and never production qualification evidence.
+    publication certificate/authorization is created. Both cases use the same 5,000-node exact
+    search budget already certified by the dedicated independent-planner parity contract. This is
+    synthetic mechanism evidence only and never production qualification evidence.
     """
 
     verified = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
@@ -115,7 +122,7 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         chip_option_policy=chip_option,
         price_policy=price,
         candidate_policy=candidate,
-        max_search_nodes=500,
+        max_search_nodes=PLANNING_REFERENCE_EXACT_SEARCH_NODES,
     )
     stored_request = store_planning_reference_solver_request(request, store=store)
 
@@ -135,7 +142,7 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         chip_option=chip_option,
         price_policy=price,
         candidate_policy=candidate,
-        max_search_nodes=500,
+        max_search_nodes=PLANNING_REFERENCE_EXACT_SEARCH_NODES,
     )
     corpus = PlanningReferenceSolverQualificationCorpus(
         season=fixture.bundle.season,
@@ -193,6 +200,13 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
     )
 
     run = solve_planning_reference_request(request)
+    if (
+        not run.search_complete
+        or run.gap is None
+        or run.gap.numerator != 0
+        or run.solver_status.value != "OPTIMAL"
+    ):
+        raise AssertionError("publication planning reference certificate must be exact and zero-gap")
     stored_run = store_planning_reference_solver_run(run, store=store)
     certificate = build_planning_reference_solver_certificate(
         request_artifact_id=stored_request.artifact_id,
