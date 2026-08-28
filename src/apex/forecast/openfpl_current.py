@@ -134,7 +134,8 @@ def current_model_manifest_errors(
 
     The original 2024/25-labelled artifacts can be reproduced for reference, but they
     cannot be stamped with current Apex scoring provenance. A current challenger must
-    declare a separately trained model artifact and a leakage audit.
+    declare a separately trained model artifact, the governed training policy that
+    authorized it, and a leakage audit.
     """
     errors: list[str] = []
     required = (
@@ -144,6 +145,9 @@ def current_model_manifest_errors(
         "source_snapshot",
         "target_gameweek",
         "training_max_gameweek",
+        "training_policy_version",
+        "minimum_exact_rule_gameweeks",
+        "exact_rule_gameweeks",
         "feature_contract_version",
         "model_artifact_sha256",
         "training_dataset_sha256",
@@ -171,12 +175,35 @@ def current_model_manifest_errors(
         manifest_target = -1
     if manifest_target != int(target_gameweek):
         errors.append("OpenFPL target_gameweek does not match production target")
+
     try:
         training_max = int(manifest.get("training_max_gameweek"))
     except (TypeError, ValueError):
         training_max = target_gameweek
     if training_max >= int(target_gameweek):
         errors.append("OpenFPL training data reaches target/future gameweek")
+
+    policy_version = str(manifest.get("training_policy_version", "")).strip()
+    if not policy_version:
+        errors.append("OpenFPL training policy version is empty")
+    try:
+        minimum_exact = int(manifest.get("minimum_exact_rule_gameweeks"))
+        exact_gameweeks = tuple(int(value) for value in manifest.get("exact_rule_gameweeks", ()))
+        readiness = exact_rule_history_readiness(
+            exact_gameweeks,
+            target_gameweek=target_gameweek,
+            minimum_exact_rule_gameweeks=minimum_exact,
+        )
+        if not readiness["training_ready"]:
+            errors.extend(f"OpenFPL training readiness: {reason}" for reason in readiness["reasons"])
+        unique_exact = tuple(sorted(set(exact_gameweeks)))
+        if unique_exact and training_max != max(unique_exact):
+            errors.append(
+                "training_max_gameweek does not match the maximum declared exact-rule gameweek"
+            )
+    except (TypeError, ValueError) as exc:
+        errors.append(f"invalid OpenFPL training policy/history declaration: {exc}")
+
     if manifest.get("placeholder_invariance") is not True:
         errors.append("OpenFPL future-placeholder leakage audit did not pass")
     try:
