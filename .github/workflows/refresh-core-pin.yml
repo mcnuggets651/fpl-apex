@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
   schedule:
     # FPL Core documents two daily data refreshes. Resolve its moving data branch
-    # shortly before each six-hour Apex production run so the live data stays
-    # current while every Apex run still uses one immutable, auditable commit.
+    # shortly before each six-hour Apex production run so enrichment stays current
+    # while every Apex run still uses one immutable, auditable commit.
     - cron: "3 */6 * * *"
 
 permissions:
@@ -28,8 +28,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install upstream verification dependencies
-        run: python -m pip install pandas requests
+      - name: Install Apex and upstream verification dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pandas requests
+          python -m pip install -e .
+          python -c "from apex_fpl.services.publication import invalidate_published_decision; print('apex package import ok')"
 
       - name: Resolve current FPL Core candidate
         id: core
@@ -112,8 +116,10 @@ jobs:
           source["resolution_policy"] = (
               "moving main candidate validated semantically before immutable publication"
           )
+          source["role"] = "enrichment_data"
+          source["required_for_full_apex"] = False
           path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
-          print(f"Validated FPL Core pin: {old} -> {source['commit']}")
+          print(f"Validated FPL Core enrichment pin: {old} -> {source['commit']}")
           PY
 
       - name: Verify pinned source contract
@@ -132,14 +138,17 @@ jobs:
             echo "FPL Core pin is already current"
             exit 0
           fi
+          # Core is enrichment rather than canonical xP authority, but invalidate
+          # any older published decision so the next solve is explicit about the
+          # changed enrichment surface instead of serving mismatched provenance.
           python scripts/invalidate_published_decision.py \
             --source fpl_core_insights \
-            --reason "validated pinned FPL Core snapshot changed"
+            --reason "validated pinned FPL Core enrichment snapshot changed"
           git add \
             data/generated/apex_recommendation_latest.json \
             data/generated/apex_recommendation_latest.md \
             data/generated/apex_answer_context.json
-          git commit -m "data: refresh validated pinned FPL Core snapshot"
+          git commit -m "data: refresh validated pinned FPL Core enrichment"
           git fetch origin main
           if [ "$(git rev-parse origin/main)" != "${{ github.sha }}" ]; then
             echo "Main changed during candidate validation; aborting publication for a clean rerun."
