@@ -12,7 +12,7 @@ from reference_solver_planning_finance_case import (
     _FINANCE_CLUB_ID,
     _FINANCE_CLUB_OWNED_IDS,
     _FINANCE_EXTRA_PLAYER,
-    _finance_candidate_universe,
+    _focused_finance_candidate_universe,
 )
 
 
@@ -61,7 +61,7 @@ def test_finance_universe_saturates_target_club_without_price_or_position_drift(
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     verified = SimpleNamespace(candidate_universe=_base_universe(store))
 
-    universe, artifact_id = _finance_candidate_universe(verified, store=store)
+    universe, artifact_id = _focused_finance_candidate_universe(verified, store=store)
 
     assert store.verify(artifact_id)
     target = next(row for row in universe.players if row.player_id == _FINANCE_EXTRA_PLAYER)
