@@ -15,7 +15,9 @@ When a credential is present Apex first calls Official `/me/` and requires the r
 
 If a configured credential is rejected, belongs to another entry, produces incomplete price state or disagrees with the frozen Official price surface, acquisition fails closed. There is no silent downgrade to the public squad in that case.
 
-If neither secret is configured, Apex deliberately falls back to the last public deadline picks. That public state may still support a legal HOLD/XI/captain decision, but `state_complete_for_transfers` remains false unconditionally because public picks cannot prove that no transfer has been made since the deadline. Discretionary transfer optimisation is therefore withheld.
+If neither secret is configured, Apex deliberately falls back to the last public deadline picks. That public state may still support a legal HOLD/XI/captain decision, but `state_complete_for_transfers` remains false unconditionally. Official FPL's public transfer-history UI states that other viewers can see transfers only up to the last deadline, so an unauthenticated current-period absence of transfer rows is not evidence that the manager made no transfer. Discretionary transfer optimisation is therefore withheld.
+
+Every frozen snapshot records this boundary explicitly. `team_state_acquisition.json` contains the non-secret acquisition mode (`AUTHENTICATED_MY_TEAM`, `PUBLIC_DEADLINE_FALLBACK` or `NO_PUBLIC_DEADLINE`), whether a credential was present, exact-price counts and public-ledger diagnostics. `team_transfers_public.json` freezes the public transfer ledger as historical evidence. The ledger may support retrospective reconstruction after a deadline, but it never upgrades a deadline-redacted pre-deadline state to transaction-safe by itself. Credentials, cookies and authorization headers are never serialized.
 
 A current `my-team` transfer state with an unlimited transfer window (for example Wildcard/Free Hit or another null-limit state) is also not treated as an ordinary free-transfer state. Apex freezes the current squad/prices but marks transfer state incomplete until chip-aware optimisation is explicitly supported.
 
