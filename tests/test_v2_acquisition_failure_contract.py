@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -77,6 +79,44 @@ def test_team_state_failure_has_stable_stage(monkeypatch, tmp_path):
     assert observed.value.stage == "team_state"
     assert observed.value.cause_type == "RuntimeError"
     assert observed.value.cause_message == "entry unavailable"
+
+
+def test_acquisition_seals_explicit_freeze_timestamp(monkeypatch, tmp_path):
+    official = _official()
+    monkeypatch.setattr(
+        acquire_module,
+        "fetch_official_snapshot",
+        lambda **_: (official, {"bootstrap": {}, "fixtures": []}),
+    )
+    team_acquisition = SimpleNamespace(
+        state=None,
+        mode="PUBLIC_DEADLINE_FALLBACK",
+        public_transfers=(),
+        provenance=lambda: {"mode": "PUBLIC_DEADLINE_FALLBACK"},
+    )
+    monkeypatch.setattr(
+        acquire_module,
+        "acquire_team_state",
+        lambda *args, **kwargs: team_acquisition,
+    )
+
+    snapshot = acquire_module.acquire_and_freeze(
+        _config(tmp_path),
+        run_id="run-freeze-provenance",
+        code_sha="abc",
+        run_started_at="2026-08-28T11:59:00+00:00",
+        workdir=tmp_path,
+        expected_official_hash="stable-hash",
+    )
+
+    manifest = json.loads((snapshot / "manifest.json").read_text(encoding="utf-8"))
+    run = json.loads((snapshot / "run.json").read_text(encoding="utf-8"))
+    frozen_at = manifest["metadata"]["frozen_at"]
+    parsed = datetime.fromisoformat(frozen_at.replace("Z", "+00:00"))
+
+    assert frozen_at
+    assert parsed.tzinfo is not None
+    assert run["frozen_at"] == frozen_at
 
 
 def test_cli_persists_machine_readable_failure(monkeypatch, tmp_path):
