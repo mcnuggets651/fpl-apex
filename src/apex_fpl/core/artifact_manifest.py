@@ -10,8 +10,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 
 from .canonical import canonical_sha256
+
+
+_SEMANTIC_NAMESPACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9][A-Za-z0-9._/-]*)*$")
 
 
 def _text(value: object, *, label: str) -> str:
@@ -26,6 +30,32 @@ def _sha256_id(value: object, *, label: str) -> str:
     algorithm, separator, digest = text.partition(":")
     if algorithm != "sha256" or not separator or len(digest) != 64:
         raise ValueError(f"{label} must be sha256 content identity")
+    try:
+        int(digest, 16)
+    except ValueError as exc:
+        raise ValueError(f"{label} digest is invalid") from exc
+    return text
+
+
+def _semantic_id(value: object, *, label: str) -> str:
+    """Validate semantic identity without conflating it with ArtifactStore identity.
+
+    Artifact members are always raw ``sha256:<digest>`` content identities. Semantic
+    identities may either be raw sha256 identities or a typed namespace ending in one,
+    for example ``reference-solver-authorization:sha256:<digest>``. Keeping those two
+    identity domains distinct prevents a typed contract ID from being rejected merely
+    because it is not itself an ArtifactStore address.
+    """
+
+    text = _text(value, label=label)
+    if len(text) > 512 or any(character.isspace() for character in text):
+        raise ValueError(f"{label} must be a compact semantic identity")
+    if text.startswith("sha256:"):
+        return _sha256_id(text, label=label)
+
+    namespace, separator, digest = text.rpartition(":sha256:")
+    if not separator or not _SEMANTIC_NAMESPACE.fullmatch(namespace) or len(digest) != 64:
+        raise ValueError(f"{label} must be sha256 or typed sha256 semantic identity")
     try:
         int(digest, 16)
     except ValueError as exc:
@@ -75,7 +105,7 @@ class ArtifactManifestEntry:
             object.__setattr__(
                 self,
                 "semantic_id",
-                _sha256_id(self.semantic_id, label=f"{self.role.value} semantic identity"),
+                _semantic_id(self.semantic_id, label=f"{self.role.value} semantic identity"),
             )
 
     def semantic_payload(self) -> dict[str, object]:
