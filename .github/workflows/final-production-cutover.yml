@@ -40,17 +40,29 @@ jobs:
             tests/test_final_projection_authority.py \
             tests/test_weight_contract.py \
             tests/test_ensemble.py \
-            tests/test_airsenal_data.py \
+            tests/test_dgw_expert_allocation.py \
+            tests/test_airsenal.py \
+            tests/test_airsenal_source_absence_policy.py \
+            tests/test_airsenal_workflow_contract.py \
             tests/test_data_quality.py \
-            tests/test_understat_data.py \
+            tests/test_understat.py \
+            tests/test_understat_page_fallback.py \
+            tests/test_understat_players.py \
             tests/test_answer_context.py \
             tests/test_calibration.py \
             tests/test_learning_archive.py \
+            tests/test_core_candidate_publication.py \
+            tests/test_core_freshness.py \
+            tests/test_core_identity.py \
             tests/test_publication_invalidation.py \
-            tests/test_optimizer_constraints.py \
-            tests/test_exact_mechanics.py \
+            tests/test_production_publication_contract.py \
+            tests/test_decision_bundle.py \
+            tests/test_optimiser.py \
+            tests/test_mechanics.py \
+            tests/test_exact_decision.py \
             tests/test_minutes.py \
-            tests/test_availability_controls.py
+            tests/test_evidence_eligibility.py \
+            tests/test_solver_parity_contract.py
 
       - name: Run full repository test suite
         run: pytest -q
