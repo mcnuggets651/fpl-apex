@@ -37,8 +37,28 @@ _FINANCE_EXTRA_PLAYER = OfficialPlayerId(16)
 
 def _finance_candidate_universe(verified, *, store: ArtifactStore) -> tuple[CandidateUniverse, str]:
     base = verified.candidate_universe
-    if any(int(row.player_id) == int(_FINANCE_EXTRA_PLAYER) for row in base.players):
-        raise ValueError("focused finance case expects publication universe without player 16")
+    existing = next(
+        (row for row in base.players if row.player_id == _FINANCE_EXTRA_PLAYER),
+        None,
+    )
+    if existing is not None:
+        if (
+            existing.team_id != 16
+            or existing.position != "MID"
+            or existing.current_price_tenths != 51
+        ):
+            raise ValueError(
+                "focused finance case player 16 must remain the £5.1m MID qualification target"
+            )
+        # Newer publication fixtures already retain the finance target in the FULL_OFFICIAL
+        # universe. Reuse that exact typed universe rather than attempting to inject a duplicate
+        # player. Re-storing is content-addressed and therefore preserves the publication
+        # universe artifact identity.
+        stored = store_candidate_universe(base, store=store)
+        return base, stored.artifact_id
+
+    # Backward-compatible path for older qualification fixtures that predate the retained
+    # £5.1m finance target. The focused case still proves the same bank-then-transfer behavior.
     source = store.put_bytes(b"synthetic-planning-finance-universe-source").artifact_id
     universe = CandidateUniverse(
         global_world_id=base.global_world_id,
@@ -151,7 +171,7 @@ def _finance_forecast(verified, universe: CandidateUniverse) -> Forecast:
                 continue
             template = _row_for_depth(verified, player_id=player_id, depth=depth)
             # Player 8 is deliberately good in GW7 (10 xP in the source fixture), while
-            # the new £5.1m MID is 12 xP. Banking first and transferring only in GW7 is
+            # the £5.1m MID target is 12 xP. Banking first and transferring only in GW7 is
             # therefore uniquely better than sacrificing current-GW points for an early move.
             rows.append(
                 _retarget_row(
