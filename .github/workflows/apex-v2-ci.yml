@@ -11,6 +11,10 @@ on:
       - '.github/workflows/apex-v2-*.yml'
       - 'pyproject.toml'
 
+concurrency:
+  group: apex-v2-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

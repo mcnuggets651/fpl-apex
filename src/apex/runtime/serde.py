@@ -1,12 +1,117 @@
 from __future__ import annotations
-from apex.domain.models import *
 
-def official_from_dict(d):
-    return OfficialSnapshot(int(d['schema_version']), d['season'], d['acquired_at'], d['source_hash'], tuple((OfficialPlayer(int(p['element_id']), p['web_name'], int(p['team_id']), Position(p['position']), int(p['price_tenths']), p['status'], bool(p.get('can_transact', True))) for p in d['players'])), tuple((OfficialFixture(int(f['fixture_id']), int(f['gameweek']) if f.get('gameweek') is not None else None, int(f['home_team_id']), int(f['away_team_id']), f.get('kickoff_time')) for f in d.get('fixtures', []))), {int(k): v for k, v in d.get('deadlines', {}).items()})
+from apex.domain.models import (
+    CoverageStatus,
+    OfficialFixture,
+    OfficialPlayer,
+    OfficialSnapshot,
+    Position,
+    ProjectionRow,
+    ProjectionSurface,
+    TeamState,
+)
 
-def projection_from_dict(d):
-    rows = tuple((ProjectionRow(int(r['element_id']), int(r['gameweek']), int(r['horizon']), float(r['expected_points']) if r.get('expected_points') is not None else None, tuple(map(int, r.get('fixture_ids', []))), int(r.get('n_fixtures', 0)), r.get('player_status_at_forecast'), float(r['expected_minutes']) if r.get('expected_minutes') is not None else None, float(r['p_appearance']) if r.get('p_appearance') is not None else None, float(r['p_start']) if r.get('p_start') is not None else None, float(r['p_60']) if r.get('p_60') is not None else None, CoverageStatus(r.get('coverage_status', 'FORECAST')), r.get('coverage_reason'), r.get('metadata', {})) for r in d['rows']))
-    return ProjectionSurface(int(d['schema_version']), d['provider_id'], d['provider_version'], d['generated_at'], d['season'], d['source_snapshot'], d['scoring_rules_version'], tuple(map(int, d['supported_horizons'])), tuple(d.get('runtime_dependencies', [])), rows)
 
-def team_from_dict(d):
-    return TeamState(int(d['schema_version']), int(d['entry_id']), int(d['published_gw']), tuple(map(int, d['squad_ids'])), int(d['bank_tenths']), int(d['free_transfers']), {int(k): int(v) for k, v in d.get('purchase_prices_tenths', {}).items()}, {int(k): int(v) for k, v in d.get('selling_prices_tenths', {}).items()}, d.get('active_chip'), bool(d.get('state_complete_for_transfers', False)))
+def official_from_dict(data):
+    players = tuple(
+        OfficialPlayer(
+            int(player["element_id"]),
+            player["web_name"],
+            int(player["team_id"]),
+            Position(player["position"]),
+            int(player["price_tenths"]),
+            player["status"],
+            bool(player.get("can_transact", True)),
+        )
+        for player in data["players"]
+    )
+    fixtures = tuple(
+        OfficialFixture(
+            int(fixture["fixture_id"]),
+            (
+                int(fixture["gameweek"])
+                if fixture.get("gameweek") is not None
+                else None
+            ),
+            int(fixture["home_team_id"]),
+            int(fixture["away_team_id"]),
+            fixture.get("kickoff_time"),
+        )
+        for fixture in data.get("fixtures", [])
+    )
+    return OfficialSnapshot(
+        int(data["schema_version"]),
+        data["season"],
+        data["acquired_at"],
+        data["source_hash"],
+        players,
+        fixtures,
+        {int(key): value for key, value in data.get("deadlines", {}).items()},
+    )
+
+
+def projection_from_dict(data):
+    rows = tuple(
+        ProjectionRow(
+            int(row["element_id"]),
+            int(row["gameweek"]),
+            int(row["horizon"]),
+            (
+                float(row["expected_points"])
+                if row.get("expected_points") is not None
+                else None
+            ),
+            tuple(map(int, row.get("fixture_ids", []))),
+            int(row.get("n_fixtures", 0)),
+            row.get("player_status_at_forecast"),
+            (
+                float(row["expected_minutes"])
+                if row.get("expected_minutes") is not None
+                else None
+            ),
+            (
+                float(row["p_appearance"])
+                if row.get("p_appearance") is not None
+                else None
+            ),
+            float(row["p_start"]) if row.get("p_start") is not None else None,
+            float(row["p_60"]) if row.get("p_60") is not None else None,
+            CoverageStatus(row.get("coverage_status", "FORECAST")),
+            row.get("coverage_reason"),
+            row.get("metadata", {}),
+        )
+        for row in data["rows"]
+    )
+    return ProjectionSurface(
+        int(data["schema_version"]),
+        data["provider_id"],
+        data["provider_version"],
+        data["generated_at"],
+        data["season"],
+        data["source_snapshot"],
+        data["scoring_rules_version"],
+        tuple(map(int, data["supported_horizons"])),
+        tuple(data.get("runtime_dependencies", [])),
+        rows,
+    )
+
+
+def team_from_dict(data):
+    return TeamState(
+        int(data["schema_version"]),
+        int(data["entry_id"]),
+        int(data["published_gw"]),
+        tuple(map(int, data["squad_ids"])),
+        int(data["bank_tenths"]),
+        int(data["free_transfers"]),
+        {
+            int(key): int(value)
+            for key, value in data.get("purchase_prices_tenths", {}).items()
+        },
+        {
+            int(key): int(value)
+            for key, value in data.get("selling_prices_tenths", {}).items()
+        },
+        data.get("active_chip"),
+        bool(data.get("state_complete_for_transfers", False)),
+    )
