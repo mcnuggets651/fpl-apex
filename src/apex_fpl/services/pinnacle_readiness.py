@@ -6,19 +6,14 @@ from typing import Any
 from apex_fpl.services.decision_eligibility import (
     MIN_CAPTAIN_APPEARANCE_PROBABILITY,
     MIN_CAPTAIN_EXPECTED_MINUTES,
-    MIN_CAPTAIN_PROJECTION_CONFIDENCE,
     MIN_CAPTAIN_START_PROBABILITY,
 )
 
 
 REQUIRED_SCENARIOS = ("unrestricted", "haaland", "no-haaland")
-REQUIRED_SOURCES = (
-    "official_fpl",
-    "fpl_core_playerstats",
-    "fixture_model",
-    "airsenal",
-    "news_feeds",
-)
+# The sealed base Apex safety gate already validates Official FPL + the configured
+# forecast champion. Pinnacle must not reintroduce stale provider/Core/news coupling.
+REQUIRED_SOURCES = ("official_fpl",)
 
 MIN_PUBLISHED_CAPTAIN_FREQUENCY = 0.50
 MIN_ROBUST_SQUAD_OVERLAP = 12
@@ -85,6 +80,9 @@ def _check_captain_evidence(
         return
     row = candidates[0]
     name_label = str(row.get("web_name") or captain_id)
+    # Projection confidence is not a hard captain field unless the production provider
+    # exposes a calibrated confidence contract. Minutes/participation evidence remains
+    # mandatory and selected-player evidence is validated separately below.
     floors = (
         ("expected_minutes", MIN_CAPTAIN_EXPECTED_MINUTES, "expected minutes"),
         ("start_probability", MIN_CAPTAIN_START_PROBABILITY, "start probability"),
@@ -92,11 +90,6 @@ def _check_captain_evidence(
             "appearance_probability",
             MIN_CAPTAIN_APPEARANCE_PROBABILITY,
             "appearance probability",
-        ),
-        (
-            "projection_confidence",
-            MIN_CAPTAIN_PROJECTION_CONFIDENCE,
-            "projection confidence",
         ),
     )
     for field, minimum, label in floors:
@@ -107,7 +100,7 @@ def _check_captain_evidence(
             blockers.append(
                 f"captain {name_label} {label} {value:.1%} below production floor "
                 f"{minimum:.1%}: {name}"
-                if "probability" in field or "confidence" in field
+                if "probability" in field
                 else f"captain {name_label} {label} {value:.1f} below production floor "
                 f"{minimum:.1f}: {name}"
             )

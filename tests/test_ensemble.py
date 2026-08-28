@@ -138,12 +138,11 @@ def test_risk_is_diagnostic_and_cannot_lower_canonical_expected_points():
 
 
 def test_nyoni_class_unsupported_apex_outlier_is_attenuated_and_propagates():
-    """Regression for the production 7.93 / 1.50 / 1.03 failure mode.
+    """Research-regression for a large Apex/independent-model disagreement.
 
-    The test is deliberately identity-free: any player with a weakly supported Apex
-    rate and two independent experts materially below it must lose only the direct
-    Apex vote needed to reflect that evidence weakness.  Once confirmed at GW1, the
-    same-sided conflict carries forward when Official EP is no longer published.
+    Production no longer uses this blended path. This deliberately non-production
+    weight set keeps the legacy comparison machinery testable without encoding a
+    second canonical policy.
     """
     df = pd.DataFrame(
         [
@@ -168,9 +167,9 @@ def test_nyoni_class_unsupported_apex_outlier_is_attenuated_and_propagates():
         ]
     )
     weights = {
-        "official_ep": 0.2666666667,
-        "apex_model": 0.5111111111,
-        "airsenal": 0.2222222222,
+        "official_ep": 0.30,
+        "apex_model": 0.50,
+        "airsenal": 0.20,
         "market": 0.0,
     }
     out = blend_projection(df, weights, 0)
@@ -190,7 +189,7 @@ def test_nyoni_class_unsupported_apex_outlier_is_attenuated_and_propagates():
     assert gw2["xp"] < 3.50
 
 
-def test_high_reliability_apex_outlier_keeps_nominal_ev_vote():
+def test_high_reliability_apex_outlier_keeps_nominal_research_vote():
     df = pd.DataFrame(
         [{
             "player_id": 9,
@@ -203,9 +202,9 @@ def test_high_reliability_apex_outlier_keeps_nominal_ev_vote():
         }]
     )
     weights = {
-        "official_ep": 0.2666666667,
-        "apex_model": 0.5111111111,
-        "airsenal": 0.2222222222,
+        "official_ep": 0.30,
+        "apex_model": 0.50,
+        "airsenal": 0.20,
         "market": 0.0,
     }
     out = blend_projection(df, weights, 0).iloc[0]

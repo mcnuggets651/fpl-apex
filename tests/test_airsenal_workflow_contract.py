@@ -3,9 +3,8 @@ from pathlib import Path
 
 # Only workflows that actively run the canonical Apex production/readiness path
 # should be required to refresh genuine AIrsenal forecasts. CI-only and archived
-# legacy publishers are intentionally excluded.
+# historical executors are intentionally excluded.
 WORKFLOWS = (
-    "gw1-final-2026.yml",
     "pinnacle.yml",
     "production-readiness.yml",
 )
@@ -19,6 +18,17 @@ def test_production_workflows_do_not_require_a_manager_team_to_refresh_airsenal(
         assert "python scripts/update_airsenal_worker.py" in workflow, name
         assert "airsenal_update_db" not in workflow, name
         assert "scripts/run_apex.py" in workflow, name
+
+
+def test_expired_gw1_executor_is_archived_not_executable():
+    repo = Path(__file__).resolve().parents[1]
+    active = repo / ".github" / "workflows" / "gw1-final-2026.yml"
+    archived = repo / "archive" / "workflows" / "gw1-final-2026.yml"
+    assert not active.exists()
+    assert archived.exists()
+    text = archived.read_text(encoding="utf-8")
+    assert "scripts/run_apex.py" in text
+    assert 'APEX_MAX_CORE_AGE_HOURS: "12"' in text
 
 
 def test_scheduled_airsenal_workflow_uses_canonical_horizon_wrapper():

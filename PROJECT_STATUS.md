@@ -1,100 +1,72 @@
-# Apex FPL project status
+# Apex FPL — Project Status
 
-**Status date:** 7 August 2026
+**Audited:** 28 August 2026  
+**Repository:** `mcnuggets651/fpl-apex`  
+**Production branch at audit start:** `main` @ `80b31eede7d44b7412261aa8c9df994a4612a348`  
+**Cleanup/cutover branch:** `agent/final-airsenal-authority-cutover`
 
-## Current state
+## Current status
 
-The repository has a production-green Apex core and an enhanced **Apex Pinnacle** decision layer now being bootstrapped and stress-tested.
+Apex is in a controlled production-authority cutover. The previous production configuration on `main` still uses the obsolete hand-set forecast blend and incorrectly allows stale FPL Core enrichment to block the entire decision. That state is fail-closed (`ready_to_act=false`, `safe_to_act=false`) and has **no current recommendation**.
 
-Validated core capabilities:
+The replacement architecture has been implemented and certified on the cutover branch:
 
-- Official FPL API is canonical for player ID, club, FPL position, price, availability and fixtures.
-- Immutable Official FPL snapshot manifests and SHA256 checksums are recorded.
-- FPL Core Insights enriches current player statistics, preseason data, Elo fixture context and defensive-contribution features.
-- FPL Core data is resolved to an immutable current commit and refreshed automatically.
-- Genuine pinned AIrsenal GW1–GW8 forecasts are exported through official `player.fpl_api_id`, provenance checked and freshness gated.
-- Expected-minutes modelling produces start, appearance, 60+, 80+, expected-minutes and confidence estimates.
-- Tactical roles, penalties, corners and free-kick shares support statistical inference plus verified overrides.
-- Fixture difficulty combines Official FPL team strength, home/away context and reconciled FPL Core Elo.
-- Transparent xP covers appearance, xG/xA attack, clean sheets, defensive contributions, saves, 2026/27 bonus/BPS potential and set pieces.
-- The ensemble exposes model disagreement, uncertainty, floors/ceilings and risk-adjusted xP.
-- Personal FPL entry **63984** is configured for post-deadline squad, bank, transfer/chip history and free-transfer synchronisation.
-- Manager-specific selling prices are reconstructed from transfer history plus a pre-GW1 official price baseline.
-- Multi-GW transfer optimisation supports 1–5 free transfers, hits, bank, XI, captain/vice and fixed Wildcard/Bench Boost/Triple Captain planning.
-- Trusted news evidence is classified for injury/availability, transfers and manager/line-up risk without changing official identity.
-- Independent pinned `open-fpl-solver` parity validates mathematical constraint consistency on identical projections.
+1. **Official FPL — factual authority** for player ID, club, position, price, availability, fixtures and rules/mechanics inputs.
+2. **AIrsenal — canonical statistical xP authority.** Production `xp` equals validated AIrsenal xP directly. Missing/stale AIrsenal coverage blocks; there is no silent Apex fallback.
+3. **Apex proprietary projection — shadow only** until genuine prospective evidence earns promotion.
+4. **FPL Core and Understat — enrichment/shadow inputs.** Their health remains visible and their data remains useful, but they are not canonical-xP dependencies.
+5. **Apex optimiser — decision authority** for legal squad/transfer selection, exact FPL mechanics, captain/vice, bench/autosubs, robustness diagnostics and receding-horizon action selection.
+6. **Prospective calibration — promotion authority.** No expert, blend or challenger may gain production forecast weight through subjective tuning.
 
-## Stress-test findings and upgrades
+The cutover implementation passed **127/127 authority/dependency regressions** and **384/384 full repository tests** in GitHub Actions, including the one-hot AIrsenal authority audit and the repaired publication import path.
 
-The 7 August pinnacle audit found material weaknesses in the previous decision layer and they have been addressed in new code:
+## Current production artifacts
 
-1. **Initial-squad horizon heuristic:** the legacy initial MILP used GW1 XI/captain plus a fixed fraction of aggregate horizon xP. An adversarial case can make this prefer a GW1 spike over a clearly superior multi-GW rotation asset. `optimise_initial_horizon` now fixes the 15-player squad while optimising a legal XI and captain separately for every Gameweek.
-2. **Independent-player risk assumption:** the original risk adjustment did not model shared team/opponent uncertainty. The Pinnacle scenario generator now creates correlated forecast surfaces and a new MILP maximises a blend of mean value and lower-tail **CVaR**.
-3. **Pre-GW1 selling-price baseline:** the original public-entry flow could return before persisting the initial price universe when no public GW1 picks existed. The price universe is now captured before the first deadline even while entry 63984 remains in initial-squad mode.
-4. **Near-tie visibility:** exact force/ban objective-regret analysis now quantifies how much value is lost when selected players are removed or alternatives are forced.
+The latest tracked `apex_answer_context.json` / `apex_recommendation_latest.json` are intentionally non-actionable. They were generated on 28 August 2026 before this cutover and report `recommendation=null`.
 
-The stochastic layer models common Gameweek shocks, shared team attack/defence uncertainty and negative attacker-vs-opposing-clean-sheet linkage. Its covariance coefficients are transparent priors and are not yet claimed to be walk-forward calibrated 2026/27 parameters. It is therefore used as robustness evidence alongside the deterministic expected-value optimum, not as a magic replacement for it.
+Do not resurrect an earlier GW1 team, Pinnacle squad, chat-memory squad or historical `apex_latest` file. The only user-facing answer contract is:
 
-Adversarial regression tests cover the full-horizon and CVaR failure modes.
+- `data/generated/apex_answer_context.json`
+- `data/generated/apex_recommendation_latest.json`
+- `data/generated/apex_recommendation_latest.md`
 
-## Pinnacle interface
+A team may be shown only when the current context says `safe_to_act=true` and `ready_to_act=true`.
 
-Once the bootstrap workflow completes successfully, ChatGPT should prefer:
+## Data audit
 
-- `data/generated/pinnacle_latest.json`
-- `data/generated/pinnacle_latest.md`
+- Official FPL latest audited snapshot: `20260828T021354Z-463aea4b`; 616 players and 380 fixtures.
+- Tracked AIrsenal projection file was generated `2026-08-26T06:01:52.744602+00:00`, source revision `8c7e18eba1488dd5a7d4bdb00d4da0a75e895717`; it must be refreshed before final production execution.
+- FPL Core candidate `b38c871765cb963223cbf471b28e65c4d58e9b64` was fully validated on 28 August: 616/616 Official player-ID coverage, no identity mismatches, upstream checks green. The old refresh workflow failed only because the Apex package was not installed before publication invalidation.
+- FPL Core upstream later advanced again; no newer revision is accepted until the same semantic validation runs successfully.
+- Calibration archive currently contains 0 completed genuine prospective Gameweeks / 0 active rows. No projection promotion is authorized.
 
-The Pinnacle snapshot contains:
+## Cleanup completed in this branch
 
-- deterministic full-horizon unrestricted / Haaland / no-Haaland solutions;
-- covariance-aware CVaR versions of the same scenarios;
-- deterministic-vs-robust overlap;
-- exact selection-regret sensitivity;
-- scenario downside/median/upside summaries;
-- current personalised transfer plan when the public team is available;
-- source and official-snapshot provenance.
+- retired the temporary final-cutover workflow after it completed its job;
+- archived and removed the expired one-off `gw1-final-2026.yml` workflow;
+- repaired FPL Core refresh packaging/import behavior without weakening validation or publication invalidation;
+- changed production xP authority to AIrsenal-only and retained Apex as shadow;
+- changed Core/Understat/fixture enrichments from false hard dependencies to explicit optional-enrichment health;
+- added prospective provider-ledger support so production and shadow forecasts can be frozen and compared later;
+- removed stale fixed production-blend literals from active config/tests;
+- replaced obsolete pre-GW1 current-state documentation.
 
-The existing validated core interface remains:
+## Remaining before final production execution
 
-- `data/generated/apex_latest.json`
-- `data/generated/apex_latest.md`
-- `data/generated/solver_parity.json`
-- `data/generated/airsenal.csv`
-- `upstreams.lock.json`
+1. Merge the audited cleanup/cutover to `main` after branch CI/governance is green.
+2. Run the repaired FPL Core refresh to validate and publish the latest enrichment pin.
+3. Refresh AIrsenal from its pinned worker and verify complete current horizon coverage.
+4. Run Apex Unified on the merged SHA with a fresh Official FPL snapshot.
+5. Inspect the sealed DecisionBundle, solver parity, all-player truth, evidence, exact mechanics and answer context.
+6. Publish a team only if the final contract is genuinely actionable.
+7. Repair the missing genuine deadline-learning archive path before relying on post-GW1 calibration.
 
-Do not claim a current Pinnacle recommendation if `pinnacle_latest.json` is absent or stale. Fall back to the latest green Apex snapshot and state the limitation.
+## V2 stack
 
-## Automation
+Draft PRs #67–#88 are a separate stacked V2 architecture programme and remain **withheld**. They contain valuable certified mechanisms, but their latest documentation still assumes the old 51.11% Apex / 26.67% Official EP / 22.22% AIrsenal forecast blend. They must be rebased/requalified against the new AIrsenal-only production authority before any future merge. They are not current production truth.
 
-Current workers include:
+PR #66 is superseded V1 archaeology/regression material and must not be merged.
 
-- FPL Core pin refresh — every six hours;
-- normal full Apex publish — every six hours;
-- **Apex Pinnacle** full-horizon + correlated 256-scenario CVaR stress run — every six hours and manually dispatchable;
-- genuine AIrsenal refresh inside production runs;
-- independent solver parity on its validation cadence;
-- dedicated final pre-GW1 recommendation on 21 August 2026 morning.
+## Operating rule
 
-## Remaining mathematical upgrades before the theoretical ceiling
-
-The strongest remaining improvements are now narrower:
-
-1. walk-forward calibration of the scenario covariance coefficients and stochastic risk weight;
-2. explicit captain-no-show -> vice-captain fallback value inside the objective;
-3. stochastic bench/autosub ordering and formation-safe substitutions;
-4. two-stage/receding-horizon transfer recourse for future information;
-5. a calibrated future price-change timing model;
-6. configured market-implied goal / clean-sheet / scorer priors from a reliable odds feed;
-7. empirical selection/captain frequency across calibrated projection perturbations.
-
-These should be added only with transparent calibration and backtesting rather than arbitrary complexity.
-
-## Resume rule
-
-For a future recommendation:
-
-1. read `data/generated/pinnacle_latest.json` first;
-2. require `safe_to_act=true` and `full_apex_ready=true`;
-3. inspect deterministic-vs-CVaR agreement and selection regret before calling a pick high confidence;
-4. if Pinnacle is unavailable, inspect the latest green `apex_latest.json` and disclose that the enhanced layer is not yet published;
-5. never reconstruct a team from conversation memory when repository decision files are available.
+For all future project work, use [`docs/APEX_OPERATING_MANUAL.md`](docs/APEX_OPERATING_MANUAL.md) and [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md). Repository artifacts and current workflow evidence outrank conversation memory.

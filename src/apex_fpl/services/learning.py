@@ -13,11 +13,20 @@ from apex_fpl.models.backtest import (
     calibrate_ensemble_weights,
     gameweek_block_bootstrap,
     interval_diagnostics,
-    score_predictions,
+    score_predictions_by_gameweek,
 )
+from apex_fpl.services.projection_registry import PROJECTION_PROVIDERS, normalise_provider_key
 
 
-EXPERT_COLUMNS = ["apex_xp", "official_xp", "airsenal_xp", "market_xp"]
+PROVIDER_COLUMNS = {
+    "airsenal": "airsenal_xp",
+    "dastan": "dastan_xp",
+    "openfpl": "openfpl_xp",
+    "apex": "apex_shadow_xp",
+}
+BENCHMARK_COLUMNS = {"official_ep": "official_xp"}
+MIN_PROVIDER_REVIEW_GAMEWEEKS = 8
+MIN_ENSEMBLE_GAMEWEEKS = 16
 
 
 @dataclass(frozen=True)
@@ -25,8 +34,9 @@ class LearningReport:
     completed_gameweeks: list[int]
     rows: int
     active_rows: int
-    expert_metrics: dict[str, dict[str, float]]
-    ensemble_metrics: dict[str, float]
+    expert_metrics: dict[str, dict[str, Any]]
+    provider_comparisons: dict[str, Any]
+    ensemble_metrics: dict[str, Any]
     candidate_calibration: dict[str, Any] | None
     holdout_validation: dict[str, Any] | None
     cohort_metrics: dict[str, Any]
@@ -42,6 +52,7 @@ class LearningReport:
             "rows": self.rows,
             "active_rows": self.active_rows,
             "expert_metrics": self.expert_metrics,
+            "provider_comparisons": self.provider_comparisons,
             "ensemble_metrics": self.ensemble_metrics,
             "candidate_calibration": self.candidate_calibration,
             "holdout_validation": self.holdout_validation,
@@ -63,39 +74,74 @@ def aggregate_deadline_forecast(
     snapshot_id: str,
     deadline_time: str | None = None,
 ) -> pd.DataFrame:
-    """Create one immutable-calibration row per official player for a deadline.
+    """Create one immutable row per Official player for a pre-deadline Gameweek.
 
-    The projection table may contain two rows in a Double Gameweek. By this stage
-    full-Gameweek external experts have already been allocated across fixture rows,
-    so summing here reconstructs each expert's intended Gameweek total exactly once.
+    Full-Gameweek provider xP values have already been allocated across DGW fixture
+    rows by the projection layer, so summing reconstructs the intended provider total.
+    Provider minutes/probability metadata is not additive and is retained once per GW.
     """
     d = projections[projections["gw"] == int(gw)].copy()
     if d.empty:
         raise ValueError(f"no projection rows found for GW{gw}")
-    value_cols = [
+
+    additive_cols = [
         col
         for col in [
-            *EXPERT_COLUMNS,
+            "apex_xp",
+            "apex_shadow_xp",
+            "official_xp",
+            "airsenal_xp",
+            "dastan_xp",
+            "openfpl_xp",
+            "market_xp",
+            "production_xp",
             "xp",
             "risk_adjusted_xp",
-            "projection_sd",
+            "provider_disagreement_sd",
+            "provider_disagreement_spread",
         ]
         if col in d.columns
     ]
-    numeric = d[["player_id", *value_cols]].copy()
-    for col in value_cols:
+    numeric = d[["player_id", *additive_cols]].copy()
+    for col in additive_cols:
         numeric[col] = pd.to_numeric(numeric[col], errors="coerce")
-    agg_map = {col: "sum" for col in value_cols}
-    # Standard deviation is not additive. Keep a root-sum-square approximation for
-    # diagnostic calibration rather than summing it like expected points.
-    if "projection_sd" in agg_map:
-        del agg_map["projection_sd"]
-    out = numeric.groupby("player_id", as_index=False).agg(agg_map)
-    if "projection_sd" in numeric.columns:
-        rss = numeric.groupby("player_id")["projection_sd"].apply(
-            lambda s: float(np.sqrt(np.nansum(np.square(pd.to_numeric(s, errors="coerce")))))
+    out = numeric.groupby("player_id", as_index=False).agg(
+        {col: "sum" for col in additive_cols}
+    )
+
+    if "projection_sd" in d.columns:
+        sd = pd.to_numeric(d["projection_sd"], errors="coerce")
+        temp = pd.DataFrame({"player_id": d["player_id"], "projection_sd": sd})
+        rss = temp.groupby("player_id")["projection_sd"].apply(
+            lambda values: (
+                float(np.sqrt(np.nansum(np.square(values))))
+                if pd.to_numeric(values, errors="coerce").notna().any()
+                else np.nan
+            )
         )
         out["projection_sd"] = out["player_id"].map(rss)
+
+    provider_metadata = [
+        column
+        for prefix in ("airsenal", "dastan", "openfpl")
+        for column in (
+            f"{prefix}_xmins",
+            f"{prefix}_p_start",
+            f"{prefix}_p_any",
+            f"{prefix}_p60",
+            f"{prefix}_confidence",
+            f"{prefix}_sd",
+        )
+        if column in d.columns
+    ]
+    if provider_metadata:
+        meta = d[["player_id", *provider_metadata]].copy()
+        for column in provider_metadata:
+            meta[column] = pd.to_numeric(meta[column], errors="coerce")
+        meta = meta.groupby("player_id", as_index=False).agg(
+            {column: "max" for column in provider_metadata}
+        )
+        out = out.merge(meta, on="player_id", how="left", validate="one_to_one")
 
     keep = [
         col
@@ -106,9 +152,12 @@ def aggregate_deadline_forecast(
             "position",
             "price",
             "expected_minutes",
+            "start_probability",
             "appearance_probability",
+            "minutes_60_plus_probability",
             "minutes_confidence",
             "role_confidence",
+            "projection_provider",
         ]
         if col in players.columns
     ]
@@ -123,20 +172,52 @@ def aggregate_deadline_forecast(
     out["deadline_time"] = str(deadline_time or "")
     out["official_snapshot_id"] = str(snapshot_id)
     out["event_points"] = np.nan
+    out["actual_minutes"] = np.nan
+    out["actual_appeared"] = np.nan
+    out["actual_60_plus"] = np.nan
     out["actuals_retrieved_at"] = ""
     return out.sort_values("player_id").reset_index(drop=True)
 
 
-def parse_event_live_points(payload: dict[str, Any]) -> dict[int, float]:
-    points: dict[int, float] = {}
+def parse_event_live_outcomes(payload: dict[str, Any]) -> dict[int, dict[str, float]]:
+    outcomes: dict[int, dict[str, float]] = {}
     for row in payload.get("elements", []) if isinstance(payload, dict) else []:
         try:
-            pid = int(row["id"])
+            player_id = int(row["id"])
             stats = row.get("stats") or {}
-            points[pid] = float(stats.get("total_points", 0) or 0)
+            minutes = float(stats.get("minutes", 0) or 0)
+            outcomes[player_id] = {
+                "event_points": float(stats.get("total_points", 0) or 0),
+                "actual_minutes": minutes,
+                "actual_appeared": float(minutes > 0),
+                "actual_60_plus": float(minutes >= 60),
+            }
         except Exception:
             continue
-    return points
+    return outcomes
+
+
+def parse_event_live_points(payload: dict[str, Any]) -> dict[int, float]:
+    """Backward-compatible points-only helper."""
+    return {
+        player_id: values["event_points"]
+        for player_id, values in parse_event_live_outcomes(payload).items()
+    }
+
+
+def attach_actual_outcomes(
+    forecast: pd.DataFrame,
+    outcomes: dict[int, dict[str, float]],
+    *,
+    retrieved_at: str | None = None,
+) -> pd.DataFrame:
+    out = forecast.copy()
+    for column in ("event_points", "actual_minutes", "actual_appeared", "actual_60_plus"):
+        out[column] = out["player_id"].map(
+            {player_id: values.get(column) for player_id, values in outcomes.items()}
+        )
+    out["actuals_retrieved_at"] = retrieved_at or datetime.now(timezone.utc).isoformat()
+    return out
 
 
 def attach_actual_points(
@@ -145,6 +226,7 @@ def attach_actual_points(
     *,
     retrieved_at: str | None = None,
 ) -> pd.DataFrame:
+    """Backward-compatible helper for tests/tools that only supply points."""
     out = forecast.copy()
     out["event_points"] = out["player_id"].map(points)
     out["actuals_retrieved_at"] = retrieved_at or datetime.now(timezone.utc).isoformat()
@@ -175,9 +257,13 @@ def load_completed_archive(root: Path) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def _metric_dict(df: pd.DataFrame, prediction_col: str) -> dict[str, float]:
-    metric = score_predictions(df, prediction_col=prediction_col, actual_col="event_points")
-    return {key: float(value) for key, value in metric.__dict__.items()}
+def _metric_dict(df: pd.DataFrame, prediction_col: str) -> dict[str, Any]:
+    return score_predictions_by_gameweek(
+        df,
+        prediction_col=prediction_col,
+        actual_col="event_points",
+        block_col="gw",
+    )
 
 
 def _weighted_prediction(
@@ -198,28 +284,70 @@ def _weighted_prediction(
 
 
 def _cohort_metrics(frame: pd.DataFrame) -> dict[str, Any]:
+    """Use realised, post-event minutes for outcome cohorts; never predicted minutes."""
     output: dict[str, Any] = {}
-    for cohort in ["position", "minutes_cohort"]:
-        data = frame.copy()
-        if cohort == "minutes_cohort":
-            if "expected_minutes" not in data.columns:
-                continue
-            minutes = pd.to_numeric(data["expected_minutes"], errors="coerce")
-            data[cohort] = pd.cut(
-                minutes,
-                bins=[-np.inf, 29.999, 59.999, 74.999, np.inf],
-                labels=["under_30", "30_to_59", "60_to_74", "75_plus"],
-            )
+    data = frame.copy()
+    if "actual_minutes" in data.columns:
+        actual_minutes = pd.to_numeric(data["actual_minutes"], errors="coerce")
+        data["actual_minutes_cohort"] = pd.cut(
+            actual_minutes,
+            bins=[-0.001, 0.001, 59.999, np.inf],
+            labels=["zero_minutes", "1_to_59", "60_plus"],
+        )
+    for cohort in ("position", "actual_minutes_cohort"):
         if cohort not in data.columns:
             continue
         groups: dict[str, Any] = {}
         for value, group in data.groupby(cohort, observed=True):
-            if len(group) < 10 or "xp" not in group.columns:
+            if len(group) < 10:
                 continue
-            groups[str(value)] = {"rows": int(len(group)), **_metric_dict(group, "xp")}
+            provider_metrics: dict[str, Any] = {}
+            for column in [*PROVIDER_COLUMNS.values(), "xp"]:
+                if column in group.columns and pd.to_numeric(group[column], errors="coerce").notna().sum() >= 10:
+                    provider_metrics[column] = _metric_dict(group, column)
+            if provider_metrics:
+                groups[str(value)] = {"rows": int(len(group)), "providers": provider_metrics}
         if groups:
             output[cohort] = groups
     return output
+
+
+def _provider_comparisons(
+    frame: pd.DataFrame,
+    incumbent_col: str,
+) -> dict[str, Any]:
+    comparisons: dict[str, Any] = {}
+    if incumbent_col not in frame.columns:
+        return comparisons
+    for provider_key, candidate_col in PROVIDER_COLUMNS.items():
+        if candidate_col == incumbent_col or candidate_col not in frame.columns:
+            continue
+        paired = frame[["gw", "event_points", incumbent_col, candidate_col]].copy()
+        for column in ("event_points", incumbent_col, candidate_col):
+            paired[column] = pd.to_numeric(paired[column], errors="coerce")
+        paired = paired.dropna()
+        if len(paired) < 20:
+            continue
+        item: dict[str, Any] = {
+            "candidate": candidate_col,
+            "incumbent": incumbent_col,
+            "paired_rows": int(len(paired)),
+            "gameweeks": int(paired["gw"].nunique()),
+            "candidate_metrics": _metric_dict(paired, candidate_col),
+            "incumbent_metrics": _metric_dict(paired, incumbent_col),
+        }
+        if paired["gw"].nunique() >= 2:
+            for metric in ("rmse", "mae"):
+                bootstrap = gameweek_block_bootstrap(
+                    paired,
+                    candidate_col=candidate_col,
+                    baseline_col=incumbent_col,
+                    metric=metric,
+                    samples=2000,
+                )
+                item[f"{metric}_gameweek_block_bootstrap"] = bootstrap.__dict__
+        comparisons[provider_key] = item
+    return comparisons
 
 
 def _ablation_report(
@@ -228,6 +356,7 @@ def _ablation_report(
     weights: dict[str, float],
     *,
     min_rows: int,
+    prior_weights: dict[str, float],
 ) -> dict[str, Any]:
     if len(expert_cols) < 2:
         return {}
@@ -238,7 +367,13 @@ def _ablation_report(
         kept = [col for col in expert_cols if col != removed]
         try:
             refit = calibrate_ensemble_weights(
-                frame, kept, actual_col="event_points", min_rows=min_rows
+                frame,
+                kept,
+                actual_col="event_points",
+                min_rows=min_rows,
+                ridge=0.10,
+                block_col="gw",
+                prior_weights={column: prior_weights.get(column, 0.0) for column in kept},
             )
         except (ValueError, RuntimeError):
             continue
@@ -255,16 +390,21 @@ def _ablation_report(
 def build_learning_report(
     archive: pd.DataFrame,
     *,
-    min_completed_gameweeks: int = 4,
+    champion_provider: str = "airsenal",
+    min_completed_gameweeks: int = MIN_PROVIDER_REVIEW_GAMEWEEKS,
+    min_ensemble_gameweeks: int = MIN_ENSEMBLE_GAMEWEEKS,
     min_rows: int = 200,
 ) -> LearningReport:
+    champion = normalise_provider_key(champion_provider)
+    incumbent_col = PROVIDER_COLUMNS.get(champion)
     if archive.empty:
         return LearningReport(
-            [], 0, 0, {}, {}, None, None, {}, {}, {},
+            [], 0, 0, {}, {}, {}, None, None, {}, {}, {},
             {
                 "status": "blocked_insufficient_history",
                 "promote": False,
                 "reasons": ["no completed genuine pre-deadline Gameweeks"],
+                "incumbent_provider": champion,
             },
             "No completed deadline forecasts exist yet. Learning starts only from genuine pre-deadline forecasts and official outcomes.",
         )
@@ -278,35 +418,39 @@ def build_learning_report(
             data.loc[data["event_points"].notna(), "gw"].dropna().astype(int).unique()
         )
     ]
+    # Provider competition uses the complete realised Official-player population.
+    # Never filter by predicted expected minutes, start probabilities, or any provider
+    # feature before scoring; those forecasts are part of what the contest must judge.
     active = data[data["event_points"].notna()].copy()
-    if "expected_minutes" in active.columns:
-        active = active[
-            pd.to_numeric(active["expected_minutes"], errors="coerce").fillna(0) >= 15
-        ].copy()
 
-    metrics: dict[str, dict[str, float]] = {}
-    for col in [*EXPERT_COLUMNS, "xp", "risk_adjusted_xp"]:
+    metrics: dict[str, dict[str, Any]] = {}
+    for col in [*PROVIDER_COLUMNS.values(), *BENCHMARK_COLUMNS.values(), "xp", "risk_adjusted_xp"]:
         if col in active.columns and pd.to_numeric(active[col], errors="coerce").notna().sum() >= 20:
             metrics[col] = _metric_dict(active, col)
     ensemble_metrics = metrics.get("xp", {})
+    comparisons = _provider_comparisons(active, incumbent_col) if incumbent_col else {}
 
     candidate = None
     holdout = None
     ablation: dict[str, Any] = {}
-    if len(completed) >= min_completed_gameweeks and len(active) >= min_rows:
+    if len(completed) >= min_ensemble_gameweeks and len(active) >= min_rows and incumbent_col:
         expert_cols = [
             col
-            for col in EXPERT_COLUMNS
+            for col in PROVIDER_COLUMNS.values()
             if col in active.columns
             and pd.to_numeric(active[col], errors="coerce").notna().mean() >= 0.80
         ]
-        if len(expert_cols) >= 2:
+        if incumbent_col in expert_cols and len(expert_cols) >= 2:
+            prior = {column: float(column == incumbent_col) for column in expert_cols}
             try:
                 calibration = calibrate_ensemble_weights(
                     active,
                     expert_cols,
                     actual_col="event_points",
                     min_rows=min_rows,
+                    ridge=0.10,
+                    block_col="gw",
+                    prior_weights=prior,
                 )
                 candidate = {
                     "experts": expert_cols,
@@ -315,22 +459,27 @@ def build_learning_report(
                     "rmse": calibration.rmse,
                     "equal_weight_rmse": calibration.equal_weight_rmse,
                     "improvement_vs_equal": calibration.improvement,
+                    "regularisation_prior": "incumbent_champion",
+                    "incumbent_column": incumbent_col,
                 }
                 ablation = _ablation_report(
-                    active, expert_cols, calibration.weights, min_rows=min_rows
+                    active,
+                    expert_cols,
+                    calibration.weights,
+                    min_rows=min_rows,
+                    prior_weights=prior,
                 )
             except Exception as exc:
                 candidate = {"status": "not_fit", "reason": str(exc)}
 
-            # Expanding-window walk-forward: each test Gameweek is predicted only
-            # by weights fitted on strictly earlier deadlines. Combining several
-            # holdouts also permits a valid Gameweek-block uncertainty estimate.
+            # Expanding-window holdouts begin only after the training side already has
+            # the minimum independent Gameweek count required for ensemble learning.
             folds: list[pd.DataFrame] = []
             fold_meta: list[dict[str, Any]] = []
             for test_gw in completed:
                 train = active[active["gw"] < test_gw].copy()
                 test = active[active["gw"] == test_gw].copy()
-                if len(train) < min_rows or len(test) < 20:
+                if train["gw"].nunique() < min_ensemble_gameweeks or len(train) < min_rows or len(test) < 20:
                     continue
                 usable = [
                     col
@@ -338,84 +487,124 @@ def build_learning_report(
                     if pd.to_numeric(train[col], errors="coerce").notna().mean() >= 0.80
                     and pd.to_numeric(test[col], errors="coerce").notna().mean() >= 0.80
                 ]
-                if len(usable) < 2:
+                if incumbent_col not in usable or len(usable) < 2:
                     continue
+                prior_fold = {column: float(column == incumbent_col) for column in usable}
                 try:
                     fit = calibrate_ensemble_weights(
                         train,
                         usable,
                         actual_col="event_points",
                         min_rows=min_rows,
+                        ridge=0.10,
+                        block_col="gw",
+                        prior_weights=prior_fold,
                     )
                 except Exception:
                     continue
                 test["_calibrated"] = _weighted_prediction(test, usable, fit.weights)
                 folds.append(test)
                 fold_meta.append(
-                    {"gameweek": int(test_gw), "train_rows": len(train),
-                     "test_rows": len(test), "weights": fit.weights}
+                    {
+                        "gameweek": int(test_gw),
+                        "train_gameweeks": int(train["gw"].nunique()),
+                        "train_rows": len(train),
+                        "test_rows": len(test),
+                        "weights": fit.weights,
+                    }
                 )
             if folds:
                 walked = pd.concat(folds, ignore_index=True)
                 calibrated = _metric_dict(walked, "_calibrated")
-                baseline = _metric_dict(walked, "xp") if "xp" in walked.columns else {}
+                baseline = _metric_dict(walked, incumbent_col)
                 holdout = {
                     "method": "expanding_window_gameweek_holdouts",
                     "folds": fold_meta,
                     "holdout_gameweeks": [row["gameweek"] for row in fold_meta],
                     "test_rows": len(walked),
                     "calibrated_metrics": calibrated,
-                    "current_ensemble_metrics": baseline,
-                    "rmse_improvement_vs_current": (
-                        float(baseline.get("rmse", np.nan) - calibrated["rmse"])
-                        if baseline else None
+                    "incumbent_metrics": baseline,
+                    "rmse_improvement_vs_incumbent": float(
+                        baseline["rmse"] - calibrated["rmse"]
                     ),
                 }
                 try:
                     bootstrap = gameweek_block_bootstrap(
                         walked,
                         candidate_col="_calibrated",
-                        baseline_col="xp",
-                        samples=1000,
+                        baseline_col=incumbent_col,
+                        samples=2000,
                     )
                     holdout["gameweek_block_bootstrap"] = bootstrap.__dict__
                 except ValueError as exc:
                     holdout["gameweek_block_bootstrap"] = {
-                        "status": "insufficient_blocks", "reason": str(exc)
+                        "status": "insufficient_blocks",
+                        "reason": str(exc),
                     }
 
     uncertainty: dict[str, Any] = {}
     if {"xp", "projection_sd", "event_points"}.issubset(active.columns):
-        uncertainty = interval_diagnostics(active)
+        try:
+            uncertainty = interval_diagnostics(active)
+        except ValueError:
+            uncertainty = {}
 
     cohort = _cohort_metrics(active)
     reasons: list[str] = []
-    if len(completed) < 8:
-        reasons.append(f"completed Gameweeks {len(completed)} < required 8")
+    if len(completed) < min_completed_gameweeks:
+        reasons.append(
+            f"completed Gameweeks {len(completed)} < provider-review minimum {min_completed_gameweeks}"
+        )
+    if not comparisons:
+        reasons.append("no paired challenger-versus-incumbent evaluation available")
+    ensemble_reasons: list[str] = []
+    if len(completed) < min_ensemble_gameweeks:
+        ensemble_reasons.append(
+            f"completed Gameweeks {len(completed)} < ensemble-learning minimum {min_ensemble_gameweeks}"
+        )
     if len(active) < min_rows:
-        reasons.append(f"active rows {len(active)} < required {min_rows}")
-    if not holdout or holdout.get("status") == "not_fit":
-        reasons.append("no valid chronological holdout")
+        ensemble_reasons.append(f"rows {len(active)} < minimum {min_rows}")
+    if not holdout:
+        ensemble_reasons.append("no valid chronological ensemble holdout")
     else:
-        improvement = holdout.get("rmse_improvement_vs_current")
+        improvement = holdout.get("rmse_improvement_vs_incumbent")
         if improvement is None or not np.isfinite(improvement) or improvement <= 0:
-            reasons.append("candidate does not improve holdout RMSE")
+            ensemble_reasons.append("candidate ensemble does not improve incumbent holdout RMSE")
         bootstrap = holdout.get("gameweek_block_bootstrap", {})
-        if float(bootstrap.get("probability_improves", 0.0) or 0.0) < 0.80:
-            reasons.append("Gameweek-block bootstrap confidence below 80%")
-    if not ablation:
-        reasons.append("leave-one-source-out ablation unavailable")
-    if not cohort:
-        reasons.append("position/minutes cohort diagnostics unavailable")
-    if not uncertainty:
-        reasons.append("predictive uncertainty diagnostics unavailable")
+        if float(bootstrap.get("probability_improves", 0.0) or 0.0) < 0.90:
+            ensemble_reasons.append("Gameweek-block bootstrap confidence below 90%")
+        calibrated = holdout.get("calibrated_metrics", {})
+        incumbent = holdout.get("incumbent_metrics", {})
+        for metric in ("rank_correlation", "ndcg_at_10"):
+            candidate_value = calibrated.get(metric)
+            incumbent_value = incumbent.get(metric)
+            if (
+                candidate_value is not None
+                and incumbent_value is not None
+                and np.isfinite(candidate_value)
+                and np.isfinite(incumbent_value)
+                and candidate_value + 1e-12 < incumbent_value
+            ):
+                ensemble_reasons.append(
+                    f"candidate ensemble degrades holdout {metric} versus incumbent"
+                )
+
     promotion_gate = {
-        "status": "eligible_for_separate_promotion_review" if not reasons else "blocked",
+        "status": "review_eligible" if not reasons else "blocked",
         "promote": False,
         "weights_changed": False,
-        "reasons": reasons or ["evidence complete; production change requires a separate PR"],
-        "minimum_completed_gameweeks": 8,
-        "minimum_active_rows": int(min_rows),
+        "incumbent_provider": champion,
+        "provider_review": {
+            "eligible": not reasons,
+            "minimum_completed_gameweeks": int(min_completed_gameweeks),
+            "reasons": reasons or ["paired evidence available; any champion change requires reviewed promotion"],
+        },
+        "ensemble_review": {
+            "eligible": not ensemble_reasons,
+            "minimum_completed_gameweeks": int(min_ensemble_gameweeks),
+            "minimum_rows": int(min_rows),
+            "reasons": ensemble_reasons or ["ensemble evidence complete; production change requires a separate reviewed promotion"],
+        },
     }
 
     return LearningReport(
@@ -423,6 +612,7 @@ def build_learning_report(
         rows=len(data),
         active_rows=len(active),
         expert_metrics=metrics,
+        provider_comparisons=comparisons,
         ensemble_metrics=ensemble_metrics,
         candidate_calibration=candidate,
         holdout_validation=holdout,
@@ -431,8 +621,9 @@ def build_learning_report(
         source_ablation=ablation,
         promotion_gate=promotion_gate,
         note=(
-            "Calibration is advisory until repeated walk-forward holdouts show stable out-of-sample improvement. "
-            "Apex never fits against a post-deadline feature snapshot and never auto-promotes weights from one lucky Gameweek."
+            "Provider scoring uses the complete realised Official-player population; predicted minutes never filter the contest. "
+            "Ranks are scored inside each Gameweek, challenger comparisons use identical paired rows, and uncertainty is block-resampled by Gameweek. "
+            "Champion promotion and ensemble promotion are reviewed operations; Apex never auto-promotes from one lucky Gameweek."
         ),
     )
 

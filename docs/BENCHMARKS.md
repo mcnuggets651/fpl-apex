@@ -1,72 +1,74 @@
 # Apex FPL — Benchmarks
 
 ## Purpose
-Every material modelling/selection change must be compared against a stable baseline. CI success is not a modelling benchmark.
+Every material forecast/provider/selection change must be compared against a stable predeclared baseline. CI success is an engineering prerequisite, not modelling evidence.
 
-## Required benchmark fields
-For each candidate engine/version record:
-- timestamp/source snapshot
-- horizon
-- legal squad and cost
-- GW1 XI/captain/vice
-- raw ensemble xP (GW1 and horizon)
-- decision utility if applicable
-- EV regret versus maximum-EV Pinnacle
-- expected minutes/start-risk summary
-- stochastic mean/floor/CVaR where available
-- captaincy contribution
-- solver parity status
-- material source/readiness warnings
-- eventual no-hindsight realised result once available
+## Current production baseline
 
-## Baseline: Pinnacle
-Pinnacle maximum-EV on ensemble `xp` is the default comparison baseline. It should not be displaced by a new objective without evidence.
+**Forecast:** validated AIrsenal xP on the exact Official FPL player/Gameweek surface.  
+**Decision:** Apex legal maximum-EV/receding-horizon optimiser and exact FPL mechanics.
 
-## Candidate: Elite 10.0
-Hypothesis: reducing value weight and explicitly rewarding attack/minutes/captaincy will remove questionable low-ceiling picks while preserving most raw expected points and improving elite scoring potential.
+Apex proprietary xP is now a shadow challenger, not part of the production forecast baseline.
 
-Initial weights: `35/20/15/10/10/5/5`.
+## Required prospective provider benchmark fields
 
-### Required first post-merge test
-- latest unrestricted Pinnacle vs Elite
-- Haaland Pinnacle vs Elite
-- no-Haaland Pinnacle vs Elite
-- exact raw-xP regret
-- player-level changes and reason codes
-- minutes/ceiling/captaincy changes
+For each frozen provider/player/Gameweek row record:
 
-**Status:** completed. The latest decision-ready canonical run falls back to
-maximum-EV because the 0.25%, 0.50% and 1.00% Elite solutions retain only
-12/15, 11/15 and 11/15 of the maximum-EV squad. Captain agreement alone does
-not satisfy the convergence rule.
+- season and Gameweek;
+- deadline timestamp;
+- forecast timestamp;
+- Official snapshot identity;
+- player ID / club / FPL position / current price;
+- provider and provider version;
+- production vs shadow authority;
+- xP;
+- expected-minutes/start/appearance fields where available;
+- later Official realised points/participation joined only after the event.
 
-## Candidate: Understat team strength
+Aggregate evaluation should include calibration/ranking/error metrics, Gameweek-block uncertainty, cohorts (position/price/minutes/new transfers where useful) and decision-impact comparisons.
 
-PR #16 is merged in shadow mode. Its held-out component comparison covered 197
-matches; the combined component reported xG RMSE 0.688945 versus 0.707822 for
-Understat alone and 0.708604 for Elo alone. The challenger did not alter the
-canonical 15 or captain and is not a production replacement.
+## Required decision benchmark fields
 
-## Candidate: empirical-Bayes player-rate shrinkage
+For each candidate decision policy/version record:
 
-The first PR #14 green result is withdrawn: prediction cohorts were filtered by
-future minutes/outcome availability before empirical priors and live-price tiers
-were calculated. PR #18 replaces it with complete-roster predictions that apply
-future eligibility only after predictions are frozen and report pre-GW1, GW1-5
-and GW6+ strata separately.
+- exact sealed bundle/snapshot/provider identity;
+- current squad/cash/FT state where applicable;
+- legal action and post-action squad;
+- XI/captain/vice/bench;
+- canonical expected points;
+- exact mechanics result;
+- static/near-equivalent regret where useful;
+- stochastic mean/floor/CVaR diagnostics;
+- solver parity status;
+- source/readiness warnings;
+- later no-hindsight realised outcome after the action was frozen.
 
-Corrected attacking-rate RMSE ratios (shrunk/raw):
+## Current promotion baseline
+
+No forecast challenger has enough genuine 2026/27 prospective evidence for production promotion. At the 28 August 2026 audit:
+
+- completed genuine Gameweeks: 0;
+- active calibration rows: 0;
+- promotion: blocked.
+
+Therefore no retrospective benchmark, appealing squad or synthetic V2 certification may justify replacing AIrsenal production authority yet.
+
+## Historical benchmark evidence — retained for research only
+
+### Elite frontier
+Historical Elite/equivalence diagnostics showed that small epsilon changes could materially alter the 15. This supported keeping secondary utilities diagnostic rather than allowing them to become a separate production selector. Those results remain architecture history; they are not a forecast-provider benchmark under the current authority contract.
+
+### Understat team-strength challenger
+PR #16 historical held-out component comparison covered 197 matches; the combined component reported xG RMSE 0.688945 versus 0.707822 for Understat alone and 0.708604 for Elo alone. This evidence remains useful research history but did not grant Understat production xP authority.
+
+### Empirical-Bayes player-rate shrinkage
+Corrected historical attacking-rate RMSE ratios (shrunk/raw) previously reported:
 
 - xG90: 0.923542 in 2024/25; 0.731473 in 2025/26;
 - xA90: 0.833267 in 2024/25; 0.916736 in 2025/26.
 
-All four attacking-rate shadow gates pass. DEFCON fails its separate gate and is
-a no-op by default.
-
-The 2024/25 and 2025/26 seasons have been inspected during model development.
-They are useful chronological evaluation seasons but are not independent final
-holdouts. Shrinkage remains dormant even after the corrected shadow pass;
-activation requires a separate PR and explicit decision.
+Those seasons influenced development and are not independent final holdouts. DEFCON failed its separate gate. These results keep the challenger interesting but do not authorize production forecast activation.
 
 ## Promotion rule
-Do not tune weights to fit a preferred squad. Record hypotheses before evaluating outcomes and use the no-hindsight archive as the season grows.
+
+Do not tune provider weights, model features, epsilon bands or named-player assumptions to fit a preferred squad. Record the hypothesis before outcomes, freeze the challenger before deadlines, evaluate after outcomes, and promote only after the current governance threshold and explicit review are satisfied.

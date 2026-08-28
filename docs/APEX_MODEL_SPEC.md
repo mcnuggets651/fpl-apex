@@ -1,131 +1,104 @@
 # Apex FPL — Model Specification
 
 ## Canonical expected points
-`xp` is the ensemble-mean expected FPL points for a player in a Gameweek. The underlying transparent decomposition includes, where applicable:
-- expected minutes / appearance
-- attacking xG/xA/xGI
-- clean-sheet expectation
-- goalkeeper saves
-- defensive contributions (DEFCON)
-- penalties and set pieces
-- tactical role
-- bonus/BPS prior
 
-The projection surface also carries uncertainty/disagreement information and floor/ceiling estimates.
+Current production `xp` is the validated **AIrsenal expected FPL points** for the Official FPL player/Gameweek target. Production authority is one-hot by design until prospective evidence justifies a change:
 
-## Pinnacle objective
-Primary objective: maximise expected FPL points on ensemble mean `xp`, subject to legal FPL squad, budget, club and formation constraints. Risk is evaluated separately through stochastic scenarios/CVaR and exact selection regret.
+- `airsenal = 1.0`
+- `apex_model = 0.0`
+- `official_ep = 0.0`
+- `market = 0.0`
 
-## Minutes submodel
-Expected minutes is a first-class model input rather than a simple historic average. The current `minutes_profile` combines:
-- prior-season start probability and minutes per match
-- current-season team matches, starts and minutes
-- preseason appearances, starts and minutes
-- official availability/chance-of-playing status
-- manual and news availability multipliers
-- start, appearance, 60+ and 80+ probabilities
-- an explicit minutes-confidence score
-- evidence-volume weighting that lets repeated preseason starts supersede stale prior roles
-- optional verified deadline overrides for expected minutes, start probability, appearance probability and evidence confidence
+This is an authority contract, not a claim that AIrsenal is permanently unbeatable. It prevents subjective hand-tuned averaging before Apex has genuine out-of-sample evidence.
 
-Official injury, suspension and negative availability evidence remains a hard ceiling after any upside override. Minutes can be calibrated further, but it already has an independent modelling layer and directly scales attacking, clean-sheet, save and DEFCON expectation.
+In production mode:
 
-## Player attacking rates
-The transparent player model currently uses direct player rates such as xG90/xA90 and blends preseason observations according to preseason minutes. This is preferable to allocating team xG by a single historical player share, but it still has a small-sample weakness.
+- `xp == production_xp == airsenal_xp`;
+- `apex_shadow_xp` preserves the proprietary Apex forecast for comparison;
+- missing/stale AIrsenal does not fall back to Apex;
+- disagreement/uncertainty surfaces remain diagnostics rather than alternate authority.
 
-### Planned shrinkage upgrade
-Implement empirical-Bayes / partial-pooling shrinkage for player attacking rates:
-- derive position/role priors;
-- weight player-specific evidence by sample minutes / event volume;
-- shrink small-sample xG90/xA90/shooting rates toward the relevant prior;
-- retain more player-specific signal as evidence volume grows;
-- benchmark out of sample in the no-hindsight archive before promotion.
+## Apex proprietary forecast — shadow
 
-This upgrade takes priority over adding a new Dixon-Coles fixture expert because rate uncertainty directly affects every player projection.
+Apex still computes a transparent football model using, where applicable:
 
-## Elite 10.0 secondary utility
-Elite is a secondary decision utility, not a new xP forecast.
+- expected minutes / appearance probabilities;
+- xG/xA attacking rates and priors;
+- clean-sheet expectation;
+- goalkeeper saves;
+- defensive contributions (DEFCON);
+- penalties/set-piece context;
+- tactical role;
+- bonus/BPS priors;
+- FPL Core/Understat/historical/preseason enrichment.
 
-`Elite = .35 Attack + .20 Minutes + .15 Captaincy + .10 SetPieces + .10 Fixture + .05 BonusDefcon + .05 Value`
+These outputs are research/shadow evidence until promoted through prospective evaluation. They may challenge AIrsenal and help diagnose football assumptions, but they may not overwrite canonical production xP merely because a result looks more plausible.
 
-Weights must sum to 1.0.
+## Decision objective
 
-### Lexicographic selection rule
-Elite uses an epsilon-constraint design:
-1. solve the relevant scenario for maximum raw Pinnacle `xp`;
-2. define a near-optimal raw-xP floor;
-3. maximise Elite utility only among solutions satisfying that floor;
-4. lock the selected 15;
-5. re-optimise XI, captain and vice on raw `xp`.
+Apex's production decision engine maximises expected FPL points on canonical `xp`, subject to exact legal FPL constraints and current manager state. The optimiser—not the proprietary forecast—is Apex's production decision authority.
 
-The default regret allowance is 0.5%, but this is explicitly provisional rather than calibrated.
+Risk/robustness is assessed separately through correlated scenarios, CVaR, exact selection regret, captain/bench mechanics and independent parity. These surfaces expose fragility without silently replacing the EV objective.
 
-### Epsilon sensitivity
-Every live Elite run must also report the unrestricted frontier at:
-- 0.00% raw-xP regret allowance
-- 0.25%
-- 0.50%
-- 1.00%
+## Minutes and role modelling
 
-For each point, report raw xP, exact regret, squad overlap/change versus maximum-EV and captain. If very small epsilon changes produce materially different squads, maximum-EV remains the canonical recommendation until no-hindsight evidence establishes a justified regret band.
+Apex's minutes model remains a first-class shadow/challenger component and a supporting evidence surface. It tracks expected minutes, start/appearance/60+/80+ probabilities and confidence using historical/current samples, preseason participation, Official status and current attributable evidence.
 
-### Attack — 35%
-Current implementation combines position-relative ranks of:
-- 55% `xp_attack`
-- 20% model xG/90
-- 10% model xA/90
-- 10% shots signal
-- 5% big-chances signal
+The EV-first eligibility rule prevents double-counting minutes security. Ordinary forecast uncertainty is priced in expected outcomes/scenarios; only attributable adverse evidence can hard-exclude a player from XI/captain eligibility.
 
-### Minutes — 20%
-- 50% expected minutes / 90
-- 35% start probability
-- 15% appearance probability
+Manual/current overrides require explicit provenance and must remain bounded by Official adverse availability/suspension facts. Future minutes cannot be represented as literal certainty without deterministic factual grounds.
 
-### Captaincy — 15%
-- 65% rank of canonical `xp`
-- 35% rank of 80th-percentile projection ceiling
+## Player attacking rates and shrinkage
 
-This is the explicit premium-ceiling correction, but it is only secondary to the raw-xP floor.
+Apex shadow rates may use direct player xG90/xA90 and governed shrinkage/priors. Small-sample behaviour must be evaluated prospectively rather than promoted because it improves a retrospective or preferred-player result.
 
-### Set pieces and penalties — 10%
-Raw role signal:
-- 60% penalty share
-- 15% corner share
-- 15% direct free-kick share
-- 10% indirect free-kick share
+DEFCON, Bayesian shrinkage, Understat-derived priors and similar components remain shadow/research unless a formal promotion decision authorizes production use.
 
-The current implementation blends this 75/25 with the set-piece xP prior.
+## Team/fixture modelling
 
-### Fixture — 10%
-Position-relative rank of match-specific `xp_attack + xp_clean_sheet`. This deliberately reuses the transparent projection's fixture translation rather than creating an undocumented second fixture model.
+Official fixtures are factual truth. Internal team-strength, FPL Core Elo, Understat and other fixture-strength models are supporting/shadow models, not current canonical statistical xP authority.
 
-### Bonus + DEFCON — 5%
-Equal blend of position-relative bonus/BPS prior and defensive-contribution xP.
+A future Dixon-Coles/Poisson, market or alternative fixture expert may be evaluated as a challenger. It may enter production only after bounded prospective evidence and explicit dependency/authority changes.
 
-### Value — 5%
-Position-relative rank of `xp / price`. This is intentionally small and only influences near-optimal xP solutions.
+## Elite secondary utility
 
-## Team-strength experts
-The current production fixture layer uses validated internal strength evidence and fallback logic. A future Dixon-Coles/Poisson model should be added only as an independent expert/challenger, trained with recency weighting and evaluated out of sample.
+Elite remains a diagnostic near-optimal utility, not an xP forecast and not a second user-facing selector. Historical feature weights may be retained for research regression, but they have no authority to override canonical expected points.
 
-Do not naively average future fixture experts. Any combination of Dixon-Coles, xG-based ratings, Elo and market odds must use an explicit historically validated combination rule or stacking procedure. Until that exists, disagreement should be surfaced rather than hidden inside undocumented weights.
+The epsilon frontier exists to show whether near-equivalent EV squads differ materially. It does not justify a subjective final squad when the canonical policy has not selected it.
 
-## Ownership
-Ownership/EO is not part of the canonical maximum-points objective. It may be introduced only in a separate rank-management mode or documented tiebreak where the optimisation target explicitly changes from points to rank utility.
+## Ownership and price movement
+
+Ownership/EO is excluded from the pure maximum-points objective. It may exist only in an explicitly different rank-utility mode.
+
+Price-change forecasts may be retained as planning context but may not overwrite current Official price. Speculative future price value requires explicit modelling and validation before it affects the production objective.
 
 ## Uncertainty
-Scenario simulation should preserve correlated football outcomes: team attack/defence, opponents, player returns and minutes/rotation are not independent. Apex uses correlated stochastic scenarios, CVaR and exact regret rather than independent draws around each player's mean.
 
-## Required comparison
-For every Elite candidate report:
-- maximum raw ensemble xP reference
-- Elite diagnostic squad raw xP
-- exact raw-xP regret
-- epsilon sensitivity frontier
-- captaincy difference
-- major minutes/role risks
-- scenario differences where material
+Football outcomes are correlated. Robustness simulation should preserve team/opponent/minutes dependence rather than draw independent player noise. Sampling/convergence requirements remain diagnostics and release checks where required.
+
+## Prospective provider evaluation
+
+Production and shadow provider forecasts must be frozen before deadlines. Evaluation later joins Official outcomes against the exact frozen provider/version/snapshot/player/GW rows.
+
+Promotion requires the governed prospective threshold, currently at least:
+
+- 8 genuine completed Gameweeks;
+- 200 active rows;
+- chronological/walk-forward comparison;
+- Gameweek-block confidence/uncertainty analysis;
+- cohort diagnostics;
+- source/feature ablation where material;
+- explicit human/governance review.
+
+No automatic promotion occurs. At the 28 August 2026 audit the genuine calibration report had zero completed Gameweeks and zero active rows, so Apex proprietary xP and all alternative blends remain unqualified for production forecast authority.
 
 ## Promotion standard
-Do not change weights, epsilon, priors or feature rules because a preferred player is missing. Changes require a benchmark hypothesis, no-hindsight evaluation where possible, and a recorded decision in `APEX_DECISIONS.md`.
+
+Do not change provider weights, thresholds, priors, evidence rules or named-player behaviour because a preferred squad is missing. A production change requires:
+
+1. a precise benchmark hypothesis;
+2. frozen no-hindsight challenger evidence;
+3. predictive and decision-level evaluation;
+4. regression/adversarial tests;
+5. recorded governance decision;
+6. fresh production certification after merge.

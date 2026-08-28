@@ -2,12 +2,48 @@
 
 Append concise records after meaningful project sessions. This is continuity context, not a replacement for Git history.
 
+## 2026-08-28 — Full repository audit, authority cutover salvage and stale-state cleanup
+
+### Findings
+- Production `main` remained at `80b31eede7d44b7412261aa8c9df994a4612a348` with the obsolete 51.11/26.67/22.22 Apex/Official-EP/AIrsenal blend.
+- Current canonical artifacts were safely fail-closed (`recommendation=null`) because stale FPL Core enrichment was incorrectly treated as production-critical.
+- FPL Core data itself was healthy: workflow run `33133887512` validated candidate `b38c871765cb963223cbf471b28e65c4d58e9b64` at 616/616 Official IDs and passed upstream checks. Failure was only `ModuleNotFoundError: apex_fpl` in publication invalidation.
+- Tracked AIrsenal forecasts were generated 26 August and require refresh before final execution.
+- Calibration remained at 0 completed genuine Gameweeks / 0 active rows, and no tracked `data/history/deadlines` archive existed despite GW1 being complete.
+- `PROJECT_STATUS.md`, `CURRENT_STATE.md`, architecture/model/source docs and active GW1 workflow contained obsolete pre-GW1/ensemble assumptions.
+- PR #66 was superseded V1 archaeology; the V2 #67–#88 stack remained withheld and its later heads still assumed the obsolete fixed blend.
+
+### Implementation
+- Recovered the already-tested final authority cutover without rebuilding it.
+- Production statistical xP is now one-hot AIrsenal; Apex proprietary xP remains shadow and may not silently substitute for missing AIrsenal.
+- Core/Understat/internal fixture models are enrichment/shadow dependencies rather than false canonical-xP blockers.
+- Added prospective provider-ledger support and preserved shadow/production xP for later no-hindsight evaluation.
+- Repaired Core refresh by installing Apex and checking the publication import before invalidation/publication.
+- Archived and removed `gw1-final-2026.yml`; removed the temporary cutover executor; updated workflow governance.
+- Rewrote current status, master context, architecture, canonical policy, data sources, model spec, operating manual, roadmap, known issues and README to remove contradictory/stale authority claims.
+- Updated upstream metadata so FPL Core is explicitly enrichment-only; did not fabricate a newer validated Core pin.
+- Recorded durable authority/dependency decisions in `APEX_DECISIONS.md`.
+
+### Evidence
+Cutover run `33154285784` completed successfully including:
+- deterministic cutover application;
+- repaired publication import;
+- focused authority/dependency regressions;
+- full repository tests;
+- obsolete-production-authority audit;
+- source-only branch publication.
+
+The validated cutover had previously demonstrated 127/127 targeted tests and 384/384 full repository tests green before cleanup edits.
+
+### Remaining boundary
+No production recommendation is claimed yet. Final branch cleanup must pass CI/governance, merge to `main`, then fresh Core enrichment, AIrsenal and Apex Unified runs must certify one current sealed action. Prospective deadline archiving must also be repaired before model promotion evidence can accumulate.
+
 ## 2026-08-11 — Decision-surface architecture repair, PR 1
 
 ### Finding
 Pinnacle and Elite independently reran the live pipeline. Canonical publication
 checked only Official FPL hashes, so other evidence, configuration and projections
-could drift while still being described as the same surface.
+could drift while still be described as the same surface.
 
 ### Implementation
 - Added a content-addressed, credential-safe decision bundle.

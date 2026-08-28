@@ -7,17 +7,25 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_refresh_core_installs_candidate_validation_dependencies_before_checks():
+def test_refresh_core_installs_project_before_validation_and_invalidation():
     workflow = (ROOT / ".github/workflows/refresh-core-pin.yml").read_text(
         encoding="utf-8"
     )
-    install = "python -m pip install pandas requests"
+    install = "python -m pip install -e ."
+    import_check = (
+        'python -c "from apex_fpl.services.publication import '
+        "invalidate_published_decision; print('apex package import ok')\""
+    )
     assert install in workflow
+    assert import_check in workflow
     assert workflow.index(install) < workflow.index(
         "python scripts/validate_core_candidate.py"
     )
     assert workflow.index(install) < workflow.index(
         "python scripts/check_upstreams.py"
+    )
+    assert workflow.index(install) < workflow.index(
+        "python scripts/invalidate_published_decision.py"
     )
 
 

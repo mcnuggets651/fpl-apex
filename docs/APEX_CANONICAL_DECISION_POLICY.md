@@ -1,112 +1,114 @@
 # Apex FPL — Canonical Decision Policy
 
-This document defines the **only user-facing team-selection policy** for Apex. Internal models and diagnostics may disagree, but they never create a second recommendation.
+This document defines the **only user-facing team/action-selection policy** for Apex. Internal forecasts and diagnostics may disagree, but they never create a second recommendation.
 
-## Canonical contract
+## Canonical files
 
-The only published/user-facing recommendation is:
+The only published/user-facing decision contract is:
 
+- `data/generated/apex_answer_context.json`
 - `data/generated/apex_recommendation_latest.json`
 - `data/generated/apex_recommendation_latest.md`
-- `data/generated/apex_answer_context.json`
 
-The only production command is:
+The production entrypoint is:
 
 ```bash
 python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
 ```
 
-`pinnacle_latest.*`, `elite_latest.*`, CVaR, solver parity, exact-horizon frontiers and regret reports are **internal diagnostic/challenger evidence only**. They must never be presented as competing Apex teams.
+If the current answer context is not safe/actionable, Apex has **no recommendation**. Historical squads, `pinnacle_latest.*`, `elite_latest.*`, old `apex_latest.*` files and conversation memory are not fallback authority.
+
+## Forecast authority
+
+Production statistical expected points are supplied by **AIrsenal**.
+
+In the production configuration:
+
+- canonical `xp` equals validated `airsenal_xp` exactly;
+- Official FPL remains factual rather than statistical xP authority;
+- Apex proprietary xP is shadow-only;
+- FPL Core and Understat are enrichment/shadow sources;
+- no subjective fixed blend is permitted;
+- missing/stale/incomplete AIrsenal coverage blocks production rather than falling back to Apex.
+
+Any future ensemble or alternate provider must be promoted through prospective evidence and explicit governance. Production weights must not be hand-selected to obtain a preferred squad.
 
 ## One-way decision hierarchy
 
-1. Build the current canonical player/fixture universe from Official FPL.
-2. Reconcile and enrich every official player with validated FPL Core, AIrsenal, historical, preseason, tactical, news and fixture evidence.
-3. Produce the canonical ensemble expected-points surface (`xp`).
-4. Seal that exact surface, evidence lineage, settings, upstream pins and team state into one decision bundle.
-5. Run the static exact-horizon shortlist, exact mechanics, CVaR, regret, parity and Elite layers as internal diagnostics.
-6. Assemble a **non-actionable staging packet**. At this point `ready_to_act=false` and `recommendation=null` by design.
-7. Run the all-player truth gate over 100% of the Official FPL universe. Hard facts and required player/Gameweek forecast coverage must be complete; ordinal set-piece order may not masquerade as a literal share.
-8. Apply exactly one final strategy selector:
-   - before GW1: `adaptive_gw1_launch_with_transfer_option_value`;
-   - after GW1/current-team state exists: `receding_horizon_current_team_maximum_ev`.
-9. Resolve exact current-Gameweek XI, captain, vice-captain and bench mechanics for that final 15.
-10. Rebuild the selected-player evidence dossier for **that exact final XV/XI/captain**, not for an earlier diagnostic squad.
-11. Build `apex_answer_context.json` from the final selector, all-player truth result and final evidence identities.
-12. Only if every final gate passes may Apex set `ready_to_act=true`.
+1. Acquire and seal the current Official FPL player/fixture universe.
+2. Validate complete fresh AIrsenal player/Gameweek projection coverage for the governed horizon.
+3. Ingest current football evidence and optional enrichment with explicit provenance/health.
+4. Build one canonical projection/evidence/team-state surface.
+5. Seal it into one DecisionBundle.
+6. Run static exact-horizon, CVaR, regret, parity and Elite surfaces as diagnostics on that same bundle.
+7. Assemble a non-actionable staging packet (`ready_to_act=false`, `recommendation=null`).
+8. Run all-player factual/projection truth checks.
+9. Apply exactly one final strategy selector:
+   - historical pre-GW1: `adaptive_gw1_launch_with_transfer_option_value`;
+   - current in-season: `receding_horizon_current_team_maximum_ev`.
+10. Resolve exact current-Gameweek XI, captain, vice-captain, bench and autosub mechanics.
+11. Rebuild evidence for the actual selected 15/action.
+12. Build `apex_answer_context.json` and expose a recommendation only when every required final gate passes.
 
-No other script or selector may create an actionable canonical team.
+No other path may set `ready_to_act=true`.
 
-## Pre-GW1 selector
+## Current in-season selector
 
-`adaptive_gw1_launch_with_transfer_option_value` is deliberately GW1-first.
+GW1 is complete. Normal production now uses `receding_horizon_current_team_maximum_ev`.
 
-- Exact GW1 expected points are the primary launch objective.
-- The best exact GW1 squad defines the ceiling.
-- Only squads inside the configured near-equivalent GW1 tolerance may remain eligible.
-- Future legal transfer option value may break ties/near-ties inside that band.
-- Future transfer paths are contingencies, not commitments.
-- Current prices are used; speculative future price changes are not invented.
+It starts from the manager's actual permanent squad, bank, realised selling values and free-transfer state. The engine may solve a longer legal path to value future flexibility, but only the freshly solved **first action** is executable. Future moves are contingencies and must be rebuilt after new prices, matches, injuries, transfers and role information.
 
-This prevents the old error of selecting a frozen 15 merely because it looks best over eight held Gameweeks.
+## Historical pre-GW1 selector
 
-## In-season selector
+`adaptive_gw1_launch_with_transfer_option_value` remains retained for replay/history. It is GW1-first: exact launch expected points define the primary ceiling, and future transfer option value may differentiate only near-equivalent launch squads. The expired one-off GW1 production workflow is archived and this selector is not the current live mode.
 
-`receding_horizon_current_team_maximum_ev` starts from the manager's actual permanent squad, bank, selling prices and free-transfer balance.
+## Static diagnostic surfaces
 
-- The full legal future path may be solved for option value.
-- Only the freshly solved **first action** is executable.
-- The resulting current-Gameweek 15 is exact-rescored for XI, captain, vice and autosubs.
-- Later moves are contingencies and must be rebuilt after new matches, injuries, transfers, roles, prices and news.
-
-## Static exact-horizon diagnostics
-
-The historical `authoritative_decision` key inside Pinnacle is retained for compatibility with existing diagnostic code. Its authority is now **local to the Pinnacle diagnostic layer only**. It cannot set `ready_to_act=true`, cannot own the final squad and cannot be used as the causal explanation for an adaptive/receding-horizon player selection.
+Pinnacle/static exact-horizon, Elite, CVaR, force/ban regret, captain stability and independent parity are internal evidence layers. They may challenge fragility or implementation, but they cannot publish a competing team or silently substitute a different objective.
 
 ## All-player truth contract
 
-For every current Official FPL player:
+For every current Official FPL player, production requires:
 
-- official ID, name, club, FPL position, price and status must be complete;
-- Official FPL identity is canonical;
-- required player/Gameweek projection pairs must be complete;
-- required AIrsenal player/Gameweek xP coverage must be complete;
-- FPL Core must account for every official player ID;
-- mutable sourced overrides require attributable provenance and freshness;
-- set-piece order is ordinal evidence only;
-- literal set-piece shares require explicit current sourced evidence;
-- future minutes, starting roles and xP remain forecasts and must be labelled as such.
+- unique Official ID;
+- complete current name/club/FPL-position/price/status factual mapping;
+- complete canonical player/Gameweek projection coverage;
+- complete required AIrsenal player/Gameweek coverage;
+- no identity conflict silently resolved against Official FPL;
+- explicit provenance/classification for decision-sensitive overrides;
+- no unsourced literal set-piece shares.
 
-Unknown future information remains uncertain; Apex must never manufacture precision to fill a gap.
+FPL Core no longer has to cover every current Official ID for production readiness because it is enrichment rather than canonical-xP authority. Its coverage remains monitored and disclosed.
 
 ## Evidence eligibility is EV-first
 
-Expected minutes, start probability, appearance probability and role uncertainty are already inputs to expected value. They are **not** converted into a second hidden safety preference.
+The production eligibility policy is **adverse-evidence-only** before solve.
 
-A player may be excluded from XI/captain eligibility only by attributable adverse evidence such as official adverse status, decision-grade negative evidence or an unresolved current contradiction. Mere numerical uncertainty does not make a higher-EV player ineligible.
+Expected minutes, start probability, appearance probability and role uncertainty are already forecast inputs. They must not be converted into a second hidden preference for supposedly safer players.
 
-## What does not enter the maximum-points objective
+A player may be made XI/captain-ineligible only by attributable adverse evidence such as Official adverse status/suspension, decision-grade negative evidence or an unresolved material current contradiction. Numerical uncertainty by itself is diagnostic rather than exclusionary.
 
-- ownership / effective ownership;
-- reputation or popularity;
-- a standalone value/points-per-million score;
-- a standalone weighted Elite score;
-- arbitrary minutes-certainty bonuses;
-- independent random-player Monte Carlo noise.
+## What does not enter the pure maximum-points objective
 
-Ownership belongs only in an explicitly different rank-management objective, never in the pure maximum-points recommendation.
+- ownership/effective ownership;
+- reputation/popularity;
+- standalone points-per-million/value scores;
+- standalone Elite score;
+- arbitrary minutes-security bonuses;
+- manually remembered prices or player roles;
+- subjective forecast-provider weights.
 
-## Promotion rule for future model changes
+## Promotion rule
 
-After the architecture freeze, a forecast/model change is not promoted because it looks plausible. It requires a bounded challenger, no-hindsight/out-of-sample evidence where available, decision-level impact analysis and explicit governance approval. Player-specific hand tuning is prohibited.
+A forecast/model/provider change is not promoted because it looks plausible or produces a preferred player. It requires a frozen challenger, genuine no-hindsight prospective outcomes, governed evaluation, decision-level impact analysis and explicit approval. Current governance requires at least 8 genuine completed Gameweeks and >=200 active rows before production promotion can be considered.
 
 ## ChatGPT operating rule
 
-When the user asks for “the Apex team”, “best team”, “recommendation”, or equivalent:
+When asked for “the Apex team”, “best team”, “transfer”, or equivalent:
 
 1. Load `data/generated/apex_answer_context.json`.
-2. If `safe_to_act` is false, report the blockers instead of inventing a team.
-3. If true, present `production_result` as **the** Apex recommendation.
-4. Explain selections using the final selector and `final_selected_player_evidence` only.
-5. Use static exact-horizon/Pinnacle/Elite/CVaR outputs only to explain diagnostics or fragility.
-6. Show a forced scenario only when explicitly requested, and label it as a scenario rather than a second recommendation.
+2. Verify freshness, bundle/snapshot identity, source health, all-player truth, solver/parity, exact mechanics and final evidence identity.
+3. If `safe_to_act=false` or `ready_to_act=false`, report blockers and **do not invent a team**.
+4. If actionable, present `production_result` as the one Apex recommendation.
+5. Explain selections using the final selector and final selected-player evidence.
+6. Show forced alternatives only when explicitly requested and label them as scenarios.

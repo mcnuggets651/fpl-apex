@@ -65,6 +65,10 @@ def test_missing_parity_alone_bootstraps_independent_solver_stage():
     assert "scripts/export_open_solver.py" in text
 
 
-def test_final_deadline_run_uses_stricter_core_age_limit():
-    _, text = _workflow("gw1-final-2026.yml")
+def test_expired_gw1_deadline_contract_is_preserved_only_in_archive():
+    active = ROOT / ".github" / "workflows" / "gw1-final-2026.yml"
+    archived = ROOT / "archive" / "workflows" / "gw1-final-2026.yml"
+    assert not active.exists()
+    text = archived.read_text(encoding="utf-8")
     assert 'APEX_MAX_CORE_AGE_HOURS: "12"' in text
+    assert "scripts/run_apex.py" in text

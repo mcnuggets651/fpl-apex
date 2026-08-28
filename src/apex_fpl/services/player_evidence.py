@@ -64,12 +64,12 @@ def build_selected_player_evidence(
     captain_id: int,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Build source-level dossiers and the exact publication coverage gate.
+    """Build source-level dossiers and a decision-specific publication gate.
 
-    A healthy HTTP feed is not evidence about a selected player. Coverage requires
-    a current, attributable role/lineup, availability or set-piece item from a
-    configured trusted tier. Statistical inference remains visible but cannot
-    satisfy the deadline-evidence gate by itself.
+    Feed health by itself is not player evidence. Stable, high-confidence selections do
+    not require an arbitrary number of news feeds to be online. Conversely, a selected
+    high-uncertainty starter/captain may not pass merely because unrelated sources are
+    healthy: that player must have current decision-grade evidence of their own.
     """
     now_value = pd.Timestamp(now or datetime.now(timezone.utc))
     now_utc = (
@@ -252,6 +252,15 @@ def build_selected_player_evidence(
         for row in dossiers
         if row["in_starting_xi"] and not row["xi_evidence_eligible"]
     ]
+    captain_high_uncertainty = bool(captain and captain["high_uncertainty_starter"])
+    captain_decision_grade_required = captain_high_uncertainty
+    captain_decision_grade_ok = bool(
+        captain
+        and (
+            not captain_decision_grade_required
+            or captain["has_decision_grade_evidence"]
+        )
+    )
     coverage = {
         "selected_players": len(dossiers),
         "selected_players_with_current_evidence": len(covered),
@@ -263,6 +272,8 @@ def build_selected_player_evidence(
         "captain_has_decision_grade_evidence": bool(
             captain and captain["has_decision_grade_evidence"]
         ),
+        "captain_decision_grade_evidence_required": captain_decision_grade_required,
+        "captain_decision_grade_evidence_ok": captain_decision_grade_ok,
         "captain_minutes_confidence_floor": CAPTAIN_MINUTES_CONFIDENCE_FLOOR,
         "high_uncertainty_starter_ids": [row["player_id"] for row in high_uncertainty],
         "high_uncertainty_starters_missing_evidence": missing_high_uncertainty,
@@ -274,7 +285,9 @@ def build_selected_player_evidence(
         "ready": bool(
             captain
             and captain["captain_evidence_eligible"]
+            and captain_decision_grade_ok
             and not selected_xi_ineligible
+            and not missing_high_uncertainty
         ),
     }
     return {"contract": "apex-player-evidence-v2", "coverage": coverage, "dossiers": dossiers}

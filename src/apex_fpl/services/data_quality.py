@@ -16,10 +16,9 @@ OFFICIAL_STRENGTH_COLUMNS = (
     "strength_defence_away",
 )
 
-# FPL can append new players between FPL Core refreshes. Core remains a required
-# enrichment source, but Official FPL is canonical identity and the complete Apex
-# projection surface is independently required. Permit only a tiny *trailing* ID
-# block so this cannot hide arbitrary holes inside Core's established universe.
+# FPL can append new players between enrichment refreshes. Core is valuable context,
+# but is not a canonical-xP dependency while the production champion is independent of
+# it. We still validate and disclose every gap; severity follows actual dependency.
 MAX_CORE_REGISTRATION_LAG_PLAYERS = 5
 MIN_CORE_REGISTRATION_LAG_COVERAGE = 0.99
 
@@ -91,26 +90,26 @@ def _projection_pairs_complete(
     player_ids: set[int],
     gameweeks: list[int],
 ) -> bool:
+    """Return whether every requested player/GW has a finite canonical xP value.
+
+    Projection confidence is deliberately not part of this hard contract. A provider
+    may expose no calibrated confidence surface; manufacturing one merely to pass a
+    coverage gate would be worse than reporting confidence as unavailable.
+    """
     if not player_ids:
         return True
-    if not {"player_id", "gw", "xp", "projection_confidence"}.issubset(projections.columns):
+    if not {"player_id", "gw", "xp"}.issubset(projections.columns):
         return False
     rows = projections.copy()
     rows["player_id"] = pd.to_numeric(rows["player_id"], errors="coerce")
     rows["gw"] = pd.to_numeric(rows["gw"], errors="coerce")
     rows["xp"] = pd.to_numeric(rows["xp"], errors="coerce")
-    rows["projection_confidence"] = pd.to_numeric(
-        rows["projection_confidence"], errors="coerce"
-    )
     rows = rows[
         rows["player_id"].isin(player_ids)
         & rows["gw"].isin(gameweeks)
         & rows["xp"].notna()
         & np.isfinite(rows["xp"])
         & rows["xp"].ge(0)
-        & rows["projection_confidence"].notna()
-        & np.isfinite(rows["projection_confidence"])
-        & rows["projection_confidence"].between(0, 1, inclusive="both")
     ]
     pairs = set(
         (int(pid), int(gw))
@@ -135,7 +134,7 @@ def _core_playerstats_check(
     are a tiny trailing block above the largest Core ID and those players already have
     a complete canonical projection surface. This distinguishes the normal race where
     Official FPL has just registered new players from arbitrary data loss inside Core.
-    No missing Core statistic is fabricated; the Official/Apex path remains explicit.
+    No missing Core statistic is fabricated.
     """
     core_ids = _core_ids(core)
     coverage = _core_coverage(core, valid_ids)
@@ -143,7 +142,7 @@ def _core_playerstats_check(
         return QualityCheck(
             "fpl_core_playerstats",
             "pass",
-            True,
+            False,
             f"official-player coverage={coverage:.1%}",
             coverage,
             minimum_core_coverage,
@@ -165,7 +164,7 @@ def _core_playerstats_check(
         return QualityCheck(
             "fpl_core_playerstats",
             "fallback",
-            True,
+            False,
             (
                 f"official-player coverage={coverage:.1%}; bounded trailing Official "
                 f"registration lag missing_ids={missing}; Core values remain absent "
@@ -194,7 +193,7 @@ def _core_playerstats_check(
     return QualityCheck(
         "fpl_core_playerstats",
         "fail",
-        True,
+        False,
         detail,
         coverage,
         minimum_core_coverage,
@@ -286,7 +285,7 @@ def _fixture_surface_check(
         return QualityCheck(
             "fixture_projection_surface",
             "fail",
-            True,
+            False,
             f"official FPL has no fixtures in requested Gameweeks {gameweeks}",
             0.0,
             1.0,
@@ -297,7 +296,7 @@ def _fixture_surface_check(
         return QualityCheck(
             "fixture_projection_surface",
             "fail",
-            True,
+            False,
             f"fixture model missing required rows/columns: {missing}",
             0.0,
             1.0,
@@ -317,7 +316,7 @@ def _fixture_surface_check(
     return QualityCheck(
         "fixture_projection_surface",
         "pass" if coverage >= 1.0 else "fail",
-        True,
+        False,
         f"{len(unique)}/{expected} official team-fixture sides have finite goal/clean-sheet priors",
         coverage,
         1.0,
@@ -329,8 +328,9 @@ def _projection_surface_check(
     valid_ids: set[int],
     gameweeks: list[int],
 ) -> QualityCheck:
+    """Hard production coverage is finite canonical xP, not synthetic confidence."""
     expected = len(valid_ids) * len(gameweeks)
-    required = {"player_id", "gw", "xp", "projection_confidence"}
+    required = {"player_id", "gw", "xp"}
     if projections.empty or not required.issubset(projections.columns):
         missing = sorted(required - set(projections.columns))
         return QualityCheck(
@@ -342,20 +342,22 @@ def _projection_surface_check(
             1.0,
         )
     rows = projections[projections["gw"].isin(gameweeks)].copy()
-    numeric = rows[["xp", "projection_confidence"]].apply(pd.to_numeric, errors="coerce")
-    valid = (
-        numeric.notna().all(axis=1)
-        & np.isfinite(numeric).all(axis=1)
-        & numeric["xp"].ge(0)
-        & numeric["projection_confidence"].between(0, 1, inclusive="both")
-    )
+    xp = pd.to_numeric(rows["xp"], errors="coerce")
+    valid = xp.notna() & np.isfinite(xp) & xp.ge(0)
     pairs = rows.loc[valid, ["player_id", "gw"]].drop_duplicates()
     coverage = min(len(pairs) / expected, 1.0) if expected else 0.0
+
+    detail = f"{len(pairs)}/{expected} official player/Gameweek pairs have finite canonical xP"
+    if "projection_confidence" in rows:
+        confidence = pd.to_numeric(rows["projection_confidence"], errors="coerce")
+        calibrated = confidence.notna() & np.isfinite(confidence) & confidence.between(0, 1, inclusive="both")
+        detail += f"; calibrated confidence coverage={float(calibrated.mean()) if len(rows) else 0.0:.1%}"
+
     return QualityCheck(
         "player_projection_surface",
         "pass" if coverage >= 1.0 else "fail",
         True,
-        f"{len(pairs)}/{expected} official player/Gameweek pairs have finite projections",
+        detail,
         coverage,
         1.0,
     )
@@ -396,8 +398,8 @@ def assess_data_quality(
             QualityCheck(
                 "official_team_strength",
                 "fail",
-                True,
-                f"{strength_detail}; no validated fallback fixture model is active",
+                False,
+                f"{strength_detail}; internal fixture-strength enrichment unavailable; canonical champion xP remains independent",
                 0.0,
                 1.0,
             )
@@ -425,6 +427,6 @@ def assess_data_quality(
         f"data quality {check.status}: {check.name}: {check.detail}"
         for check in checks
         if not (check.required and check.status == "fail")
-        and check.status in {"warning", "unavailable", "fallback"}
+        and check.status in {"fail", "warning", "unavailable", "fallback"}
     )
     return DataQualityAssessment(not blockers, blockers, warnings, tuple(checks))

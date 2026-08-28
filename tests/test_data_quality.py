@@ -93,7 +93,7 @@ def test_all_zero_official_strength_is_not_accepted_as_real_evidence():
     assert "zero/non-positive" in detail
 
 
-def test_invalid_official_strength_requires_a_validated_fallback():
+def test_invalid_internal_strength_warns_when_canonical_projection_is_complete():
     official = _official(0.0)
     quality = assess_data_quality(
         official,
@@ -104,8 +104,8 @@ def test_invalid_official_strength_requires_a_validated_fallback():
         [1],
         fixture_fallback_ok=False,
     )
-    assert not quality.ready
-    assert any("official_team_strength" in blocker for blocker in quality.blockers)
+    assert quality.ready
+    assert any("official_team_strength" in warning for warning in quality.warnings)
 
 
 def test_invalid_official_strength_is_disclosed_when_fallback_is_complete():
@@ -125,7 +125,7 @@ def test_invalid_official_strength_is_disclosed_when_fallback_is_complete():
     assert quality.warnings
 
 
-def test_required_fpl_core_player_id_coverage_is_100_percent():
+def test_fpl_core_player_id_gap_is_visible_but_optional_to_canonical_airsenal():
     official = _official(1000.0)
     quality = assess_data_quality(
         official,
@@ -137,11 +137,13 @@ def test_required_fpl_core_player_id_coverage_is_100_percent():
         fixture_fallback_ok=True,
     )
 
-    assert quality.ready is False
+    assert quality.ready is True
     core = next(check for check in quality.checks if check.name == "fpl_core_playerstats")
     assert core.minimum_coverage == 1.0
     assert core.coverage == 0.5
     assert core.status == "fail"
+    assert core.required is False
+    assert any("fpl_core_playerstats" in warning for warning in quality.warnings)
 
 
 def test_small_append_only_core_registration_lag_uses_explicit_fallback():
@@ -182,9 +184,10 @@ def test_internal_core_hole_never_qualifies_as_registration_lag():
         fixture_fallback_ok=True,
     )
 
-    assert quality.ready is False
+    assert quality.ready is True
     check = next(row for row in quality.checks if row.name == "fpl_core_playerstats")
     assert check.status == "fail"
+    assert check.required is False
     assert "not an append-only trailing registration block" in check.detail
 
 

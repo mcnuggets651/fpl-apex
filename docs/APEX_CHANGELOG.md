@@ -2,6 +2,20 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-08-28 — Production forecast-authority cutover and stale-state cleanup
+- Replaced the hand-set Apex/Official-EP/AIrsenal production blend with one-hot validated AIrsenal statistical xP authority.
+- Preserved Apex proprietary xP as a shadow forecast and prohibited silent fallback when canonical AIrsenal coverage is absent.
+- Reclassified FPL Core and Understat as enrichment/shadow dependencies while preserving health, provenance and candidate validation.
+- Fixed the FPL Core refresh failure by installing Apex before publication invalidation and verifying the publication import path.
+- Hardened Understat validation so HTTP-success/empty football payloads are unhealthy.
+- Added provider-level prospective ledger support and preserved production/shadow xP in the learning archive path.
+- Archived the expired `gw1-final-2026.yml` workflow and removed the temporary cutover executor.
+- Updated workflow governance for the post-GW1 active surface and the repaired Core packaging contract.
+- Replaced stale pre-GW1/current-team documentation across Project Status, Current State, Master Context, Architecture, Canonical Policy, Data Sources, Model Spec, Operating Manual, Roadmap and Known Issues.
+- Recorded the V2 stack as withheld until it is rebased/requalified against the new production forecast authority.
+- Certification before cleanup: 127/127 authority/dependency tests and 384/384 full repository tests passed in GitHub Actions.
+- Final production recommendation remains withheld until the cutover is merged and fresh Official FPL + AIrsenal + Apex Unified execution completes.
+
 ## 2026-08-11 — Decision-grade evidence ingestion candidate
 - Added structured official-article publication/body extraction and bounded same-host
   HTTPS hydration for official HTML news indexes.

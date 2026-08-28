@@ -57,6 +57,10 @@ def decode_league_payload(payload: str | bytes | dict) -> dict:
         raise UnderstatDataError("Understat league payload has no dates list")
     if not isinstance(data.get("teams"), dict):
         raise UnderstatDataError("Understat league payload has no teams object")
+    if not data["dates"]:
+        raise UnderstatDataError("Understat league payload dates list is empty")
+    if not data["teams"]:
+        raise UnderstatDataError("Understat league payload teams object is empty")
     return data
 
 
