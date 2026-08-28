@@ -26,6 +26,7 @@ from apex_fpl.control.reference_solver_planning_qualification import (
 from apex_fpl.control.reference_solver_registry import ReferenceSolverRegistry
 from apex_fpl.core.reference_solver_planning_io import REFERENCE_SOLVER_PLANNING_CONTRACT
 from apex_fpl.core.reference_solver_planning_qualification import (
+    PLANNING_REFERENCE_SOLVER_REQUIRED_COVERAGE,
     PlanningReferenceSolverQualificationCase,
     PlanningReferenceSolverQualificationCorpus,
 )
@@ -72,13 +73,13 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
     Qualification deliberately uses two focused retained cases instead of one combinatorial
     mega-case:
 
-    * the exact publication fixture is a 15-player FULL_OFFICIAL chip-surface case;
-    * a separate GW6-7 case adds one £5.1m MID, consumes the current chip set historically,
-      and proves FT banking plus realised transfer finance.
+    * the exact publication fixture proves the FULL_OFFICIAL chip/action surface;
+    * a focused GW6-7 case proves FT banking plus realised transfer finance.
 
-    Coverage remains derived from sealed requests/results and is aggregated across the corpus.
-    The publication certificate is then built for the exact current PlanningResult. This is
-    synthetic mechanism evidence only and never production qualification evidence.
+    Coverage is derived from sealed requests/results and aggregated across the corpus. The
+    qualification must pass both cases and every mandatory derived coverage tag before any
+    publication certificate/authorization is created. This is synthetic mechanism evidence only
+    and never production qualification evidence.
     """
 
     verified = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
@@ -167,6 +168,15 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         corpus_artifact_id=corpus_artifact_id,
         store=store,
     )
+    if qualification.passed_case_count != 2:
+        raise AssertionError("planning qualification must retain both publication and finance cases")
+    missing_coverage = set(PLANNING_REFERENCE_SOLVER_REQUIRED_COVERAGE) - set(
+        qualification.coverage_tags
+    )
+    if missing_coverage:
+        raise AssertionError(
+            "planning qualification lost mandatory coverage: " + ",".join(sorted(missing_coverage))
+        )
     qualification_artifact_id = store_planning_reference_solver_algorithmic_qualification(
         qualification,
         store=store,
