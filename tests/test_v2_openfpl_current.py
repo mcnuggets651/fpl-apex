@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 import pytest
@@ -19,6 +18,7 @@ from apex.forecast.openfpl_current import (
     training_policy_errors,
     training_policy_sha256,
 )
+from apex.forecast.openfpl_governance import method_contract_sha256
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,10 +33,14 @@ def governed_policy() -> dict:
     )
 
 
-def method_contract_sha256() -> str:
-    return hashlib.sha256(
-        (ROOT / "config/openfpl_method_contract.yaml").read_bytes()
-    ).hexdigest()
+def governed_method_contract() -> dict:
+    return yaml.safe_load(
+        (ROOT / "config/openfpl_method_contract.yaml").read_text(encoding="utf-8")
+    )
+
+
+def governed_method_contract_sha256() -> str:
+    return method_contract_sha256(governed_method_contract())
 
 
 def current_manifest() -> dict:
@@ -52,7 +56,7 @@ def current_manifest() -> dict:
         "training_max_gameweek": 10,
         "training_policy_version": CURRENT_TRAINING_POLICY_VERSION,
         "training_policy_sha256": training_policy_sha256(governed_policy()),
-        "method_contract_sha256": method_contract_sha256(),
+        "method_contract_sha256": governed_method_contract_sha256(),
         "minimum_exact_rule_gameweeks": CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS,
         "exact_rule_gameweeks": list(range(1, 11)),
         "feature_contract_version": CURRENT_FEATURE_CONTRACT_VERSION,
@@ -73,7 +77,7 @@ def manifest_errors(manifest: dict) -> tuple[str, ...]:
         target_gameweek=11,
         source_snapshot="official-seal",
         expected_training_policy_sha256=training_policy_sha256(governed_policy()),
-        expected_method_contract_sha256=method_contract_sha256(),
+        expected_method_contract_sha256=governed_method_contract_sha256(),
     )
 
 
