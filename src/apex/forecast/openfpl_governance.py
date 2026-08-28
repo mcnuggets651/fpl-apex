@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +21,23 @@ TRAINING_NOTEBOOK_MARKERS = (
     "KBinsDiscretizer",
     "compute_sample_weight",
 )
+
+
+def governance_mapping_sha256(payload: dict[str, Any]) -> str:
+    """Hash governed semantic content independently of YAML formatting/order."""
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def method_contract_sha256(contract: dict[str, Any]) -> str:
+    """Return the canonical identity digest for an OpenFPL method contract."""
+    return governance_mapping_sha256(contract)
 
 
 def published_code_inventory(root: Path) -> list[str]:
