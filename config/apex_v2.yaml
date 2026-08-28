@@ -1,0 +1,31 @@
+schema_version: 1
+season: 2026-2027
+entry_id: 63984
+max_horizon: 8
+snapshot_dir: data/v2/snapshots
+release_prefix: apex-v2
+providers:
+  - id: airsenal
+    role: CHAMPION
+    priority: 0
+    serve_authorized: true
+    predictive_status: INSUFFICIENT_HISTORY
+    max_age_hours: 18
+    requested_horizons: [1,2,3,4,5,6,7,8]
+    path: acquisition/providers/airsenal.csv
+  - id: dastan
+    role: STANDBY
+    priority: 10
+    serve_authorized: false
+    predictive_status: INSUFFICIENT_HISTORY
+    max_age_hours: 18
+    requested_horizons: [1]
+    path: acquisition/providers/dastan.csv
+  - id: openfpl
+    role: STANDBY
+    priority: 20
+    serve_authorized: false
+    predictive_status: INSUFFICIENT_HISTORY
+    max_age_hours: 18
+    requested_horizons: [1]
+    path: acquisition/providers/openfpl.csv

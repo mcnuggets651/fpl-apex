@@ -1,0 +1,136 @@
+name: Apex V2 Production
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apex-v2-production
+  cancel-in-progress: false
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Apex V2 tooling
+        run: pip install -e '.[dev]'
+
+      - name: Open immutable attempt intent
+        id: intent
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_KEY="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          STARTED="$(apex-v2 intent --run-id "$RUN_KEY" --season 2026-2027 --gameweek 0 --code-sha "$GITHUB_SHA")"
+          echo "run_key=$RUN_KEY" >> "$GITHUB_OUTPUT"
+          echo "started=$STARTED" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve pinned AIrsenal
+        id: airsenal
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          source = json.load(open("upstreams.lock.json", encoding="utf-8"))["sources"]["airsenal"]
+          print(f"repository={source['repository']}")
+          print(f"sha={source['commit']}")
+          PY
+
+      - name: Cache AIrsenal database
+        uses: actions/cache@v4
+        with:
+          path: .airsenal
+          key: ${{ runner.os }}-apex-v2-airsenal-${{ steps.airsenal.outputs.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-apex-v2-airsenal-${{ steps.airsenal.outputs.sha }}-
+
+      - name: Generate fresh AIrsenal candidate
+        env:
+          AIRSENAL_HOME: ${{ github.workspace }}/.airsenal
+          AIRSENAL_DB_FILE: ${{ github.workspace }}/.airsenal/data.db
+          FPL_TEAM_ID: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip uv
+          mkdir -p workers acquisition/providers "$AIRSENAL_HOME"
+          git clone --filter=blob:none "https://github.com/${{ steps.airsenal.outputs.repository }}.git" workers/airsenal
+          git -C workers/airsenal checkout --detach "${{ steps.airsenal.outputs.sha }}"
+          (cd workers/airsenal && uv sync)
+          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
+            (cd workers/airsenal && uv run airsenal_setup_initial_db --fpl_team_id 1)
+          fi
+          (cd workers/airsenal && uv run python "$GITHUB_WORKSPACE/scripts/update_airsenal_worker.py")
+          python scripts/patch_airsenal_positions.py "$AIRSENAL_DB_FILE" workers/airsenal
+          (cd workers/airsenal && uv run python "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py" \
+            --db "$AIRSENAL_DB_FILE" --horizon 8 \
+            --output "$GITHUB_WORKSPACE/acquisition/providers/airsenal.csv")
+
+      - name: Acquire canonical truth and freeze all inputs once
+        id: freeze
+        shell: bash
+        run: |
+          set -euo pipefail
+          SNAPSHOT="$(apex-v2 acquire \
+            --config config/apex_v2.yaml \
+            --run-id '${{ steps.intent.outputs.run_key }}' \
+            --code-sha "$GITHUB_SHA" \
+            --run-started-at '${{ steps.intent.outputs.started }}')"
+          echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
+
+      - name: Solve frozen snapshot with network-independent decision code
+        env:
+          APEX_ALLOW_NETWORK_DURING_SOLVE: "0"
+        run: |
+          python scripts/check_v2_architecture.py
+          apex-v2 solve "${{ steps.freeze.outputs.snapshot }}" --output artifacts/v2/decision_bundle.json
+
+      - name: Publish immutable completed attempt
+        if: always() && steps.freeze.outputs.snapshot != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f artifacts/v2/decision_bundle.json ]; then
+            echo "Solve did not produce a final decision bundle; intent remains orphaned for evaluator escalation."
+            exit 1
+          fi
+          GW="$(python - <<'PY'
+          import json
+          print(json.load(open('artifacts/v2/decision_bundle.json'))['manifest']['target_gameweek'])
+          PY
+          )"
+          apex-v2 publish \
+            "${{ steps.freeze.outputs.snapshot }}" \
+            artifacts/v2/decision_bundle.json \
+            --season 2026-2027 \
+            --gameweek "$GW" \
+            --run-id '${{ steps.intent.outputs.run_key }}' \
+            --code-sha "$GITHUB_SHA"
+
+      - name: Upload diagnostic copy
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v2-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/v2/
+            acquisition/providers/
+          retention-days: 14
