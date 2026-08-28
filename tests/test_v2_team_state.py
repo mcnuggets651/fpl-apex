@@ -196,20 +196,26 @@ def test_unlimited_transfer_window_is_not_certified_as_ordinary_ft_state(monkeyp
     assert state.state_complete_for_transfers is False
 
 
-def test_no_secret_uses_public_last_deadline_state_and_stays_incomplete(monkeypatch):
-    monkeypatch.delenv("FPL_SESSION_COOKIE", raising=False)
-    monkeypatch.delenv("FPL_X_API_AUTHORIZATION", raising=False)
+def _public_session(picks):
     public_picks = {
-        "picks": [{"element": player_id} for player_id in range(1, 16)],
+        "picks": picks,
         "entry_history": {"bank": 4, "event_transfers": 0},
         "active_chip": None,
     }
     history = {"current": [{"event": 1, "event_transfers": 0}], "chips": []}
-    session = FakeSession(
+    return FakeSession(
         {
             "/api/entry/63984/event/1/picks/": FakeResponse(200, public_picks),
             "/api/entry/63984/history/": FakeResponse(200, history),
         }
+    )
+
+
+def test_no_secret_uses_public_last_deadline_state_and_stays_incomplete(monkeypatch):
+    monkeypatch.delenv("FPL_SESSION_COOKIE", raising=False)
+    monkeypatch.delenv("FPL_X_API_AUTHORIZATION", raising=False)
+    session = _public_session(
+        [{"element": player_id} for player_id in range(1, 16)]
     )
 
     state = fetch_team_state(
@@ -223,6 +229,29 @@ def test_no_secret_uses_public_last_deadline_state_and_stays_incomplete(monkeypa
     assert state.purchase_prices_tenths == {}
     assert state.selling_prices_tenths == {}
     assert all("headers" not in kwargs for _, kwargs in session.calls)
+
+
+def test_public_price_fields_still_cannot_certify_editable_transfer_state(monkeypatch):
+    monkeypatch.delenv("FPL_SESSION_COOKIE", raising=False)
+    monkeypatch.delenv("FPL_X_API_AUTHORIZATION", raising=False)
+    session = _public_session(
+        [
+            {"element": player_id, "purchase_price": 50, "selling_price": 50}
+            for player_id in range(1, 16)
+        ]
+    )
+
+    state = fetch_team_state(
+        63984,
+        official(),
+        session=session,
+        now=datetime(2026, 8, 28, 15, tzinfo=timezone.utc),
+    )
+
+    assert state is not None
+    assert len(state.purchase_prices_tenths) == 15
+    assert len(state.selling_prices_tenths) == 15
+    assert state.state_complete_for_transfers is False
 
 
 def complete_state() -> TeamState:
