@@ -20,14 +20,12 @@ from apex_fpl.control.production_planning_bundle import load_production_planning
 from apex_fpl.control.reference_solver_planning_qualification import (
     derive_planning_reference_solver_algorithmic_qualification,
     store_planning_reference_solver_algorithmic_qualification,
-    store_planning_reference_solver_qualification_case,
     store_planning_reference_solver_qualification_corpus,
 )
 from apex_fpl.control.reference_solver_registry import ReferenceSolverRegistry
 from apex_fpl.core.reference_solver_planning_io import REFERENCE_SOLVER_PLANNING_CONTRACT
 from apex_fpl.core.reference_solver_planning_qualification import (
     PLANNING_REFERENCE_SOLVER_REQUIRED_COVERAGE,
-    PlanningReferenceSolverQualificationCase,
     PlanningReferenceSolverQualificationCorpus,
 )
 from apex_fpl.core.reference_solver_worker import (
@@ -37,12 +35,14 @@ from apex_fpl.core.reference_solver_worker import (
 from apex_fpl.workers.reference_solver_planning import solve_planning_reference_request
 
 from reference_solver_planning_finance_case import store_finance_qualification_case
+from reference_solver_planning_surface_case import store_full_surface_qualification_case
 
 
-# The independent planning solver's dedicated exact-parity contract is certified at this
-# budget in test_v2_reference_solver_planning.py. Authority qualification must exercise the
-# same declared exact surface instead of silently imposing a lower, non-contractual cap.
-PLANNING_REFERENCE_EXACT_SEARCH_NODES = 5_000
+# Worker qualification uses compact mechanism cases and intentionally remains strict/bounded.
+PLANNING_REFERENCE_QUALIFICATION_SEARCH_NODES = 500
+# The actual 2-GW publication parity request uses the budget already certified by the dedicated
+# independent reference-solver contract in test_v2_reference_solver_planning.py.
+PLANNING_REFERENCE_PUBLICATION_SEARCH_NODES = 5_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,19 +74,19 @@ class SyntheticPlanningParityMaterial:
 
 
 def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningParityMaterial:
-    """Build mechanism-only replay-valid planning parity authority for tests.
+    """Build replay-valid planning parity authority for synthetic mechanism tests.
 
-    Qualification deliberately uses two focused retained cases instead of one combinatorial
-    mega-case:
+    Two different proofs are deliberately kept separate:
 
-    * the exact publication fixture proves the FULL_OFFICIAL chip/action surface;
-    * a focused GW6-7 case proves FT banking plus realised transfer finance.
+    * worker qualification uses a compact FULL_OFFICIAL/chip case plus a focused finance/banking
+      case, each bounded at 500 nodes and together covering every mandatory mechanism tag;
+    * the real publication PlanningResult is independently replayed at the already-certified
+      5,000-node exact budget and must be OPTIMAL, complete, zero-gap and exact trajectory parity.
 
-    Coverage is derived from sealed requests/results and aggregated across the corpus. The
-    qualification must pass both cases and every mandatory derived coverage tag before any
-    publication certificate/authorization is created. Both cases use the same 5,000-node exact
-    search budget already certified by the dedicated independent-planner parity contract. This is
-    synthetic mechanism evidence only and never production qualification evidence.
+    Authorization replay therefore re-derives the compact qualification corpus instead of
+    repeatedly solving the publication's combinatorial candidate set. No coverage, parity or
+    exactness requirement is removed. This is synthetic mechanism evidence only and never real
+    production qualification evidence.
     """
 
     verified = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
@@ -111,7 +111,7 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
     price = load_price_policy(policy.price_policy_artifact_id, store=store)
     candidate = load_candidate_policy(policy.candidate_policy_artifact_id, store=store)
 
-    request = build_planning_reference_solver_request(
+    publication_request = build_planning_reference_solver_request(
         result=verified.decision,
         manager_state=verified.manager_state,
         forecast=verified.forecast,
@@ -122,18 +122,21 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         chip_option_policy=chip_option,
         price_policy=price,
         candidate_policy=candidate,
-        max_search_nodes=PLANNING_REFERENCE_EXACT_SEARCH_NODES,
+        max_search_nodes=PLANNING_REFERENCE_PUBLICATION_SEARCH_NODES,
     )
-    stored_request = store_planning_reference_solver_request(request, store=store)
-
-    publication_case = PlanningReferenceSolverQualificationCase(
-        request_artifact_id=stored_request.artifact_id,
-        expected_planning_result_artifact_id=fixture.bundle.planning_result_artifact_id,
-        candidate_universe_artifact_id=fixture.bundle.candidate_universe_artifact_id,
-    )
-    publication_case_artifact_id = store_planning_reference_solver_qualification_case(
-        publication_case,
+    stored_publication_request = store_planning_reference_solver_request(
+        publication_request,
         store=store,
+    )
+
+    surface_case_artifact_id = store_full_surface_qualification_case(
+        store=store,
+        verified=verified,
+        continuation=continuation,
+        chip_option=chip_option,
+        price_policy=price,
+        candidate_policy=candidate,
+        max_search_nodes=PLANNING_REFERENCE_QUALIFICATION_SEARCH_NODES,
     )
     finance_case_artifact_id = store_finance_qualification_case(
         store=store,
@@ -142,13 +145,13 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         chip_option=chip_option,
         price_policy=price,
         candidate_policy=candidate,
-        max_search_nodes=PLANNING_REFERENCE_EXACT_SEARCH_NODES,
+        max_search_nodes=PLANNING_REFERENCE_QUALIFICATION_SEARCH_NODES,
     )
     corpus = PlanningReferenceSolverQualificationCorpus(
         season=fixture.bundle.season,
         max_horizon_gameweeks=policy.horizon_gameweeks,
         case_artifact_ids=tuple(
-            sorted((publication_case_artifact_id, finance_case_artifact_id))
+            sorted((surface_case_artifact_id, finance_case_artifact_id))
         ),
     )
     corpus_artifact_id = store_planning_reference_solver_qualification_corpus(
@@ -176,7 +179,7 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         store=store,
     )
     if qualification.passed_case_count != 2:
-        raise AssertionError("planning qualification must retain both publication and finance cases")
+        raise AssertionError("planning qualification must retain both surface and finance cases")
     missing_coverage = set(PLANNING_REFERENCE_SOLVER_REQUIRED_COVERAGE) - set(
         qualification.coverage_tags
     )
@@ -199,17 +202,30 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         champion_worker_id=qualified_worker.worker_id,
     )
 
-    run = solve_planning_reference_request(request)
+    run = solve_planning_reference_request(publication_request)
     if (
         not run.search_complete
         or run.gap is None
         or run.gap.numerator != 0
         or run.solver_status.value != "OPTIMAL"
+        or run.best_objective is None
+        or (
+            run.best_objective.numerator,
+            run.best_objective.denominator,
+        )
+        != (
+            verified.decision.selection_objective.numerator,
+            verified.decision.selection_objective.denominator,
+        )
+        or run.selected_action_id != verified.decision.selected_action.action_id
+        or run.selected_trajectory_id != verified.decision.selected_trajectory.trajectory_id
     ):
-        raise AssertionError("publication planning reference certificate must be exact and zero-gap")
+        raise AssertionError(
+            "publication planning reference certificate must be exact zero-gap action/trajectory parity"
+        )
     stored_run = store_planning_reference_solver_run(run, store=store)
     certificate = build_planning_reference_solver_certificate(
-        request_artifact_id=stored_request.artifact_id,
+        request_artifact_id=stored_publication_request.artifact_id,
         run_artifact_id=stored_run.artifact_id,
         worker_name=qualified_worker.worker_name,
         worker_version=qualified_worker.worker_version,
