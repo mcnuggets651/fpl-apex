@@ -24,10 +24,10 @@ def _store():
 
 @app.command()
 def intent(
-    run_id: str,
-    season: str,
-    gameweek: int,
-    code_sha: str,
+    run_id: str = typer.Option(..., "--run-id"),
+    season: str = typer.Option(..., "--season"),
+    gameweek: int = typer.Option(..., "--gameweek"),
+    code_sha: str = typer.Option(..., "--code-sha"),
     output: Path = Path("artifacts/v2/intent.json"),
     publish: bool = True,
 ):
@@ -118,10 +118,10 @@ def solve(
 def publish(
     snapshot: Path,
     decision: Path,
-    season: str,
-    gameweek: int,
-    run_id: str,
-    code_sha: str,
+    season: str = typer.Option(..., "--season"),
+    gameweek: int = typer.Option(..., "--gameweek"),
+    run_id: str = typer.Option(..., "--run-id"),
+    code_sha: str = typer.Option(..., "--code-sha"),
     artifact_dir: Path = Path("artifacts/v2"),
 ):
     from apex.runtime.releases import create_bundle_archive, write_attestation
