@@ -78,6 +78,7 @@ def _status(
     detail: str = "",
     configured: bool = True,
     version: str = "",
+    generated_at: str = "",
 ) -> SourceStatus:
     return SourceStatus(
         name=name,
@@ -85,6 +86,7 @@ def _status(
         detail=detail,
         configured=configured,
         version=version,
+        generated_at=generated_at,
     )
 
 
@@ -620,7 +622,14 @@ def run_pipeline(
                 max_age_hours=settings.max_airsenal_age_hours,
                 min_player_coverage=settings.min_airsenal_player_coverage,
             )
+            air_generated_at = ""
             if air_ok:
+                generations = pd.to_datetime(
+                    air.loc[air["gw"].isin(gws), "generated_at"],
+                    utc=True,
+                    errors="raise",
+                ).drop_duplicates()
+                air_generated_at = generations.iloc[0].isoformat()
                 proj = proj.merge(air, on=["player_id", "gw"], how="left")
             sources.append(
                 _status(
@@ -629,6 +638,7 @@ def run_pipeline(
                     air_detail,
                     configured=True,
                     version=air_pin,
+                    generated_at=air_generated_at,
                 )
             )
         elif settings.airsenal_csv:
