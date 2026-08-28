@@ -7,6 +7,7 @@ import pytest
 
 from apex.domain.models import OfficialPlayer, OfficialSnapshot, Position
 from apex.runtime import acquire as acquire_module
+from apex.sources.team import TeamStateAcquisition
 
 
 def _official(source_hash: str) -> OfficialSnapshot:
@@ -69,7 +70,7 @@ def test_official_hash_mismatch_aborts_before_team_or_provider_processing(
 
     monkeypatch.setattr(
         acquire_module,
-        "fetch_team_state",
+        "acquire_team_state",
         unexpected_team_fetch,
     )
 
@@ -100,8 +101,14 @@ def test_matching_official_hash_is_frozen_as_provenance(
     )
     monkeypatch.setattr(
         acquire_module,
-        "fetch_team_state",
-        lambda *args, **kwargs: None,
+        "acquire_team_state",
+        lambda *args, **kwargs: TeamStateAcquisition(
+            state=None,
+            mode="NO_PUBLIC_DEADLINE",
+            credential_present=False,
+            target_gameweek=2,
+            detail="synthetic test acquisition",
+        ),
     )
 
     snapshot = acquire_module.acquire_and_freeze(
@@ -114,8 +121,15 @@ def test_matching_official_hash_is_frozen_as_provenance(
     )
 
     run = json.loads((snapshot.root / "run.json").read_text(encoding="utf-8"))
+    team_provenance = json.loads(
+        (snapshot.root / "team_state_acquisition.json").read_text(encoding="utf-8")
+    )
     assert run["official_pre_provider_hash"] == "stable-hash"
     assert run["official_final_hash"] == "stable-hash"
     assert run["official_acquisition_stable"] is True
+    assert run["team_state_mode"] == "NO_PUBLIC_DEADLINE"
     assert snapshot.manifest["metadata"]["official_pre_provider_hash"] == "stable-hash"
     assert snapshot.manifest["metadata"]["official_final_hash"] == "stable-hash"
+    assert snapshot.manifest["metadata"]["team_state_mode"] == "NO_PUBLIC_DEADLINE"
+    assert team_provenance["mode"] == "NO_PUBLIC_DEADLINE"
+    assert team_provenance["credential_present"] is False
