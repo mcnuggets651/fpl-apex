@@ -109,8 +109,8 @@ def test_acquisition_seals_explicit_freeze_timestamp(monkeypatch, tmp_path):
         expected_official_hash="stable-hash",
     )
 
-    manifest = json.loads((snapshot / "manifest.json").read_text(encoding="utf-8"))
-    run = json.loads((snapshot / "run.json").read_text(encoding="utf-8"))
+    manifest = snapshot.manifest
+    run = snapshot.read_json("run.json")
     frozen_at = manifest["metadata"]["frozen_at"]
     parsed = datetime.fromisoformat(frozen_at.replace("Z", "+00:00"))
 
