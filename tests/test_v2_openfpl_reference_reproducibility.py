@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.openfpl_reference_preflight import _reference_reproducibility
+from apex.forecast.openfpl_governance import reference_reproducibility
 
 
 def test_reference_checkout_with_only_play_notebook_is_inference_only(tmp_path):
@@ -16,7 +16,7 @@ def test_reference_checkout_with_only_play_notebook_is_inference_only(tmp_path):
         encoding="utf-8",
     )
 
-    report = _reference_reproducibility(tmp_path)
+    report = reference_reproducibility(tmp_path)
 
     assert report["reference_reproducibility_scope"] == "INFERENCE_ONLY"
     assert report["reference_inference_state"] == "REFERENCE_INFERENCE_REPRODUCIBLE"
@@ -48,7 +48,7 @@ def test_new_upstream_training_source_forces_reaudit_instead_of_silent_acceptanc
     )
     (tmp_path / "train_models.py").write_text("model.fit(X, y)\n", encoding="utf-8")
 
-    report = _reference_reproducibility(tmp_path)
+    report = reference_reproducibility(tmp_path)
 
     assert report["reference_reproducibility_scope"] == (
         "TRAINING_SOURCE_PRESENT_REQUIRES_AUDIT"
@@ -56,8 +56,6 @@ def test_new_upstream_training_source_forces_reaudit_instead_of_silent_acceptanc
     assert report["training_pipeline_state"] == "TRAINING_SOURCE_PRESENT_REQUIRES_AUDIT"
     assert report["training_pipeline_published"] is True
     assert report["published_training_source_candidates"] == ["train_models.py"]
-    # The README still delegates sample construction, so a model-training script alone
-    # must not be mistaken for a complete reproducible sample-construction pipeline.
     assert report["sample_construction_published"] is False
 
 
@@ -72,7 +70,7 @@ def test_training_logic_hidden_in_play_notebook_is_detected_for_reaudit(tmp_path
         encoding="utf-8",
     )
 
-    report = _reference_reproducibility(tmp_path)
+    report = reference_reproducibility(tmp_path)
 
     assert report["training_pipeline_published"] is True
     assert report["reference_reproducibility_scope"] == (
