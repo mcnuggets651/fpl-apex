@@ -3,6 +3,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from apex_fpl.services.projection_registry import (
+    normalise_provider_key,
+    provider_spec,
+)
+
 
 EXPERT_COLUMNS = {
     "official_ep": "official_xp",
@@ -11,7 +16,13 @@ EXPERT_COLUMNS = {
     "market": "market_xp",
 }
 
-FULL_GAMEWEEK_EXPERTS = {"official_xp", "airsenal_xp", "market_xp"}
+FULL_GAMEWEEK_EXPERTS = {
+    "official_xp",
+    "airsenal_xp",
+    "dastan_xp",
+    "openfpl_xp",
+    "market_xp",
+}
 AIRSENAL_ZERO_TOLERANCE = 1e-12
 AIRSENAL_ROLE_CONFLICT_MIN_APPEARANCE_XP = 1.0
 AIRSENAL_ROLE_CONFLICT_MIN_OFFICIAL_XP = 1.0
@@ -197,22 +208,198 @@ def _apex_reliability_policy(
     }
 
 
+def _single_provider_authority(
+    out: pd.DataFrame,
+    provider_key: str,
+    weights: dict[str, float],
+    risk_penalty: float,
+) -> pd.DataFrame:
+    """Apply one qualified forecast champion without allowing shadow leakage.
+
+    Challenger disagreement is diagnostic only. It cannot manufacture production
+    variance, confidence, floors or downside penalties until those quantities have
+    themselves been calibrated prospectively.
+    """
+    provider = normalise_provider_key(provider_key)
+    spec = provider_spec(provider)
+    if not spec.eligible_for_production:
+        raise ValueError(f"provider {provider!r} has not been admitted to production authority")
+
+    champion = pd.to_numeric(
+        out.get(spec.xp_column, pd.Series(np.nan, index=out.index)),
+        errors="coerce",
+    )
+    apex = pd.to_numeric(
+        out.get("apex_xp", pd.Series(np.nan, index=out.index)),
+        errors="coerce",
+    )
+    out["apex_shadow_xp"] = apex
+    out["production_xp"] = champion
+    out["xp"] = champion
+    out["canonical_ev_xp"] = champion
+    out["risk_adjusted_xp"] = champion
+    out["projection_provider"] = spec.display_name
+    out["projection_provider_key"] = provider
+    out["projection_authority"] = "production"
+    out["apex_projection_authority"] = "shadow"
+    out["champion_source_absent"] = champion.isna()
+
+    surfaces: dict[str, pd.Series] = {
+        "airsenal": pd.to_numeric(
+            out.get("airsenal_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
+        ),
+        "dastan": pd.to_numeric(
+            out.get("dastan_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
+        ),
+        "openfpl": pd.to_numeric(
+            out.get("openfpl_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
+        ),
+        "apex_shadow": apex,
+        "official_ep": pd.to_numeric(
+            out.get("official_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
+        ),
+        "market": pd.to_numeric(
+            out.get("market_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
+        ),
+    }
+    challenger_frame = pd.concat(
+        [series.rename(key) for key, series in surfaces.items()],
+        axis=1,
+    )
+    out["expert_count"] = challenger_frame.notna().sum(axis=1).astype(int)
+    out["expert_coverage"] = champion.notna().astype(float)
+    disagreement_sd = challenger_frame.std(axis=1, ddof=0, skipna=True).fillna(0.0)
+    disagreement_spread = (
+        challenger_frame.max(axis=1, skipna=True)
+        - challenger_frame.min(axis=1, skipna=True)
+    ).fillna(0.0)
+    out["provider_disagreement_sd"] = disagreement_sd
+    out["provider_disagreement_spread"] = disagreement_spread
+    # Compatibility names remain diagnostic, not production uncertainty.
+    out["expert_disagreement_sd"] = disagreement_sd
+    out["model_disagreement_spread"] = disagreement_spread
+    out["model_disagreement"] = np.select(
+        [disagreement_spread >= 3.0, disagreement_spread >= 1.5],
+        ["high", "medium"],
+        default="low",
+    )
+    out["model_disagreement_is_production_uncertainty"] = False
+
+    out["configured_weight_total"] = 1.0
+    out["available_or_fallback_weight"] = champion.notna().astype(float)
+    out["effective_weight_champion"] = champion.notna().astype(float)
+    out["airsenal_source_absent"] = surfaces["airsenal"].isna()
+    out["airsenal_zero_role_conflict"] = False
+    out["airsenal_abstained_role_conflict"] = False
+    out["effective_weight_airsenal_fallback_apex"] = 0.0
+    out["xp_expert_airsenal_fallback_apex"] = 0.0
+
+    legacy_series = {
+        "apex_model": apex,
+        "official_ep": surfaces["official_ep"],
+        "airsenal": surfaces["airsenal"],
+        "market": surfaces["market"],
+    }
+    for key, series in legacy_series.items():
+        present = series.notna()
+        out[f"source_present_{key}"] = present
+        out[f"source_usable_{key}"] = present
+        out[f"configured_weight_{key}"] = max(float(weights.get(key, 0.0)), 0.0)
+        is_champion = (
+            (provider == "airsenal" and key == "airsenal")
+            or (provider == "apex" and key == "apex_model")
+        )
+        out[f"effective_weight_{key}"] = (
+            champion.notna().astype(float) if is_champion else 0.0
+        )
+        out[f"xp_expert_{key}"] = series.where(is_champion, 0.0)
+
+    for key in ("dastan", "openfpl"):
+        series = surfaces[key]
+        out[f"source_present_{key}"] = series.notna()
+        out[f"source_usable_{key}"] = series.notna()
+        is_champion = provider == key
+        out[f"effective_weight_{key}"] = (
+            champion.notna().astype(float) if is_champion else 0.0
+        )
+        out[f"xp_expert_{key}"] = series.where(is_champion, 0.0)
+
+    out["xp_expert_apex_model_direct"] = 0.0
+    out["effective_weight_apex_model_direct"] = 0.0
+    out["apex_model_reliability"] = pd.to_numeric(
+        out.get("apex_model_reliability", pd.Series(1.0, index=out.index)),
+        errors="coerce",
+    ).fillna(1.0)
+    out["apex_reliability_conflict"] = False
+    out["apex_reliability_conflict_inherited"] = False
+    out["apex_reliability_conflict_direction"] = 0
+    out["apex_reliability_weight_multiplier"] = 0.0
+
+    independent = challenger_frame.drop(columns=["apex_shadow"], errors="ignore")
+    out["independent_expert_count"] = independent.notna().sum(axis=1).astype(int)
+    out["independent_consensus_xp"] = independent.median(axis=1, skipna=True)
+    out["independent_consensus_lower"] = independent.min(axis=1, skipna=True)
+    out["independent_consensus_upper"] = independent.max(axis=1, skipna=True)
+    out["independent_consensus_margin"] = disagreement_spread
+
+    confidence_col = f"{provider}_confidence"
+    if confidence_col in out.columns:
+        confidence = pd.to_numeric(out[confidence_col], errors="coerce")
+    else:
+        confidence = pd.Series(np.nan, index=out.index, dtype=float)
+    out["projection_confidence"] = confidence.where(champion.notna(), 0.0)
+
+    sd_col = f"{provider}_sd"
+    if sd_col in out.columns:
+        native_sd = pd.to_numeric(out[sd_col], errors="coerce")
+        native_sd = native_sd.where(native_sd.ge(0))
+    else:
+        native_sd = pd.Series(np.nan, index=out.index, dtype=float)
+    has_uncertainty = champion.notna() & native_sd.notna()
+    out["forecast_uncertainty_sd"] = native_sd
+    out["projection_sd"] = native_sd
+    out["production_uncertainty_source"] = np.where(
+        has_uncertainty,
+        f"{provider}:provider_native_or_empirically_calibrated",
+        "unavailable_uncalibrated",
+    )
+    downside = champion.copy()
+    downside.loc[has_uncertainty] = np.maximum(
+        champion.loc[has_uncertainty]
+        - risk_penalty * native_sd.loc[has_uncertainty],
+        0.0,
+    )
+    out["downside_adjusted_xp"] = downside
+    floor = pd.Series(np.nan, index=out.index, dtype=float)
+    ceiling = pd.Series(np.nan, index=out.index, dtype=float)
+    floor.loc[has_uncertainty] = np.maximum(
+        champion.loc[has_uncertainty] - 1.2816 * native_sd.loc[has_uncertainty],
+        0.0,
+    )
+    ceiling.loc[has_uncertainty] = (
+        champion.loc[has_uncertainty] + 1.2816 * native_sd.loc[has_uncertainty]
+    )
+    out["projection_floor_80"] = floor
+    out["projection_ceiling_80"] = ceiling
+    return out
+
+
 def blend_projection(
     base: pd.DataFrame,
     weights: dict[str, float],
     risk_penalty: float,
+    *,
+    production_provider: str | None = None,
 ) -> pd.DataFrame:
-    """Apply projection authority, retaining legacy blending only for research configs.
+    """Apply forecast authority while retaining legacy blending for research only.
 
-    With the production one-hot AIrsenal contract this function returns AIrsenal xP
-    directly and never falls back to Apex. Missing canonical rows therefore fail the
-    downstream production coverage gate. Non-production research weights retain the
-    legacy comparison behaviour.
+    Production passes an explicit provider key. The selected champion supplies the
+    canonical mean directly and never silently falls back. Shadow/challenger forecasts
+    remain visible diagnostics but cannot influence production xP or uncertainty.
 
-    Missing AIrsenal rows retain the explicit Apex fallback contract. Market xP has
-    no fallback.  Apex-specific reliability can reduce only the *direct* Apex vote,
-    and only under independently confirmed material disagreement; generic uncertainty
-    remains diagnostic and cannot turn the optimiser into a nailed-minutes selector.
+    Calls without ``production_provider`` preserve the historical research-blend path.
+    A one-hot AIrsenal weight set is recognised for backwards compatibility and routed
+    through the same single-provider authority contract.
     """
     out = _allocate_gameweek_experts(base.copy())
     production_weights = {
@@ -225,102 +412,16 @@ def blend_projection(
             for key in ("apex_model", "official_ep", "market")
         )
     )
+    if production_provider is not None:
+        return _single_provider_authority(
+            out,
+            production_provider,
+            weights,
+            risk_penalty,
+        )
     if strict_airsenal_authority:
-        # This is deliberately not an ensemble. Preserve every challenger surface,
-        # but canonical expected points are the validated AIrsenal number exactly.
-        n = len(out)
-        air = pd.to_numeric(
-            out.get("airsenal_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
-        )
-        apex = pd.to_numeric(
-            out.get("apex_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
-        )
-        official = pd.to_numeric(
-            out.get("official_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
-        )
-        market = pd.to_numeric(
-            out.get("market_xp", pd.Series(np.nan, index=out.index)), errors="coerce"
-        )
-        out["apex_shadow_xp"] = apex
-        out["production_xp"] = air
-        out["xp"] = air
-        out["canonical_ev_xp"] = air
-        out["risk_adjusted_xp"] = air
-        out["projection_provider"] = "AIrsenal"
-        out["projection_authority"] = "production"
-        out["apex_projection_authority"] = "shadow"
+        return _single_provider_authority(out, "airsenal", weights, risk_penalty)
 
-        challenger_frame = pd.concat(
-            [air.rename("airsenal"), apex.rename("apex_shadow"), official.rename("official_ep"), market.rename("market")],
-            axis=1,
-        )
-        out["expert_count"] = challenger_frame.notna().sum(axis=1).astype(int)
-        out["expert_coverage"] = air.notna().astype(float)
-        out["expert_disagreement_sd"] = challenger_frame.std(axis=1, ddof=0, skipna=True).fillna(0.0)
-        out["model_disagreement_spread"] = (
-            challenger_frame.max(axis=1, skipna=True) - challenger_frame.min(axis=1, skipna=True)
-        ).fillna(0.0)
-        out["model_disagreement"] = np.select(
-            [out["model_disagreement_spread"] >= 3.0, out["model_disagreement_spread"] >= 1.5],
-            ["high", "medium"],
-            default="low",
-        )
-        out["configured_weight_total"] = 1.0
-        out["available_or_fallback_weight"] = air.notna().astype(float)
-        out["airsenal_source_absent"] = air.isna()
-        out["airsenal_zero_role_conflict"] = False
-        out["airsenal_abstained_role_conflict"] = False
-        out["effective_weight_airsenal_fallback_apex"] = 0.0
-        out["xp_expert_airsenal_fallback_apex"] = 0.0
-
-        for key, series in {
-            "apex_model": apex,
-            "official_ep": official,
-            "airsenal": air,
-            "market": market,
-        }.items():
-            present = series.notna()
-            out[f"source_present_{key}"] = present
-            out[f"source_usable_{key}"] = present if key != "airsenal" else air.notna()
-            out[f"configured_weight_{key}"] = production_weights.get(key, 0.0)
-            if key == "airsenal":
-                out[f"effective_weight_{key}"] = air.notna().astype(float)
-                out[f"xp_expert_{key}"] = air
-            else:
-                out[f"effective_weight_{key}"] = 0.0
-                out[f"xp_expert_{key}"] = 0.0
-
-        out["xp_expert_apex_model_direct"] = 0.0
-        out["effective_weight_apex_model_direct"] = 0.0
-        out["apex_model_reliability"] = pd.to_numeric(
-            out.get("apex_model_reliability", pd.Series(1.0, index=out.index)), errors="coerce"
-        ).fillna(1.0)
-        out["apex_reliability_conflict"] = False
-        out["apex_reliability_conflict_inherited"] = False
-        out["apex_reliability_conflict_direction"] = 0
-        out["apex_reliability_weight_multiplier"] = 0.0
-        out["independent_expert_count"] = challenger_frame[["official_ep", "airsenal", "market"]].notna().sum(axis=1).astype(int)
-        out["independent_consensus_xp"] = challenger_frame[["official_ep", "airsenal", "market"]].median(axis=1, skipna=True)
-        out["independent_consensus_lower"] = challenger_frame[["official_ep", "airsenal", "market"]].min(axis=1, skipna=True)
-        out["independent_consensus_upper"] = challenger_frame[["official_ep", "airsenal", "market"]].max(axis=1, skipna=True)
-        out["independent_consensus_margin"] = out["model_disagreement_spread"]
-
-        minutes_conf = pd.to_numeric(
-            out.get("minutes_confidence", pd.Series(0.65, index=out.index)), errors="coerce"
-        ).fillna(0.65)
-        role_conf = pd.to_numeric(
-            out.get("role_confidence", pd.Series(0.65, index=out.index)), errors="coerce"
-        ).fillna(0.65)
-        source_conf = (0.55 + 0.30 * minutes_conf + 0.15 * role_conf).clip(0.05, 0.99)
-        out["projection_confidence"] = np.where(air.notna(), source_conf, 0.0)
-        out["forecast_uncertainty_sd"] = out["expert_disagreement_sd"]
-        out["projection_sd"] = out["expert_disagreement_sd"]
-        out["downside_adjusted_xp"] = np.maximum(
-            air - risk_penalty * out["projection_sd"] * (1.15 - 0.30 * source_conf), 0
-        )
-        out["projection_floor_80"] = np.maximum(air - 1.2816 * out["projection_sd"], 0)
-        out["projection_ceiling_80"] = air + 1.2816 * out["projection_sd"]
-        return out
     n = len(out)
     total_configured_weight = (
         sum(max(float(weights.get(k, 0)), 0) for k in EXPERT_COLUMNS) or 1.0
