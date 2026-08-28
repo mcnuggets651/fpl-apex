@@ -1,0 +1,105 @@
+name: Apex V2 Cutover Platform
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-v2-cutover-platform
+  cancel-in-progress: false
+
+jobs:
+  platform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APEX_EXPECTED_REF: agent/apex-v2-cleanroom
+    steps:
+      - name: Require governed cutover branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "${APEX_EXPECTED_REF}"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Apex tooling
+        run: python -m pip install -e '.[dev]'
+
+      - name: Freeze live GitHub platform evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/v2/cutover/rulesets
+
+          gh api "repos/${GITHUB_REPOSITORY}/branches/main" \
+            > artifacts/v2/cutover/main_branch.json
+
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets" \
+            > artifacts/v2/cutover/rulesets_index.json
+
+          mapfile -t RULESET_IDS < <(
+            jq -r '.[].id // empty' artifacts/v2/cutover/rulesets_index.json
+          )
+          for RULESET_ID in "${RULESET_IDS[@]}"; do
+            gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RULESET_ID}" \
+              > "artifacts/v2/cutover/rulesets/${RULESET_ID}.json"
+          done
+          if compgen -G 'artifacts/v2/cutover/rulesets/*.json' > /dev/null; then
+            jq -s '.' artifacts/v2/cutover/rulesets/*.json \
+              > artifacts/v2/cutover/rulesets.json
+          else
+            printf '[]\n' > artifacts/v2/cutover/rulesets.json
+          fi
+
+          set +e
+          IMMUTABLE_STATUS="$(curl -sS \
+            -o artifacts/v2/cutover/immutable_releases.json \
+            -w '%{http_code}' \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/immutable-releases")"
+          CURL_STATUS=$?
+          set -e
+          printf '%s\n' "${IMMUTABLE_STATUS}" \
+            > artifacts/v2/cutover/immutable_releases_status.txt
+          if [ "${CURL_STATUS}" -ne 0 ]; then
+            printf '{"curl_exit_code": %s}\n' "${CURL_STATUS}" \
+              > artifacts/v2/cutover/immutable_releases.json
+          elif ! jq -e 'type == "object"' \
+              artifacts/v2/cutover/immutable_releases.json >/dev/null 2>&1; then
+            printf '{}\n' > artifacts/v2/cutover/immutable_releases.json
+          fi
+
+      - name: Certify platform controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMMUTABLE_STATUS="$(cat artifacts/v2/cutover/immutable_releases_status.txt)"
+          python scripts/check_v2_cutover_platform.py \
+            --branch-json artifacts/v2/cutover/main_branch.json \
+            --rulesets-json artifacts/v2/cutover/rulesets.json \
+            --immutable-json artifacts/v2/cutover/immutable_releases.json \
+            --immutable-status "${IMMUTABLE_STATUS}" \
+            --policy config/apex_v2_cutover_platform.yaml \
+            --output artifacts/v2/cutover/platform_certification.json
+
+      - name: Upload cutover evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v2-cutover-platform-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/v2/cutover/
+          retention-days: 90
