@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from apex.forecast.openfpl_current import (
     CURRENT_SCORING_RULES_VERSION,
     current_model_manifest_errors,
+    exact_rule_history_readiness,
 )
 
 
@@ -78,3 +81,42 @@ def test_openfpl_shadow_cannot_self_authorize_serving():
         source_snapshot="official-seal",
     )
     assert any("non-serving" in error for error in errors)
+
+
+def test_exact_rule_history_does_not_invent_training_threshold():
+    result = exact_rule_history_readiness((1,), target_gameweek=2)
+    assert result["state"] == "TRAINING_POLICY_UNSET"
+    assert result["training_ready"] is False
+    assert result["exact_rule_gameweek_count"] == 1
+
+
+def test_exact_rule_history_blocks_target_or_future_leakage():
+    result = exact_rule_history_readiness((1, 2), target_gameweek=2)
+    assert result["state"] == "HISTORY_LEAKAGE"
+    assert result["training_ready"] is False
+
+
+def test_exact_rule_history_advances_only_against_governed_minimum():
+    insufficient = exact_rule_history_readiness(
+        (1, 2, 3),
+        target_gameweek=4,
+        minimum_exact_rule_gameweeks=4,
+    )
+    ready = exact_rule_history_readiness(
+        (1, 2, 3),
+        target_gameweek=4,
+        minimum_exact_rule_gameweeks=3,
+    )
+    assert insufficient["state"] == "CURRENT_LABEL_HISTORY_INSUFFICIENT"
+    assert insufficient["training_ready"] is False
+    assert ready["state"] == "CURRENT_LABEL_HISTORY_READY"
+    assert ready["training_ready"] is True
+
+
+def test_exact_rule_history_rejects_invalid_governed_minimum():
+    with pytest.raises(ValueError, match=">= 1"):
+        exact_rule_history_readiness(
+            (1,),
+            target_gameweek=2,
+            minimum_exact_rule_gameweeks=0,
+        )
