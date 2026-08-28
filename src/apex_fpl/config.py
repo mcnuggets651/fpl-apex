@@ -7,6 +7,12 @@ from typing import Any
 
 import yaml
 
+from apex_fpl.services.projection_registry import (
+    PRODUCTION_ELIGIBLE_PROVIDERS,
+    normalise_provider_key,
+    production_required_sources,
+)
+
 
 def _load_env_file(path: str | Path = ".env") -> None:
     p = Path(path)
@@ -63,6 +69,11 @@ def _optional_int(value: Any) -> int | None:
 
 
 def _validated_weights(raw: dict[str, Any]) -> dict[str, float]:
+    """Validate the legacy research-blend contract.
+
+    Production authority is selected by ``champion_provider``. These weights remain
+    only for research/ablation paths and cannot silently choose production authority.
+    """
     expected = {"official_ep", "apex_model", "airsenal", "market"}
     unknown = set(raw) - expected
     if unknown:
@@ -73,9 +84,18 @@ def _validated_weights(raw: dict[str, Any]) -> dict[str, float]:
     total = sum(weights.values())
     if abs(total - 1.0) > 1e-6:
         raise ValueError(
-            f"production ensemble weights must sum to 1.0 exactly; got {total:.12f}"
+            f"research ensemble weights must sum to 1.0 exactly; got {total:.12f}"
         )
     return weights
+
+
+def _validated_champion(value: Any) -> str:
+    key = normalise_provider_key(str(value or "airsenal"))
+    if key not in PRODUCTION_ELIGIBLE_PROVIDERS:
+        raise ValueError(
+            f"projection provider {key!r} has not been admitted to the production-provider contract"
+        )
+    return key
 
 
 @dataclass
@@ -86,8 +106,11 @@ class Settings:
     max_per_team: int = 3
     fixture_decay: float = 0.90
     risk_penalty: float = 0.15
-    # Production statistical authority is intentionally one-hot until a challenger
-    # passes genuine prospective promotion. These are authority weights, not a hand-tuned blend.
+    # Architecture-level forecast authority. Switching a qualified champion changes
+    # this key; it does not require optimiser or publication code changes.
+    champion_provider: str = "airsenal"
+    # Retained only for research comparison/ablation code. Production ignores these
+    # whenever champion_provider is supplied to the authority layer.
     weights: dict[str, float] = field(default_factory=lambda: {
         "official_ep": 0.0,
         "apex_model": 0.0,
@@ -102,6 +125,8 @@ class Settings:
     snapshot_dir: Path = Path("data/snapshots")
     report_dir: Path = Path("reports")
     airsenal_csv: str | None = "data/generated/airsenal.csv"
+    dastan_csv: str | None = "data/generated/dastan.csv"
+    openfpl_csv: str | None = None
     odds_api_key: str | None = None
     odds_api_url: str | None = None
     news_feeds: list[str] = field(default_factory=list)
@@ -111,15 +136,17 @@ class Settings:
     team_state_path: Path = Path("data/manual/team_state.yaml")
     tactical_roles_path: Path = Path("data/manual/tactical_roles.csv")
     upstreams_lock_path: Path = Path("upstreams.lock.json")
-    required_sources: list[str] = field(default_factory=lambda: [
-        "official_fpl",
-        "airsenal",
-        "news_feeds",
-    ])
+    # Hard dependencies are completed dynamically with the champion source. News and
+    # enrichments are decision/evidence dependencies, not unconditional global blockers.
+    required_sources: list[str] = field(default_factory=lambda: ["official_fpl"])
     max_official_age_hours: float = 26.0
     max_airsenal_age_hours: float = 36.0
+    max_dastan_age_hours: float = 36.0
+    max_openfpl_age_hours: float = 36.0
     max_core_age_hours: float = 18.0
     min_airsenal_player_coverage: float = 1.0
+    min_production_provider_coverage: float = 1.0
+    min_shadow_provider_coverage: float = 0.0
     understat_enabled: bool = True
     understat_history_seasons: int = 5
     understat_team_model_mode: str = "shadow"
@@ -134,11 +161,16 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
     default = Settings()
     news_sources = _configured_news_sources(raw)
     configured_weights = _validated_weights(dict(raw.get("weights", default.weights)))
+    champion_provider = _validated_champion(
+        os.getenv("APEX_CHAMPION_PROVIDER", raw.get("champion_provider", default.champion_provider))
+    )
+    base_required_sources = list(raw.get("required_sources", default.required_sources))
+    required_sources = production_required_sources(base_required_sources, champion_provider)
     odds_api_url = os.getenv("ODDS_API_URL") or None
     odds_api_key = os.getenv("ODDS_API_KEY") or None
     if configured_weights.get("market", 0.0) > 0 and not odds_api_url:
         raise ValueError(
-            "positive market ensemble weight requires ODDS_API_URL; "
+            "positive market research weight requires ODDS_API_URL; "
             "keep market weight at zero while market xP is unavailable"
         )
     s = Settings(
@@ -148,6 +180,7 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         max_per_team=int(raw.get("max_per_team", default.max_per_team)),
         fixture_decay=float(raw.get("fixture_decay", default.fixture_decay)),
         risk_penalty=float(raw.get("risk_penalty", default.risk_penalty)),
+        champion_provider=champion_provider,
         weights=configured_weights,
         approximate_bench_weight=float(
             raw.get("approximate_bench_weight", default.approximate_bench_weight)
@@ -177,6 +210,20 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
             )
             or None
         ),
+        dastan_csv=(
+            os.getenv(
+                "DASTAN_PROJECTIONS_CSV",
+                str(raw.get("dastan_csv", default.dastan_csv or "")),
+            )
+            or None
+        ),
+        openfpl_csv=(
+            os.getenv(
+                "OPENFPL_PROJECTIONS_CSV",
+                str(raw.get("openfpl_csv", default.openfpl_csv or "")),
+            )
+            or None
+        ),
         odds_api_key=odds_api_key,
         odds_api_url=odds_api_url,
         news_feeds=[row["url"] for row in news_sources],
@@ -196,12 +243,18 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         upstreams_lock_path=Path(
             os.getenv("APEX_UPSTREAMS_LOCK", "upstreams.lock.json")
         ),
-        required_sources=list(raw.get("required_sources", default.required_sources)),
+        required_sources=required_sources,
         max_official_age_hours=float(
             raw.get("max_official_age_hours", default.max_official_age_hours)
         ),
         max_airsenal_age_hours=float(
             raw.get("max_airsenal_age_hours", default.max_airsenal_age_hours)
+        ),
+        max_dastan_age_hours=float(
+            raw.get("max_dastan_age_hours", default.max_dastan_age_hours)
+        ),
+        max_openfpl_age_hours=float(
+            raw.get("max_openfpl_age_hours", default.max_openfpl_age_hours)
         ),
         max_core_age_hours=float(
             os.getenv(
@@ -211,6 +264,15 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         ),
         min_airsenal_player_coverage=float(
             raw.get("min_airsenal_player_coverage", default.min_airsenal_player_coverage)
+        ),
+        min_production_provider_coverage=float(
+            raw.get(
+                "min_production_provider_coverage",
+                default.min_production_provider_coverage,
+            )
+        ),
+        min_shadow_provider_coverage=float(
+            raw.get("min_shadow_provider_coverage", default.min_shadow_provider_coverage)
         ),
         understat_enabled=str(
             os.getenv("APEX_UNDERSTAT_ENABLED", raw.get("understat_enabled", True))
