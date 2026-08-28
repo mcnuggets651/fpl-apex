@@ -3,38 +3,57 @@ horizon: 8
 budget: 100.0
 max_per_team: 3
 fpl_entry_id: 63984
-# Final production authority cutover (2026-08-28). AIrsenal is the canonical
-# statistical xP provider. Apex/Official surfaces remain diagnostics/shadow inputs.
-# Any future non-one-hot weights must be learned from immutable prospective forecasts
-# and pass the >=8 completed-GW / >=200-row promotion contract.
+
+# Architecture freeze (2026-08-28): forecasting authority is provider-neutral.
+# AIrsenal is the incumbent operational champion only until a challenger completes
+# the same governed qualification contract. Changing champion_provider must not
+# require optimiser/publication rewrites.
+champion_provider: airsenal
+
+# Legacy research/ablation weights only. Production authority is NOT inferred from
+# this block; it is selected explicitly by champion_provider.
 weights:
   official_ep: 0.0
   apex_model: 0.0
   airsenal: 1.0
   market: 0.0
+
+# Governed provider surfaces. Dastan is integrated as a pinned challenger input path;
+# its absence cannot block production while AIrsenal remains champion.
+airsenal_csv: data/generated/airsenal.csv
+dastan_csv: data/generated/dastan.csv
+openfpl_csv: ""
+
 fixture_decay: 0.90
 # Used only to generate the internal near-optimal diagnostic shortlist. The final
-# production team is chosen later by the GW1-first/receding-horizon strategy gate.
+# production team is chosen later by the current-team receding-horizon strategy gate.
 approximate_bench_weight: 0.08
 exact_candidate_limit: 16
 exact_candidate_regret_fraction: 0.005
 exact_near_equivalent_points: 0.25
 risk_penalty: 0.15
+
 understat_enabled: true
 understat_history_seasons: 5
-# Promoted 2026-08-13 after Premier-League-only no-hindsight validation on 760
-# untouched 2024/25 + 2025/26 matches. Used as the complete team-goal fallback
-# while official FPL attack/defence strengths are zeroed and live EPL Elo is absent.
+# Used as enrichment/shadow evidence unless an empirically promoted production model
+# explicitly depends on it.
 understat_team_model_mode: shadow
+
 max_official_age_hours: 26
 max_core_age_hours: 18
-# AIrsenal is a required forecast expert. Missing required players must fail closed
-# rather than silently renormalising ensemble weights for only part of the pool.
+max_airsenal_age_hours: 36
+max_dastan_age_hours: 36
+max_openfpl_age_hours: 36
 min_airsenal_player_coverage: 1.0
+min_production_provider_coverage: 1.0
+min_shadow_provider_coverage: 0.0
+
+# Only unconditional hard sources live here. load_settings() adds the selected
+# champion provider dynamically. News/enrichment health is evaluated where a specific
+# decision actually depends on it rather than globally killing production.
 required_sources:
   - official_fpl
-  - airsenal
-  - news_feeds
+
 source_confidence:
   official_fpl: 1.00
   official_club: 0.95
