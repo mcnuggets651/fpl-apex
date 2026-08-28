@@ -85,13 +85,23 @@ jobs:
           PY
           ! grep -R "0.5111111111\|0.2666666667\|0.2222222222" config src tests --exclude-dir=__pycache__
 
-      - name: Commit validated cutover and remove executor
+      - name: Commit validated source cutover without workflow mutations
         shell: bash
         run: |
           set -euo pipefail
+          # GitHub Actions tokens without `workflows` permission may not push any
+          # workflow-file mutation. Restore both workflow paths to this run's HEAD;
+          # the Core workflow fix is published separately through the repository
+          # contents API after this validated source commit lands.
+          git restore --source=HEAD -- .github/workflows/final-production-cutover.yml .github/workflows/refresh-core-pin.yml
           rm scripts/apply_final_production_cutover.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          if git diff --cached --name-only | grep -q '^.github/workflows/'; then
+            echo "Refusing to push a workflow-file mutation from Actions"
+            git diff --cached --name-only
+            exit 1
+          fi
           git commit -m "architecture: cut production xP authority to AIrsenal"
           git push origin HEAD:agent/final-airsenal-authority-cutover
