@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable, TypeVar
 
 from apex.domain.models import (
     EvidenceEffect,
@@ -22,6 +23,34 @@ from apex.sources.team import fetch_team_state
 
 from .config import ApexConfig, config_sha
 from .snapshot import SnapshotBuilder
+
+T = TypeVar("T")
+
+
+class AcquisitionStageError(RuntimeError):
+    """A fatal acquisition error with a stable machine-readable stage."""
+
+    def __init__(self, stage: str, cause: Exception):
+        self.stage = str(stage)
+        self.cause_type = type(cause).__name__
+        self.cause_message = str(cause)
+        super().__init__(f"{self.stage}: {self.cause_type}: {self.cause_message}")
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "stage": self.stage,
+            "cause_type": self.cause_type,
+            "cause_message": self.cause_message,
+        }
+
+
+def _stage(stage: str, fn: Callable[[], T]) -> T:
+    try:
+        return fn()
+    except AcquisitionStageError:
+        raise
+    except Exception as exc:
+        raise AcquisitionStageError(stage, exc) from exc
 
 
 def _parse_evidence(path: Path) -> tuple[EvidenceRecord, ...]:
@@ -53,11 +82,7 @@ def _target_gameweek(official, now):
     future = []
     for gameweek, value in official.deadlines.items():
         deadline = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        deadline = (
-            deadline
-            if deadline.tzinfo
-            else deadline.replace(tzinfo=timezone.utc)
-        )
+        deadline = deadline if deadline.tzinfo else deadline.replace(tzinfo=timezone.utc)
         if deadline > now:
             future.append(gameweek)
     if not future:
@@ -69,17 +94,10 @@ def assert_official_acquisition_stable(
     expected_hash: str | None,
     actual_hash: str,
 ) -> None:
-    """Fail if Official FPL changed while external providers were generated.
-
-    Production captures ``expected_hash`` immediately before provider acquisition.
-    This function runs on the fresh canonical Official snapshot fetched immediately
-    after provider generation. A mismatch means provider inputs and the final Apex
-    truth anchor may have observed different FPL states, so the attempt must restart
-    rather than guessing which state each provider used.
-    """
+    """Fail if Official authority state changed while providers were generated."""
     if expected_hash and str(expected_hash) != str(actual_hash):
         raise RuntimeError(
-            "Official FPL changed during provider acquisition: "
+            "Official FPL authority state changed during provider acquisition: "
             f"expected {expected_hash}, got {actual_hash}. "
             "Discard this attempt and restart provider acquisition from a fresh "
             "Official FPL seal."
@@ -95,19 +113,30 @@ def acquire_and_freeze(
     workdir: Path = Path("."),
     expected_official_hash: str | None = None,
 ):
-    config = ApexConfig.load(config_path)
+    config = _stage("config", lambda: ApexConfig.load(config_path))
     now = datetime.now(timezone.utc)
-    official, raw_official = fetch_official_snapshot(season=config.season)
-    assert_official_acquisition_stable(
-        expected_official_hash,
-        official.source_hash,
-    )
 
-    target = _target_gameweek(official, now)
-    team = fetch_team_state(config.entry_id, official, now=now)
+    def _reanchor():
+        official, raw_official = fetch_official_snapshot(season=config.season)
+        assert_official_acquisition_stable(
+            expected_official_hash,
+            official.source_hash,
+        )
+        return official, raw_official
+
+    official, raw_official = _stage("official_reanchor", _reanchor)
+    target = _stage("target_gameweek", lambda: _target_gameweek(official, now))
+    team = _stage(
+        "team_state",
+        lambda: fetch_team_state(config.entry_id, official, now=now),
+    )
     statuses = []
-    start = datetime.fromisoformat(run_started_at.replace("Z", "+00:00"))
-    start = start if start.tzinfo else start.replace(tzinfo=timezone.utc)
+
+    def _parse_start():
+        value = datetime.fromisoformat(run_started_at.replace("Z", "+00:00"))
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+    start = _stage("run_provenance", _parse_start)
 
     for provider_config in config.providers:
         path = workdir / provider_config.path
@@ -153,9 +182,7 @@ def acquire_and_freeze(
                     else generated.replace(tzinfo=timezone.utc)
                 )
                 if generated < start:
-                    reasons.append(
-                        "provider forecast predates this production attempt"
-                    )
+                    reasons.append("provider forecast predates this production attempt")
 
                 qualification = qualify_surface(
                     surface,
@@ -177,9 +204,7 @@ def acquire_and_freeze(
                 reasons.append(f"{type(exc).__name__}: {exc}")
                 health = ProviderHealth.ERROR
         else:
-            reasons.append(
-                f"provider export missing: {provider_config.path}"
-            )
+            reasons.append(f"provider export missing: {provider_config.path}")
 
         statuses.append(
             ProviderStatus(
@@ -195,90 +220,97 @@ def acquire_and_freeze(
             )
         )
 
-    evidence = _parse_evidence(workdir / "acquisition/evidence/hard.json")
-    evidence_errors = validate_evidence(evidence, official, now=now)
+    def _evidence_stage():
+        evidence = _parse_evidence(workdir / "acquisition/evidence/hard.json")
+        errors = validate_evidence(evidence, official, now=now)
+        return evidence, errors
 
-    builder = SnapshotBuilder()
-    builder.add_json("official.json", dataclass_to_dict(official))
-    builder.add_json("official_raw.json", raw_official)
-    builder.add_json(
-        "team_state.json",
-        dataclass_to_dict(team) if team else None,
-    )
-    builder.add_json(
-        "evidence.json",
-        [dataclass_to_dict(record) for record in evidence],
-    )
-    builder.add_json(
-        "evidence_validation.json",
-        {"errors": list(evidence_errors)},
-    )
+    evidence, evidence_errors = _stage("evidence", _evidence_stage)
 
-    qualification_matrix = []
-    for status in statuses:
-        qualification_matrix.append(
+    def _freeze():
+        builder = SnapshotBuilder()
+        builder.add_json("official.json", dataclass_to_dict(official))
+        builder.add_json("official_raw.json", raw_official)
+        builder.add_json(
+            "team_state.json",
+            dataclass_to_dict(team) if team else None,
+        )
+        builder.add_json(
+            "evidence.json",
+            [dataclass_to_dict(record) for record in evidence],
+        )
+        builder.add_json(
+            "evidence_validation.json",
+            {"errors": list(evidence_errors)},
+        )
+
+        qualification_matrix = []
+        for status in statuses:
+            qualification_matrix.append(
+                {
+                    "provider_id": status.provider_id,
+                    "role": status.role.value,
+                    "priority": status.priority,
+                    "health": status.health.value,
+                    "qualification_by_horizon": {
+                        str(key): value.value
+                        for key, value in status.qualification_by_horizon.items()
+                    },
+                    "reasons": list(status.reasons),
+                    "serve_authorized": status.serve_authorized,
+                    "predictive_status": status.predictive_status.value,
+                }
+            )
+            if status.surface:
+                builder.add_json(
+                    f"providers/{status.provider_id}.json",
+                    dataclass_to_dict(status.surface),
+                )
+            provider_config = next(
+                provider
+                for provider in config.providers
+                if provider.provider_id == status.provider_id
+            )
+            path = workdir / provider_config.path
+            if path.exists():
+                builder.add_bytes(
+                    f"provider_raw/{status.provider_id}{path.suffix or '.bin'}",
+                    path.read_bytes(),
+                )
+
+        builder.add_json("qualification_matrix.json", qualification_matrix)
+        builder.add_json(
+            "run.json",
             {
-                "provider_id": status.provider_id,
-                "role": status.role.value,
-                "priority": status.priority,
-                "health": status.health.value,
-                "qualification_by_horizon": {
-                    str(key): value.value
-                    for key, value in status.qualification_by_horizon.items()
-                },
-                "reasons": list(status.reasons),
-                "serve_authorized": status.serve_authorized,
-                "predictive_status": status.predictive_status.value,
-            }
+                "schema_version": 1,
+                "run_id": run_id,
+                "code_sha": code_sha,
+                "config_sha": config_sha(config_path),
+                "run_started_at": run_started_at,
+                "acquired_at": now.isoformat(),
+                "official_pre_provider_hash": expected_official_hash,
+                "official_final_hash": official.source_hash,
+                "official_acquisition_stable": (
+                    expected_official_hash is None
+                    or expected_official_hash == official.source_hash
+                ),
+                "target_gameweek": target,
+                "season": config.season,
+                "entry_id": config.entry_id,
+                "max_horizon": config.max_horizon,
+                "deadline": official.deadlines[target],
+            },
         )
-        if status.surface:
-            builder.add_json(
-                f"providers/{status.provider_id}.json",
-                dataclass_to_dict(status.surface),
-            )
-        provider_config = next(
-            provider
-            for provider in config.providers
-            if provider.provider_id == status.provider_id
+        builder.add_bytes("config.yaml", Path(config_path).read_bytes())
+        return builder.freeze(
+            workdir / Path(config.snapshot_dir),
+            metadata={
+                "run_id": run_id,
+                "target_gameweek": target,
+                "code_sha": code_sha,
+                "official_pre_provider_hash": expected_official_hash,
+                "official_final_hash": official.source_hash,
+            },
         )
-        path = workdir / provider_config.path
-        if path.exists():
-            builder.add_bytes(
-                f"provider_raw/{status.provider_id}{path.suffix or '.bin'}",
-                path.read_bytes(),
-            )
 
-    builder.add_json("qualification_matrix.json", qualification_matrix)
-    builder.add_json(
-        "run.json",
-        {
-            "schema_version": 1,
-            "run_id": run_id,
-            "code_sha": code_sha,
-            "config_sha": config_sha(config_path),
-            "run_started_at": run_started_at,
-            "acquired_at": now.isoformat(),
-            "official_pre_provider_hash": expected_official_hash,
-            "official_final_hash": official.source_hash,
-            "official_acquisition_stable": (
-                expected_official_hash is None
-                or expected_official_hash == official.source_hash
-            ),
-            "target_gameweek": target,
-            "season": config.season,
-            "entry_id": config.entry_id,
-            "max_horizon": config.max_horizon,
-            "deadline": official.deadlines[target],
-        },
-    )
-    builder.add_bytes("config.yaml", Path(config_path).read_bytes())
-    return builder.freeze(
-        workdir / Path(config.snapshot_dir),
-        metadata={
-            "run_id": run_id,
-            "target_gameweek": target,
-            "code_sha": code_sha,
-            "official_pre_provider_hash": expected_official_hash,
-            "official_final_hash": official.source_hash,
-        },
-    )
+    return _stage("freeze", _freeze)

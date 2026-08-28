@@ -28,6 +28,77 @@ def _canonical_hash(*payloads: Any) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def _official_authority_payload(
+    bootstrap: dict[str, Any], fixtures_raw: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Return only Official FPL facts that can change an Apex decision.
+
+    The raw bootstrap contains continuously changing market/ownership counters such as
+    ``transfers_in_event`` and ``selected_by_percent``. Those values are useful raw
+    evidence but are not part of Apex's factual authority contract. Hashing the whole
+    payload made a long provider build fail merely because an irrelevant counter moved.
+
+    The acquisition sandwich therefore seals the subset Apex is actually allowed to
+    treat as canonical: player identity/team/position/price/availability, transaction
+    state, event deadlines, and fixture identity/schedule/state. Raw payload hashes are
+    retained separately for forensic replay.
+    """
+    players = []
+    for row in bootstrap.get("elements", []):
+        players.append(
+            {
+                "id": row.get("id"),
+                "team": row.get("team"),
+                "element_type": row.get("element_type"),
+                "now_cost": row.get("now_cost"),
+                "status": row.get("status"),
+                "can_transact": row.get("can_transact", True),
+                "chance_of_playing_this_round": row.get(
+                    "chance_of_playing_this_round"
+                ),
+                "chance_of_playing_next_round": row.get(
+                    "chance_of_playing_next_round"
+                ),
+                "news": row.get("news", ""),
+                "news_added": row.get("news_added"),
+            }
+        )
+    players.sort(key=lambda row: int(row["id"]))
+
+    events = []
+    for row in bootstrap.get("events", []):
+        if row.get("id") is None:
+            continue
+        events.append(
+            {
+                "id": row.get("id"),
+                "deadline_time": row.get("deadline_time"),
+                "finished": row.get("finished"),
+                "is_current": row.get("is_current"),
+                "is_next": row.get("is_next"),
+            }
+        )
+    events.sort(key=lambda row: int(row["id"]))
+
+    fixtures = []
+    for row in fixtures_raw:
+        fixtures.append(
+            {
+                "id": row.get("id"),
+                "event": row.get("event"),
+                "team_h": row.get("team_h"),
+                "team_a": row.get("team_a"),
+                "kickoff_time": row.get("kickoff_time"),
+                "started": row.get("started"),
+                "finished": row.get("finished"),
+                "provisional_start_time": row.get("provisional_start_time"),
+            }
+        )
+    fixtures.sort(key=lambda row: int(row["id"]))
+
+    return {"players": players, "events": events, "fixtures": fixtures}
+
+
 def fetch_official_snapshot(
     *,
     season="2026-2027",
@@ -86,16 +157,27 @@ def fetch_official_snapshot(
         if event.get("id") is not None and event.get("deadline_time")
     }
     acquired_at = datetime.now(timezone.utc).isoformat()
-    digest = _canonical_hash(bootstrap, fixtures_raw)
+    authority_payload = _official_authority_payload(bootstrap, fixtures_raw)
+    authority_hash = _canonical_hash(authority_payload)
+    raw_hashes = {
+        "bootstrap_sha256": _canonical_hash(bootstrap),
+        "fixtures_sha256": _canonical_hash(fixtures_raw),
+    }
     return (
         OfficialSnapshot(
             1,
             season,
             acquired_at,
-            digest,
+            authority_hash,
             tuple(players),
             fixtures,
             deadlines,
         ),
-        {"bootstrap": bootstrap, "fixtures": fixtures_raw},
+        {
+            "bootstrap": bootstrap,
+            "fixtures": fixtures_raw,
+            "authority_payload": authority_payload,
+            "authority_sha256": authority_hash,
+            "raw_hashes": raw_hashes,
+        },
     )

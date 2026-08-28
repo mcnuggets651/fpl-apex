@@ -59,7 +59,7 @@ def intent(
 
 @app.command("official-hash")
 def official_hash(season: str = "2026-2027"):
-    """Capture the canonical Official-FPL seal before provider acquisition."""
+    """Capture the canonical Official-FPL authority seal before acquisition."""
     from apex.sources.official import fetch_official_snapshot
 
     official, _ = fetch_official_snapshot(season=season)
@@ -77,21 +77,42 @@ def acquire(
         None,
         "--expected-official-hash",
         help=(
-            "Official FPL canonical hash captured immediately before provider "
-            "generation. Acquisition aborts if the final Official snapshot differs."
+            "Official FPL authority hash captured immediately before provider "
+            "generation. Acquisition aborts if the final authority state differs."
         ),
     ),
+    failure_output: Path = typer.Option(
+        Path("artifacts/v2/acquisition_failure.json"),
+        "--failure-output",
+        help="Machine-readable fatal acquisition failure record.",
+    ),
 ):
-    from apex.runtime.acquire import acquire_and_freeze
+    from apex.runtime.acquire import AcquisitionStageError, acquire_and_freeze
 
-    snap = acquire_and_freeze(
-        config,
-        run_id=run_id,
-        code_sha=code_sha,
-        run_started_at=run_started_at,
-        workdir=workdir,
-        expected_official_hash=expected_official_hash,
-    )
+    try:
+        snap = acquire_and_freeze(
+            config,
+            run_id=run_id,
+            code_sha=code_sha,
+            run_started_at=run_started_at,
+            workdir=workdir,
+            expected_official_hash=expected_official_hash,
+        )
+    except AcquisitionStageError as exc:
+        payload = {
+            "schema_version": 1,
+            "run_id": run_id,
+            "code_sha": code_sha,
+            "failed_at": datetime.now(timezone.utc).isoformat(),
+            **exc.as_dict(),
+        }
+        failure_output.parent.mkdir(parents=True, exist_ok=True)
+        failure_output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        typer.echo(json.dumps(payload, sort_keys=True), err=True)
+        raise typer.Exit(1) from exc
     typer.echo(str(snap.root))
 
 

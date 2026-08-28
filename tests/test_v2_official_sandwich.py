@@ -73,7 +73,10 @@ def test_official_hash_mismatch_aborts_before_team_or_provider_processing(
         unexpected_team_fetch,
     )
 
-    with pytest.raises(RuntimeError, match="Official FPL changed during provider acquisition"):
+    with pytest.raises(
+        acquire_module.AcquisitionStageError,
+        match="official_reanchor: RuntimeError: Official FPL authority state changed",
+    ):
         acquire_module.acquire_and_freeze(
             _config(tmp_path),
             run_id="run-1",
