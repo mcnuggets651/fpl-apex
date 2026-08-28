@@ -46,32 +46,6 @@ jobs:
       - name: Install Apex tooling
         run: python -m pip install -e '.[dev]'
 
-      - name: Resolve exact Dastan pin
-        id: dastan
-        shell: bash
-        run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          source = json.load(open('upstreams.lock.json', encoding='utf-8'))['sources']['dastan']
-          print(f"repository={source['repository']}")
-          print(f"sha={source['commit']}")
-          PY
-
-      - name: Checkout Dastan and install its pinned data runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p workers artifacts/v2/challengers acquisition/providers .dastan-raw
-          git clone --filter=blob:none "https://github.com/${{ steps.dastan.outputs.repository }}.git" workers/dastan
-          git -C workers/dastan checkout --detach "${{ steps.dastan.outputs.sha }}"
-          python -m pip install -r workers/dastan/requirements-data.txt
-
-      - name: Verify immutable Dastan release contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          PYTHONPATH=workers/dastan python -m dastan.artifacts
-
       - name: Capture Official FPL pre-Dastan seal
         id: official_before
         shell: bash
@@ -82,57 +56,36 @@ jobs:
           echo "hash=$HASH" >> "$GITHUB_OUTPUT"
           echo "Official FPL pre-Dastan authority hash: $HASH"
 
-      - name: Audit current roster and resolve reviewed club identities
+      - name: Acquire and qualify isolated Dastan H1 shadow
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/dastan_identity_preflight.py \
-            --mapping workers/dastan/data/mappings/fpl_understat_current.csv \
-            --output artifacts/v2/challengers/dastan_identity_preflight.json
+          python scripts/acquire_dastan_shadow.py \
+            --expected-official-hash '${{ steps.official_before.outputs.hash }}'
 
-      - name: Generate leakage-safe Dastan H1 shadow forecast
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/run_dastan_shadow_worker.py \
-            --dastan-root workers/dastan \
-            --identity-preflight artifacts/v2/challengers/dastan_identity_preflight.json \
-            --raw-dir .dastan-raw \
-            --output acquisition/providers/dastan.csv \
-            --manifest artifacts/v2/challengers/dastan_shadow_manifest.json
-
-      - name: Re-seal Official FPL and verify shadow provenance
+      - name: Re-seal Official FPL after Dastan
         shell: bash
         run: |
           set -euo pipefail
           POST_HASH="$(apex-v2 official-hash --season 2026-2027)"
           test "$POST_HASH" = "${{ steps.official_before.outputs.hash }}"
+
+      - name: Assert Dastan remains non-serving
+        shell: bash
+        run: |
+          set -euo pipefail
           python - <<'PY'
           import json
-          import pandas as pd
 
-          expected = "${{ steps.official_before.outputs.hash }}"
-          manifest = json.load(open(
-              'artifacts/v2/challengers/dastan_shadow_manifest.json', encoding='utf-8'
+          report = json.load(open(
+              'artifacts/v2/challengers/dastan_shadow_qualification.json',
+              encoding='utf-8',
           ))
-          frame = pd.read_csv('acquisition/providers/dastan.csv')
-          assert manifest['official_source_hash'] == expected
-          assert bool(manifest['placeholder_invariance']) is True
-          assert bool(manifest['serve_authorized']) is False
-          assert manifest['predictive_status'] == 'INSUFFICIENT_HISTORY'
-          assert len(frame) == int(manifest['official_players'])
-          assert frame['source_snapshot'].astype(str).nunique() == 1
-          assert frame['source_snapshot'].astype(str).iloc[0] == expected
-          assert frame['scoring_rules_version'].astype(str).nunique() == 1
-          assert frame['scoring_rules_version'].astype(str).iloc[0] == 'fpl-2026-27-v1'
-          print(json.dumps({
-              'official_players': int(manifest['official_players']),
-              'forecast_rows': int(manifest['forecast_rows']),
-              'no_forecast_rows': int(manifest['no_forecast_rows']),
-              'target_gameweek': int(manifest['target_gameweek']),
-              'source_snapshot': expected,
-              'serve_authorized': False,
-          }, sort_keys=True))
+          assert report['serve_authorized'] is False
+          assert report['predictive_status'] == 'INSUFFICIENT_HISTORY'
+          assert report['official_forecast_coverage'] == 1.0
+          assert report['material_probability_order_violations'] == 0
+          print(json.dumps(report, sort_keys=True))
           PY
 
       - name: Upload immutable shadow diagnostic copy
