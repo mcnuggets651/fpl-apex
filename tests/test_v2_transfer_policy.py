@@ -15,18 +15,18 @@ def setup():
     players = []
     player_id = 1
     specs = [
-        (Position.GK, 2),
-        (Position.DEF, 5),
-        (Position.MID, 5),
-        (Position.FWD, 3),
+        (Position.GK, (1, 2)),
+        (Position.DEF, (1, 2, 3, 4, 5)),
+        (Position.MID, (3, 4, 5, 6, 7)),
+        (Position.FWD, (6, 7, 8)),
     ]
-    for position, count in specs:
-        for index in range(count):
+    for position, team_ids in specs:
+        for team_id in team_ids:
             players.append(
                 OfficialPlayer(
                     player_id,
                     f"P{player_id}",
-                    1 + index % 5,
+                    team_id,
                     position,
                     50,
                     "a",
@@ -40,7 +40,7 @@ def setup():
                 OfficialPlayer(
                     player_id,
                     f"A{player_id}",
-                    6 + index % 2,
+                    9 + index,
                     position,
                     50,
                     "a",
