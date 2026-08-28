@@ -23,7 +23,6 @@ FINAL_PROMOTION_ENTRYPOINTS = (
 ACTIVE_WORKFLOWS = {
     "airsenal.yml",
     "apex.yml",
-    "gw1-final-2026.yml",
     "joint-path-promotion-audit.yml",
     "pinnacle.yml",
     "production-readiness.yml",
@@ -37,6 +36,7 @@ ARCHIVED_WORKFLOWS = {
     "bootstrap-publish.yml",
     "publish-apex.yml",
     "fixture-blend-decision-audit.yml",
+    "gw1-final-2026.yml",
     "joint-initial-path-audit.yml",
     "solver-parity.yml",
     "understat-player-predictive-audit.yml",
@@ -49,7 +49,9 @@ CONCURRENT_PR_AUDITS = {
     "team-strength-validation.yml": "github.event.pull_request.number || github.ref",
     "understat-player-production-ab.yml": "github.event.pull_request.number || github.ref",
 }
-REQUIRED_SOURCE_INVALIDATORS = {
+# Any refresh that changes a sealed/publication input invalidates the prior decision,
+# even when that source is enrichment rather than the canonical statistical authority.
+SOURCE_INVALIDATORS = {
     "airsenal.yml": "--source airsenal",
     "refresh-core-pin.yml": "--source fpl_core_insights",
 }
@@ -95,17 +97,23 @@ def main() -> None:
             )
 
     if not Path("scripts/invalidate_published_decision.py").exists():
-        failures.append("required-source canonical invalidation CLI is missing")
-    for name, source_arg in REQUIRED_SOURCE_INVALIDATORS.items():
+        failures.append("canonical invalidation CLI is missing")
+    for name, source_arg in SOURCE_INVALIDATORS.items():
         text = _text(active_dir / name)
         if "scripts/invalidate_published_decision.py" not in text or source_arg not in text:
             failures.append(
-                f"required-source refresh can leave a stale actionable decision: {name}"
+                f"source refresh can leave a stale/mismatched published decision: {name}"
             )
         if "apex_answer_context.json" not in text or "apex_recommendation_latest.json" not in text:
             failures.append(
-                f"required-source refresh does not atomically stage invalidated canonical files: {name}"
+                f"source refresh does not atomically stage invalidated canonical files: {name}"
             )
+
+    core_refresh = _text(active_dir / "refresh-core-pin.yml")
+    if "python -m pip install -e ." not in core_refresh:
+        failures.append("FPL Core refresh does not install Apex before publication invalidation")
+    if "from apex_fpl.services.publication import invalidate_published_decision" not in core_refresh:
+        failures.append("FPL Core refresh does not verify the publication import path")
 
     workflow = _text(active_dir / "pinnacle.yml")
     if "scripts/run_apex.py" not in workflow:
@@ -172,10 +180,6 @@ def main() -> None:
         failures.append("operating manual does not preserve the EV-first evidence policy")
     if "architecture freeze" not in operating.casefold():
         failures.append("operating manual does not define the post-PR64 architecture freeze")
-
-    gw1 = _text(active_dir / "gw1-final-2026.yml")
-    if "scripts/run_apex.py" not in gw1:
-        failures.append("GW1 final workflow bypasses the single canonical runner")
 
     if failures:
         raise SystemExit("\n".join(failures))
