@@ -60,7 +60,7 @@ def test_team_state_failure_has_stable_stage(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         acquire_module,
-        "fetch_team_state",
+        "acquire_team_state",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("entry unavailable")),
     )
 
