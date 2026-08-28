@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from apex_fpl.control.candidate_operations import (
     materialize_forecast_model_candidate,
     materialize_qualified_candidate,
 )
+from apex_fpl.control.production_authority import resolve_production_answer_authority
 from apex_fpl.control.production_backend_runtime import load_production_backend_runtime
 from apex_fpl.control.prospective_experiment_operations import (
     declare_candidate_experiment,
@@ -124,6 +126,46 @@ def backend_identify() -> None:
 
     runtime = load_production_backend_runtime()
     _emit(runtime.identity_payload())
+
+
+@app.command("authority-status")
+def authority_status(
+    season: str = typer.Option(..., help="FPL season, for example 2026-2027."),
+    entry: int = typer.Option(..., min=1, help="FPL entry ID."),
+    gameweek: int = typer.Option(..., min=1, help="Gameweek to resolve."),
+    as_of: str | None = typer.Option(
+        None,
+        help="Timezone-aware ISO-8601 authority instant; defaults to captured execution UTC.",
+    ),
+) -> None:
+    """Resolve the one current rooted V2 production answer authority.
+
+    This command always loads the complete production PostgreSQL adapter bundle and supplies
+    ArtifactStore, ReleaseRegistry and AuthorityRootRegistry to the serving gate together. An
+    unavailable authority is emitted as structured evidence and exits 2; it never exposes a
+    production bundle for downstream recommendation decoding.
+    """
+
+    runtime = load_production_backend_runtime()
+    effective_as_of = as_of or datetime.now(timezone.utc).isoformat()
+    authority = resolve_production_answer_authority(
+        season=season,
+        entry=entry,
+        gameweek=gameweek,
+        as_of=effective_as_of,
+        artifact_store=runtime.artifact_store,
+        production_registry=runtime.release_registry,
+        authority_root_registry=runtime.authority_root_registry,
+    )
+    _emit(
+        {
+            **authority.semantic_payload(),
+            "authority_id": authority.authority_id,
+            "as_of": effective_as_of,
+        }
+    )
+    if not authority.publication_eligible:
+        raise typer.Exit(code=2)
 
 
 @app.command("seal-file")

@@ -6,7 +6,12 @@ from datetime import datetime
 from typing import Protocol
 
 from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.backend_ports import ProductionAuthorityRootRegistry
 from apex_fpl.control.champion_authority import verify_bundle_champion_authority
+from apex_fpl.control.production_authority_verification import (
+    require_authority_root_unchanged,
+    verify_production_authority_closure,
+)
 from apex_fpl.control.production_backend_qualification import (
     load_production_backend_qualification,
 )
@@ -68,12 +73,14 @@ def resolve_production_answer_authority(
     as_of: str,
     artifact_store: ArtifactStore,
     production_registry: ProductionCurrentReader,
+    authority_root_registry: ProductionAuthorityRootRegistry | None = None,
 ) -> ProductionAnswerAuthority:
-    """Resolve only the exact current, unexpired, proof-authorized PUBLISHED V2 release.
+    """Resolve only the exact current, unexpired, fully-rooted PUBLISHED V2 release.
 
     ``as_of`` is explicit so answer authority never depends on a hidden wall clock and can be
-    replayed exactly. The current pointer is re-read immediately before authority is returned
-    so a concurrent CAS cannot make a stale release user-facing during verification.
+    replayed exactly. Both the release pointer and the independent season authority-root pointer
+    are re-read immediately before authority is returned, preventing either concurrent CAS from
+    making a stale authority user-facing during verification.
     """
 
     key = ReleaseKey(season, entry, gameweek)
@@ -120,9 +127,26 @@ def resolve_production_answer_authority(
     if evaluation_time >= valid_until:
         return _unavailable(key, "current PUBLISHED release has expired")
 
-    manifest_id = str(record.artifact_manifest_id).strip()
-    if not manifest_id or not artifact_store.verify(manifest_id):
-        return _unavailable(key, "current PUBLISHED release manifest is missing or corrupt")
+    if authority_root_registry is None:
+        return _unavailable(key, "production AuthorityRootRegistry is required for answer authority")
+    try:
+        authority_closure = verify_production_authority_closure(
+            artifact_manifest_id=record.artifact_manifest_id,
+            season=record.season,
+            entry=record.entry,
+            gameweek=record.gameweek,
+            bundle_id=record.bundle_id,
+            world_id=record.world_id,
+            runtime_digest=record.runtime_digest,
+            as_of=as_of,
+            store=artifact_store,
+            authority_root_registry=authority_root_registry,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        return _unavailable(key, f"current production authority closure is invalid: {exc}")
+    manifest_id = authority_closure.manifest.manifest_id
+    if manifest_id != record.artifact_manifest_id:
+        return _unavailable(key, "current ReleaseRecord and replayed artifact manifest disagree")
 
     authorization_artifact_id = str(
         record.publication_authorization_artifact_id or ""
@@ -156,6 +180,14 @@ def resolve_production_answer_authority(
         return _unavailable(key, "publication authorization validity does not match ReleaseRecord")
     if authorization.artifact_manifest_id != record.artifact_manifest_id:
         return _unavailable(key, "publication authorization manifest does not match ReleaseRecord")
+    if (
+        authorization.champion_generation_artifact_id
+        != authority_closure.authority.root.champion_generation_artifact_id
+    ):
+        return _unavailable(
+            key,
+            "publication authorization champion does not match production authority root",
+        )
 
     try:
         verified_bundle = load_production_planning_bundle(
@@ -179,7 +211,7 @@ def resolve_production_answer_authority(
         verify_bundle_champion_authority(
             authorization.champion_generation_artifact_id,
             verified_bundle=verified_bundle,
-            as_of=authorization.created_at,
+            as_of=as_of,
             store=artifact_store,
         )
     except (FileNotFoundError, ValueError) as exc:
@@ -213,6 +245,14 @@ def resolve_production_answer_authority(
 
     if production_registry.current_release_id(key) != release_id:
         return _unavailable(key, "current V2 production pointer changed during authority verification")
+    try:
+        require_authority_root_unchanged(
+            authority_closure,
+            season=season,
+            authority_root_registry=authority_root_registry,
+        )
+    except ValueError as exc:
+        return _unavailable(key, str(exc))
 
     return ProductionAnswerAuthority(
         season=key.season,

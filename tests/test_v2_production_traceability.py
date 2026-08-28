@@ -15,10 +15,14 @@ REQUIREMENT_ID = "REQ-V2-PRODUCTION-CUTOVER"
 PLANNER_REQUIREMENT_ID = "REQ-RECEDING-HORIZON-PLANNER"
 ASSURANCE_REQUIREMENT_ID = "REQ-INDEPENDENT-DECISION-ASSURANCE"
 CUTOVER = ROOT / "src/apex_fpl/control/production_cutover.py"
+CUTOVER_TRANSACTION = ROOT / "src/apex_fpl/control/_production_cutover_legacy.py"
+VERIFIER = ROOT / "src/apex_fpl/control/production_authority_verification.py"
 AUTHORITY = ROOT / "src/apex_fpl/control/production_authority.py"
 CHAMPION_AUTHORITY = ROOT / "src/apex_fpl/control/champion_authority.py"
 PROMOTION_REPLAY = ROOT / "src/apex_fpl/control/learning_promotion_replay.py"
 CHAMPION_DOC = ROOT / "docs/APEX_CHAMPION_AUTHORITY_V2.md"
+LEGACY_CUTOVER_TESTS = ROOT / "tests/_legacy_v2_production_cutover.py"
+CUTOVER_TEST_HARNESS = ROOT / "tests/test_v2_production_cutover.py"
 INVARIANTS = {
     "INV-PRODUCTION-CERTIFICATE-ONLY",
     "INV-PRODUCTION-PLANNING-AUTHORITY",
@@ -93,7 +97,12 @@ def test_slice13_production_proof_requirement_and_invariant_traceability_is_clos
 
     _assert_declared_paths_exist(requirement)
 
-    available_tests: set[str] = set()
+    # The public cutover test module deliberately re-exports the private transaction
+    # regression suite. Follow that explicit harness when checking constitutional ownership
+    # instead of pretending dynamically re-exported tests are AST definitions in the facade.
+    harness = CUTOVER_TEST_HARNESS.read_text(encoding="utf-8")
+    assert 'importlib.import_module("_legacy_v2_production_cutover")' in harness
+    available_tests: set[str] = _test_functions(LEGACY_CUTOVER_TESTS)
     for relative in requirement["tests"]:
         available_tests |= _test_functions(ROOT / relative)
     missing = set(proof["required_tests"]) - available_tests
@@ -104,20 +113,27 @@ def test_cutover_and_answer_authority_both_replay_exact_production_bundle() -> N
     """Constitutionally own the schema-v2 bundle replay guard under cutover requirement."""
 
     cutover = CUTOVER.read_text(encoding="utf-8")
+    verifier = VERIFIER.read_text(encoding="utf-8")
     authority = AUTHORITY.read_text(encoding="utf-8")
-    assert "load_production_planning_bundle" in cutover
+    assert "verify_production_authority_closure(" in cutover
+    assert "load_production_planning_bundle" in verifier
     assert "load_production_planning_bundle" in authority
     assert "load_production_decision_bundle" not in cutover
+    assert "load_production_decision_bundle" not in verifier
     assert "load_production_decision_bundle" not in authority
 
 
 def test_cutover_and_answer_authority_both_replay_exact_champion_authority() -> None:
     cutover = CUTOVER.read_text(encoding="utf-8")
+    transaction = CUTOVER_TRANSACTION.read_text(encoding="utf-8")
+    verifier = VERIFIER.read_text(encoding="utf-8")
     authority = AUTHORITY.read_text(encoding="utf-8")
     champion = CHAMPION_AUTHORITY.read_text(encoding="utf-8")
     promotion = PROMOTION_REPLAY.read_text(encoding="utf-8")
 
-    assert "verify_bundle_champion_authority(" in cutover
+    assert "verify_production_authority_closure(" in cutover
+    assert "verify_production_authority_root(" in verifier
+    assert "verify_bundle_champion_authority(" in transaction
     assert "verify_bundle_champion_authority(" in authority
     assert "verify_forecast_registry_champion(" in champion
     assert "verify_model_evaluation_replay(" in promotion
@@ -135,7 +151,7 @@ def test_runtime_publication_paths_are_champion_verifier_only() -> None:
         "issue_model_promotion_certificate(",
         "apply_model_promotion(",
     )
-    for path in (CUTOVER, AUTHORITY):
+    for path in (CUTOVER, CUTOVER_TRANSACTION, VERIFIER, AUTHORITY):
         text = path.read_text(encoding="utf-8")
         for symbol in forbidden:
             assert symbol not in text

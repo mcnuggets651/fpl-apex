@@ -33,12 +33,35 @@ from apex_fpl.decision.store import store_candidate_universe
 
 _FINANCE_GAMEWEEK = 6
 _FINANCE_EXTRA_PLAYER = OfficialPlayerId(16)
+_FINANCE_CLUB_ID = 8
+_FINANCE_CLUB_OWNED_IDS = frozenset({3, 4, 8})
 
 
 def _finance_candidate_universe(verified, *, store: ArtifactStore) -> tuple[CandidateUniverse, str]:
+    """Return the compatibility finance universe with the retained £5.1m MID target.
+
+    This helper intentionally preserves the original reuse/inject contract because older focused
+    fixtures use it directly. Search-surface shaping belongs to the qualification-only helper
+    below and must not silently rewrite generic fixture identity.
+    """
+
     base = verified.candidate_universe
-    if any(int(row.player_id) == int(_FINANCE_EXTRA_PLAYER) for row in base.players):
-        raise ValueError("focused finance case expects publication universe without player 16")
+    existing = next(
+        (row for row in base.players if row.player_id == _FINANCE_EXTRA_PLAYER),
+        None,
+    )
+    if existing is not None:
+        if (
+            existing.team_id != 16
+            or existing.position != "MID"
+            or existing.current_price_tenths != 51
+        ):
+            raise ValueError(
+                "focused finance case player 16 must remain the £5.1m MID qualification target"
+            )
+        stored = store_candidate_universe(base, store=store)
+        return base, stored.artifact_id
+
     source = store.put_bytes(b"synthetic-planning-finance-universe-source").artifact_id
     universe = CandidateUniverse(
         global_world_id=base.global_world_id,
@@ -59,7 +82,59 @@ def _finance_candidate_universe(verified, *, store: ArtifactStore) -> tuple[Cand
     return universe, stored.artifact_id
 
 
-def _finance_manager_state(verified, *, store: ArtifactStore):
+def _focused_finance_candidate_universe(
+    verified,
+    *,
+    store: ArtifactStore,
+) -> tuple[CandidateUniverse, str]:
+    """Shape only the exact qualification case to one legally relevant financed MID swap.
+
+    The publication case separately proves the complete FULL_OFFICIAL/chip action surface. This
+    finance case proves banking and sale-vs-purchase arithmetic. Players 3, 4 and 8 saturate the
+    target club, so importing MID 16 is legal only when MID 8 leaves. No search budget or FPL rule
+    is weakened; irrelevant legal dead ends are removed by fixture construction.
+    """
+
+    base, _ = _finance_candidate_universe(verified, store=store)
+    required_ids = {*_FINANCE_CLUB_OWNED_IDS, int(_FINANCE_EXTRA_PLAYER)}
+    present_ids = {int(player.player_id) for player in base.players}
+    missing = sorted(required_ids - present_ids)
+    if missing:
+        raise ValueError(
+            "focused finance qualification universe lacks required players: "
+            + ",".join(str(player_id) for player_id in missing)
+        )
+
+    source = store.put_bytes(b"synthetic-planning-finance-universe-source-v2").artifact_id
+    shaped_players = tuple(
+        replace(player, team_id=_FINANCE_CLUB_ID)
+        if int(player.player_id) in required_ids
+        else player
+        for player in base.players
+    )
+    universe = CandidateUniverse(
+        global_world_id=base.global_world_id,
+        scope=CandidateUniverseScope.FULL_OFFICIAL,
+        players=shaped_players,
+        official_player_count=len(shaped_players),
+        source_artifact_ids=(source,),
+    )
+    target = next(row for row in universe.players if row.player_id == _FINANCE_EXTRA_PLAYER)
+    saturated_owned = {
+        int(row.player_id)
+        for row in universe.players
+        if row.team_id == _FINANCE_CLUB_ID and row.player_id != _FINANCE_EXTRA_PLAYER
+    }
+    if saturated_owned != _FINANCE_CLUB_OWNED_IDS:
+        raise ValueError("focused finance universe must saturate the target club with players 3,4,8")
+    if target.position != "MID" or target.current_price_tenths != 51:
+        raise ValueError("focused finance target semantics drifted")
+
+    stored = store_candidate_universe(universe, store=store)
+    return universe, stored.artifact_id
+
+
+def _finance_manager_state(verified, universe: CandidateUniverse, *, store: ArtifactStore):
     source = store.put_bytes(b"synthetic-planning-finance-chip-history").artifact_id
     chips = (
         ChipUse(chip="BENCH_BOOST", gameweek=2, set_number=1, source_artifact_id=source),
@@ -67,15 +142,24 @@ def _finance_manager_state(verified, *, store: ArtifactStore):
         ChipUse(chip="WILDCARD", gameweek=4, set_number=1, source_artifact_id=source),
         ChipUse(chip="FREE_HIT", gameweek=5, set_number=1, source_artifact_id=source),
     )
+    candidates = {row.player_id: row for row in universe.players}
+    squad = tuple(
+        replace(row, team_id=candidates[row.player_id].team_id)
+        for row in verified.manager_state.squad
+    )
     state = replace(
         verified.manager_state,
         gameweek=_FINANCE_GAMEWEEK,
         bank_tenths=1,
         free_transfers=1,
+        squad=squad,
         chips_used=chips,
         transfer_ledger=(),
     )
     state.require_decision_safe(ruleset=verified.ruleset)
+    club_rows = tuple(row for row in state.squad if row.team_id == _FINANCE_CLUB_ID)
+    if {int(row.player_id) for row in club_rows} != _FINANCE_CLUB_OWNED_IDS:
+        raise ValueError("focused finance manager state must start with target club at legal maximum")
     store_manager_state(state, store=store)
     return state
 
@@ -150,9 +234,6 @@ def _finance_forecast(verified, universe: CandidateUniverse) -> Forecast:
                 )
                 continue
             template = _row_for_depth(verified, player_id=player_id, depth=depth)
-            # Player 8 is deliberately good in GW7 (10 xP in the source fixture), while
-            # the new £5.1m MID is 12 xP. Banking first and transferring only in GW7 is
-            # therefore uniquely better than sacrificing current-GW points for an early move.
             rows.append(
                 _retarget_row(
                     template,
@@ -195,15 +276,13 @@ def store_finance_qualification_case(
     candidate_policy,
     max_search_nodes: int = 500,
 ) -> str:
-    """Store a focused finance/banking case for planning-worker qualification.
+    """Store the focused bank-then-finance case for planning-worker qualification."""
 
-    Current-set chips are all validly consumed in prior GWs, removing chip branching from this
-    case. The separate publication case proves the complete chip surface. Together the retained
-    cases cover the same production semantics without multiplying unrelated action surfaces.
-    """
-
-    universe, universe_artifact_id = _finance_candidate_universe(verified, store=store)
-    manager_state = _finance_manager_state(verified, store=store)
+    universe, universe_artifact_id = _focused_finance_candidate_universe(
+        verified,
+        store=store,
+    )
+    manager_state = _finance_manager_state(verified, universe, store=store)
     forecast = _finance_forecast(verified, universe)
     policy = verified.decision_policy
     result = optimise_receding_horizon(
@@ -228,6 +307,8 @@ def store_finance_qualification_case(
     if len(steps[1].action.transfers) != 1:
         raise ValueError("focused planning finance fixture must execute exactly one transfer")
     move = steps[1].action.transfers[0]
+    if move.outgoing_player_id != OfficialPlayerId(8):
+        raise ValueError("focused planning finance fixture selected the wrong outgoing player")
     if move.incoming_player_id != _FINANCE_EXTRA_PLAYER:
         raise ValueError("focused planning finance fixture selected the wrong incoming player")
 

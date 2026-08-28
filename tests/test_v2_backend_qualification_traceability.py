@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / "src" / "apex_fpl" / "core" / "backend_qualification.py"
 OPERATIONAL = ROOT / "src" / "apex_fpl" / "control" / "backend_operational_qualification.py"
 CUTOVER = ROOT / "src" / "apex_fpl" / "control" / "production_cutover.py"
+CUTOVER_TRANSACTION = ROOT / "src" / "apex_fpl" / "control" / "_production_cutover_legacy.py"
+VERIFIER = ROOT / "src" / "apex_fpl" / "control" / "production_authority_verification.py"
 AUTHORITY = ROOT / "src" / "apex_fpl" / "control" / "production_authority.py"
 LOADER = ROOT / "src" / "apex_fpl" / "control" / "production_backend_qualification.py"
 DOC = ROOT / "docs" / "APEX_BACKEND_OPERATIONAL_QUALIFICATION_V2.md"
@@ -44,11 +46,16 @@ def test_backend_production_qualification_is_structurally_two_plane() -> None:
 
 def test_cutover_and_replay_both_require_replayed_backend_qualification() -> None:
     cutover = CUTOVER.read_text(encoding="utf-8")
+    transaction = CUTOVER_TRANSACTION.read_text(encoding="utf-8")
+    verifier = VERIFIER.read_text(encoding="utf-8")
     loader = LOADER.read_text(encoding="utf-8")
     operational = OPERATIONAL.read_text(encoding="utf-8")
 
-    assert "verify_backend_qualification_evidence(" in cutover
-    assert "verify_stored_backend_qualification_evidence(" in cutover
+    assert "verify_production_authority_closure(" in cutover
+    assert "_legacy.execute_production_cutover(" in cutover
+    assert "verify_backend_qualification_evidence(" in transaction
+    assert "verify_stored_backend_qualification_evidence(" in transaction
+    assert "_replay_backend_qualification(" in verifier
     assert "verify_stored_backend_qualification_evidence(" in loader
     assert "artifact-store probe evidence belongs to a different backend" in operational
     assert "deployment evidence belongs to a different ArtifactStore backend" in operational
@@ -61,7 +68,7 @@ def test_runtime_publication_paths_cannot_self_author_plane_b_evidence() -> None
         "store_backend_deployment_qualification_evidence",
         "derive_production_backend_qualification",
     )
-    for path in (CUTOVER, AUTHORITY, LOADER):
+    for path in (CUTOVER, VERIFIER, AUTHORITY, LOADER):
         text = path.read_text(encoding="utf-8")
         for symbol in forbidden:
             assert symbol not in text
