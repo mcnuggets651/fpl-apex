@@ -4,17 +4,43 @@
 AIrsenal intentionally rebuilds player attributes from and including the last
 completed gameweek because prices, availability and other FPL fields may change
 between a match and the next deadline. Its SQLAlchemy session is configured with
-``autoflush=False``; on a restored cache this can leave an existing/pending row
-colliding with a second insert for the same (player, season, gameweek) key.
+``autoflush=False``. During a live refresh the pinned refiller can encounter the
+same (player, season, gameweek) twice; without an autoflush, its second lookup
+cannot see the first pending insert and both collide only at final commit.
 
-Apex therefore rewinds only the exact current-season window that upstream intends
-to rebuild, then lets the pinned AIrsenal API refiller reconstruct it from fresh
-Official FPL data. Rows before the rewind point and every other season are kept.
+Apex therefore applies two narrowly scoped guards around the pinned refiller:
+1. rewind only the exact current-season window upstream intends to rebuild;
+2. temporarily enable session autoflush while that refiller runs so its own
+   duplicate-key lookup/update logic can observe pending inserts.
+
+Rows before the rewind point and every other season are kept. The session's
+original autoflush configuration is always restored afterwards.
 """
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Iterator
+
+
+@contextmanager
+def refiller_autoflush(session: Any) -> Iterator[None]:
+    """Expose pending rows to the pinned refiller's lookup/update queries.
+
+    AIrsenal globally chooses ``autoflush=False``. Changing that global session
+    policy would be a broad upstream semantic modification, so Apex enables it
+    only for the attribute-refill call and restores the exact previous value on
+    both success and failure.
+    """
+    if not hasattr(session, "autoflush"):
+        raise TypeError("session must expose an autoflush attribute")
+    previous = session.autoflush
+    session.autoflush = True
+    try:
+        yield
+    finally:
+        session.autoflush = previous
 
 
 def rewind_player_attributes(
