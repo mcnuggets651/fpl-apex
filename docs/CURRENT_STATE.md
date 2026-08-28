@@ -2,148 +2,106 @@
 
 Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
 
-**Last updated:** 2026-08-11
+**Last audited:** 2026-08-28  
+**Production `main` at audit start:** `80b31eede7d44b7412261aa8c9df994a4612a348`  
+**Active cleanup/cutover branch:** `agent/final-airsenal-authority-cutover`
 
-The sealed-decision-surface change is currently a local release candidate on
-`agent/seal-decision-bundle`. It is not production until PR review, CI, merge and
-a fresh Apex Unified artifact prove matching bundle identity end to end. Local
-validation currently passes 174 tests, Ruff, governance, upstream pins and
-workflow YAML checks.
+## Production now
 
-## Production
+The current `main` publication is fail-closed. The latest tracked answer context and recommendation contain `safe_to_act=false`, `ready_to_act=false` and `recommendation=null`. Do not use any older squad as a fallback.
 
-- Repository: `mcnuggets651/fpl-apex`
-- Production branch: `main`
-- Production selector: canonical xP → rolling-horizon legal maximum-EV optimiser
-  → exact Gameweek mechanics → one published recommendation. Correlated
-  robustness and Elite frontiers are non-authoritative diagnostics.
-- PR #25 is merged. It corrects isolated preseason-cameo weighting and exposes
-  labelled captain/evidence surfaces.
-- Latest production publication: `a147754` on 2026-08-11.
-- PR #16 is merged. The Understat team-strength challenger is shadow-only and
-  does not change canonical publication.
-- PR #14 is closed and superseded. It combined model activation, readiness
-  semantics and uncalibrated captain telemetry, and its original historical
-  validator used an outcome-selected prediction cohort.
-- PR #17 is merged. It fixes versioned season rules/free transfers and adds the
-  deterministic replay foundations.
-- PR #18 is merged. It adds a dormant attack-only shrinkage candidate and the
-  corrected shadow validator; it does not connect shrinkage to production.
+The failed production state is understood: it combines an obsolete forecast-authority policy with a stale FPL Core enrichment pin. FPL Core itself was not broken; the validated refresh workflow failed at publication invalidation because the Apex package had not been installed in that job.
 
-The only production command is:
+No current XI, captain, vice-captain or bench is authorized until the post-cutover Apex Unified run succeeds.
 
-```bash
-python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
-```
+## Audited replacement authority
 
-The only user-facing outputs are:
+The cutover branch implements the following production dependency graph:
 
-- `data/generated/apex_answer_context.json`
-- `data/generated/apex_recommendation_latest.json`
-- `data/generated/apex_recommendation_latest.md`
+- **Official FPL — factual truth.** Exact current player IDs, clubs, FPL positions, prices, availability, fixtures and rules inputs.
+- **AIrsenal — production statistical xP.** Canonical `xp` is the validated AIrsenal number exactly. Missing/stale/incomplete AIrsenal blocks production. There is no Apex fallback in production mode.
+- **Apex proprietary xP — shadow.** Retained for diagnostics and prospective challenger evaluation only.
+- **FPL Core — enrichment.** Retained for prior-season/current supporting statistics, preseason/Elo/DefCon and research. Staleness or unavailability is disclosed but is not a canonical-xP blocker while AIrsenal is independent of it.
+- **Understat — enrichment/shadow.** Retained for underlying-stat priors, team/player research and shadow-model features. Empty/invalid payloads are unhealthy rather than accepted as valid zero data.
+- **Football evidence — availability/minutes/role context.** Hard current evidence may exclude/invalidate; soft evidence affects uncertainty/scenarios rather than manufacturing xP bonuses.
+- **Apex optimiser — decision authority.** Legal current-state optimisation, exact mechanics, XI/captain/vice/bench/autosubs and receding-horizon first-action selection.
+- **Prospective calibration — promotion judge.** No automatic model or weight promotion.
 
-## ChatGPT query discipline
+The authority cutover passed 127 focused regressions and all 384 repository tests in GitHub Actions before source publication to the branch.
 
-Every FPL/player/squad/transfer question must follow
-[`CHATGPT_APEX_QUERY_POLICY.md`](CHATGPT_APEX_QUERY_POLICY.md).
+## Latest audited data facts
 
-In particular: load this Project Brain and the latest canonical recommendation
-before answering; use committed Apex and pinned-upstream evidence first; do not
-browse externally unless a concrete repository evidence gap prevents a defensible
-answer; and never mix production, shadow, open-PR or stale artifacts without
-labelling the distinction.
+### Official FPL
 
-## Latest verified canonical recommendation
+Latest audited production snapshot:
 
-The post-PR #25 publication at `a147754` reported:
+- snapshot ID: `20260828T021354Z-463aea4b`
+- bootstrap SHA-256: `b7824c11828ead43d315578233f03ff15a9ca51c8cd01c31f0a3b2b3b99a15c8`
+- fixtures SHA-256: `ff77d62793e06a7b24c9789ca1be5722733483c7d0261728a3961f8bfa7da684`
+- players: 616
+- fixtures: 380
 
-- selector: **strategy_maximum_ev**
-- GW1 exact-mechanics total: **51.42 xP**
-- captain: **Haaland**
-- vice-captain: **Bruno Fernandes**
-- fixtures SHA-256 prefix: `a478e20d030d`
+A final production solve must acquire a new Official snapshot rather than assuming this remains current.
 
-Canonical 15:
+### AIrsenal
 
-- GK: Verbruggen, Petrović
-- DEF: Virgil, Guéhi, Thiaw, Truffert, Kayode
-- MID: Bruno Fernandes, Enzo, Schade, Ndiaye, Drakes-Thomas
-- FWD: Haaland, Thiago, Neave
+The tracked forecast file was generated `2026-08-26T06:01:52.744602+00:00` from pinned revision `8c7e18eba1488dd5a7d4bdb00d4da0a75e895717`. The pre-cutover failed bundle contained 4,928 player/Gameweek AIrsenal rows, but the file must be refreshed before final execution.
 
-GW1 XI:
+### FPL Core
 
-- Verbruggen
-- Virgil, Guéhi, Thiaw, Kayode
-- Bruno Fernandes, Enzo, Schade, Ndiaye
-- Haaland, Thiago
+Workflow run `33133887512` validated candidate `b38c871765cb963223cbf471b28e65c4d58e9b64` with:
 
-Bench: Petrović; Truffert → Drakes-Thomas → Neave.
+- 616 Official players;
+- 616 unique Core player IDs;
+- 100% Official player-ID coverage;
+- 100% previous bridge coverage;
+- no identity mismatch warnings;
+- ~75.97% previous-minutes coverage;
+- all governed upstream checks green after the candidate pin update.
 
-This remains the official baseline. Its `safe_to_act=true` is still under audit
-because captain surfaces disagree, selected-player authoritative role evidence is
-empty, preseason return coverage is 5.6% and calibration has not begun.
+The run failed only when `scripts/invalidate_published_decision.py` imported `apex_fpl`. The refresh workflow now installs the Apex package and verifies that import before validation/publication. A later Core upstream revision must still pass the same candidate-validation gate before being pinned.
 
-## Model status
+### Prospective learning
 
-### Team strength
+`data/generated/calibration_report.json` currently records:
 
-The Understat challenger from PR #16 is merged in shadow mode. Its component
-checks passed and it does not alter canonical publication. The exact PR #17
-merge SHA passed 142 local tests/Ruff, and the subsequent Apex Unified run
-published the decision-ready artifact above.
+- completed genuine Gameweeks: 0
+- rows: 0
+- active rows: 0
+- promotion: blocked for insufficient history
 
-### Player-rate shrinkage
+There is also no tracked `data/history/deadlines` archive on `main`. This is a genuine post-GW1 learning-operations gap to repair before any projection challenger can accumulate authoritative prospective evidence.
 
-A clean research implementation is merged from PR #18 with only:
+## Workflow surface
 
-- the dormant shrinkage model;
-- production-parity cohort construction;
-- corrected chronological validator and tests;
-- durable validation evidence.
+The one-off `gw1-final-2026.yml` workflow is expired and has been moved to `archive/workflows/`. The temporary cutover executor is removed after use.
 
-The corrected full-roster validator passes its xG90/xA90 chronological shadow
-gate across 2024/25 and 2025/26, including pre-GW1, GW1-5 and GW6+ strata.
-DEFCON fails and is a no-op by default. Those seasons have been inspected during
-development, so they are not independent final holdouts. The merged report sets
-`production_activation_authorized=false`; activation requires a separate PR and
-decision.
+Active production/acceptance workflows remain the normal recurring AIrsenal, Apex CI, Apex Unified, Core enrichment refresh, readiness and bounded audit surfaces. The governance checker owns the exact active/archived set.
 
-### Captain uncertainty
+## Open PRs
 
-The fixed-XI captain frequency is telemetry only. Scenario coefficients and the
-proposed 50% threshold are not historically calibrated; the raw production
-control also fails that threshold. Keep this diagnostic out of readiness until
-coverage/discrimination have been calibrated.
+- **PR #66:** superseded V1 specialist branch; archaeology/regression only; do not merge.
+- **PRs #67–#88:** stacked V2 programme. These remain draft/withheld. Their later heads still document the obsolete fixed three-way forecast blend, so they require rebase/requalification against the new authority contract before future merge.
 
-## Full-season validation
+Do not treat open-PR code as production truth.
 
-The 2025/26 deadline archive is feasible and should be run as a locked
-pseudo-prospective integration/strategy benchmark with a cutoff of
-`deadline - 120 minutes`. It must include transfers, hits, chips, XI, bench
-order, captaincy, autosubs, state reconciliation and isolated realised scoring.
+## Immediate completion sequence
 
-It is not the final independent model validation because completed 2025/26
-evidence influenced model design. Freeze the shipped code/configuration and use
-the 2026/27 deadline archive as the true prospective final test.
+1. Finish branch cleanup and documentation consistency.
+2. Run branch CI/governance on the final cleanup head.
+3. Merge the cleanup/cutover to `main` only if green.
+4. Run repaired FPL Core enrichment refresh on `main`.
+5. Refresh AIrsenal and require complete fresh horizon coverage.
+6. Run Apex Unified from a fresh Official FPL snapshot.
+7. Inspect one sealed bundle/generation across optimiser, parity, exact mechanics and answer context.
+8. Publish a recommendation only if `safe_to_act=true` and `ready_to_act=true`.
+9. Repair/verify deadline forecast archiving so genuine prospective learning starts operating post-GW1.
 
-## Immediate release sequence
+## Non-negotiable boundaries
 
-1. Ship the sealed decision bundle and verify one production `bundle_id` across
-   Pinnacle, Elite, parity and canonical publication.
-2. Repair missing preseason-value propagation, diagnostic schemas and solver-gap
-   reporting.
-3. Unify squad selection and published exact-mechanics objectives.
-4. Make authoritative evidence decision-relevant and readiness-aware.
-5. Resume projection calibration and full-season replay only after the decision
-   contract is reproducible.
-
-## Current boundaries
-
-- Public FPL cannot expose unpublished pre-deadline private transfers.
-- Market odds remain optional until a validated feed is configured and healthy.
-- New-season expected minutes and attacking rates remain prior-heavy.
-- Elite epsilon and captain scenario coefficients are not calibrated.
-- The PR 7 replay engine now executes and scores a legal 38-GW action chain, but
-  the 2025/26 Apex total is blocked because zero immutable pre-deadline Apex
-  bundles are available. Official result coverage is 38/38; Official-FPL xP
-  coverage is only 11/38. No hindsight proxy is permitted.
+- Never reconstruct a team from chat memory or historical markdown.
+- Never use remembered prices or identities over Official FPL.
+- Never promote Apex proprietary xP because it looks plausible.
+- Never silently substitute Apex when canonical AIrsenal is absent.
+- Never turn Core/Understat enrichment health into a false production blocker when the canonical path is independent of it.
+- Never weaken solver parity, identity, statistical truth, exact mechanics or freshness protections merely to obtain green CI.
