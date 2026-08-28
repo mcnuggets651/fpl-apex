@@ -24,6 +24,7 @@ ACTIVE_WORKFLOWS = {
     "airsenal.yml",
     "apex-v2-challenger-preflight.yml",
     "apex-v2-ci.yml",
+    "apex-v2-cutover-platform.yml",
     "apex-v2-evaluation.yml",
     "apex-v2-production.yml",
     "apex.yml",
