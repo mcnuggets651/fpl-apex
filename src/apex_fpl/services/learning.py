@@ -173,7 +173,7 @@ def aggregate_deadline_forecast(
     out["official_snapshot_id"] = str(snapshot_id)
     out["event_points"] = np.nan
     out["actual_minutes"] = np.nan
-    out["actual_started"] = np.nan
+    out["actual_appeared"] = np.nan
     out["actual_60_plus"] = np.nan
     out["actuals_retrieved_at"] = ""
     return out.sort_values("player_id").reset_index(drop=True)
@@ -189,9 +189,7 @@ def parse_event_live_outcomes(payload: dict[str, Any]) -> dict[int, dict[str, fl
             outcomes[player_id] = {
                 "event_points": float(stats.get("total_points", 0) or 0),
                 "actual_minutes": minutes,
-                # FPL event-live does not expose XI starter identity directly. We keep
-                # a conservative realised participation label and use 60+ separately.
-                "actual_started": float(minutes > 0),
+                "actual_appeared": float(minutes > 0),
                 "actual_60_plus": float(minutes >= 60),
             }
         except Exception:
@@ -214,7 +212,7 @@ def attach_actual_outcomes(
     retrieved_at: str | None = None,
 ) -> pd.DataFrame:
     out = forecast.copy()
-    for column in ("event_points", "actual_minutes", "actual_started", "actual_60_plus"):
+    for column in ("event_points", "actual_minutes", "actual_appeared", "actual_60_plus"):
         out[column] = out["player_id"].map(
             {player_id: values.get(column) for player_id, values in outcomes.items()}
         )
