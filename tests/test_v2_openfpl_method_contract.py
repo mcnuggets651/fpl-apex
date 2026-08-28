@@ -6,7 +6,12 @@ from pathlib import Path
 
 import yaml
 
-from apex.forecast.openfpl_governance import validate_method_contract
+from apex.forecast.openfpl_current import training_policy_sha256
+from apex.forecast.openfpl_governance import (
+    governance_mapping_sha256,
+    method_contract_sha256,
+    validate_method_contract,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,6 +34,16 @@ def test_governed_method_contract_is_self_consistent():
     assert contract["position_feature_contract"]["DEF"]["current_feature_count"] == 186
     assert contract["position_feature_contract"]["MID"]["current_feature_count"] == 186
     assert contract["position_feature_contract"]["FWD"]["current_feature_count"] == 186
+
+
+def test_governance_digests_are_semantic_and_order_invariant():
+    contract, policy, _locks = _inputs()
+    reversed_contract = dict(reversed(list(contract.items())))
+    reversed_policy = dict(reversed(list(policy.items())))
+
+    assert method_contract_sha256(contract) == method_contract_sha256(reversed_contract)
+    assert training_policy_sha256(policy) == training_policy_sha256(reversed_policy)
+    assert training_policy_sha256(policy) == governance_mapping_sha256(policy)
 
 
 def test_contract_rejects_score_dependent_feature_reintroduction():
