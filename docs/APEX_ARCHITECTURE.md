@@ -1,222 +1,199 @@
-# Final production authority cutover — 2026-08-28
-
-**Status: permanent production architecture, not degraded mode.**
-
-Authority is now intentionally separated:
-
-1. **Official FPL — factual truth.** Identity, club, position, price, availability, fixtures and mechanics are hard production facts.
-2. **AIrsenal — production statistical xP.** Canonical `xp` is AIrsenal exactly; no subjective rescaling, averaging or Apex fallback is allowed. Missing/stale canonical AIrsenal blocks production.
-3. **Understat + FPL Core — enrichment.** They retain historical priors, underlying stats, team strength, preseason/Elo/DefCon and shadow-model value. Their failures are explicit warnings unless a future promoted production model actually depends on them.
-4. **Current football evidence — availability/minutes/role context.** Hard evidence can exclude or invalidate; soft evidence drives uncertainty/scenarios and does not manufacture point bonuses.
-5. **Apex optimiser — decision authority.** Exact FPL mechanics, max-EV selection, near-equivalent robustness, captaincy, bench/autosubs and receding-horizon planning remain Apex's production job.
-6. **Apex proprietary xP + reproducible challengers — shadow.** Their forecasts are retained and disagreement is visible, but they cannot alter canonical xP before promotion.
-7. **Prospective calibration — judge.** Forecasts are frozen before deadlines; completed outcomes are scored out of sample. Promotion requires at least 8 genuine completed GWs, >=200 active rows, chronological holdouts, Gameweek-block bootstrap confidence, cohort diagnostics and explicit review. No automatic promotion occurs.
-
-Production blockers follow the actual dependency graph. Optional research/enrichment failure cannot masquerade as a production failure; hard factual/canonical/mechanics/publication failures remain fail-closed. Future ensemble weights, if any, must be learned from genuine prospective frozen forecasts rather than hand selected.
-
 # Apex FPL — Architecture
 
-## Final system flow
+## Production authority architecture — 28 August 2026
+
+This is the permanent V1 production authority layout after the forecast cutover. It is not a degraded fallback mode.
 
 ```text
-Official FPL API
-      |
-      v
-Canonical player/fixture universe (100% official identities)
-      |
-      +--> FPL Core Insights
-      +--> pinned AIrsenal
-      +--> historical data
-      +--> preseason observations
-      +--> tactical-role inference
-      +--> news / manager / transfer evidence
-      +--> validated fixture / Understat team model
-      |
-      v
-Minutes model + player-rate model + team/fixture environment
-      |
-      v
-Apex xP decomposition
-(minutes, attack, CS, saves, DEFCON, sourced set pieces, bonus/BPS)
-      |
-      v
-Projection ensemble
-(mean xP, expert contributions, disagreement, confidence, variance)
-      |
-      v
-Sealed decision bundle
-(content hashes, code/config, evidence, projections, team state)
-      |
-      v
-INTERNAL DIAGNOSTICS ONLY
-(static exact-horizon frontier, exact mechanics, CVaR, regret,
- captain stability, independent parity, Elite epsilon frontier)
-      |
-      v
-Non-actionable staging packet
-ready_to_act=false / recommendation=null
-      |
-      v
-All-player truth gate
-(100% facts + required player/GW coverage + provenance semantics)
-      |
-      +------------------------------+
-      |                              |
-      | pre-GW1                      | in season/current team
-      v                              v
-GW1-first adaptive selector     Current-team receding-horizon selector
-`adaptive_gw1_launch_...`       `receding_horizon_current_team_...`
-      |                              |
-      +---------------+--------------+
-                      |
-                      v
-Exact current-GW mechanics
-(XI / captain / vice / bench / autosubs)
-                      |
-                      v
-Rebuild evidence for the ACTUAL final 15 / XI / captain
-                      |
-                      v
-Final answer-context gate
-                      |
-                      v
-ONE USER-FACING OUTPUT
-ready_to_act=true only here
+Official FPL
+(factual truth: IDs / clubs / FPL positions / prices / status / fixtures)
+        |
+        +------------------------------+
+        |                              |
+        v                              v
+Fresh validated AIrsenal         Enrichment + evidence
+canonical statistical xP         FPL Core / Understat / history /
+        |                        current news, roles, minutes context
+        |                              |
+        +---------------+--------------+
+                        |
+                        v
+                Sealed decision bundle
+      (Official truth + AIrsenal xP + evidence + team state + provenance)
+                        |
+                        v
+                 Apex decision engine
+       (legal optimisation / exact mechanics / parity /
+          captain / vice / bench / autosubs / receding horizon)
+                        |
+                        v
+              Final selected-player evidence
+                        |
+                        v
+                Apex answer-context gate
+                        |
+                        v
+             ONE USER-FACING RECOMMENDATION
+```
+
+Parallel to production:
+
+```text
+Apex proprietary xP / Understat-based variants / OpenFPL-style challengers
+                        |
+                        v
+                  SHADOW FORECASTS
+                        |
+                        v
+        immutable prospective deadline ledger
+                        |
+                        v
+         realised Official outcome evaluation
+                        |
+                        v
+       governed promotion / rejection decision
 ```
 
 ## Layer responsibilities
 
-### Canonical universe
+### 1. Official FPL factual universe
 
-Official FPL owns player identity, club, FPL position, price, status and fixture identity. External sources may enrich but cannot silently overwrite these fields. Every production run must account for the full current Official FPL player universe.
+Official FPL is absolute current authority for:
 
-### Evidence ingestion
+- Official player ID;
+- club/team;
+- FPL position;
+- current price;
+- Official availability/status fields;
+- fixture identity/schedule;
+- manager-neutral current FPL universe and rules inputs.
 
-Sources have bounded roles. Current sourced overrides require attributable provenance, timestamps and expiry where appropriate. Source health does not by itself prove a player fact.
+External sources may enrich or challenge a forecast, but may not silently rewrite current Official identity or price facts. All-player factual integrity is release-blocking.
 
-### FPL Core reconciliation
+### 2. Canonical statistical projection
 
-Current production consumes the latest unambiguous FPL Core player/Gameweek snapshot for each player when the upstream file becomes longitudinal. Raw longitudinal rows remain available to historical/backtest consumers. Ambiguous duplicate player/GW snapshots fail closed.
+AIrsenal is the sole production statistical xP provider until a challenger earns promotion from genuine prospective evidence.
 
-### Minutes model
+In production authority mode:
 
-Expected minutes, start probability, appearance probability and 60+/80+ probabilities are forecasts. They combine historical/current playing time, preseason participation, official availability and current evidence. They are expected-value inputs, not a standalone safety score.
+- `xp == production_xp == airsenal_xp`;
+- AIrsenal is not subjectively rescaled;
+- Apex xP is retained as `apex_shadow_xp`;
+- missing/stale/incomplete AIrsenal does **not** fall back to Apex;
+- complete current Official-player × horizon coverage is required.
 
-### Player-rate model
+The legacy fixed three-way blend is retired from production. Research configurations may still exercise legacy blending mechanics for regression/challenger work, but those configurations are not production authority.
 
-Attacking/defensive rates use observed player evidence and validated shrinkage/blending rules. Set-piece hierarchy is not converted into a made-up probability. Ordinal FPL set-piece order is context; a literal current share requires separately sourced evidence. Any future redesigned penalty model must prove predictive value and avoid double counting historical xG before promotion.
+### 3. FPL Core enrichment
 
-### Team / fixture environment
+FPL Core remains valuable for current/historical player statistics, preseason evidence, Elo/team context, defensive contributions and other supporting features. It is pinned only after semantic/identity validation.
 
-Opponent and home/away conditions are produced by validated team-strength inputs. If an official strength field is unusable, only a previously validated fallback may enter production. Alternative models remain challengers until evidence supports promotion.
+FPL Core health is visible in the answer context. Its failure is an enrichment warning while canonical AIrsenal xP is independent of it. If a future promoted production forecast explicitly depends on Core, dependency criticality must be changed as part of that promotion.
 
-### Projection layer
+### 4. Understat enrichment and shadow modelling
 
-Produces transparent player/Gameweek expected-point components. Forecast construction is separate from squad selection.
+Understat remains useful for underlying-stat priors, player/team research and Apex shadow models. An HTTP-success response with empty football payload is explicitly unhealthy.
 
-### Ensemble
+Understat does not currently own canonical xP and cannot block production merely because its optional enrichment path is unavailable. A future production dependency requires prospective promotion evidence and an explicit dependency change.
 
-Combines configured forecast experts into canonical `xp` while exposing exact expert contributions and disagreement. Required AIrsenal xP must cover every official player/Gameweek pair; missing required expert rows may not silently change weights for a subset of players.
+### 5. Current football evidence
 
-### Sealed decision bundle
+Injuries, suspensions, transfers, manager comments, role evidence, lineups and set-piece evidence have bounded roles and provenance.
 
-Ingestion and projection run once. Player universe, projection matrix, evidence lineage, source timestamps, settings, upstream pins and team state receive one content-addressed `bundle_id`. Every optimiser and diagnostic consumes that exact bundle.
+The eligibility policy is EV-first / adverse-evidence-only:
 
-### Internal static diagnostics
+- official adverse availability or suspension can hard-block eligibility;
+- decision-grade negative role/availability evidence can constrain eligibility;
+- unresolved material contradictions can block;
+- ordinary uncertainty is priced in forecasts/scenarios rather than converted into a second hidden conservative preference;
+- ordinal set-piece hierarchy may not be converted into invented literal shares.
 
-The static exact-horizon solver/frontier, Pinnacle CVaR, regret, independent solver parity and Elite epsilon frontier remain valuable diagnostics. The legacy `authoritative_decision` field inside Pinnacle is retained for compatibility, but it is **not production authority** after the adaptive strategy release.
+### 6. Sealed decision bundle
 
-The static horizon surface can answer questions such as fragility, alternative structures and solver agreement. It cannot publish a team.
+The production solve seals the current player/fixture truth, projection surface, evidence, settings, upstream identity and manager state into one content-addressed bundle. Optimisers and diagnostics must operate on that same surface rather than independently refetching live data.
 
-### Non-actionable staging
+### 7. Apex optimiser and exact mechanics
 
-`build_canonical_recommendation.py` validates that the diagnostic layers describe the same healthy sealed surface, then deliberately writes:
+Apex remains the production **decision** authority even though it is no longer the production **forecast** authority.
 
-- `strategy_base_ready=true` when the base is healthy;
-- `ready_to_act=false`;
-- `recommendation=null`.
+Apex owns:
 
-This removes the former transient second authority where a frozen eight-Gameweek team could briefly appear canonical before the adaptive selector overwrote it.
+- legal budget/club/position constraints;
+- exact current manager-state finance where applicable;
+- transfer/roll/hit decisions;
+- current XI;
+- captain and vice-captain;
+- ordered bench and autosub mechanics;
+- exact current-Gameweek rescoring;
+- independent solver parity;
+- correlated robustness/regret diagnostics;
+- receding-horizon option value and first-action publication.
 
-### All-player truth gate
+### 8. Strategy selectors
 
-Before final selection becomes actionable, every current Official FPL player is audited for:
+There are exactly two retained final selectors:
 
-- hard factual completeness;
-- unique official identity;
-- canonical projection-pair completeness;
-- required AIrsenal player/Gameweek coverage;
-- set-piece rank/share semantic separation;
-- provenance of any explicit set-piece share;
-- explicit classification of roles/minutes as facts, sourced overrides, inference or forecast.
+- historical/pre-GW1: `adaptive_gw1_launch_with_transfer_option_value`;
+- current/in-season: `receding_horizon_current_team_maximum_ev`.
 
-Unknown future states remain forecasts rather than invented facts.
+GW1 is complete; normal operation is now the receding-horizon current-team mode. The pre-GW1 selector remains for replay/history only.
 
-### GW1-first adaptive selector
+The static exact-horizon solver, Pinnacle, Elite, CVaR and regret surfaces are diagnostics. They cannot independently set `ready_to_act=true`.
 
-Before the first deadline, the canonical selector is `adaptive_gw1_launch_with_transfer_option_value`.
+### 9. Final evidence and answer context
 
-1. Solve exact GW1 expected points.
-2. Keep only launch squads inside the configured near-equivalent GW1 tolerance.
-3. Use the legal future transfer path as option-value tie-break evidence inside that band.
-4. Publish one launch 15 with exact GW1 mechanics.
+After the actual final 15/action is chosen, evidence is rebuilt for that exact selection. Evidence attached to an earlier diagnostic squad cannot satisfy publication.
 
-The engine therefore starts with the strongest defensible GW1 team while still valuing transfer flexibility; it does not optimise a frozen eight-week hold.
+The only user-facing authority is `data/generated/apex_answer_context.json`. A recommendation is exposed only when the final contract is safe/actionable.
 
-### Receding-horizon in-season selector
+## Production readiness gates
 
-Once a real published team state exists, the canonical selector is `receding_horizon_current_team_maximum_ev`.
+Production remains fail-closed for real dependencies, including:
 
-It starts from the actual current squad, bank, selling prices and free transfers. The legal future path may be solved, but only the first action is executable. After that action, the current 15 is exact-rescored. Every later move is a contingency that is rebuilt at the next deadline.
+- stale/mismatched Official FPL truth;
+- incomplete current Official player factual coverage;
+- stale/unhealthy/incomplete AIrsenal production projection coverage;
+- invalid manager state or price/selling-value mechanics when required;
+- invalid evidence/provenance where the decision depends on it;
+- invalid DecisionBundle identity;
+- non-optimal/inconclusive required solver surfaces;
+- failed independent parity;
+- invalid exact current-Gameweek mechanics;
+- final evidence identity mismatch;
+- publication/answer-context inconsistency.
 
-### Final selected-player evidence
+FPL Core, Understat and internal fixture/model enrichments are warnings rather than hard production blockers unless a promoted production component explicitly depends on them.
 
-After the final selector chooses the actual 15, Apex rebuilds the selected-player evidence dossier against that exact squad/XI/captain. Evidence from an earlier static diagnostic squad cannot satisfy this gate. The dossier IDs must match the canonical 15 exactly.
+## Prospective learning and promotion
 
-### Evidence eligibility
+Production and shadow forecasts must be frozen before deadlines with provider/version/snapshot/player/GW identity. Outcomes are joined only after the event.
 
-The production eligibility policy is EV-first/adverse-evidence-only. Quantitative minutes or role uncertainty is already priced into expected points and does not impose a second conservative selection penalty. Only official adverse status, decision-grade negative evidence or a current unresolved contradiction may make a player XI/captain-ineligible.
+The current promotion contract requires at least:
 
-### Robustness
+- 8 completed genuine prospective Gameweeks;
+- 200 active evaluation rows;
+- chronological/walk-forward comparison;
+- Gameweek-block uncertainty/confidence analysis;
+- cohort diagnostics and source ablation where relevant;
+- explicit review.
 
-CVaR, correlated scenarios, regret and parity quantify fragility. They remain diagnostics and never silently substitute a different objective for expected FPL points.
+No automatic promotion is allowed. At the 28 August audit the genuine calibration archive still contained zero completed Gameweeks, so Apex proprietary xP has no production forecast authority.
 
-### Learning
+## Architecture freeze
 
-Pre-deadline forecasts and decisions are archived, then compared with later official outcomes. Future forecast/model promotions require no-hindsight/out-of-sample support plus decision-level validation.
+After the authority cutover, routine work is not continuous redesign. Normal operation is:
 
-## User-facing contract
+- acquire fresh Official truth;
+- refresh AIrsenal;
+- refresh/validate enrichment sources;
+- collect current football evidence;
+- solve the current legal action;
+- publish only through the canonical answer contract;
+- archive predictions/decisions before deadlines;
+- evaluate them after outcomes.
 
-The only user-facing source is `data/generated/apex_answer_context.json`, which exposes `production_result` only when `safe_to_act=true`. The corresponding canonical JSON/Markdown files are generated by the same production run.
+Architecture reopens only for a reproducible contract defect, an upstream semantic change that cannot be reconciled safely, or a challenger that passes the established prospective promotion gates.
 
-There are exactly two allowed final production selectors:
+## V2 boundary
 
-- `adaptive_gw1_launch_with_transfer_option_value`;
-- `receding_horizon_current_team_maximum_ev`.
-
-No static exact-horizon, Elite, CVaR or diagnostic selector may be actionable.
-
-## Readiness gates
-
-A final recommendation requires all of the following on the same sealed surface:
-
-- healthy required sources;
-- 100% official hard-fact player coverage;
-- 100% required FPL Core player-ID coverage;
-- 100% canonical player/Gameweek projection coverage;
-- 100% required AIrsenal player/Gameweek xP coverage;
-- valid set-piece provenance semantics;
-- matched decision-bundle and snapshot hashes;
-- optimal diagnostics and solver parity;
-- a valid final adaptive/receding strategy;
-- exact current-Gameweek mechanics;
-- final selected-player evidence identities matching the actual 15;
-- final answer context with no blockers.
-
-If any required gate fails, Apex publishes no team.
-
-## Architectural rule
-
-Forecasts, facts and preferences must remain separate. New projection experts cannot be blended through undocumented weights. New selection preferences cannot masquerade as xP. Player-specific hand tuning is prohibited.
-
-After PR #64, architecture is frozen for normal FPL operation. Routine work is source refresh, current-season learning and deadline re-solving. Architecture/model changes reopen only for a demonstrated defect or a bounded challenger that passes the required predictive and decision-level evidence gates.
+The stacked V2 PR programme remains separate and withheld. It cannot inherit production authority merely because its engineering mechanisms are green. Its latest stack still contains documentation/config assumptions tied to the retired fixed forecast blend and therefore requires rebase and requalification before future cutover.
