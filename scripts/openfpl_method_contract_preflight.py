@@ -9,7 +9,11 @@ from typing import Any
 
 import yaml
 
-from apex.forecast.openfpl_governance import validate_method_contract
+from apex.forecast.openfpl_current import training_policy_sha256
+from apex.forecast.openfpl_governance import (
+    method_contract_sha256,
+    validate_method_contract,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,7 +25,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _sha256(path: Path) -> str:
+def _file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
@@ -54,12 +58,19 @@ def main() -> None:
     errors = validate_method_contract(contract, policy, locks)
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "contract_id": contract.get("contract_id"),
         "provider_family": contract.get("provider_family"),
         "implementation_id": contract.get("implementation_id"),
-        "contract_sha256": _sha256(contract_path),
-        "training_policy_sha256": _sha256(policy_path),
+        # These are semantic governance identities and therefore canonicalize the
+        # parsed mappings. Pure YAML formatting/order changes do not change them.
+        "contract_sha256": method_contract_sha256(contract),
+        "training_policy_sha256": training_policy_sha256(policy),
+        # Raw file digests remain useful forensic evidence but are not model-binding
+        # governance identities.
+        "contract_file_sha256": _file_sha256(contract_path),
+        "training_policy_file_sha256": _file_sha256(policy_path),
+        "digest_semantics": "canonical-json-semantic-v1",
         "valid": not errors,
         "errors": list(errors),
         "reference_reproducibility_scope": "INFERENCE_ONLY",
