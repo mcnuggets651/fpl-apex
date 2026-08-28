@@ -35,6 +35,8 @@ from apex_fpl.core.reference_solver_worker import (
 )
 from apex_fpl.workers.reference_solver_planning import solve_planning_reference_request
 
+from reference_solver_planning_finance_case import store_finance_qualification_case
+
 
 @dataclass(frozen=True, slots=True)
 class SyntheticPlanningParityMaterial:
@@ -67,17 +69,16 @@ class SyntheticPlanningParityMaterial:
 def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningParityMaterial:
     """Build mechanism-only replay-valid planning parity authority for tests.
 
-    The current FULL_OFFICIAL publication fixture deliberately includes one retained
-    non-owned £5.1m midfielder. Its sealed two-Gameweek trajectory banks the first free
-    transfer and then buys that player using authoritative sale-vs-purchase finance. The
-    same publication case therefore exercises the chip surface, multi-Gameweek objective,
-    terminal reserve, FT banking, transfer finance and exact root/trajectory parity.
+    Qualification deliberately uses two focused retained cases instead of one combinatorial
+    mega-case:
 
-    Qualification must be derived from that exact retained publication case. Keeping a
-    second legacy finance-only case would duplicate an obligation that the current fixture
-    already proves, expand the exact search surface unnecessarily, and allow fixture drift
-    to hide behind a separate synthetic journey. This remains synthetic mechanism evidence
-    only and never production qualification evidence.
+    * the exact publication fixture is a 15-player FULL_OFFICIAL chip-surface case;
+    * a separate GW6-7 case adds one £5.1m MID, consumes the current chip set historically,
+      and proves FT banking plus realised transfer finance.
+
+    Coverage remains derived from sealed requests/results and is aggregated across the corpus.
+    The publication certificate is then built for the exact current PlanningResult. This is
+    synthetic mechanism evidence only and never production qualification evidence.
     """
 
     verified = load_production_planning_bundle(fixture.bundle.bundle_id, store=store)
@@ -126,10 +127,21 @@ def synthetic_planning_parity_material(*, store, fixture) -> SyntheticPlanningPa
         publication_case,
         store=store,
     )
+    finance_case_artifact_id = store_finance_qualification_case(
+        store=store,
+        verified=verified,
+        continuation=continuation,
+        chip_option=chip_option,
+        price_policy=price,
+        candidate_policy=candidate,
+        max_search_nodes=500,
+    )
     corpus = PlanningReferenceSolverQualificationCorpus(
         season=fixture.bundle.season,
         max_horizon_gameweeks=policy.horizon_gameweeks,
-        case_artifact_ids=(publication_case_artifact_id,),
+        case_artifact_ids=tuple(
+            sorted((publication_case_artifact_id, finance_case_artifact_id))
+        ),
     )
     corpus_artifact_id = store_planning_reference_solver_qualification_corpus(
         corpus,
