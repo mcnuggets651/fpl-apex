@@ -1,16 +1,33 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 from apex.forecast.openfpl_current import (
+    CURRENT_FEATURE_CONTRACT_VERSION,
+    CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS,
     CURRENT_SCORING_RULES_VERSION,
+    CURRENT_TRAINING_POLICY_VERSION,
     current_model_manifest_errors,
     exact_rule_history_readiness,
+    score_dependent_feature_columns,
+    training_policy_errors,
+    training_policy_sha256,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _sha(char: str) -> str:
     return char * 64
+
+
+def governed_policy() -> dict:
+    return yaml.safe_load(
+        (ROOT / "config/openfpl_training_policy.yaml").read_text(encoding="utf-8")
+    )
 
 
 def current_manifest() -> dict:
@@ -19,12 +36,13 @@ def current_manifest() -> dict:
         "provider_version": "current-model-sha",
         "scoring_rules_version": CURRENT_SCORING_RULES_VERSION,
         "source_snapshot": "official-seal",
-        "target_gameweek": 2,
-        "training_max_gameweek": 1,
-        "training_policy_version": "openfpl-current-training-v1",
-        "minimum_exact_rule_gameweeks": 1,
-        "exact_rule_gameweeks": [1],
-        "feature_contract_version": "openfpl-apex-live-v1",
+        "target_gameweek": 11,
+        "training_max_gameweek": 10,
+        "training_policy_version": CURRENT_TRAINING_POLICY_VERSION,
+        "training_policy_sha256": training_policy_sha256(governed_policy()),
+        "minimum_exact_rule_gameweeks": CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS,
+        "exact_rule_gameweeks": list(range(1, 11)),
+        "feature_contract_version": CURRENT_FEATURE_CONTRACT_VERSION,
         "model_artifact_sha256": _sha("a"),
         "training_dataset_sha256": _sha("b"),
         "placeholder_invariance": True,
@@ -34,93 +52,125 @@ def current_manifest() -> dict:
     }
 
 
-def test_current_openfpl_manifest_can_pass_operational_contract():
-    assert current_model_manifest_errors(
-        current_manifest(),
-        target_gameweek=2,
+def manifest_errors(manifest: dict) -> tuple[str, ...]:
+    return current_model_manifest_errors(
+        manifest,
+        target_gameweek=11,
         source_snapshot="official-seal",
-    ) == ()
+        expected_training_policy_sha256=training_policy_sha256(governed_policy()),
+    )
+
+
+def test_governed_openfpl_training_policy_is_self_consistent():
+    policy = governed_policy()
+    assert training_policy_errors(policy) == ()
+    assert policy["minimum_exact_rule_gameweeks"] == 10
+    assert policy["policy_version"] == CURRENT_TRAINING_POLICY_VERSION
+    assert policy["feature_contract_version"] == CURRENT_FEATURE_CONTRACT_VERSION
+    assert len(training_policy_sha256(policy)) == 64
+
+
+def test_current_openfpl_manifest_can_pass_operational_contract_after_history_floor():
+    assert manifest_errors(current_manifest()) == ()
+
+
+def test_current_openfpl_manifest_must_bind_exact_governed_policy_hash():
+    manifest = current_manifest()
+    manifest["training_policy_sha256"] = _sha("c")
+    errors = manifest_errors(manifest)
+    assert any("different governed policy hash" in error for error in errors)
+
+
+def test_current_openfpl_manifest_must_use_governed_feature_contract():
+    manifest = current_manifest()
+    manifest["feature_contract_version"] = "legacy-reference-features"
+    errors = manifest_errors(manifest)
+    assert any("feature contract" in error for error in errors)
 
 
 def test_legacy_openfpl_weights_cannot_be_relabelled_as_current():
     manifest = current_manifest()
     manifest["legacy_reference_weights_reused"] = True
-    errors = current_model_manifest_errors(
-        manifest,
-        target_gameweek=2,
-        source_snapshot="official-seal",
-    )
+    errors = manifest_errors(manifest)
     assert any("legacy OpenFPL weights" in error for error in errors)
 
 
 def test_openfpl_training_must_stop_before_target_gameweek():
     manifest = current_manifest()
-    manifest["training_max_gameweek"] = 2
-    manifest["exact_rule_gameweeks"] = [1, 2]
-    errors = current_model_manifest_errors(
-        manifest,
-        target_gameweek=2,
-        source_snapshot="official-seal",
-    )
+    manifest["training_max_gameweek"] = 11
+    manifest["exact_rule_gameweeks"] = list(range(1, 12))
+    errors = manifest_errors(manifest)
     assert any("target/future gameweek" in error for error in errors)
 
 
-def test_openfpl_model_requires_governed_training_policy():
+def test_openfpl_model_requires_exact_governed_training_policy_version():
     manifest = current_manifest()
     manifest["training_policy_version"] = ""
-    errors = current_model_manifest_errors(
-        manifest,
-        target_gameweek=2,
-        source_snapshot="official-seal",
-    )
-    assert any("training policy version is empty" in error for error in errors)
+    errors = manifest_errors(manifest)
+    assert any("training policy version must be" in error for error in errors)
 
 
-def test_openfpl_model_requires_history_threshold_to_be_met():
+def test_openfpl_model_requires_governed_history_floor_to_be_met():
     manifest = current_manifest()
-    manifest["minimum_exact_rule_gameweeks"] = 2
-    errors = current_model_manifest_errors(
-        manifest,
-        target_gameweek=2,
-        source_snapshot="official-seal",
-    )
-    assert any("governed minimum is 2" in error for error in errors)
+    manifest["exact_rule_gameweeks"] = list(range(1, 10))
+    manifest["training_max_gameweek"] = 9
+    errors = manifest_errors(manifest)
+    assert any("governed minimum is 10" in error for error in errors)
+
+
+def test_openfpl_model_cannot_lower_governed_history_floor():
+    manifest = current_manifest()
+    manifest["minimum_exact_rule_gameweeks"] = 1
+    errors = manifest_errors(manifest)
+    assert any("governed floor 10" in error for error in errors)
 
 
 def test_openfpl_model_training_max_must_match_declared_exact_history():
     manifest = current_manifest()
-    manifest["training_max_gameweek"] = 0
-    errors = current_model_manifest_errors(
-        manifest,
-        target_gameweek=2,
-        source_snapshot="official-seal",
-    )
+    manifest["training_max_gameweek"] = 9
+    errors = manifest_errors(manifest)
     assert any("maximum declared exact-rule gameweek" in error for error in errors)
 
 
 def test_openfpl_must_prove_future_placeholder_invariance():
     manifest = current_manifest()
     manifest["placeholder_invariance"] = False
-    errors = current_model_manifest_errors(
-        manifest,
-        target_gameweek=2,
-        source_snapshot="official-seal",
-    )
+    errors = manifest_errors(manifest)
     assert any("leakage audit" in error for error in errors)
 
 
 def test_openfpl_shadow_cannot_self_authorize_serving():
     manifest = current_manifest()
     manifest["serve_authorized"] = True
-    errors = current_model_manifest_errors(
-        manifest,
-        target_gameweek=2,
-        source_snapshot="official-seal",
-    )
+    errors = manifest_errors(manifest)
     assert any("non-serving" in error for error in errors)
 
 
-def test_exact_rule_history_does_not_invent_training_threshold():
+def test_feature_contract_detects_every_score_dependent_reference_family():
+    columns = (
+        "player fpl points 1",
+        "player relevant fpl points 10",
+        "player bps 5",
+        "player fpl bonus points 38",
+        "player expected goals 5",
+        "team elo",
+    )
+    assert score_dependent_feature_columns(columns) == columns[:4]
+
+
+def test_feature_contract_normalises_underscores_and_case():
+    columns = ("PLAYER_FPL_POINTS_3", "Player_BPS_10", "player_xg_3")
+    assert score_dependent_feature_columns(columns) == columns[:2]
+
+
+def test_policy_rejects_missing_score_dependent_exclusion():
+    policy = governed_policy()
+    policy["excluded_score_dependent_feature_families"] = ["player fpl points"]
+    errors = training_policy_errors(policy)
+    assert any("does not exclude all legacy scoring" in error for error in errors)
+
+
+def test_exact_rule_history_without_loaded_policy_fails_closed():
     result = exact_rule_history_readiness((1,), target_gameweek=2)
     assert result["state"] == "TRAINING_POLICY_UNSET"
     assert result["training_ready"] is False
@@ -128,21 +178,25 @@ def test_exact_rule_history_does_not_invent_training_threshold():
 
 
 def test_exact_rule_history_blocks_target_or_future_leakage():
-    result = exact_rule_history_readiness((1, 2), target_gameweek=2)
+    result = exact_rule_history_readiness(
+        (1, 2),
+        target_gameweek=2,
+        minimum_exact_rule_gameweeks=CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS,
+    )
     assert result["state"] == "HISTORY_LEAKAGE"
     assert result["training_ready"] is False
 
 
 def test_exact_rule_history_advances_only_against_governed_minimum():
     insufficient = exact_rule_history_readiness(
-        (1, 2, 3),
-        target_gameweek=4,
-        minimum_exact_rule_gameweeks=4,
+        tuple(range(1, 10)),
+        target_gameweek=10,
+        minimum_exact_rule_gameweeks=CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS,
     )
     ready = exact_rule_history_readiness(
-        (1, 2, 3),
-        target_gameweek=4,
-        minimum_exact_rule_gameweeks=3,
+        tuple(range(1, 11)),
+        target_gameweek=11,
+        minimum_exact_rule_gameweeks=CURRENT_MINIMUM_EXACT_RULE_GAMEWEEKS,
     )
     assert insufficient["state"] == "CURRENT_LABEL_HISTORY_INSUFFICIENT"
     assert insufficient["training_ready"] is False
