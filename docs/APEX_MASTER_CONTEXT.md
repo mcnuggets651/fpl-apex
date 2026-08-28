@@ -1,118 +1,102 @@
-# Final production authority cutover — 2026-08-28
-
-**Status: permanent production architecture, not degraded mode.**
-
-Authority is now intentionally separated:
-
-1. **Official FPL — factual truth.** Identity, club, position, price, availability, fixtures and mechanics are hard production facts.
-2. **AIrsenal — production statistical xP.** Canonical `xp` is AIrsenal exactly; no subjective rescaling, averaging or Apex fallback is allowed. Missing/stale canonical AIrsenal blocks production.
-3. **Understat + FPL Core — enrichment.** They retain historical priors, underlying stats, team strength, preseason/Elo/DefCon and shadow-model value. Their failures are explicit warnings unless a future promoted production model actually depends on them.
-4. **Current football evidence — availability/minutes/role context.** Hard evidence can exclude or invalidate; soft evidence drives uncertainty/scenarios and does not manufacture point bonuses.
-5. **Apex optimiser — decision authority.** Exact FPL mechanics, max-EV selection, near-equivalent robustness, captaincy, bench/autosubs and receding-horizon planning remain Apex's production job.
-6. **Apex proprietary xP + reproducible challengers — shadow.** Their forecasts are retained and disagreement is visible, but they cannot alter canonical xP before promotion.
-7. **Prospective calibration — judge.** Forecasts are frozen before deadlines; completed outcomes are scored out of sample. Promotion requires at least 8 genuine completed GWs, >=200 active rows, chronological holdouts, Gameweek-block bootstrap confidence, cohort diagnostics and explicit review. No automatic promotion occurs.
-
-Production blockers follow the actual dependency graph. Optional research/enrichment failure cannot masquerade as a production failure; hard factual/canonical/mechanics/publication failures remain fail-closed. Future ensemble weights, if any, must be learned from genuine prospective frozen forecasts rather than hand selected.
-
 # Apex FPL — Master Context
 
-**Canonical project brain. Read this before making any Apex recommendation or architectural change.**
+**Canonical project brain. Read this before making an Apex recommendation or architectural change.**
+
+Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).  
+Current state: [`CURRENT_STATE.md`](CURRENT_STATE.md).
 
 ## Mission
-Build the strongest auditable Fantasy Premier League decision engine possible: maximise expected FPL points and elite scoring ceiling while explicitly measuring uncertainty, minutes risk, downside and model disagreement.
+
+Build the strongest auditable Fantasy Premier League decision engine possible: maximise expected FPL points under exact FPL rules while explicitly measuring uncertainty, robustness, decision regret and evidence quality.
 
 ## Repository
-- Production repository: `mcnuggets651/fpl-apex`
+
+- Repository: `mcnuggets651/fpl-apex`
 - Production branch: `main`
 - Personal FPL entry: `63984`
-- Season focus: 2026/27
+- Season: 2026/27
+
+## Production authority chain
+
+1. **Official FPL — factual truth.** Current Official player ID, club, FPL position, price, availability/status, fixtures and rules/mechanics inputs.
+2. **AIrsenal — canonical statistical xP.** Production `xp` equals validated AIrsenal xP directly. Missing/stale/incomplete AIrsenal blocks. There is no silent Apex fallback.
+3. **Current football evidence — availability/minutes/role context.** Attributable current evidence can constrain eligibility or uncertainty; it cannot invent unsourced xP bonuses.
+4. **Apex optimiser — decision authority.** Legal squad/current-team optimisation, exact XI/captain/vice/bench/autosubs and receding-horizon first-action selection.
+5. **Apex proprietary forecast, Understat, FPL Core and other challengers — shadow/enrichment.** Preserve signal and diagnostics without production forecast authority unless prospectively promoted.
+6. **Prospective calibration — promotion judge.** Freeze forecasts before deadlines, score later outcomes out of sample, and require explicit evidence before changing authority or weights.
 
 ## Non-negotiable principles
-1. Official FPL is canonical for identity, club, position, price, status and fixtures.
-2. Never select a squad from memory or generic FPL opinion when current generated outputs exist.
-3. Raw ensemble expected points (`xp`) are the canonical forecast.
-4. Expected minutes/start/appearance probability is a first-class model input.
-5. The legal maximum-xP optimiser generates the near-optimal candidate frontier.
-6. Elite is a diagnostic frontier inside an epsilon-audited near-optimal xP set.
-7. Exact full-horizon mechanics rescoring produces the only canonical `Decision`, regardless of Elite convergence.
-8. CVaR, regret, captain stability and independent solvers are robustness diagnostics, not separate user-facing teams.
+
+1. Official FPL wins every current identity/price/club/position/fixture conflict.
+2. Never select a squad from memory or generic FPL opinion when canonical repository outputs exist.
+3. `xp` is a forecast, not a fact. Current production `xp` is AIrsenal exactly.
+4. Expected minutes/start/appearance probabilities remain forecast evidence; future certainty may not be fabricated.
+5. Missing canonical AIrsenal coverage fails closed; Apex shadow xP is not a production fallback.
+6. FPL Core/Understat enrichment failures must be disclosed but cannot masquerade as canonical-xP failures while the production path is independent of them.
+7. One legal optimiser/decision path produces one user-facing recommendation.
+8. CVaR, regret, parity, Elite and static exact-horizon surfaces are diagnostics/challengers, not competing user-facing teams.
 9. Ownership is excluded from the pure maximum-points objective.
-10. Every recommendation must be reproducible, explainable and traceable to a current run.
-11. A red data/readiness/snapshot-consistency gate blocks an Apex-labelled recommendation.
-12. Football randomness cannot be eliminated; confidence must never be presented as certainty.
-13. Never claim a unique optimum when solver bounds or the disclosed equivalence band contain alternatives.
+10. A current recommendation requires reproducible sealed inputs, exact mechanics, final evidence identity and a green answer context.
+11. No projection expert, blend, threshold or named-player adjustment is promoted by subjective preference.
+12. Football randomness is irreducible; confidence must never be presented as certainty.
 
-## One production recommendation
-Apex has **one** user-facing decision contract:
+## One user-facing recommendation
 
+The only user-facing decision files are:
+
+- `data/generated/apex_answer_context.json`
 - `data/generated/apex_recommendation_latest.json`
 - `data/generated/apex_recommendation_latest.md`
 
-The canonical production command is:
+If `safe_to_act=false` or `ready_to_act=false`, Apex has no actionable team. Historical squads and internal diagnostic outputs are not fallbacks.
+
+The canonical production command remains:
 
 ```bash
 python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
 ```
 
-When the user asks for “the Apex team”, this contract is the answer. Internal Pinnacle, Elite, CVaR, regret and solver outputs exist to construct/challenge that answer, not to create several competing Apex teams.
+## Decision lifecycle
 
-## Unified decision flow
-Official FPL → validated enrichment → first-class minutes model → canonical player xP ensemble → near-optimal legal squad shortlist → exact full-horizon XI/captain/vice/bench/autosub rescoring → **one canonical Decision**, with equivalence, correlated robustness and Elite epsilon audits attached as diagnostics.
+- **Pre-GW1 historical mode:** `adaptive_gw1_launch_with_transfer_option_value` remains retained for replay/history.
+- **Current in-season mode:** `receding_horizon_current_team_maximum_ev` starts from the manager's exact current squad, bank, selling values and free-transfer state; it may solve a future path but publishes only the first currently executable action.
 
-### Elite convergence diagnostic
-Elite reports whether the 0.25%, 0.50% and 1.00% epsilon solutions each:
-- retain at least 13/15 of the maximum-EV squad; and
-- keep the same captain as maximum-EV.
+GW1 is complete. The expired one-off GW1 execution workflow is archived and must not be used as an active production path.
 
-This evidence never changes the canonical maximum-EV selection.
+## Forecast promotion
 
-## Internal diagnostic layers
-### Maximum-EV / Pinnacle
-The auditable search baseline: maximise ensemble-mean xP under FPL legality and horizon constraints, enumerate distinct near-optimal squads, then select only after exact-mechanics horizon rescoring.
+Apex proprietary xP is currently shadow-only. Future challenger or ensemble authority requires genuine prospective evidence. Existing governance requires at least 8 completed genuine Gameweeks and >=200 active rows, chronological validation, Gameweek-block uncertainty/confidence analysis, cohort diagnostics and explicit review. No automatic promotion occurs.
 
-### Elite
-Secondary evidence lens only. Weight profile remains:
-- 35% attacking returns
-- 20% expected minutes/start probability
-- 15% captaincy value
-- 10% set pieces and penalties
-- 10% fixture quality
-- 5% bonus and DEFCON
-- 5% price efficiency
+At the 28 August 2026 audit, the prospective calibration report still had 0 completed genuine Gameweeks / 0 active rows, so no challenger has earned production authority.
 
-Elite never creates or modifies expected points.
+## V2 boundary
 
-### Robustness
-Correlated scenarios, CVaR, exact force/ban regret, captain stability, exact mechanics and independent solver parity expose fragility. They do not silently substitute another objective.
+Draft PRs #67–#88 contain a valuable stacked V2 architecture programme but are not production. Their latest documentation still assumes the retired fixed three-way forecast blend, so that stack must be rebased/requalified against the current AIrsenal-only production authority before future merge.
 
-## Projection-model next priority
-The main known projection gap is formal empirical-Bayes/partial-pooling shrinkage of small-sample player attacking rates toward role/position priors. This is the next modelling upgrade after the unified recommendation is validated. Dixon-Coles/Poisson is a later fixture-expert benchmark, not a new selection philosophy.
-
-## Expected decision output
-The canonical recommendation should contain the legal 15-man squad, GW XI, captain, vice, bench order, horizon objective, exact GW mechanics, readiness status, epsilon convergence evidence, Haaland/no-Haaland scenarios when relevant and robustness diagnostics.
+PR #66 is superseded V1 archaeology/regression material and must not be merged.
 
 ## Continuity protocol
+
 Before substantive Apex work read, in order:
+
 1. `docs/CURRENT_STATE.md`
 2. this file
 3. `docs/APEX_DECISIONS.md`
 4. `docs/APEX_CANONICAL_DECISION_POLICY.md`
 5. `docs/APEX_OPERATING_MANUAL.md`
-6. `data/generated/apex_recommendation_latest.json`
+6. `data/generated/apex_answer_context.json`
 
-Only then inspect internal diagnostics if needed. Continue from the latest state rather than reconstructing the project from chat history.
+Then inspect sealed/internal diagnostics only when needed. Repository state outranks chat history.
 
-## Related canonical documents
-- [Canonical decision policy](APEX_CANONICAL_DECISION_POLICY.md)
-- [Current state](CURRENT_STATE.md)
-- [Decisions](APEX_DECISIONS.md)
-- [Architecture](APEX_ARCHITECTURE.md)
-- [Model specification](APEX_MODEL_SPEC.md)
-- [Data sources](APEX_DATA_SOURCES.md)
+## Related documents
+
 - [Operating manual](APEX_OPERATING_MANUAL.md)
-- [Roadmap](APEX_ROADMAP.md)
+- [Current state](CURRENT_STATE.md)
+- [Canonical decision policy](APEX_CANONICAL_DECISION_POLICY.md)
+- [Architecture](APEX_ARCHITECTURE.md)
+- [Data sources](APEX_DATA_SOURCES.md)
+- [Model specification](APEX_MODEL_SPEC.md)
+- [Decisions](APEX_DECISIONS.md)
 - [Benchmarks](BENCHMARKS.md)
 - [Known issues](KNOWN_ISSUES.md)
-- [Charter](APEX_CHARTER.md)
-- [Vision](VISION.md)
 - [Session log](SESSION_LOG.md)
