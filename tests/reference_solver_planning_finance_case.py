@@ -84,6 +84,17 @@ def _finance_candidate_universe(verified, *, store: ArtifactStore) -> tuple[Cand
         official_player_count=len(shaped_players),
         source_artifact_ids=(source,),
     )
+    target = next(row for row in universe.players if row.player_id == _FINANCE_EXTRA_PLAYER)
+    saturated_owned = {
+        int(row.player_id)
+        for row in universe.players
+        if row.team_id == _FINANCE_CLUB_ID and row.player_id != _FINANCE_EXTRA_PLAYER
+    }
+    if saturated_owned != _FINANCE_CLUB_OWNED_IDS:
+        raise ValueError("focused finance universe must saturate the target club with players 3,4,8")
+    if target.position != "MID" or target.current_price_tenths != 51:
+        raise ValueError("focused finance target semantics drifted")
+
     stored = store_candidate_universe(universe, store=store)
     return universe, stored.artifact_id
 
@@ -111,6 +122,9 @@ def _finance_manager_state(verified, universe: CandidateUniverse, *, store: Arti
         transfer_ledger=(),
     )
     state.require_decision_safe(ruleset=verified.ruleset)
+    club_rows = tuple(row for row in state.squad if row.team_id == _FINANCE_CLUB_ID)
+    if {int(row.player_id) for row in club_rows} != _FINANCE_CLUB_OWNED_IDS:
+        raise ValueError("focused finance manager state must start with target club at legal maximum")
     store_manager_state(state, store=store)
     return state
 
