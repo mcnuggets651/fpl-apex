@@ -10,6 +10,8 @@ CONTROL_BUNDLE = ROOT / "src/apex_fpl/control/production_bundle.py"
 POLICY_STORE = ROOT / "src/apex_fpl/control/decision_policy_store.py"
 MODEL_STORE = ROOT / "src/apex_fpl/control/forecast_model_store.py"
 CUTOVER = ROOT / "src/apex_fpl/control/production_cutover.py"
+CUTOVER_TRANSACTION = ROOT / "src/apex_fpl/control/_production_cutover_legacy.py"
+VERIFIER = ROOT / "src/apex_fpl/control/production_authority_verification.py"
 AUTHORITY = ROOT / "src/apex_fpl/control/production_authority.py"
 
 
@@ -72,14 +74,18 @@ def test_production_bundle_replay_adapters_have_no_network_v1_or_hidden_clock() 
 
 def test_cutover_and_answer_authority_both_replay_exact_production_bundle() -> None:
     cutover = CUTOVER.read_text(encoding="utf-8")
+    verifier = VERIFIER.read_text(encoding="utf-8")
     authority = AUTHORITY.read_text(encoding="utf-8")
-    assert "load_production_planning_bundle" in cutover
+    transaction = CUTOVER_TRANSACTION.read_text(encoding="utf-8")
+    assert "verify_production_authority_closure(" in cutover
+    assert "load_production_planning_bundle" in verifier
     assert "load_production_planning_bundle" in authority
     assert "load_production_decision_bundle" not in cutover
+    assert "load_production_decision_bundle" not in verifier
     assert "load_production_decision_bundle" not in authority
-    assert "_bundle_empirical_bindings" in cutover
-    assert "PRODUCTION_EMPIRICAL_SUBJECT_KIND" in cutover
-    assert "qualification_subject_id" in cutover
+    assert "_bundle_empirical_bindings" in transaction
+    assert "PRODUCTION_EMPIRICAL_SUBJECT_KIND" in transaction
+    assert "qualification_subject_id" in transaction
 
 
 def test_bundle_contract_pins_direct_decision_lineage_identities() -> None:
