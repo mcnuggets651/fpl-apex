@@ -36,3 +36,16 @@ def test_source_status_preserves_false_bool_like_values() -> None:
 
     assert payload["ok"] is False
     assert payload["configured"] is False
+
+
+def test_source_status_preserves_provider_generation_timestamp() -> None:
+    status = SourceStatus(
+        name="airsenal",
+        ok=True,
+        generated_at="2026-08-28T08:00:00+00:00",
+    )
+
+    payload = status.to_dict()
+
+    assert payload["generated_at"] == "2026-08-28T08:00:00+00:00"
+    assert payload["checked_at"]
