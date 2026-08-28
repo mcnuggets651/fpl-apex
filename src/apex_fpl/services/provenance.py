@@ -15,6 +15,7 @@ class SourceStatus:
     checked_at: str = ""
     configured: bool = True
     version: str = ""
+    generated_at: str = ""
 
     def __post_init__(self):
         # Normalise bool-like values (notably numpy.bool_) at the provenance
