@@ -4,14 +4,23 @@ from pathlib import Path
 from typing import Any
 
 CURRENT_SCORING_RULES_VERSION = "fpl-2026-27-v1"
+CURRENT_EXACT_RULE_SEASON = "2026-27"
 REFERENCE_SCORING_RULES_VERSION = "openfpl-2024-25-rules"
 REFERENCE_POSITIONS = ("GK", "DEF", "MID", "FWD", "AM")
 REFERENCE_CV_FOLDS = tuple(range(1, 6))
+REFERENCE_ROLLING_WINDOWS = (1, 3, 5, 10, 38)
 REFERENCE_RUNTIME_DEPENDENCIES = (
     "pandas==2.3.1",
     "joblib==1.5.1",
     "xgboost==3.0.2",
     "scikit-learn==1.7.0",
+)
+# These reference inputs encode the scoring regime in which they were observed.
+# They are why old feature rows cannot simply be relabelled as 2026/27-current.
+SCORE_DEPENDENT_REFERENCE_FEATURE_FAMILIES = (
+    "fpl_points",
+    "bps",
+    "bonus",
 )
 
 
@@ -37,6 +46,82 @@ def reference_asset_errors(root: str | Path) -> tuple[str, ...]:
             if not (directory / "search.txt").is_file():
                 errors.append(f"missing search log {(directory / 'search.txt').relative_to(root)}")
     return tuple(errors)
+
+
+def exact_rule_history_readiness(
+    completed_gameweeks: tuple[int, ...] | list[int] | set[int],
+    *,
+    target_gameweek: int,
+    minimum_exact_rule_gameweeks: int | None = None,
+) -> dict[str, Any]:
+    """Describe OpenFPL retraining readiness without inventing a sample threshold.
+
+    A minimum is deliberately not hard-coded. Until a governed training policy chooses
+    one, exact current-rule history can be observed and audited but cannot authorize a
+    retrain. Once a minimum is approved, this function advances deterministically.
+    """
+    gameweeks = tuple(sorted({int(gameweek) for gameweek in completed_gameweeks}))
+    future = tuple(gameweek for gameweek in gameweeks if gameweek >= int(target_gameweek))
+    if future:
+        return {
+            "state": "HISTORY_LEAKAGE",
+            "training_ready": False,
+            "completed_exact_rule_gameweeks": list(gameweeks),
+            "exact_rule_gameweek_count": len(gameweeks),
+            "target_gameweek": int(target_gameweek),
+            "minimum_exact_rule_gameweeks": minimum_exact_rule_gameweeks,
+            "reasons": [
+                "exact-rule history contains target/future gameweeks: "
+                + ",".join(str(gameweek) for gameweek in future)
+            ],
+        }
+    if not gameweeks:
+        return {
+            "state": "NO_EXACT_RULE_HISTORY",
+            "training_ready": False,
+            "completed_exact_rule_gameweeks": [],
+            "exact_rule_gameweek_count": 0,
+            "target_gameweek": int(target_gameweek),
+            "minimum_exact_rule_gameweeks": minimum_exact_rule_gameweeks,
+            "reasons": ["no completed 2026/27 exact-rule gameweeks are available"],
+        }
+    if minimum_exact_rule_gameweeks is None:
+        return {
+            "state": "TRAINING_POLICY_UNSET",
+            "training_ready": False,
+            "completed_exact_rule_gameweeks": list(gameweeks),
+            "exact_rule_gameweek_count": len(gameweeks),
+            "target_gameweek": int(target_gameweek),
+            "minimum_exact_rule_gameweeks": None,
+            "reasons": [
+                "exact-rule history exists but no governed minimum training sample "
+                "has been approved; Apex will not invent one"
+            ],
+        }
+    minimum = int(minimum_exact_rule_gameweeks)
+    if minimum < 1:
+        raise ValueError("minimum_exact_rule_gameweeks must be >= 1")
+    if len(gameweeks) < minimum:
+        return {
+            "state": "CURRENT_LABEL_HISTORY_INSUFFICIENT",
+            "training_ready": False,
+            "completed_exact_rule_gameweeks": list(gameweeks),
+            "exact_rule_gameweek_count": len(gameweeks),
+            "target_gameweek": int(target_gameweek),
+            "minimum_exact_rule_gameweeks": minimum,
+            "reasons": [
+                f"{len(gameweeks)} exact-rule gameweeks available; governed minimum is {minimum}"
+            ],
+        }
+    return {
+        "state": "CURRENT_LABEL_HISTORY_READY",
+        "training_ready": True,
+        "completed_exact_rule_gameweeks": list(gameweeks),
+        "exact_rule_gameweek_count": len(gameweeks),
+        "target_gameweek": int(target_gameweek),
+        "minimum_exact_rule_gameweeks": minimum,
+        "reasons": [],
+    }
 
 
 def current_model_manifest_errors(
