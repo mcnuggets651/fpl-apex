@@ -8,6 +8,8 @@ import yaml
 
 from apex.domain.models import ProviderRole, Qualification
 
+CURRENT_SCORING_RULES_VERSION = "fpl-2026-27-v1"
+
 
 @dataclass(frozen=True)
 class ProviderConfig:
@@ -27,6 +29,7 @@ class ApexConfig:
     entry_id: int
     max_horizon: int
     providers: tuple[ProviderConfig, ...]
+    scoring_rules_version: str = CURRENT_SCORING_RULES_VERSION
     snapshot_dir: str = "data/v2/snapshots"
     release_prefix: str = "apex-v2"
 
@@ -54,6 +57,7 @@ class ApexConfig:
             int(payload["entry_id"]),
             int(payload.get("max_horizon", 8)),
             tuple(providers),
+            str(payload.get("scoring_rules_version", CURRENT_SCORING_RULES_VERSION)),
             str(payload.get("snapshot_dir", "data/v2/snapshots")),
             str(payload.get("release_prefix", "apex-v2")),
         )

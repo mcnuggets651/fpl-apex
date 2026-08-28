@@ -192,6 +192,7 @@ def acquire_and_freeze(
                     ),
                     requested_horizons=provider_config.requested_horizons,
                     max_age_hours=provider_config.max_age_hours,
+                    required_scoring_rules_version=config.scoring_rules_version,
                     now=now,
                 )
                 reasons.extend(qualification.reasons)
@@ -259,6 +260,11 @@ def acquire_and_freeze(
                     "reasons": list(status.reasons),
                     "serve_authorized": status.serve_authorized,
                     "predictive_status": status.predictive_status.value,
+                    "scoring_rules_version": (
+                        status.surface.scoring_rules_version
+                        if status.surface
+                        else None
+                    ),
                 }
             )
             if status.surface:
@@ -298,6 +304,7 @@ def acquire_and_freeze(
                 "season": config.season,
                 "entry_id": config.entry_id,
                 "max_horizon": config.max_horizon,
+                "scoring_rules_version": config.scoring_rules_version,
                 "deadline": official.deadlines[target],
             },
         )
@@ -310,6 +317,7 @@ def acquire_and_freeze(
                 "code_sha": code_sha,
                 "official_pre_provider_hash": expected_official_hash,
                 "official_final_hash": official.source_hash,
+                "scoring_rules_version": config.scoring_rules_version,
             },
         )
 
