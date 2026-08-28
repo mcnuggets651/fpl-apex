@@ -255,8 +255,9 @@ def _public_team_state(
     squad = tuple(sorted(int(row["element"]) for row in chosen["picks"]))
 
     # Public picks intentionally describe the last locked deadline, not the editable
-    # current team. Never synthesize purchase/selling prices from today's market price:
-    # that would make a stale state look transaction-safe.
+    # current team. Never synthesize transaction safety from them. Even if FPL starts
+    # returning price fields here, the endpoint still cannot prove that no post-deadline
+    # transfer has been made, so discretionary transfer planning must remain withheld.
     purchase = {
         int(row["element"]): int(row["purchase_price"])
         for row in chosen["picks"]
@@ -267,7 +268,6 @@ def _public_team_state(
         for row in chosen["picks"]
         if row.get("selling_price") is not None
     }
-    complete = len(purchase) == 15 and len(selling) == 15
     return TeamState(
         1,
         int(entry_id),
@@ -278,7 +278,7 @@ def _public_team_state(
         purchase,
         selling,
         str(active) if active else None,
-        complete,
+        False,
     )
 
 
