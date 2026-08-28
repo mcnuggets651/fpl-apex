@@ -15,7 +15,7 @@ providers:
     requested_horizons: [1,2,3,4,5,6,7,8]
     path: acquisition/providers/airsenal.csv
   - id: dastan
-    role: STANDBY
+    role: SHADOW
     priority: 10
     serve_authorized: false
     predictive_status: INSUFFICIENT_HISTORY
@@ -23,7 +23,7 @@ providers:
     requested_horizons: [1]
     path: acquisition/providers/dastan.csv
   - id: openfpl
-    role: STANDBY
+    role: SHADOW
     priority: 20
     serve_authorized: false
     predictive_status: INSUFFICIENT_HISTORY
