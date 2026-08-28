@@ -6,10 +6,9 @@ import pandas as pd
 from apex_fpl.data.news import TRUSTED_SOURCE_TIERS
 
 
-# Compatibility symbols retained for existing readiness/report consumers. They are
-# intentionally zero: quantitative uncertainty is not a hard captain floor. Expected
-# minutes/availability already reduce xP, and exact captain/vice mechanics price
-# no-show fallback. Only attributable adverse evidence can exclude pre-solve.
+# Quantitative uncertainty is not a hard captain floor. Expected minutes/availability
+# already reduce production xP and exact captain/vice mechanics price no-show fallback.
+# Only attributable adverse evidence can exclude pre-solve.
 MIN_CAPTAIN_EXPECTED_MINUTES = 0.0
 MIN_CAPTAIN_START_PROBABILITY = 0.0
 MIN_CAPTAIN_APPEARANCE_PROBABILITY = 0.0
@@ -21,7 +20,14 @@ SOURCE_HEALTH_WINDOW_HOURS = 120.0
 
 
 def source_health_status(sources: list) -> dict:
-    """Evaluate the sealed numeric news-health contract."""
+    """Measure news-source health without turning it into a global production kill switch.
+
+    Current news is important when a selected player's minutes/role state is uncertain.
+    That materiality is enforced by ``build_selected_player_evidence``. A feed outage
+    about unrelated players must not invalidate an otherwise fully supported decision.
+    ``ready`` therefore means the diagnostic was evaluated; ``healthy_contract_met``
+    records whether the preferred redundant-news surface is currently healthy.
+    """
     row = next((s for s in sources if getattr(s, "name", "") == "news_source_health"), None)
     try:
         measured = json.loads(getattr(row, "version", "") or "{}")
@@ -31,15 +37,17 @@ def source_health_status(sources: list) -> dict:
     healthy = int(measured.get("healthy_sources", 0) or 0)
     fresh = int(measured.get("fresh_timestamped_items", 0) or 0)
     ratio = healthy / configured if configured else 0.0
-    ready = bool(
+    healthy_contract_met = bool(
         configured >= 2
         and healthy >= MIN_HEALTHY_NEWS_SOURCES
         and ratio >= MIN_SOURCE_HEALTH_RATIO
         and fresh >= MIN_FRESH_NEWS_ITEMS
     )
     return {
-        "contract": "apex-news-source-health-v1",
-        "ready": ready,
+        "contract": "apex-news-source-health-v2",
+        "ready": True,
+        "healthy_contract_met": healthy_contract_met,
+        "degraded": not healthy_contract_met,
         "configured_sources": configured,
         "healthy_sources": healthy,
         "healthy_ratio": ratio,
@@ -48,6 +56,7 @@ def source_health_status(sources: list) -> dict:
         "minimum_healthy_sources": MIN_HEALTHY_NEWS_SOURCES,
         "minimum_healthy_ratio": MIN_SOURCE_HEALTH_RATIO,
         "minimum_fresh_timestamped_items": MIN_FRESH_NEWS_ITEMS,
+        "policy": "diagnostic_global_health_selected_player_materiality_gate",
     }
 
 
@@ -80,11 +89,10 @@ def evidence_eligibility(
 ) -> tuple[pd.DataFrame, dict]:
     """Apply an EV-first evidence policy before production solves.
 
-    Quantitative uncertainty is recorded, not converted into a second minutes
-    penalty. A player remains XI/captain eligible when the best forecast already
-    prices uncertain minutes/role into xP. Only official adverse status, genuinely
-    corroborated negative evidence, or an unresolved positive/negative contradiction
-    can remove XI/captain eligibility. Squad and bench eligibility are never removed.
+    Quantitative uncertainty is recorded, not converted into a second minutes penalty.
+    Only official adverse status, genuinely corroborated negative evidence, or an
+    unresolved positive/negative contradiction can remove XI/captain eligibility.
+    Squad and bench eligibility are never removed by ordinary forecast uncertainty.
     """
     out = players.copy()
     out["evidence_state"] = "stable_silence"
@@ -145,13 +153,8 @@ def evidence_eligibility(
             )
 
     out["xi_evidence_eligible"] = xi_ok.astype(bool)
-    # Captain eligibility follows the same evidence ceiling as XI eligibility. Raw
-    # expected points plus exact no-show vice fallback determine captain value; we
-    # do not impose an additional minutes/start-probability safety preference.
     out["captain_evidence_eligible"] = xi_ok.astype(bool)
     return out, {
-        # Keep the existing schema ID because the report shape is backwards
-        # compatible; the explicit policy field records the semantic change.
         "contract": "apex-evidence-eligibility-v2",
         "policy": "adverse_evidence_only_pre_solve",
         "xi_ineligible_ids": sorted(out.loc[~xi_ok, "player_id"].astype(int).tolist()),
@@ -164,13 +167,7 @@ def evidence_eligibility(
 
 
 def captain_eligible_ids(players: pd.DataFrame) -> set[int]:
-    """Return evidence-eligible captain IDs without a duplicate minutes floor.
-
-    Expected minutes, start probability and appearance probability are already
-    inputs to canonical xP and to exact captain/vice no-show mechanics. Requiring
-    arbitrary numerical floors here would systematically favour secure minutes over
-    greater expected FPL points.
-    """
+    """Return evidence-eligible captain IDs without a duplicate minutes floor."""
     if "player_id" not in players.columns:
         return set()
     d = players.drop_duplicates("player_id").copy()
