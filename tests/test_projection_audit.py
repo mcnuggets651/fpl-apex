@@ -14,15 +14,17 @@ from apex_fpl.services.projection_audit import (
 )
 
 
-ACTIVE_WEIGHTS = {
-    "official_ep": 0.2666666667,
-    "apex_model": 0.5111111111,
-    "airsenal": 0.2222222222,
+# Deliberately non-production research weights. Production is one-hot AIrsenal;
+# this fixture only exercises legacy decomposition/audit code in isolation.
+RESEARCH_WEIGHTS = {
+    "official_ep": 0.30,
+    "apex_model": 0.50,
+    "airsenal": 0.20,
     "market": 0.0,
 }
 
 
-def test_expert_contributions_sum_to_canonical_xp() -> None:
+def test_expert_contributions_sum_to_research_blend_xp() -> None:
     base = pd.DataFrame(
         {
             "player_id": [1, 2],
@@ -42,7 +44,7 @@ def test_expert_contributions_sum_to_canonical_xp() -> None:
             "xp_set_piece_prior": [0.2, 0.1],
         }
     )
-    out = blend_projection(base, ACTIVE_WEIGHTS, risk_penalty=0.15)
+    out = blend_projection(base, RESEARCH_WEIGHTS, risk_penalty=0.15)
     contrib_cols = [
         "xp_expert_official_ep",
         "xp_expert_apex_model_direct",
@@ -53,7 +55,7 @@ def test_expert_contributions_sum_to_canonical_xp() -> None:
     assert np.allclose(out[contrib_cols].sum(axis=1), out["xp"])
 
 
-def test_decomposition_preserves_canonical_and_apex_totals() -> None:
+def test_decomposition_preserves_research_blend_and_apex_totals() -> None:
     base = pd.DataFrame(
         {
             "player_id": [1],
@@ -73,7 +75,7 @@ def test_decomposition_preserves_canonical_and_apex_totals() -> None:
             "xp_set_piece_prior": [0.5],
         }
     )
-    out = blend_projection(base, ACTIVE_WEIGHTS, risk_penalty=0.15)
+    out = blend_projection(base, RESEARCH_WEIGHTS, risk_penalty=0.15)
     audit = build_projection_decomposition(out, [1])
     row = audit.iloc[0]
     expert_total = (
