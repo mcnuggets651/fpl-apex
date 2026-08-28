@@ -10,12 +10,14 @@ Run this script *inside the pinned AIrsenal environment*. It reuses the exact
 upstream update functions for players, attributes, fixtures and results while
 deliberately skipping only ``update_transactions``.
 
-Two Apex-owned transport/cache guards sit outside the forecast model itself:
+Three Apex-owned transport/cache guards sit outside the forecast model itself:
 - bounded retry for transient Official FPL HTTP 429/5xx responses;
 - deterministic rewind of only the current-season PlayerAttributes window that
-  upstream itself intends to rebuild from the last completed GW onward.
+  upstream itself intends to rebuild from the last completed GW onward;
+- scoped autoflush while the pinned attribute refiller runs, so its own lookup/
+  update logic can observe rows inserted earlier in the same refresh.
 
-Neither guard substitutes cached forecasts, changes projection logic, or weakens
+None substitutes cached forecasts, changes projection logic, or weakens
 freshness/coverage qualification. Persistent failures remain fatal.
 """
 from __future__ import annotations
@@ -31,7 +33,7 @@ from airsenal.scripts.fill_fixture_table import fill_fixtures_from_api
 from airsenal.scripts.fill_player_attributes_table import fill_attributes_table_from_api
 from airsenal.scripts.update_db import update_players, update_results
 
-from airsenal_attribute_refresh import rewind_player_attributes
+from airsenal_attribute_refresh import refiller_autoflush, rewind_player_attributes
 from airsenal_transient_retry import retry_transient_http
 
 
@@ -100,10 +102,7 @@ def main() -> None:
 
     # Upstream update_attributes() refills from and including last_complete (or
     # from 0 before any completed GW). A restored cache can already contain those
-    # mutable rows. Since the pinned session uses autoflush=False, repeated rows
-    # encountered during the same refresh can collide only at commit. Rewinding
-    # exactly the upstream rebuild window makes the operation deterministic and
-    # idempotent without touching stable earlier history.
+    # mutable rows, so rewind exactly that rebuild window first.
     if not AIRSENAL_DB_FILE:
         raise SystemExit("AIRSENAL_DB_FILE must be set for the isolated Apex worker")
     refresh_from = max(1, int(last_complete or 0))
@@ -118,11 +117,16 @@ def main() -> None:
     )
 
     with session_scope() as session:
-        fill_attributes_table_from_api(
-            season=CURRENT_SEASON,
-            gw_start=int(last_complete or 0),
-            dbsession=session,
-        )
+        # The pinned sessionmaker uses autoflush=False. The live API may expose a
+        # gameweek through both summary and per-player history in the same refresh.
+        # The refiller's second get_player_attributes() must therefore see the
+        # first pending insert. Enable autoflush only across this one upstream call.
+        with refiller_autoflush(session):
+            fill_attributes_table_from_api(
+                season=CURRENT_SEASON,
+                gw_start=int(last_complete or 0),
+                dbsession=session,
+            )
         print(f"AIrsenal worker: added {new_players} new player(s)")
 
         print("AIrsenal worker: updating fixtures")
