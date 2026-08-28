@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from apex_fpl.control.artifact_store import ArtifactStore
+from apex_fpl.control.artifact_store import ArtifactStore, FileSystemArtifactStore
 from apex_fpl.core.canonical import canonical_sha256
 from apex_fpl.core.decision import CandidatePlayer, CandidateUniverse, CandidateUniverseScope
 from apex_fpl.core.identity import OfficialPlayerId
@@ -58,7 +58,7 @@ def _base_universe(store: ArtifactStore) -> CandidateUniverse:
 
 
 def test_finance_universe_saturates_target_club_without_price_or_position_drift(tmp_path) -> None:
-    store = ArtifactStore(tmp_path / "artifacts")
+    store = FileSystemArtifactStore(tmp_path / "artifacts")
     verified = SimpleNamespace(candidate_universe=_base_universe(store))
 
     universe, artifact_id = _finance_candidate_universe(verified, store=store)
