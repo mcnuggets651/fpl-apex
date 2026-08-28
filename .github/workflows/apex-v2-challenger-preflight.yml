@@ -179,6 +179,29 @@ jobs:
           print(json.dumps(report, sort_keys=True))
           PY
 
+      - name: Validate governed OpenFPL-method derivative contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/openfpl_method_contract_preflight.py \
+            --contract config/openfpl_method_contract.yaml \
+            --policy config/openfpl_training_policy.yaml \
+            --output artifacts/v2/challengers/openfpl_method_contract_preflight.json
+          python - <<'PY'
+          import json
+          report = json.load(open(
+              'artifacts/v2/challengers/openfpl_method_contract_preflight.json',
+              encoding='utf-8',
+          ))
+          assert report['valid'] is True
+          assert report['implementation_id'] == 'apex-openfpl-method-derivative'
+          assert report['reference_reproducibility_scope'] == 'INFERENCE_ONLY'
+          assert report['exact_upstream_training_reproduction_claim'] is False
+          assert report['serve_authorized'] is False
+          assert len(report['contract_sha256']) == 64
+          assert len(report['training_policy_sha256']) == 64
+          PY
+
       - name: Audit exact current-rule history readiness
         shell: bash
         run: |
@@ -225,6 +248,8 @@ jobs:
           name: apex-v2-openfpl-reference-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             artifacts/v2/challengers/openfpl_reference_preflight.json
+            artifacts/v2/challengers/openfpl_method_contract_preflight.json
             artifacts/v2/challengers/openfpl_current_readiness.json
             config/openfpl_training_policy.yaml
+            config/openfpl_method_contract.yaml
           retention-days: 30
