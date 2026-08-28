@@ -21,6 +21,9 @@ def current_manifest() -> dict:
         "source_snapshot": "official-seal",
         "target_gameweek": 2,
         "training_max_gameweek": 1,
+        "training_policy_version": "openfpl-current-training-v1",
+        "minimum_exact_rule_gameweeks": 1,
+        "exact_rule_gameweeks": [1],
         "feature_contract_version": "openfpl-apex-live-v1",
         "model_artifact_sha256": _sha("a"),
         "training_dataset_sha256": _sha("b"),
@@ -53,12 +56,46 @@ def test_legacy_openfpl_weights_cannot_be_relabelled_as_current():
 def test_openfpl_training_must_stop_before_target_gameweek():
     manifest = current_manifest()
     manifest["training_max_gameweek"] = 2
+    manifest["exact_rule_gameweeks"] = [1, 2]
     errors = current_model_manifest_errors(
         manifest,
         target_gameweek=2,
         source_snapshot="official-seal",
     )
     assert any("target/future gameweek" in error for error in errors)
+
+
+def test_openfpl_model_requires_governed_training_policy():
+    manifest = current_manifest()
+    manifest["training_policy_version"] = ""
+    errors = current_model_manifest_errors(
+        manifest,
+        target_gameweek=2,
+        source_snapshot="official-seal",
+    )
+    assert any("training policy version is empty" in error for error in errors)
+
+
+def test_openfpl_model_requires_history_threshold_to_be_met():
+    manifest = current_manifest()
+    manifest["minimum_exact_rule_gameweeks"] = 2
+    errors = current_model_manifest_errors(
+        manifest,
+        target_gameweek=2,
+        source_snapshot="official-seal",
+    )
+    assert any("governed minimum is 2" in error for error in errors)
+
+
+def test_openfpl_model_training_max_must_match_declared_exact_history():
+    manifest = current_manifest()
+    manifest["training_max_gameweek"] = 0
+    errors = current_model_manifest_errors(
+        manifest,
+        target_gameweek=2,
+        source_snapshot="official-seal",
+    )
+    assert any("maximum declared exact-rule gameweek" in error for error in errors)
 
 
 def test_openfpl_must_prove_future_placeholder_invariance():
