@@ -5,8 +5,15 @@
     "airsenal": {
       "repository": "alan-turing-institute/AIrsenal",
       "commit": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717",
-      "role": "production_projection_worker",
+      "role": "incumbent_production_projection_worker",
       "required_for_full_apex": true
+    },
+    "dastan": {
+      "repository": "qazybekb/smartplayfpl-dastan",
+      "commit": "19376523afdec4836d0e6b5632c6773d0fe40c53",
+      "role": "qualified_shadow_projection_candidate",
+      "required_for_full_apex": false,
+      "qualification_scope": "pinned public release/model contract; a fresh Official-FPL-keyed 2026/27 projection export is still required before production promotion"
     },
     "bpl": {
       "repository": "anguswilliams91/bpl-next",
