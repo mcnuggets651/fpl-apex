@@ -29,8 +29,9 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Dastan is generated before the shared freeze in an isolated runtime and remains non-serving while prospectively unqualified.
 - [ ] OpenFPL's exact pinned reference checkout passes its structural preflight without being relabelled as current scoring.
 - [ ] OpenFPL exact 2026/27 history readiness is pinned and audited independently of the Dastan history role; target/future GW contamination fails closed.
-- [ ] Apex does not invent an OpenFPL current-training sample threshold. A governed training-policy version must explicitly set the minimum exact-rule history before model construction can be considered ready.
-- [ ] Any future OpenFPL current model declares `fpl-2026-27-v1`, binds to that governed training policy, declares the exact-rule gameweeks used, meets its minimum, uses separately hashed training/model artifacts, trains only through GW < target GW, proves future-placeholder invariance, reaches 100% Official DecisionUniverse coverage, and explicitly does not reuse legacy reference weights as current weights.
+- [ ] `openfpl-current-training-v1` is the governed current-rules construction policy: minimum 10 completed exact-rule GWs, labels only from 2026/27, legacy FPL-points/relevant-points/BPS/bonus feature families excluded, and historical context score-independent only.
+- [ ] Any future OpenFPL current model declares `fpl-2026-27-v1`, binds to the exact governed policy SHA-256 and `openfpl-current-nonscore-v1` feature contract, declares the exact-rule gameweeks used, meets the 10-GW minimum, uses separately hashed training/model artifacts, trains only through GW < target GW, proves future-placeholder invariance, reaches 100% Official DecisionUniverse coverage, and explicitly does not reuse legacy reference weights as current weights.
+- [ ] Meeting the OpenFPL 10-GW construction floor authorizes only SHADOW model construction; serving authority still requires prospective qualification and an explicit governance change.
 - [ ] Dastan/OpenFPL stay non-serving until current-scoring live exports pass the same operational and prospective contract.
 
 ## Team mechanics
@@ -46,6 +47,7 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Team-state credentials are injected only during Official acquisition/freeze and are never logged, persisted in snapshots or exposed to forecast/solve code.
 - [ ] A configured but rejected/wrong-entry/incoherent credential fails acquisition; Apex does not silently downgrade to public picks.
 - [ ] With no credential, public last-deadline picks remain transaction-incomplete unconditionally and discretionary transfers are withheld.
+- [ ] Public transfer history is frozen as evidence with visibility provenance; before a deadline it cannot prove that no hidden current-period transfer has occurred and cannot upgrade public state to transaction-complete.
 - [ ] Unlimited/null-limit authenticated transfer windows are withheld from the ordinary transfer optimiser until chip-aware mechanics are explicitly implemented.
 - [ ] H1-only evidence withholds discretionary transfers.
 - [ ] Incomplete selling-price state withholds discretionary transfers.
@@ -77,7 +79,7 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Optional challenger generation occurs before freeze and cannot invalidate the serving incumbent merely by failing.
 - [ ] Official post-provider seal exactly matches the pre-provider seal.
 - [ ] Official final anchor and snapshot freeze succeed.
-- [ ] If authenticated team-state credentials are configured, the frozen team state is current, exact and complete for ordinary transfers; otherwise the diagnostic explicitly withholds discretionary transfers.
+- [ ] If authenticated team-state credentials are configured, the frozen team state is current, exact and complete for ordinary transfers; otherwise the diagnostic explicitly records `PUBLIC_DEADLINE_FALLBACK` and withholds discretionary transfers.
 - [ ] Solver completes from frozen state or emits a typed/persisted blocking decision diagnostic.
 - [ ] Final release becomes immutable and verifies.
 - [ ] Recommendation is legal and certification is coherent.
