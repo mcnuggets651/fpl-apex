@@ -1,12 +1,10 @@
 # Apex FPL — Operating Manual
 
-**This is the single authoritative operating document.** Other usage, state,
-roadmap and known-issues documents must link here and may not redefine the answer
-contract or source order.
+**This is the single authoritative operating document.** Other usage, state, roadmap and known-issues documents must link here and may not redefine the answer contract, authority chain or source criticality.
 
 ## Purpose
 
-This file defines how ChatGPT or any operator should work on Apex without repeatedly reconstructing context.
+Define how ChatGPT and operators work on Apex without reconstructing the project from memory or allowing stale artifacts to become authority.
 
 ## Mandatory startup sequence
 
@@ -16,86 +14,110 @@ For any substantive Apex request:
 2. Read `docs/APEX_MASTER_CONTEXT.md`.
 3. Read `docs/APEX_DECISIONS.md`.
 4. Read `docs/APEX_CANONICAL_DECISION_POLICY.md`.
-5. Inspect `data/generated/apex_answer_context.json`. It is the only permitted input for an Apex-labelled answer.
-6. Verify `safe_to_act`, run age, decision-bundle ID, material input hashes, source health, model versions, all-player truth coverage, CVaR, selection regret, solver parity, final selected-player evidence and strategy state.
-7. Only inspect internal diagnostics to explain a blocker or improve the engine.
-8. Use live research only as a labelled gap-fill for injuries, transfers, roles and lineups; it cannot silently override the canonical contract.
-9. If code/architecture is changing, read the relevant model/architecture docs and current implementation.
+5. Inspect `data/generated/apex_answer_context.json`. It is the only permitted input for an Apex-labelled recommendation.
+6. Verify freshness, Official snapshot identity, decision-bundle identity, source health, model/provider versions, all-player truth, solver/parity, exact mechanics, final selected-player evidence and strategy state.
+7. Inspect internal diagnostics only to explain a blocker or improve the engine.
+8. Use live research only as labelled current evidence for injuries, suspensions, transfers, roles, lineups and set pieces; it cannot silently replace the canonical contract.
+9. For architecture/model changes, inspect the exact current GitHub branch, implementation and tests before acting.
+
+Repository and workflow evidence outrank conversation memory.
+
+## Production authority chain
+
+Authority is capability-specific:
+
+1. **Official FPL — factual truth.** Current player ID, club, FPL position, price, Official status/availability, fixture/deadline identity and public FPL state.
+2. **AIrsenal — production statistical xP.** Canonical production `xp` equals validated AIrsenal xP exactly. Missing/stale/incomplete AIrsenal is a hard blocker. There is no silent Apex fallback.
+3. **Current football evidence — availability/minutes/role context.** Attributable evidence can constrain eligibility or uncertainty. It cannot invent unsourced expected points.
+4. **Apex optimiser — decision authority.** Legal squad/current-team optimisation, exact XI/captain/vice/bench/autosubs, parity and receding-horizon first-action selection.
+5. **FPL Core, Understat, Apex proprietary xP and other challengers — enrichment/shadow.** Their health and disagreement remain visible, but they do not own canonical production xP unless prospectively promoted.
+6. **Prospective calibration — promotion judge.** Forecast authority changes only after genuine frozen-before-deadline evidence and explicit review.
+
+Optional enrichment failure cannot masquerade as a production failure when the active production path is independent of that source. Conversely, a real factual/canonical/mechanics/publication dependency remains fail-closed.
 
 ## Closed-answer contract
 
-Every substantive FPL question is routed before answering. Best-team questions require the canonical final strategy; player-role questions require a player evidence dossier; player comparisons require one matched snapshot plus appropriate decision evidence; transfers require current entry state and a rolling-horizon solve; project-status claims require GitHub release evidence; improvement questions require validation gaps and benchmark evidence. If the required artifact is absent, report the gap.
+Every substantive FPL question is routed before answering. Best-team questions require the current canonical final strategy; transfers require exact current manager state and a receding-horizon solve; player-role questions require a current player evidence dossier; project-status claims require GitHub/workflow evidence.
 
-Every answer uses exactly four sections: production result, current evidence, unresolved risks, and proposed model improvement. Never invent or manually adjust a squad. Correct the input or model layer, rerun the same snapshot, and measure the change.
+If the required artifact is absent, stale or non-actionable, report the blocker. Never invent or manually repair a squad.
 
-`safe_to_act` must be false for stale/mismatched snapshots, unhealthy or stale required sources, incomplete all-player truth coverage, missing required AIrsenal player/Gameweek coverage, invalid set-piece provenance, missing CVaR/regret/solver parity, incomplete optimisation, missing strategy state, or final selected-player evidence that does not match the actual canonical 15.
+For a user-facing recommendation, `safe_to_act` and `ready_to_act` must both be true. Hard blockers include, where applicable:
+
+- stale/mismatched Official FPL truth;
+- incomplete current Official player factual coverage;
+- stale/unhealthy/incomplete AIrsenal production xP coverage;
+- invalid current manager state/finance;
+- invalid evidence/provenance for a decision-critical claim;
+- mismatched or corrupt DecisionBundle identity;
+- incomplete/inconclusive required optimisation or parity;
+- invalid exact FPL mechanics;
+- final selected-player evidence mismatch;
+- stale/inconsistent publication state.
+
+FPL Core/Understat/internal shadow-model outages are warnings unless a promoted production component explicitly depends on them.
 
 ## EV-first evidence policy
 
-The production eligibility rule is **adverse-evidence-only pre-solve**.
+The production eligibility rule is **adverse-evidence-only** pre-solve.
 
-Expected minutes, start probability, appearance probability, role uncertainty and their confidence are already inputs to expected FPL points. They must not be turned into a second hidden safety preference that systematically rewards secure minutes over higher expected points.
+Expected minutes, start probability, appearance probability and role uncertainty already belong inside forecasts/scenarios. They must not be converted into a second hidden preference for supposedly safe minutes.
 
-A player may be removed from XI/captain eligibility only when current attributable evidence justifies it, including:
+A player may be removed from XI/captain eligibility only when attributable current evidence justifies it, including:
 
-- official adverse availability/suspension status;
+- Official adverse availability/suspension;
 - decision-grade negative role/availability evidence;
-- a current unresolved contradiction between supported positive and negative evidence.
+- an unresolved material contradiction between supported current evidence.
 
-Low numerical confidence by itself is diagnostic, not an exclusion rule. A high-uncertainty starter may therefore remain selectable when the forecast already prices that uncertainty. This is deliberate and prevents a return to the old minutes-conservative bias.
-
-Feed health alone is not player evidence. Current tactical, availability or set-piece overrides require source name, source tier, URL, publication time and explicit expiry where relevant. Stale or unverifiable overrides are rejected before projection. Ordinal Official FPL set-piece order is factual hierarchy only and may not be converted into an invented literal future share.
+Low numerical confidence by itself is diagnostic rather than exclusionary. Set-piece hierarchy is ordinal evidence unless a literal share is independently sourced. Stale/unverifiable overrides are rejected.
 
 ## All-player truth requirement
 
-The factual contract applies to **every current Official FPL player**, not only the selected 15.
+For every current Official FPL player, production requires:
 
-Production requires:
+- complete unique Official identity;
+- current club/FPL-position/price/status factual mapping;
+- complete canonical player/Gameweek projection-pair coverage;
+- complete required AIrsenal player/Gameweek xP coverage;
+- explicit fact/override/inference/forecast semantics for decision-sensitive fields;
+- no unsourced literal set-piece shares.
 
-- 100% Official FPL identity/name/club/position/price/status coverage;
-- unique official IDs;
-- 100% FPL Core player-ID coverage for the required enrichment source;
-- 100% canonical player/Gameweek projection-pair coverage;
-- 100% required AIrsenal player/Gameweek xP coverage;
-- explicit fact/override/inference/forecast classification for decision-sensitive fields;
-- no unsourced literal set-piece shares or unexplained set-piece xP.
+FPL Core player-ID coverage remains monitored enrichment quality but is not currently a release-blocking all-player requirement.
 
-Future minutes, lineups, roles and xP cannot be guaranteed with literal 100% certainty. They remain forecasts with transparent evidence/confidence instead of being disguised as facts.
-
-## Completion standard
-
-Completion means all five are present: GitHub commit, PR, passing CI, reproducible evidence artifact, and merged production output when activation is claimed. A local experiment is never a completed release.
+Future minutes, roles, lineups and xP remain forecasts. Literal certainty must not be manufactured.
 
 ## If the user asks for “the best team”
 
-1. Do **not** compare several standalone Apex approaches and make a fresh subjective choice.
-2. Load `data/generated/apex_answer_context.json` only.
-3. If `safe_to_act` is false, report the blockers and do not invent a team.
-4. If `safe_to_act` is true, present `production_result` as **the** Apex team.
-5. Report XI, captain, vice and bench order from the final canonical contract.
+1. Load `data/generated/apex_answer_context.json`.
+2. Do not compare several internal Apex approaches and make a fresh subjective choice.
+3. If `safe_to_act=false` or `ready_to_act=false`, report blockers and do not invent a team.
+4. If actionable, present `production_result` as **the** Apex recommendation.
+5. Report XI, captain, vice and bench order from the final contract.
 6. Explain players using the final selector and `final_selected_player_evidence`.
-7. Pinnacle exact-horizon, Elite, CVaR, regret and parity are internal diagnostics only; they cannot be described as competing recommendations or as the causal selector when they were not.
-8. Show Haaland/no-Haaland or another forced alternative only when explicitly requested, and label it as a scenario rather than a competing recommendation.
+7. Pinnacle/static exact-horizon, Elite, CVaR, regret and parity are diagnostics only.
+8. Show forced scenarios only when explicitly requested and label them as scenarios.
 
-## Canonical command
+## Canonical command and publication
 
-The production command is:
+The production entrypoint is:
 
 ```bash
 python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
 ```
 
-This is the only production entrypoint. It executes one-way:
+The one-way production flow is:
 
-1. seal the decision bundle;
-2. run Pinnacle/Elite diagnostics;
-3. assemble a non-actionable staging packet;
-4. run all-player truth;
-5. apply exactly one final adaptive/receding strategy selector;
-6. exact-rescore the current Gameweek;
-7. rebuild evidence for the actual final 15/XI/captain;
-8. build the final answer context;
-9. set `ready_to_act=true` only if every gate passes.
+1. acquire/seal current Official truth and manager state;
+2. validate fresh complete AIrsenal production projections;
+3. ingest evidence/enrichment with explicit health/provenance;
+4. seal the DecisionBundle;
+5. run diagnostic/assurance layers on that same bundle;
+6. assemble non-actionable staging;
+7. run all-player truth;
+8. apply one final strategy selector;
+9. exact-rescore current FPL mechanics;
+10. rebuild evidence for the actual final selection;
+11. build the final answer context;
+12. set `ready_to_act=true` only if all required gates pass.
 
 The only user-facing files are:
 
@@ -103,100 +125,128 @@ The only user-facing files are:
 - `data/generated/apex_recommendation_latest.json`
 - `data/generated/apex_recommendation_latest.md`
 
-`pinnacle_latest.*` and `elite_latest.*` are internal diagnostics only.
-
-Validate or replay the sealed surface with:
-
-```bash
-python scripts/audit_decision_bundle.py data/generated/decision_bundle
-python scripts/replay_decision_bundle.py data/generated/decision_bundle
-```
+`pinnacle_latest.*`, `elite_latest.*`, shadow forecasts and research reports are internal evidence only.
 
 ## Final strategy policy
 
-Before GW1, the only canonical selector is `adaptive_gw1_launch_with_transfer_option_value`: exact GW1 expected points first, with future legal transfer option value used only inside the configured near-equivalent GW1 band.
+The two retained selectors are:
 
-Once a published current team exists, the only canonical selector is `receding_horizon_current_team_maximum_ev`: solve from the actual permanent squad, bank, selling prices and free-transfer state; publish only the first newly solved action; treat every later move as a contingency.
+- `adaptive_gw1_launch_with_transfer_option_value` — historical/pre-GW1 launch selector;
+- `receding_horizon_current_team_maximum_ev` — current in-season selector.
 
-The static exact-horizon object remains a diagnostic compatibility surface only. It can never set `ready_to_act=true`.
+GW1 is complete. Normal live operation is now the receding-horizon current-team selector: start from the exact permanent squad, bank, selling values and free transfers; solve legal option value; publish only the first newly solved action; treat later moves as contingencies to rebuild next deadline.
+
+The one-off `gw1-final-2026.yml` workflow is archived and must not be restored to the active production surface simply for convenience.
 
 ## If the user shows a current team
 
-Treat the screenshot/manual team as the current private draft if it is newer than the public FPL snapshot. Compare it against the canonical recommendation; do not replace the canonical selection policy with an ad-hoc manual selector.
+Treat a screenshot/manual team as a private-current-state candidate only if it is newer than the public snapshot. Reconcile it exactly with Official identity/prices and manager-state mechanics. Do not turn it into a manual team-selection override.
 
 ## If the user asks about project status
 
-Check GitHub/repository state directly. Separate:
+Check GitHub directly and distinguish:
 
-- **Production now** — merged/running/current canonical outputs.
-- **In progress** — open PRs/experiments.
-- **Proposed** — ideas not implemented.
+- **Production now** — merged/running/current user-facing outputs;
+- **In progress** — branch/PR code and experiments;
+- **Shadow/research** — non-authoritative model/data evidence;
+- **Proposed** — unimplemented ideas.
 
-Never describe a proposal as already part of production.
+Never describe a branch, open PR, test fixture or synthetic V2 proof as production.
 
-## If changing the model
+## If changing the forecast/model
 
-- Preserve canonical `xp` unless the change is explicitly a forecast-model change.
-- Keep observed facts, forecasts and selection logic separate.
-- Add tests.
-- Benchmark against the current baseline.
-- Record the decision and reason.
-- Use a branch/PR for non-trivial changes.
-- Do not merge solely because CI is green; verify modelling intent and decision impact.
+- Preserve production AIrsenal authority unless the change is an explicit provider-promotion decision.
+- Keep facts, forecasts, enrichment and selection logic separate.
+- Add focused and adversarial tests.
+- Benchmark against frozen prospective evidence rather than preferred-player intuition.
+- Record durable decisions.
+- Use branch/PR discipline for non-trivial changes.
+- Do not merge solely because engineering CI is green; verify modelling intent and decision impact.
 - Do not introduce a second user-facing team-selection path.
-- Do not hand-tune a named player's weight/role to force a preferred squad.
-- Do not promote a projection expert or change ensemble weights without bounded predictive evidence.
+- Do not hand-tune a named player.
+- Do not introduce subjective forecast weights.
 
-## Architecture freeze after PR #64
+## Prospective learning and promotion
 
-PR #64 is intended to be the final architecture/hardening pass for the launch decision engine. Once it is merged and the fresh production acceptance is green, normal Apex operation is **not** another architecture-PR cycle.
+Production and shadow forecasts must be frozen before deadlines with provider/version, Official snapshot, player/GW and forecast-time identity. Outcome data joins only after the event.
 
-Routine operation becomes:
+Current promotion governance requires at least:
 
-- refresh Official FPL and required sources;
-- refresh current-season match/player evidence;
-- update forecasts using already approved rules;
-- ingest current injuries/roles/lineups with provenance;
+- 8 completed genuine prospective Gameweeks;
+- >=200 active rows;
+- chronological/walk-forward comparison;
+- Gameweek-block confidence/uncertainty analysis;
+- cohort diagnostics and relevant ablations;
+- explicit review.
+
+No automatic promotion is allowed. At the 28 August 2026 audit, calibration still had zero completed genuine Gameweeks and zero active rows. The missing/empty deadline archive must be repaired before claiming prospective learning is operational.
+
+## FPL Core operating rule
+
+FPL Core is enrichment. Its moving upstream may be pinned only after candidate semantic/identity validation. The refresh workflow must install Apex before calling publication invalidation, must verify the `apex_fpl.services.publication` import, and must not weaken candidate validation simply to move the pin.
+
+A changed Core enrichment pin may still invalidate an older published decision for provenance consistency, even though Core is not canonical xP authority; the next production solve then republishes explicitly against the changed enrichment surface.
+
+## Understat operating rule
+
+Understat is enrichment/shadow. HTTP 200 with missing/empty football payload is unhealthy. Understat outages are disclosed but are not production blockers while canonical AIrsenal xP is independent. Any future production use requires explicit prospective promotion and dependency reclassification.
+
+## V2 stack rule
+
+Draft PRs #67–#88 remain a separate withheld architecture programme. Engineering certification is not production authority. Before any V2 merge/cutover, the stack must be rebased/requalified against the current production forecast authority because later V2 docs still contain the retired fixed three-way blend assumption.
+
+PR #66 is superseded archaeology/regression material and must not be merged.
+
+## Architecture freeze
+
+After the current authority cutover, routine operation is **not** another architecture cycle.
+
+Routine work is:
+
+- refresh Official FPL;
+- refresh AIrsenal;
+- validate enrichment sources;
+- ingest current football evidence;
 - re-solve before each deadline;
-- archive forecast/decision/outcome data for no-hindsight learning.
+- archive frozen forecasts/decisions;
+- score outcomes after events;
+- evaluate challengers prospectively.
 
-Architecture/model work reopens only when one of these is true:
+Architecture reopens only when:
 
-1. a reproducible production defect violates the frozen contract;
-2. a required upstream changes schema/semantics and the engine cannot reconcile it safely;
-3. a bounded challenger demonstrates superior predictive and decision-level validity under the established promotion gates.
+1. a reproducible production defect violates the contract;
+2. a required upstream changes semantics so the engine cannot reconcile safely;
+3. a bounded challenger demonstrates superior predictive and decision-level validity under the promotion gates.
 
-A surprising player or a poor one-week outcome is **not** sufficient reason to redesign the engine. Diagnose the input, truth, forecast and decision layers first.
-
-## Communication standard
-
-Prefer concise, decisive outputs. State uncertainty where it changes action. Avoid repeatedly asking the user for information already stored in repository/project context.
+A surprising player or one poor Gameweek is not sufficient reason to redesign the engine.
 
 ## Anti-drift rules
 
 Do not:
 
 - start from generic web lists;
+- reconstruct old squads from chat/history;
 - optimise only points-per-million;
-- force premium players because of reputation;
-- force cheap picks because of value;
+- force premiums or cheap picks by reputation/value;
 - use ownership in the pure maximum-points objective;
-- present Pinnacle, exact-horizon, Elite, CVaR or Value as separate Apex recommendations;
-- claim a “9.9/10” score without defining what the score means;
-- confuse model confidence with probability of winning;
-- claim a PR is green without checking the actual workflow run;
-- tell the user to run commands when the connected repository can answer the question directly;
-- turn an ordinal rank into an invented probability;
-- let a required expert silently disappear for only some players and renormalise weights without a blocker.
+- present diagnostic surfaces as competing recommendations;
+- confuse uncertainty with certainty;
+- claim a workflow/PR is green without inspecting it;
+- turn ordinal rank into invented probability;
+- let missing AIrsenal silently fall back to Apex;
+- let optional Core/Understat enrichment become a false hard blocker;
+- weaken identity, price, solver parity, statistical truth, exact mechanics or freshness protections merely to obtain green CI.
 
 ## Documentation maintenance
 
 After a meaningful architecture/model milestone update:
 
 - `CURRENT_STATE.md`
+- `PROJECT_STATUS.md`
 - `SESSION_LOG.md`
 - `APEX_CHANGELOG.md`
-- `APEX_DECISIONS.md` if a durable decision changed
-- `BENCHMARKS.md` if model performance/selection changed
-- `KNOWN_ISSUES.md` if a limitation is discovered/resolved
-- `APEX_CANONICAL_DECISION_POLICY.md` only if the single production decision contract itself changes
+- `APEX_DECISIONS.md` for durable decisions
+- `BENCHMARKS.md` for new performance evidence
+- `KNOWN_ISSUES.md` for limitations discovered/resolved
+- `APEX_CANONICAL_DECISION_POLICY.md` when the single production decision contract changes
+- `APEX_ARCHITECTURE.md`, `APEX_DATA_SOURCES.md` and `APEX_MODEL_SPEC.md` when authority/dependency semantics change
