@@ -57,6 +57,15 @@ def intent(
     typer.echo(now)
 
 
+@app.command("official-hash")
+def official_hash(season: str = "2026-2027"):
+    """Capture the canonical Official-FPL seal before provider acquisition."""
+    from apex.sources.official import fetch_official_snapshot
+
+    official, _ = fetch_official_snapshot(season=season)
+    typer.echo(official.source_hash)
+
+
 @app.command()
 def acquire(
     config: Path = Path("config/apex_v2.yaml"),
@@ -64,6 +73,14 @@ def acquire(
     code_sha: str = typer.Option(...),
     run_started_at: str = typer.Option(...),
     workdir: Path = Path("."),
+    expected_official_hash: str | None = typer.Option(
+        None,
+        "--expected-official-hash",
+        help=(
+            "Official FPL canonical hash captured immediately before provider "
+            "generation. Acquisition aborts if the final Official snapshot differs."
+        ),
+    ),
 ):
     from apex.runtime.acquire import acquire_and_freeze
 
@@ -73,6 +90,7 @@ def acquire(
         code_sha=code_sha,
         run_started_at=run_started_at,
         workdir=workdir,
+        expected_official_hash=expected_official_hash,
     )
     typer.echo(str(snap.root))
 

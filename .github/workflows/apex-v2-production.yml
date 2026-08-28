@@ -41,6 +41,16 @@ jobs:
           echo "run_key=$RUN_KEY" >> "$GITHUB_OUTPUT"
           echo "started=$STARTED" >> "$GITHUB_OUTPUT"
 
+      - name: Capture Official FPL pre-provider seal
+        id: official_seal
+        shell: bash
+        run: |
+          set -euo pipefail
+          OFFICIAL_HASH="$(apex-v2 official-hash --season 2026-2027)"
+          test -n "$OFFICIAL_HASH"
+          echo "hash=$OFFICIAL_HASH" >> "$GITHUB_OUTPUT"
+          echo "Official FPL pre-provider hash: $OFFICIAL_HASH"
+
       - name: Resolve pinned AIrsenal
         id: airsenal
         shell: bash
@@ -82,7 +92,7 @@ jobs:
             --db "$AIRSENAL_DB_FILE" --horizon 8 \
             --output "$GITHUB_WORKSPACE/acquisition/providers/airsenal.csv")
 
-      - name: Acquire canonical truth and freeze all inputs once
+      - name: Re-anchor Official truth and freeze all inputs once
         id: freeze
         shell: bash
         run: |
@@ -91,7 +101,8 @@ jobs:
             --config config/apex_v2.yaml \
             --run-id '${{ steps.intent.outputs.run_key }}' \
             --code-sha "$GITHUB_SHA" \
-            --run-started-at '${{ steps.intent.outputs.started }}')"
+            --run-started-at '${{ steps.intent.outputs.started }}' \
+            --expected-official-hash '${{ steps.official_seal.outputs.hash }}')"
           echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
 
       - name: Solve frozen snapshot with network-independent decision code

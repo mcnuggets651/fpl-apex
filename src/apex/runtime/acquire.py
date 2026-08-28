@@ -1,98 +1,284 @@
 from __future__ import annotations
+
+import json
 from datetime import datetime, timezone
 from pathlib import Path
-import json
-from apex.domain.models import ProviderHealth, ProviderStatus, Qualification, dataclass_to_dict, EvidenceRecord, EvidenceEffect
+
+from apex.domain.models import (
+    EvidenceEffect,
+    EvidenceRecord,
+    ProviderHealth,
+    ProviderStatus,
+    Qualification,
+    dataclass_to_dict,
+)
 from apex.forecast.adapters.airsenal import load_airsenal
 from apex.forecast.adapters.dastan import load_dastan
 from apex.forecast.adapters.openfpl import load_openfpl
 from apex.forecast.qualification import qualify_surface
+from apex.governance.evidence import validate_evidence
 from apex.sources.official import fetch_official_snapshot
 from apex.sources.team import fetch_team_state
-from apex.governance.evidence import validate_evidence
+
 from .config import ApexConfig, config_sha
 from .snapshot import SnapshotBuilder
+
 
 def _parse_evidence(path: Path) -> tuple[EvidenceRecord, ...]:
     if not path.exists():
         return ()
     raw = json.loads(path.read_text())
-    rows = raw if isinstance(raw, list) else raw.get('records', [])
-    return tuple((EvidenceRecord(str(r['evidence_id']), int(r['element_id']), str(r['source_name']), str(r['source_url']), str(r['source_tier']), str(r['published_at']), str(r['retrieved_at']), str(r['expires_at']), str(r['evidence_type']), int(r['gameweek']), EvidenceEffect(r['effect']), str(r['content_hash']), str(r.get('excerpt', ''))) for r in rows))
+    rows = raw if isinstance(raw, list) else raw.get("records", [])
+    return tuple(
+        EvidenceRecord(
+            str(row["evidence_id"]),
+            int(row["element_id"]),
+            str(row["source_name"]),
+            str(row["source_url"]),
+            str(row["source_tier"]),
+            str(row["published_at"]),
+            str(row["retrieved_at"]),
+            str(row["expires_at"]),
+            str(row["evidence_type"]),
+            int(row["gameweek"]),
+            EvidenceEffect(row["effect"]),
+            str(row["content_hash"]),
+            str(row.get("excerpt", "")),
+        )
+        for row in rows
+    )
+
 
 def _target_gameweek(official, now):
     future = []
-    for gw, val in official.deadlines.items():
-        d = datetime.fromisoformat(val.replace('Z', '+00:00'))
-        d = d if d.tzinfo else d.replace(tzinfo=timezone.utc)
-        if d > now:
-            future.append(gw)
+    for gameweek, value in official.deadlines.items():
+        deadline = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        deadline = (
+            deadline
+            if deadline.tzinfo
+            else deadline.replace(tzinfo=timezone.utc)
+        )
+        if deadline > now:
+            future.append(gameweek)
     if not future:
-        raise RuntimeError('no future Official FPL deadline')
+        raise RuntimeError("no future Official FPL deadline")
     return min(future)
 
-def acquire_and_freeze(config_path: Path, *, run_id: str, code_sha: str, run_started_at: str, workdir: Path=Path('.')):
+
+def assert_official_acquisition_stable(
+    expected_hash: str | None,
+    actual_hash: str,
+) -> None:
+    """Fail if Official FPL changed while external providers were generated.
+
+    Production captures ``expected_hash`` immediately before provider acquisition.
+    This function runs on the fresh canonical Official snapshot fetched immediately
+    after provider generation. A mismatch means provider inputs and the final Apex
+    truth anchor may have observed different FPL states, so the attempt must restart
+    rather than guessing which state each provider used.
+    """
+    if expected_hash and str(expected_hash) != str(actual_hash):
+        raise RuntimeError(
+            "Official FPL changed during provider acquisition: "
+            f"expected {expected_hash}, got {actual_hash}. "
+            "Discard this attempt and restart provider acquisition from a fresh "
+            "Official FPL seal."
+        )
+
+
+def acquire_and_freeze(
+    config_path: Path,
+    *,
+    run_id: str,
+    code_sha: str,
+    run_started_at: str,
+    workdir: Path = Path("."),
+    expected_official_hash: str | None = None,
+):
     config = ApexConfig.load(config_path)
     now = datetime.now(timezone.utc)
     official, raw_official = fetch_official_snapshot(season=config.season)
+    assert_official_acquisition_stable(
+        expected_official_hash,
+        official.source_hash,
+    )
+
     target = _target_gameweek(official, now)
     team = fetch_team_state(config.entry_id, official, now=now)
     statuses = []
-    normalized = {}
-    start = datetime.fromisoformat(run_started_at.replace('Z', '+00:00'))
+    start = datetime.fromisoformat(run_started_at.replace("Z", "+00:00"))
     start = start if start.tzinfo else start.replace(tzinfo=timezone.utc)
-    for pc in config.providers:
-        path = workdir / pc.path
+
+    for provider_config in config.providers:
+        path = workdir / provider_config.path
         surface = None
         reasons = []
         health = ProviderHealth.ERROR
-        qh = {h: Qualification.UNQUALIFIED for h in pc.requested_horizons}
+        qualification_by_horizon = {
+            horizon: Qualification.UNQUALIFIED
+            for horizon in provider_config.requested_horizons
+        }
         if path.exists():
             try:
-                if pc.provider_id == 'airsenal':
-                    surface = load_airsenal(path, official=official, target_gameweek=target, trusted_source_snapshot=official.source_hash)
-                elif pc.provider_id == 'dastan':
-                    surface = load_dastan(path, official=official, target_gameweek=target)
-                elif pc.provider_id == 'openfpl':
-                    surface = load_openfpl(path, official=official, target_gameweek=target)
+                if provider_config.provider_id == "airsenal":
+                    surface = load_airsenal(
+                        path,
+                        official=official,
+                        target_gameweek=target,
+                        trusted_source_snapshot=official.source_hash,
+                    )
+                elif provider_config.provider_id == "dastan":
+                    surface = load_dastan(
+                        path,
+                        official=official,
+                        target_gameweek=target,
+                    )
+                elif provider_config.provider_id == "openfpl":
+                    surface = load_openfpl(
+                        path,
+                        official=official,
+                        target_gameweek=target,
+                    )
                 else:
-                    raise ValueError(f'unknown provider adapter {pc.provider_id}')
-                generated = datetime.fromisoformat(surface.generated_at.replace('Z', '+00:00'))
-                generated = generated if generated.tzinfo else generated.replace(tzinfo=timezone.utc)
+                    raise ValueError(
+                        f"unknown provider adapter {provider_config.provider_id}"
+                    )
+
+                generated = datetime.fromisoformat(
+                    surface.generated_at.replace("Z", "+00:00")
+                )
+                generated = (
+                    generated
+                    if generated.tzinfo
+                    else generated.replace(tzinfo=timezone.utc)
+                )
                 if generated < start:
-                    reasons.append('provider forecast predates this production attempt')
-                qr = qualify_surface(surface, official, decision_universe=official.decision_universe(team.squad_ids if team else frozenset()), requested_horizons=pc.requested_horizons, max_age_hours=pc.max_age_hours, now=now)
-                reasons.extend(qr.reasons)
-                health = qr.health
-                for h in qr.qualified_horizons:
-                    qh[h] = Qualification.QUALIFIED
-                if reasons:
-                    health = ProviderHealth.INCOMPLETE if health == ProviderHealth.HEALTHY else health
-                normalized[pc.provider_id] = surface
+                    reasons.append(
+                        "provider forecast predates this production attempt"
+                    )
+
+                qualification = qualify_surface(
+                    surface,
+                    official,
+                    decision_universe=official.decision_universe(
+                        team.squad_ids if team else frozenset()
+                    ),
+                    requested_horizons=provider_config.requested_horizons,
+                    max_age_hours=provider_config.max_age_hours,
+                    now=now,
+                )
+                reasons.extend(qualification.reasons)
+                health = qualification.health
+                for horizon in qualification.qualified_horizons:
+                    qualification_by_horizon[horizon] = Qualification.QUALIFIED
+                if reasons and health == ProviderHealth.HEALTHY:
+                    health = ProviderHealth.INCOMPLETE
             except Exception as exc:
-                reasons.append(f'{type(exc).__name__}: {exc}')
+                reasons.append(f"{type(exc).__name__}: {exc}")
                 health = ProviderHealth.ERROR
         else:
-            reasons.append(f'provider export missing: {pc.path}')
-        statuses.append(ProviderStatus(pc.provider_id, pc.role, pc.priority, health, qh, surface, tuple(dict.fromkeys(reasons)), pc.serve_authorized, pc.predictive_status))
-    evidence = _parse_evidence(workdir / 'acquisition/evidence/hard.json')
+            reasons.append(
+                f"provider export missing: {provider_config.path}"
+            )
+
+        statuses.append(
+            ProviderStatus(
+                provider_config.provider_id,
+                provider_config.role,
+                provider_config.priority,
+                health,
+                qualification_by_horizon,
+                surface,
+                tuple(dict.fromkeys(reasons)),
+                provider_config.serve_authorized,
+                provider_config.predictive_status,
+            )
+        )
+
+    evidence = _parse_evidence(workdir / "acquisition/evidence/hard.json")
     evidence_errors = validate_evidence(evidence, official, now=now)
-    b = SnapshotBuilder()
-    b.add_json('official.json', dataclass_to_dict(official))
-    b.add_json('official_raw.json', raw_official)
-    b.add_json('team_state.json', dataclass_to_dict(team) if team else None)
-    b.add_json('evidence.json', [dataclass_to_dict(r) for r in evidence])
-    b.add_json('evidence_validation.json', {'errors': list(evidence_errors)})
-    qmatrix = []
-    for s in statuses:
-        qmatrix.append({'provider_id': s.provider_id, 'role': s.role.value, 'priority': s.priority, 'health': s.health.value, 'qualification_by_horizon': {str(k): v.value for k, v in s.qualification_by_horizon.items()}, 'reasons': list(s.reasons), 'serve_authorized': s.serve_authorized, 'predictive_status': s.predictive_status.value})
-        if s.surface:
-            b.add_json(f'providers/{s.provider_id}.json', dataclass_to_dict(s.surface))
-        pc = next((p for p in config.providers if p.provider_id == s.provider_id))
-        path = workdir / pc.path
+
+    builder = SnapshotBuilder()
+    builder.add_json("official.json", dataclass_to_dict(official))
+    builder.add_json("official_raw.json", raw_official)
+    builder.add_json(
+        "team_state.json",
+        dataclass_to_dict(team) if team else None,
+    )
+    builder.add_json(
+        "evidence.json",
+        [dataclass_to_dict(record) for record in evidence],
+    )
+    builder.add_json(
+        "evidence_validation.json",
+        {"errors": list(evidence_errors)},
+    )
+
+    qualification_matrix = []
+    for status in statuses:
+        qualification_matrix.append(
+            {
+                "provider_id": status.provider_id,
+                "role": status.role.value,
+                "priority": status.priority,
+                "health": status.health.value,
+                "qualification_by_horizon": {
+                    str(key): value.value
+                    for key, value in status.qualification_by_horizon.items()
+                },
+                "reasons": list(status.reasons),
+                "serve_authorized": status.serve_authorized,
+                "predictive_status": status.predictive_status.value,
+            }
+        )
+        if status.surface:
+            builder.add_json(
+                f"providers/{status.provider_id}.json",
+                dataclass_to_dict(status.surface),
+            )
+        provider_config = next(
+            provider
+            for provider in config.providers
+            if provider.provider_id == status.provider_id
+        )
+        path = workdir / provider_config.path
         if path.exists():
-            b.add_bytes(f"provider_raw/{s.provider_id}{path.suffix or '.bin'}", path.read_bytes())
-    b.add_json('qualification_matrix.json', qmatrix)
-    b.add_json('run.json', {'schema_version': 1, 'run_id': run_id, 'code_sha': code_sha, 'config_sha': config_sha(config_path), 'run_started_at': run_started_at, 'acquired_at': now.isoformat(), 'target_gameweek': target, 'season': config.season, 'entry_id': config.entry_id, 'max_horizon': config.max_horizon, 'deadline': official.deadlines[target]})
-    b.add_bytes('config.yaml', Path(config_path).read_bytes())
-    return b.freeze(workdir / Path(config.snapshot_dir), metadata={'run_id': run_id, 'target_gameweek': target, 'code_sha': code_sha})
+            builder.add_bytes(
+                f"provider_raw/{status.provider_id}{path.suffix or '.bin'}",
+                path.read_bytes(),
+            )
+
+    builder.add_json("qualification_matrix.json", qualification_matrix)
+    builder.add_json(
+        "run.json",
+        {
+            "schema_version": 1,
+            "run_id": run_id,
+            "code_sha": code_sha,
+            "config_sha": config_sha(config_path),
+            "run_started_at": run_started_at,
+            "acquired_at": now.isoformat(),
+            "official_pre_provider_hash": expected_official_hash,
+            "official_final_hash": official.source_hash,
+            "official_acquisition_stable": (
+                expected_official_hash is None
+                or expected_official_hash == official.source_hash
+            ),
+            "target_gameweek": target,
+            "season": config.season,
+            "entry_id": config.entry_id,
+            "max_horizon": config.max_horizon,
+            "deadline": official.deadlines[target],
+        },
+    )
+    builder.add_bytes("config.yaml", Path(config_path).read_bytes())
+    return builder.freeze(
+        workdir / Path(config.snapshot_dir),
+        metadata={
+            "run_id": run_id,
+            "target_gameweek": target,
+            "code_sha": code_sha,
+            "official_pre_provider_hash": expected_official_hash,
+            "official_final_hash": official.source_hash,
+        },
+    )

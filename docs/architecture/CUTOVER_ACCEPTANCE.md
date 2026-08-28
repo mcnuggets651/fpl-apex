@@ -22,6 +22,10 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Missing H1 coverage blocks serving.
 - [ ] Provider timestamps and run-attempt freshness are checked.
 - [ ] AIrsenal export is regenerated during the attempt.
+- [ ] A canonical Official FPL hash is captured immediately before provider generation.
+- [ ] The final Official FPL hash is reacquired before freeze and must exactly match the pre-provider hash.
+- [ ] An Official-hash mismatch aborts before team/provider qualification and requires a new run attempt.
+- [ ] Both Official acquisition hashes are persisted in the frozen run provenance.
 - [ ] Dastan/OpenFPL stay non-serving until current-scoring live exports pass the same contract.
 
 ## Team mechanics
@@ -53,7 +57,9 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 
 ## Live dress rehearsal
 - [ ] One genuine pre-deadline V2 intent is published.
+- [ ] Official pre-provider seal succeeds.
 - [ ] Fresh AIrsenal generation succeeds.
+- [ ] Official post-provider seal exactly matches the pre-provider seal.
 - [ ] Official final anchor and snapshot freeze succeed.
 - [ ] Solver completes from frozen state.
 - [ ] Final release becomes immutable and verifies.
