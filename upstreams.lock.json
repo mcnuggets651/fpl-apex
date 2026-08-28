@@ -5,7 +5,7 @@
     "airsenal": {
       "repository": "alan-turing-institute/AIrsenal",
       "commit": "8c7e18eba1488dd5a7d4bdb00d4da0a75e895717",
-      "role": "projection_worker",
+      "role": "production_projection_worker",
       "required_for_full_apex": true
     },
     "bpl": {
@@ -20,10 +20,10 @@
       "committed_at": "2026-08-18T08:03:36+00:00",
       "resolved_at": "2026-08-18T09:50:27+00:00",
       "resolved_age_hours": 1.78,
-      "newer_revision_available": false,
-      "resolution_policy": "moving main candidate refreshed on reliability branch for governed audit; CI must validate before merge",
+      "newer_revision_available": true,
+      "resolution_policy": "enrichment pin only; moving main candidate must pass semantic/identity validation in refresh-core-pin before immutable publication",
       "role": "enrichment_data",
-      "required_for_full_apex": true
+      "required_for_full_apex": false
     },
     "open_fpl_solver": {
       "repository": "solioanalytics/open-fpl-solver",
