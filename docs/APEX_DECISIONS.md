@@ -1,6 +1,6 @@
 # Apex FPL — Decision Register
 
-This is the permanent record of important project decisions. New decisions are appended; old decisions are not silently rewritten.
+This is the permanent record of important project decisions. New decisions are appended; old decisions are not silently rewritten. Later decisions explicitly supersede earlier ones where the architecture changed.
 
 ## D001 — Official FPL is canonical
 Official FPL owns player identity, FPL position, club, price, status and fixtures. External sources enrich but do not override identity silently.
@@ -83,24 +83,34 @@ A replay decision may consume only immutable inputs proven available before its 
 ## D027 — Stateful rules are season-versioned
 Free-transfer initialization, special top-ups, chip windows and other state transitions belong to an explicit `SeasonRules` contract. Historical replay must never inherit a later season's rules silently. Before GW1 the initial squad has unlimited changes but zero bankable FTs; the first FT is available for GW2.
 
-
 ## D028 — Current role evidence supersedes stale minutes priors
 The maximum-EV optimiser remains unchanged: it already maximises canonical raw xP. The conservative selection bias was traced to expected-minutes construction, where a fixed preseason blend could leave repeated current team-sheet evidence dominated by a prior-season role that no longer applied. Preseason weight now rises with repeated appearances and starts, capped at 82%, and verified deadline evidence may explicitly override expected minutes/start/appearance probabilities. Official injury, suspension and negative availability evidence is applied after those upside signals and remains a hard ceiling. Confidence and CVaR remain diagnostics; they do not discount canonical xP a second time.
 
 ## D029 — Every decision layer consumes one sealed bundle
-Ingestion and projection execute once per production run. The player universe,
-projection matrix, settings, source timestamps, upstream pins, material evidence
-hashes and team state are sealed under one content-addressed `bundle_id`.
-Pinnacle, Elite, parity and canonical publication must carry that same identity.
-Independent live refetches inside diagnostic layers are prohibited because an
-Official-only hash comparison cannot prove that news, tactical evidence,
-AIrsenal, FPL Core, configuration or projections were identical.
+Ingestion and projection execute once per production run. The player universe, projection matrix, settings, source timestamps, upstream pins, material evidence hashes and team state are sealed under one content-addressed `bundle_id`. Pinnacle, Elite, parity and canonical publication must carry that same identity. Independent live refetches inside diagnostic layers are prohibited because an Official-only hash comparison cannot prove that news, tactical evidence, AIrsenal, FPL Core, configuration or projections were identical.
 
 ## D030 — Missing return evidence remains missing through model integration
+Preseason minutes may inform role and availability without implying that xG, xA or defensive-return data were observed. Projection and tactical-role blending must preserve missing return values; only an explicitly observed zero may pull a historical rate down. Solver and diagnostic artifacts must also publish their actual producer contracts: captain records, constrained-squad additions/removals, and MILP incumbent/bound/gap/termination metadata.
 
-Preseason minutes may inform role and availability without implying that xG, xA
-or defensive-return data were observed. Projection and tactical-role blending
-must preserve missing return values; only an explicitly observed zero may pull a
-historical rate down. Solver and diagnostic artifacts must also publish their
-actual producer contracts: captain records, constrained-squad additions/removals,
-and MILP incumbent/bound/gap/termination metadata.
+## D031 — AIrsenal is the sole production statistical xP authority until prospective promotion
+**Supersedes D002 and the forecast-authority portion of D004.**
+
+As of the 28 August 2026 production-authority cutover, canonical production `xp` equals validated AIrsenal xP directly. The old fixed Apex/Official-EP/AIrsenal blend is retired from production. Apex proprietary xP is retained as shadow evidence and is not a fallback when AIrsenal is absent. Missing/stale/incomplete AIrsenal coverage blocks production.
+
+This is an evidence/governance choice, not a permanent claim that AIrsenal is intrinsically superior. The proprietary Apex model has zero completed genuine prospective Gameweeks in the current calibration archive and therefore has not earned production forecast authority.
+
+## D032 — Source criticality follows the actual production dependency graph
+**Clarifies D003.**
+
+FPL Core and Understat remain important enrichment/shadow sources but are not canonical-xP dependencies while AIrsenal is production authority and independent of them. Their health, freshness and coverage are still audited and disclosed. Optional enrichment failure must not masquerade as a production blocker. A future promoted model may reclassify a source as required only as part of the same explicit promotion/dependency change.
+
+## D033 — Forecast authority can change only through genuine prospective evidence
+Production and shadow forecasts must be frozen before deadlines with provider/version, Official snapshot and player/Gameweek identity, then evaluated only after Official outcomes become available. No known outcome may be backfilled and described as prospective evidence.
+
+The current minimum promotion bar remains at least 8 completed genuine Gameweeks, >=200 active rows, chronological/walk-forward comparison, Gameweek-block uncertainty/confidence analysis, cohort diagnostics/ablation where relevant and explicit review. Automatic promotion is prohibited.
+
+## D034 — Post-GW1 operation is current-state receding horizon; the one-off GW1 workflow is retired
+GW1 is complete. `gw1-final-2026.yml` is archived and removed from the active workflow surface. `adaptive_gw1_launch_with_transfer_option_value` remains only for historical/replay use. Normal live decisions use `receding_horizon_current_team_maximum_ev` from exact current manager state and publish only the first currently executable action.
+
+## D035 — V2 engineering evidence does not inherit production authority
+Draft PRs #67–#88 remain a separate withheld V2 programme. Their engineering certification cannot make them production, and their later heads still document the now-retired fixed three-way xP blend. The V2 stack must be rebased/requalified against D031–D034 before any future merge or production cutover. PR #66 is superseded V1 archaeology/regression material and must not be merged.
