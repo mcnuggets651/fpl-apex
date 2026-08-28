@@ -168,10 +168,33 @@ jobs:
           print(json.dumps(report, sort_keys=True))
           PY
 
+      - name: Audit exact current-rule history readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/openfpl_current_readiness.py \
+            --output artifacts/v2/challengers/openfpl_current_readiness.json
+          python - <<'PY'
+          import json
+          report = json.load(open(
+              'artifacts/v2/challengers/openfpl_current_readiness.json',
+              encoding='utf-8',
+          ))
+          assert report['state'] == 'TRAINING_POLICY_UNSET'
+          assert report['training_ready'] is False
+          assert report['serve_authorized'] is False
+          assert report['legacy_reference_weights_reused'] is False
+          assert report['exact_rule_gameweek_count'] >= 1
+          assert all(gw < report['target_gameweek'] for gw in report['completed_exact_rule_gameweeks'])
+          print(json.dumps(report, sort_keys=True))
+          PY
+
       - name: Upload immutable OpenFPL reference diagnostic copy
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apex-v2-openfpl-reference-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/v2/challengers/openfpl_reference_preflight.json
+          path: |
+            artifacts/v2/challengers/openfpl_reference_preflight.json
+            artifacts/v2/challengers/openfpl_current_readiness.json
           retention-days: 30
