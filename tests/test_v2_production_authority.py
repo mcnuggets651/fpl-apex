@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import shutil
 
 import pytest
 
@@ -9,7 +10,12 @@ from apex_fpl.control.artifact_store import FileSystemArtifactStore
 from apex_fpl.control.production_authority import resolve_production_answer_authority
 from apex_fpl.control.production_authority_root import store_production_authority_root
 from apex_fpl.control.production_cutover import execute_production_cutover
-from apex_fpl.control.release_registry import FileSystemReleaseRegistry
+from apex_fpl.control.release_registry import (
+    FileSystemReleaseRegistry,
+    ReleaseKey,
+    ReleaseRecord,
+    ReleaseStatus,
+)
 from apex_fpl.core.ids import BundleId
 from apex_fpl.core.production import MANDATORY_PRODUCTION_PROOF_IDS
 from apex_fpl.core.production_authority import ProductionAuthorityStatus
@@ -35,6 +41,7 @@ from backend_qualification_helpers import synthetic_production_backend_qualifica
 from champion_authority_helpers import synthetic_production_champion_authority
 from production_authority_root_helpers import (
     RootedProductionAuthorityMaterial,
+    SyntheticProductionAuthorityRootRegistry,
     build_rooted_production_authority_material,
 )
 from production_planning_bundle_helpers import synthetic_production_planning_bundle
@@ -201,6 +208,42 @@ def _resolve(
     )
 
 
+@pytest.fixture(scope="module")
+def rooted_baseline(tmp_path_factory):
+    """Pay the full planner/champion/root construction cost once for this module."""
+
+    root = tmp_path_factory.mktemp("production-authority-rooted-baseline")
+    store, registry, rooted, outcome = _qualified_cutover(root)
+    return root, store, registry, rooted, outcome
+
+
+def _clone_rooted_baseline(tmp_path: Path, rooted_baseline):
+    """Clone immutable content-addressed state so destructive attacks remain isolated."""
+
+    base, _, _, rooted, outcome = rooted_baseline
+    shutil.copytree(base / "artifacts", tmp_path / "artifacts")
+    shutil.copytree(base / "production", tmp_path / "production")
+    shutil.copytree(base / "authority-roots", tmp_path / "authority-roots")
+    store = _DurableArtifactStore(tmp_path / "artifacts")
+    registry = _DurableReleaseRegistry(tmp_path / "production")
+    cloned_rooted = replace(
+        rooted,
+        authority_root_registry=SyntheticProductionAuthorityRootRegistry(
+            tmp_path / "authority-roots"
+        ),
+    )
+    return store, registry, cloned_rooted, outcome
+
+
+def _move_current_to_record(registry, old_release_id: str, record: ReleaseRecord) -> None:
+    assert record.release_id is not None
+    registry.compare_and_swap_current(
+        ReleaseKey(SEASON, ENTRY, GAMEWEEK),
+        expected_release_id=old_release_id,
+        new_release_id=record.release_id,
+    )
+
+
 def test_no_current_release_pointer_is_non_actionable(tmp_path: Path) -> None:
     store = FileSystemArtifactStore(tmp_path / "artifacts")
     registry = FileSystemReleaseRegistry(tmp_path / "production")
@@ -211,8 +254,11 @@ def test_no_current_release_pointer_is_non_actionable(tmp_path: Path) -> None:
     assert authority.production_result_bundle_id is None
 
 
-def test_exact_rooted_published_release_is_only_actionable_authority(tmp_path: Path) -> None:
-    store, registry, rooted, outcome = _qualified_cutover(tmp_path)
+def test_exact_rooted_published_release_is_only_actionable_authority(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, outcome = _clone_rooted_baseline(tmp_path, rooted_baseline)
     authority = _resolve(store, registry, rooted)
     assert authority.status is ProductionAuthorityStatus.CURRENT
     assert authority.ready_to_act is True
@@ -224,16 +270,22 @@ def test_exact_rooted_published_release_is_only_actionable_authority(tmp_path: P
     )
 
 
-def test_published_release_without_root_registry_is_withheld(tmp_path: Path) -> None:
-    store, registry, _, _ = _qualified_cutover(tmp_path)
+def test_published_release_without_root_registry_is_withheld(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, _, _ = _clone_rooted_baseline(tmp_path, rooted_baseline)
     authority = _resolve(store, registry, None)
     assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
     assert authority.production_result_bundle_id is None
     assert "AuthorityRootRegistry is required" in authority.blockers[0]
 
 
-def test_answer_is_withheld_after_current_root_pointer_moves(tmp_path: Path) -> None:
-    store, registry, rooted, _ = _qualified_cutover(tmp_path)
+def test_answer_is_withheld_after_current_root_pointer_moves(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, _ = _clone_rooted_baseline(tmp_path, rooted_baseline)
     first = rooted.root
     second = replace(
         first,
@@ -292,8 +344,11 @@ def test_cutover_rejects_root_that_does_not_cover_release_horizon(tmp_path: Path
         )
 
 
-def test_corrupt_production_bundle_withholds_rooted_answer(tmp_path: Path) -> None:
-    store, registry, rooted, outcome = _qualified_cutover(tmp_path)
+def test_corrupt_production_bundle_withholds_current_answer(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, outcome = _clone_rooted_baseline(tmp_path, rooted_baseline)
     bundle_id = str(outcome.release_record.bundle_id)
     digest = bundle_id.split(":", 1)[1]
     path = store.root / "objects" / "sha256" / digest[:2] / digest
@@ -304,16 +359,156 @@ def test_corrupt_production_bundle_withholds_rooted_answer(tmp_path: Path) -> No
     assert authority.production_result_bundle_id is None
 
 
-def test_rooted_release_obeys_release_validity_window(tmp_path: Path) -> None:
-    store, registry, rooted, _ = _qualified_cutover(tmp_path)
-    before = _resolve(
-        store,
-        registry,
-        rooted,
-        as_of="2026-08-25T05:59:59Z",
+def test_expired_current_release_is_non_actionable_even_when_pointer_is_current(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, _ = _clone_rooted_baseline(tmp_path, rooted_baseline)
+    authority = _resolve(store, registry, rooted, as_of=VALID_UNTIL)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "has expired" in authority.blockers[0]
+
+
+def test_current_release_cannot_be_used_before_declared_creation_time(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, _ = _clone_rooted_baseline(tmp_path, rooted_baseline)
+    authority = _resolve(store, registry, rooted, as_of="2026-08-25T05:59:59Z")
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "not yet valid" in authority.blockers[0]
+
+
+def test_forged_published_ready_record_without_authorization_is_rejected(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, outcome = _clone_rooted_baseline(tmp_path, rooted_baseline)
+    old = outcome.release_record
+    assert old.release_id is not None
+    forged = registry.append(
+        replace(
+            old,
+            publication_authorization_artifact_id=None,
+            release_id=None,
+        )
     )
-    expired = _resolve(store, registry, rooted, as_of=VALID_UNTIL)
-    assert before.status is ProductionAuthorityStatus.UNAVAILABLE
-    assert expired.status is ProductionAuthorityStatus.UNAVAILABLE
-    assert before.production_result_bundle_id is None
-    assert expired.production_result_bundle_id is None
+    _move_current_to_record(registry, old.release_id, forged)
+    authority = _resolve(store, registry, rooted)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "lacks proof-derived authorization" in authority.blockers[0]
+
+
+def test_v1_and_certified_records_cannot_become_v2_answer_authority(tmp_path: Path) -> None:
+    for index, status in enumerate((ReleaseStatus.V1_ACTIONABLE, ReleaseStatus.CERTIFIED), start=1):
+        root = tmp_path / str(index)
+        store = FileSystemArtifactStore(root / "artifacts")
+        registry = FileSystemReleaseRegistry(root / "production")
+        record = registry.append(
+            ReleaseRecord(
+                season=SEASON,
+                entry=ENTRY,
+                gameweek=GAMEWEEK,
+                bundle_id="sha256:" + "1" * 64,
+                world_id="sha256:" + "2" * 64,
+                runtime_digest="sha256:" + "3" * 64,
+                created_at=CREATED_AT,
+                valid_until=VALID_UNTIL,
+                status=status,
+                ready_to_act=status is ReleaseStatus.V1_ACTIONABLE,
+                safe_to_act=status is ReleaseStatus.V1_ACTIONABLE,
+                artifact_manifest_id="sha256:" + "4" * 64,
+            )
+        )
+        assert record.release_id is not None
+        registry.compare_and_swap_current(
+            ReleaseKey(SEASON, ENTRY, GAMEWEEK),
+            expected_release_id=None,
+            new_release_id=record.release_id,
+        )
+        authority = _resolve(store, registry, None)
+        assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+        assert authority.production_result_bundle_id is None
+        assert "not V2 PUBLISHED" in authority.blockers[0]
+
+
+def test_corrupt_publication_authorization_withholds_current_answer(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, outcome = _clone_rooted_baseline(tmp_path, rooted_baseline)
+    artifact_id = outcome.release_record.publication_authorization_artifact_id
+    assert artifact_id is not None
+    digest = artifact_id.split(":", 1)[1]
+    path = store.root / "objects" / "sha256" / digest[:2] / digest
+    path.write_bytes(b"corrupt")
+    authority = _resolve(store, registry, rooted)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "publication authorization is invalid" in authority.blockers[0]
+
+
+def test_publication_authorization_validity_must_match_release_record(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, outcome = _clone_rooted_baseline(tmp_path, rooted_baseline)
+    old = outcome.release_record
+    assert old.release_id is not None
+    forged = registry.append(
+        replace(
+            old,
+            valid_until="2026-08-29T09:00:00Z",
+            release_id=None,
+        )
+    )
+    _move_current_to_record(registry, old.release_id, forged)
+    authority = _resolve(store, registry, rooted, as_of=AS_OF)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "validity does not match" in authority.blockers[0]
+
+
+def test_authorization_cannot_be_replayed_through_different_backend_identities(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, _ = _clone_rooted_baseline(tmp_path, rooted_baseline)
+    alternate_store = _DurableArtifactStore(store.root)
+    alternate_registry = _DurableReleaseRegistry(registry.root)
+    alternate_store.backend_id = "test.production.other-artifact-store.v1"
+    alternate_registry.backend_id = "test.production.other-release-registry.v1"
+    authority = _resolve(alternate_store, alternate_registry, rooted)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "differs from publication authorization" in authority.blockers[0]
+
+
+class _DriftingCurrentReader:
+    def __init__(self, delegate) -> None:
+        self.delegate = delegate
+        self.backend_id = delegate.backend_id
+        self.calls = 0
+
+    def current_release_id(self, key: ReleaseKey) -> str | None:
+        self.calls += 1
+        if self.calls == 1:
+            return self.delegate.current_release_id(key)
+        return "drifted-release-id"
+
+    def read_release(self, release_id: str):
+        return self.delegate.read_release(release_id)
+
+
+def test_answer_authority_withholds_if_current_pointer_changes_during_verification(
+    tmp_path: Path,
+    rooted_baseline,
+) -> None:
+    store, registry, rooted, _ = _clone_rooted_baseline(tmp_path, rooted_baseline)
+    authority = _resolve(store, _DriftingCurrentReader(registry), rooted)
+    assert authority.status is ProductionAuthorityStatus.UNAVAILABLE
+    assert authority.production_result_bundle_id is None
+    assert "pointer changed during authority verification" in authority.blockers[0]
