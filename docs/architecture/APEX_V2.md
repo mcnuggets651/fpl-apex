@@ -55,9 +55,11 @@ Current-rule training readiness is not a shortcut around the prospective tournam
 ## Exact manager-state boundary
 The public `/entry/{id}/event/{gw}/picks/` surface is a locked-deadline record. It can establish the last public squad for HOLD/XI/captain decisions, but it cannot prove the current editable squad, current bank, acquisition prices, selling prices or that no post-deadline transfer has already been made. Public picks therefore never certify `state_complete_for_transfers`.
 
+The public transfer-history surface is frozen as historical evidence as well. Official FPL's public transfer-history UI explicitly states that a viewer who is not logged in as the owner can see transfers only up to the last deadline. Consequently, the absence of a target-gameweek transfer row before its deadline cannot prove that the owner made no transfer. Public transfer rows may be replayed retrospectively after a deadline, but deadline-redacted public state alone never upgrades an editable pre-deadline state to transaction-safe.
+
 For discretionary transfer planning, Apex may consume authenticated Official FPL `/me/` plus `/my-team/{entry_id}/` during the final acquisition/re-anchor step. Authentication material is runtime-only and may be supplied as a browser-session cookie or current `X-API-Authorization` access token. `/me/` must bind the credential to the configured entry before `/my-team` is trusted. The returned state must contain 15 unique current Official IDs, exact purchase/selling prices, bank and coherent current transfer state. Selling prices are re-derived using the frozen Official current market price and the exact half-profit rule; disagreement fails acquisition rather than picking one value by consensus.
 
-Credential material is never part of a snapshot, provider environment or solve input. If no credential is configured, the system falls back to the public locked squad and withholds discretionary transfers. If a credential is configured but rejected, belongs to another entry or returns incoherent state, acquisition fails closed; it does not silently fall back. An authenticated unlimited/null-limit transfer window is also not treated as an ordinary FT state until chip-aware optimisation explicitly supports it.
+Credential material is never part of a snapshot, provider environment or solve input. Instead the snapshot carries `team_state_acquisition.json`, a non-secret provenance record containing the acquisition mode, credential-presence boolean, exact-price counts and public-ledger diagnostics, plus `team_transfers_public.json` containing only the public ledger. If no credential is configured, the system falls back to the public locked squad and withholds discretionary transfers. If a credential is configured but rejected, belongs to another entry or returns incoherent state, acquisition fails closed; it does not silently fall back. An authenticated unlimited/null-limit transfer window is also not treated as an ordinary FT state until chip-aware optimisation explicitly supports it.
 
 The transfer optimiser supports a current-period FT state of 0 through the season maximum. With zero remaining FTs, the next transfer incurs a hit; after the deadline transition, normal rules restore at least the season's first-post-deadline FT allowance.
 
@@ -79,6 +81,7 @@ When the serving provider supplies no appearance probabilities, contingent autos
 - Official truth failure: blocking.
 - Authenticated manager-state mismatch/rejection/incoherence when credentials are configured: blocking acquisition failure.
 - Missing authenticated manager state when no credentials are configured: transfer planning withheld; current-squad HOLD remains possible from public state.
+- Public transfer-history acquisition failure: diagnostic degradation only while manager state is already public/incomplete; it can never manufacture current-state completeness.
 - Serving forecast stale/incomplete: blocking unless an explicitly authorized standby independently qualifies.
 - Shadow/challenger failure: warning only.
 - Optional enrichment failure: warning only.
