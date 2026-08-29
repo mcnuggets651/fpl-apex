@@ -5,6 +5,10 @@ max_horizon: 8
 scoring_rules_version: fpl-2026-27-v1
 snapshot_dir: data/v2/snapshots
 release_prefix: apex-v2
+evidence:
+  required: true
+  records_path: acquisition/evidence/hard.json
+  manifest_path: acquisition/evidence/acquisition.json
 providers:
   - id: airsenal
     role: CHAMPION
