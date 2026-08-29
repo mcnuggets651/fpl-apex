@@ -121,6 +121,7 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
         "kind": "NONE",
         "status": "NOT_RUN",
         "solver": {},
+        "weeks": [],
     }
 
     evidence_rows = snapshot.read_json("evidence.json")
@@ -158,6 +159,7 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
                 "kind": "INITIAL_SQUAD",
                 "status": result.status,
                 "solver": result.raw_solver,
+                "weeks": [],
             }
             if result.status == "INFEASIBLE":
                 warnings.append("initial optimiser infeasible")
@@ -176,6 +178,10 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
                 "primary_objective": transfer_result.primary_objective,
                 "solver": transfer_result.solver,
                 "week_count": len(transfer_result.weeks),
+                "weeks": [
+                    dataclass_to_dict(week)
+                    for week in transfer_result.weeks
+                ],
             }
             reason = transfer_result.solver.get("reason")
             message = transfer_result.solver.get("message")
@@ -205,6 +211,7 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
             "kind": "NONE",
             "status": "NOT_RUN_NO_SERVING_PROVIDER",
             "solver": {},
+            "weeks": [],
         }
         warnings.append("no authorized complete H1 serving provider")
 
