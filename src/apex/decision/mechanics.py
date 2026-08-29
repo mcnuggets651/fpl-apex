@@ -172,9 +172,15 @@ def _autosub_weights(
 
     starting_goalkeeper = starting_goalkeepers[0]
     bench_goalkeeper = bench_goalkeepers[0]
+    bench_goalkeeper_appearance = _clamp_probability(
+        appearance[bench_goalkeeper]
+    )
     weights: dict[int, float] = {
-        int(bench_goalkeeper): 1.0
-        - _clamp_probability(appearance[starting_goalkeeper])
+        int(bench_goalkeeper): (
+            1.0 - _clamp_probability(appearance[starting_goalkeeper])
+            if bench_goalkeeper_appearance > 1e-12
+            else 0.0
+        )
     }
 
     starters = tuple(
