@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-import tarfile
 from pathlib import Path
 
 import pandas as pd
 import requests
 
 from apex.governance.evaluation import score_predictions
+from apex.runtime.evaluation_archive import (
+    PRIVATE_EVALUATION_RELEASE_ASSETS_V1,
+    load_verified_private_provider_surfaces,
+)
 from apex.runtime.publication import (
     PUBLIC_RELEASE_ASSETS_V1,
     verify_public_attestation,
@@ -57,14 +60,18 @@ def _live(gameweek, http=None):
 
 
 def _provider_metrics(
-    publication_root: Path,
+    provider_surfaces: dict[str, dict],
     gameweek: int,
     actual: dict[int, float],
     minutes: dict[int, float],
 ) -> dict:
     output = {}
-    for path in sorted((publication_root / "providers").glob("*.json")):
-        data = json.loads(path.read_text())
+    for path, data in sorted(provider_surfaces.items()):
+        provider_id = str(data.get("provider_id") or "").strip()
+        if not provider_id:
+            raise RuntimeError(f"private provider surface lacks provider_id: {path}")
+        if provider_id in output:
+            raise RuntimeError(f"duplicate private provider_id in evaluation archive: {provider_id}")
         rows = []
         for row in data.get("rows", []):
             if (
@@ -90,7 +97,7 @@ def _provider_metrics(
             continue
         all_metrics = score_predictions(frame)
         starters = frame[frame.actual_minutes >= 60]
-        output[data["provider_id"]] = {
+        output[provider_id] = {
             "all": all_metrics.to_dict(),
             "starters_60plus": (
                 score_predictions(starters).to_dict() if not starters.empty else None
@@ -133,9 +140,46 @@ def _download_public_attempt(
     return files
 
 
+def _download_private_provider_surfaces(
+    store: GitHubReleaseStore,
+    release: dict,
+    attempt: Path,
+    *,
+    public_attempt_id: str,
+    public_provenance_archive: Path,
+) -> dict[str, dict]:
+    assets = release_asset_map(release)
+    if frozenset(assets) != PRIVATE_EVALUATION_RELEASE_ASSETS_V1:
+        raise RuntimeError(
+            f"private evaluation release asset set mismatch: {release.get('tag_name')}"
+        )
+    if not bool(release.get("immutable", False)):
+        raise RuntimeError(
+            f"private evaluation release is not immutable: {release.get('tag_name')}"
+        )
+
+    private_root = Path(attempt) / "private-evaluation"
+    private_root.mkdir(parents=True, exist_ok=True)
+    files = {
+        name: download_release_asset(
+            store,
+            release,
+            name,
+            private_root / name,
+        )
+        for name in sorted(PRIVATE_EVALUATION_RELEASE_ASSETS_V1)
+    }
+    return load_verified_private_provider_surfaces(
+        public_provenance_archive,
+        files,
+        public_attempt_id=public_attempt_id,
+    )
+
+
 def evaluate_completed_attempts(
     store: GitHubReleaseStore,
     *,
+    private_store: GitHubReleaseStore | None = None,
     season: str,
     target_commitish: str,
     prefix="apex-v2",
@@ -143,6 +187,11 @@ def evaluate_completed_attempts(
 ) -> list[str]:
     releases = store.list_releases()
     by_tag = {release["tag_name"]: release for release in releases}
+    private_by_tag = (
+        {release["tag_name"]: release for release in private_store.list_releases()}
+        if private_store is not None
+        else {}
+    )
     finished, _ = _official_finished_events()
     published = []
     finals = [
@@ -178,18 +227,35 @@ def evaluate_completed_attempts(
         if not finished.get(gameweek, False):
             continue
 
-        extract = attempt / "extracted"
-        extract.mkdir(exist_ok=True)
-        with tarfile.open(files["provider_forecasts.tar.gz"], "r:gz") as archive:
-            archive.extractall(extract, filter="data")
+        private_tag = f"{prefix}/private-evaluation/{season}/{run_id}"
+        private_release = private_by_tag.get(private_tag)
+        if private_release is None:
+            # Releases predating the private-evaluation archive contract cannot be
+            # scored prospectively without regenerating provider rows, which is
+            # forbidden. New publication code creates this private Release before
+            # the public final Release, so absence is migration-only for old runs.
+            continue
+        if private_store is None:
+            raise RuntimeError("private evaluation release exists but no private store is configured")
 
+        provider_surfaces = _download_private_provider_surfaces(
+            private_store,
+            private_release,
+            attempt,
+            public_attempt_id=str(public_attempt["public_attempt_id"]),
+            public_provenance_archive=files["provider_forecasts.tar.gz"],
+        )
         live, actual, minutes = _live(gameweek)
         metrics = _provider_metrics(
-            extract,
+            provider_surfaces,
             gameweek,
             actual,
             minutes,
         )
+        if not metrics:
+            raise RuntimeError(
+                "verified private provider archive contains no scoreable H1 forecasts"
+            )
         outcomes = {
             "schema_version": 1,
             "season": season,
