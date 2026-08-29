@@ -86,6 +86,7 @@ PROJECTION_ROW_FIELDS_V1 = (
 
 HMAC_DOMAIN_V1 = b"apex-v2-private-decision-v1\x00"
 PUBLIC_MODE = "PUBLIC_DEADLINE_FALLBACK"
+NO_PUBLIC_DEADLINE_MODE = "NO_PUBLIC_DEADLINE"
 AUTHENTICATED_MODE = "AUTHENTICATED_MY_TEAM"
 
 
@@ -224,12 +225,12 @@ def _assert_public_transfer_ledger(acquisition: dict) -> None:
 def _manager_state_mode(acquisition: dict) -> tuple[str, bool]:
     mode = acquisition.get("mode")
     credential_present = acquisition.get("credential_present")
-    if mode not in {PUBLIC_MODE, AUTHENTICATED_MODE}:
+    if mode not in {PUBLIC_MODE, NO_PUBLIC_DEADLINE_MODE, AUTHENTICATED_MODE}:
         raise RuntimeError(f"unknown team-state acquisition mode: {mode!r}")
     if credential_present not in {True, False}:
         raise RuntimeError("credential_present must be an explicit boolean")
-    if mode == PUBLIC_MODE and credential_present is not False:
-        raise RuntimeError("public fallback cannot report owner credentials")
+    if mode in {PUBLIC_MODE, NO_PUBLIC_DEADLINE_MODE} and credential_present is not False:
+        raise RuntimeError("public manager-state mode cannot report owner credentials")
     if mode == AUTHENTICATED_MODE and credential_present is not True:
         raise RuntimeError("authenticated team state must report owner credentials")
     return mode, bool(credential_present)
