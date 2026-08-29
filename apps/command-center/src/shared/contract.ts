@@ -63,7 +63,7 @@ export interface ProjectionRowV1 {
 
 export interface CanonicalForecastV1 {
   schema_version: 1;
-  exposure_class: "PUBLIC_CANONICAL";
+  exposure_class: "PUBLIC_CANONICAL" | "PRIVATE_MANAGER";
   season: string;
   target_gameweek: number;
   max_contiguous_qualified_horizon: number;
