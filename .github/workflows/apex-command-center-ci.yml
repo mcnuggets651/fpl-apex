@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: apex-command-center-ci-${{ github.ref }}
@@ -27,30 +27,12 @@ jobs:
         working-directory: apps/command-center
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-
-      - name: Bootstrap deterministic dependency lock
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-
-      - name: Commit lockfile once to this PR branch
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          if git diff --cached --quiet; then
-            echo "package-lock.json already committed"
-            exit 0
-          fi
-          git commit -m "Lock Command Center dependencies"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          cache: npm
+          cache-dependency-path: apps/command-center/package-lock.json
 
       - name: Install exact dependency graph
         run: npm ci --no-audit --no-fund
