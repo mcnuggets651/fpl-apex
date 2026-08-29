@@ -26,6 +26,7 @@ class ProviderConfig:
 @dataclass(frozen=True)
 class EvidenceConfig:
     required: bool = False
+    sources_path: str = "config/news_sources.yaml"
     records_path: str = "acquisition/evidence/hard.json"
     manifest_path: str = "acquisition/evidence/acquisition.json"
 
@@ -73,6 +74,9 @@ class ApexConfig:
             release_prefix=str(payload.get("release_prefix", "apex-v2")),
             evidence=EvidenceConfig(
                 required=bool(evidence.get("required", False)),
+                sources_path=str(
+                    evidence.get("sources_path", "config/news_sources.yaml")
+                ),
                 records_path=str(
                     evidence.get("records_path", "acquisition/evidence/hard.json")
                 ),
