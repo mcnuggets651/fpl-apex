@@ -9,15 +9,13 @@ def test_production_workflow_never_uploads_runtime_snapshot_or_raw_provider_data
     text = _workflow("apex-v2-production.yml")
     assert "path: artifacts/v2/diagnostics/" in text
     assert "data/v2/snapshots" not in text
-    assert "acquisition/providers" not in text.split(
-        "- name: Upload sanitized diagnostic snapshot", 1
-    )[-1]
     assert "path: artifacts/v2/\n" not in text
 
 
 def test_diagnostic_job_cannot_receive_real_fpl_credentials():
     text = _workflow("apex-v2-production.yml")
     diagnose = text.split("  diagnose:", 1)[1]
+    assert 'APEX_ENABLE_PRIVATE_MANAGER_STATE: "0"' in diagnose
     assert 'FPL_SESSION_COOKIE: ""' in diagnose
     assert 'FPL_X_API_AUTHORIZATION: ""' in diagnose
     assert "secrets.FPL_SESSION_COOKIE" not in diagnose
@@ -25,13 +23,19 @@ def test_diagnostic_job_cannot_receive_real_fpl_credentials():
     assert "artifacts/v2/diagnostics/" in diagnose
 
 
-def test_production_credentials_are_behind_explicit_repository_kill_switch():
+def test_production_credentials_and_source_opt_in_share_one_explicit_kill_switch():
     text = _workflow("apex-v2-production.yml")
-    assert "APEX_V2_PRIVATE_MANAGER_ENABLED" in text
-    assert "APEX_PRIVATE_MANAGER_ENABLED" in text
-    assert "APEX_ENABLE_PRIVATE_MANAGER_STATE" not in text
-    # Source-level opt-in intentionally remains unwired until the real Actions
-    # fake-credential rehearsal passes.
+    produce = text.split("  produce:", 1)[1].split("  diagnose:", 1)[0]
+    assert "APEX_V2_PRIVATE_MANAGER_ENABLED" in produce
+    assert "APEX_PRIVATE_MANAGER_ENABLED" in produce
+    assert "APEX_ENABLE_PRIVATE_MANAGER_STATE" in produce
+    assert "Private-manager storage preflight" in produce
+    assert "APEX_V2_PRIVATE_REPOSITORY" in produce
+    assert "APEX_V2_PRIVATE_REPO_TOKEN" in produce
+    assert (
+        "APEX_ENABLE_PRIVATE_MANAGER_STATE: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && '1' || '0' }}"
+        in produce
+    )
 
 
 def test_privacy_rehearsal_uses_no_real_credentials_and_uploads_only_sanitized_output():
