@@ -9,10 +9,14 @@ import pandas as pd
 import requests
 
 from apex.governance.evaluation import score_predictions
+from apex.runtime.publication import (
+    PUBLIC_RELEASE_ASSETS_V1,
+    verify_public_attestation,
+)
 from apex.runtime.releases import (
     GitHubReleaseStore,
     download_release_asset,
-    verify_attested_release,
+    release_asset_map,
 )
 
 BASE = "https://fantasy.premierleague.com/api"
@@ -53,13 +57,13 @@ def _live(gameweek, http=None):
 
 
 def _provider_metrics(
-    snapshot_root: Path,
+    publication_root: Path,
     gameweek: int,
     actual: dict[int, float],
     minutes: dict[int, float],
 ) -> dict:
     output = {}
-    for path in sorted((snapshot_root / "providers").glob("*.json")):
+    for path in sorted((publication_root / "providers").glob("*.json")):
         data = json.loads(path.read_text())
         rows = []
         for row in data.get("rows", []):
@@ -96,6 +100,39 @@ def _provider_metrics(
     return output
 
 
+def _download_public_attempt(
+    store: GitHubReleaseStore,
+    release: dict,
+    attempt: Path,
+) -> dict[str, Path] | None:
+    """Download only the post-privacy-boundary public contract.
+
+    Immutable releases created before the privacy boundary used the legacy
+    bundle/decision asset set. They remain historical records but are not
+    eligible for the new evaluator because opening that format would
+    reintroduce the private-capable publication dependency we are removing.
+    """
+
+    assets = release_asset_map(release)
+    if frozenset(assets) != PUBLIC_RELEASE_ASSETS_V1:
+        return None
+    if not bool(release.get("immutable", False)):
+        raise RuntimeError(f"release is not immutable: {release.get('tag_name')}")
+
+    files: dict[str, Path] = {}
+    public_root = Path(attempt) / "public"
+    public_root.mkdir(parents=True, exist_ok=True)
+    for name in sorted(PUBLIC_RELEASE_ASSETS_V1):
+        files[name] = download_release_asset(
+            store,
+            release,
+            name,
+            public_root / name,
+        )
+    verify_public_attestation(files)
+    return files
+
+
 def evaluate_completed_attempts(
     store: GitHubReleaseStore,
     *,
@@ -123,25 +160,32 @@ def evaluate_completed_attempts(
             continue
         attempt = Path(workdir) / run_id
         attempt.mkdir(parents=True, exist_ok=True)
-        decision_path = download_release_asset(
-            store,
-            release,
-            "decision_bundle.json",
-            attempt / "decision_bundle.json",
+
+        files = _download_public_attempt(store, release, attempt)
+        if files is None:
+            # Migration-only behavior for immutable releases created before the
+            # privacy boundary. Never download their decision_bundle/bundle.
+            continue
+
+        public_attempt = json.loads(
+            files["public_attempt.json"].read_text(encoding="utf-8")
         )
-        decision = json.loads(decision_path.read_text())
-        gameweek = int(decision["manifest"]["target_gameweek"])
+        if public_attempt.get("season") != season:
+            raise RuntimeError("public attempt season does not match release namespace")
+        if public_attempt.get("run_id") != run_id:
+            raise RuntimeError("public attempt run_id does not match release namespace")
+        gameweek = int(public_attempt["target_gameweek"])
         if not finished.get(gameweek, False):
             continue
-        verify_attested_release(store, release, attempt)
-        bundle = attempt / "bundle.tar.gz"
+
         extract = attempt / "extracted"
         extract.mkdir(exist_ok=True)
-        with tarfile.open(bundle, "r:gz") as archive:
+        with tarfile.open(files["provider_forecasts.tar.gz"], "r:gz") as archive:
             archive.extractall(extract, filter="data")
+
         live, actual, minutes = _live(gameweek)
         metrics = _provider_metrics(
-            extract / "snapshot",
+            extract,
             gameweek,
             actual,
             minutes,
@@ -151,6 +195,7 @@ def evaluate_completed_attempts(
             "season": season,
             "gameweek": gameweek,
             "run_id": run_id,
+            "public_attempt_id": public_attempt["public_attempt_id"],
             "official_live_hash": _hash(live),
             "actual_points": actual,
             "actual_minutes": minutes,
@@ -160,6 +205,7 @@ def evaluate_completed_attempts(
             "season": season,
             "gameweek": gameweek,
             "run_id": run_id,
+            "public_attempt_id": public_attempt["public_attempt_id"],
             "providers": metrics,
             "automatic_promotion": False,
             "note": (
