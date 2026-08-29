@@ -31,18 +31,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: apps/command-center/package-lock.json
+
+      - name: Bootstrap deterministic dependency lock
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
       - name: Install exact dependency graph
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f package-lock.json ]; then
-            npm ci --no-audit --no-fund
-          else
-            npm install --no-audit --no-fund
-          fi
+        run: npm ci --no-audit --no-fund
 
       - name: Strict browser and Worker typecheck
         run: npm run check
@@ -61,6 +55,14 @@ jobs:
           ! grep -R -n -E 'FPL_SESSION_COOKIE|FPL_X_API_AUTHORIZATION|PRIVATE_GITHUB_TOKEN|APEX_V2_PRIVATE_REPO_TOKEN' dist
           ! grep -R -n 'github_pat_' dist
           ! grep -R -n 'ghp_' dist
+
+      - name: Upload bootstrapped lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-command-center-lock-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/command-center/package-lock.json
+          if-no-files-found: error
+          retention-days: 2
 
       - name: Upload compiled shell for inspection
         uses: actions/upload-artifact@v4
