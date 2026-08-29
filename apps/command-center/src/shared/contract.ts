@@ -79,6 +79,9 @@ export interface CertificationV1 {
   state: CertificationState;
   actionable: boolean;
   reasons: string[];
+  // Optional only for backward compatibility with immutable Releases created
+  // before the public serializer began exposing degradation warnings.
+  warnings?: string[];
   valid_until: string | null;
 }
 
