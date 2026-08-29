@@ -338,9 +338,8 @@ def _provider_forecast_archive(
     """Publish provider provenance without redistributing forecast rows.
 
     The frozen provider surfaces remain part of the sealed local snapshot and
-    are identified here by SHA-256. The public canonical forecast may expose
-    Apex's selected serving projection, but this compatibility archive must
-    never become a second copy of raw provider row exports.
+    are identified here by SHA-256. The public canonical forecast is also
+    commitment-only; raw provider and serving rows remain private.
     """
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -403,6 +402,12 @@ def _provider_forecast_archive(
 
 
 def _canonical_forecast(snapshot, decision: dict, run: dict) -> dict:
+    """Build the full canonical serving/display surface.
+
+    This surface is required for the authenticated owner experience and exact
+    audit/replay, but is PRIVATE_MANAGER material. Public publication receives
+    only `_canonical_forecast_commitment` below.
+    """
     diagnostics = decision.get("provider_diagnostics") or {}
     max_horizon = int(diagnostics.get("max_contiguous_horizon") or 0)
     serving = {
@@ -439,7 +444,7 @@ def _canonical_forecast(snapshot, decision: dict, run: dict) -> dict:
         )
     return {
         "schema_version": 1,
-        "exposure_class": ExposureClass.PUBLIC_CANONICAL.value,
+        "exposure_class": ExposureClass.PRIVATE_MANAGER.value,
         "season": run["season"],
         "target_gameweek": int(run["target_gameweek"]),
         "max_contiguous_qualified_horizon": max_horizon,
@@ -453,6 +458,37 @@ def _canonical_forecast(snapshot, decision: dict, run: dict) -> dict:
         ),
         "official": _official_catalog(snapshot),
         "rows": rows,
+    }
+
+
+def _canonical_forecast_commitment(canonical: dict) -> dict:
+    official = canonical.get("official") or {}
+    rows = canonical.get("rows") or []
+    private_surface_sha = sha256_bytes(canonical_json_bytes(canonical))
+    return {
+        "schema_version": 2,
+        "exposure_class": ExposureClass.GOVERNANCE_PUBLIC.value,
+        "content_contract": "PROJECTION_COMMITMENT_ONLY_V2",
+        "forecast_rows_published": False,
+        "official_catalog_published": False,
+        "season": canonical.get("season"),
+        "target_gameweek": canonical.get("target_gameweek"),
+        "max_contiguous_qualified_horizon": canonical.get(
+            "max_contiguous_qualified_horizon", 0
+        ),
+        "serving_provider_by_horizon": canonical.get(
+            "serving_provider_by_horizon", {}
+        ),
+        "provider_versions": canonical.get("provider_versions", {}),
+        "scoring_rules_version": canonical.get("scoring_rules_version"),
+        "canonical_projection_sha256": canonical.get(
+            "canonical_projection_sha256"
+        ),
+        "official_snapshot_sha256": official.get("source_hash"),
+        "private_canonical_forecast_sha256": private_surface_sha,
+        "projection_row_count": len(rows),
+        "official_player_count": len(official.get("players") or []),
+        "official_fixture_count": len(official.get("fixtures") or []),
     }
 
 
@@ -596,6 +632,7 @@ def _private_attempt(
     run: dict,
     key: bytes,
     reveal: dict,
+    canonical_forecast: dict,
 ) -> dict:
     transfer_plan = (
         (
@@ -606,15 +643,19 @@ def _private_attempt(
         ).get("weeks")
         or []
     )
+    canonical_forecast_sha256 = sha256_bytes(
+        canonical_json_bytes(canonical_forecast)
+    )
     private_identity = {
         "public_attempt_id": public_attempt_id,
         "team_state": team_state,
         "system_decision": decision.get("system_decision"),
         "transfer_plan": transfer_plan,
+        "canonical_forecast_sha256": canonical_forecast_sha256,
     }
     private_attempt_id = sha256_bytes(canonical_json_bytes(private_identity))
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "exposure_class": ExposureClass.PRIVATE_MANAGER.value,
         "private_attempt_id": private_attempt_id,
         "public_attempt_id": public_attempt_id,
@@ -623,6 +664,8 @@ def _private_attempt(
         "team_state": team_state,
         "system_decision": decision.get("system_decision"),
         "transfer_plan": transfer_plan,
+        "canonical_forecast_sha256": canonical_forecast_sha256,
+        "canonical_forecast": canonical_forecast,
         "reveal_record": reveal,
         "commitment_key_b64": base64.b64encode(key).decode("ascii"),
     }
@@ -686,7 +729,8 @@ def build_publication_materials(
     for directory in (public_dir, private_dir, diagnostics_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
-    canonical = _canonical_forecast(snapshot, decision, run)
+    private_canonical = _canonical_forecast(snapshot, decision, run)
+    canonical = _canonical_forecast_commitment(private_canonical)
     governance = _governance(snapshot, decision, run, acquisition)
     evidence = {
         "schema_version": 1,
@@ -718,7 +762,15 @@ def build_publication_materials(
             run,
             key,
             reveal,
+            private_canonical,
         )
+        if (
+            private_payload["canonical_forecast_sha256"]
+            != canonical["private_canonical_forecast_sha256"]
+        ):
+            raise RuntimeError(
+                "private canonical forecast does not match public commitment"
+            )
         private_attempt_id = private_payload["private_attempt_id"]
         private_path = write_json(
             private_dir / "private_manager_attempt.json",
@@ -798,6 +850,7 @@ def build_publication_materials(
             "public_asset_names": sorted(PUBLIC_RELEASE_ASSETS_V1),
             "private_store_required": bool(credential_present),
             "manager_actionability": governance["manager_actionability"],
+            "canonical_publication_contract": canonical["content_contract"],
         },
     )
     diagnostics_files = {
