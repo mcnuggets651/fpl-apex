@@ -397,7 +397,9 @@ def _external_records(
         title = str(item.get("title") or "")
         summary = re.sub(r"<[^>]+>", " ", str(item.get("summary") or ""))
         text = " ".join((title, summary)).strip()
-        if not text or not DECISION_RELEVANT.search(text):
+        if not text or not (
+            STRONG_ABSENCE.search(text) or DECISION_RELEVANT.search(text)
+        ):
             continue
         link = str(item.get("link") or source.url)
         if not link.startswith(("https://", "http://")):
