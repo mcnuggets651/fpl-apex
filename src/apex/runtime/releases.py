@@ -57,6 +57,64 @@ class GitHubReleaseStore:
             "X-GitHub-Api-Version": "2026-03-10",
         }
 
+    def assert_repository_policy(
+        self,
+        *,
+        require_private: bool = False,
+        require_immutable: bool = True,
+    ) -> dict:
+        """Verify storage policy before any sensitive production acquisition.
+
+        Private-manager publication must never rely on an operator remembering to
+        configure repository visibility or release immutability correctly. The
+        token must be able to read the repository and GitHub's immutable-release
+        administration endpoint; a missing/disabled policy fails before owner FPL
+        credentials are used.
+        """
+        repository_response = self.http.get(
+            f"{self.api}/repos/{self.repo}",
+            headers=self.headers,
+            timeout=30,
+        )
+        repository_response.raise_for_status()
+        repository = repository_response.json()
+        is_private = bool(repository.get("private", False))
+        if require_private and not is_private:
+            raise RuntimeError(
+                "private manager store repository is not private; refuse owner-state acquisition"
+            )
+
+        immutable_payload = None
+        immutable_enabled = False
+        if require_immutable:
+            immutable_response = self.http.get(
+                f"{self.api}/repos/{self.repo}/immutable-releases",
+                headers=self.headers,
+                timeout=30,
+            )
+            if immutable_response.status_code == 404:
+                raise RuntimeError(
+                    "GitHub release immutability is not enabled for the repository"
+                )
+            immutable_response.raise_for_status()
+            immutable_payload = immutable_response.json()
+            immutable_enabled = bool(immutable_payload.get("enabled", False))
+            if not immutable_enabled:
+                raise RuntimeError(
+                    "GitHub release immutability endpoint did not confirm enabled=true"
+                )
+
+        return {
+            "repository": self.repo,
+            "private": is_private,
+            "immutable_releases": immutable_enabled,
+            "immutability_enforced_by_owner": (
+                immutable_payload.get("enforced_by_owner")
+                if isinstance(immutable_payload, dict)
+                else None
+            ),
+        }
+
     def _get_by_tag(self, tag: str):
         response = self.http.get(
             f"{self.api}/repos/{self.repo}/releases/tags/{tag}",
