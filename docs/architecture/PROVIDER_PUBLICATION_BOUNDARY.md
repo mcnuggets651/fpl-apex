@@ -1,12 +1,35 @@
 # Apex V2 Provider Publication Boundary
 
-This document is a cutover acceptance contract for third-party forecast-provider artifacts.
+This document is a cutover acceptance contract for third-party forecast-provider artifacts and the canonical player-level display surface.
 
 ## Public contract
 
-Apex may publish the selected **canonical Apex serving forecast** in `canonical_forecast.json` because that is the production projection surface consumed by the product and audited against the sealed Official FPL snapshot.
+Apex public Releases are **proof/provenance surfaces, not player-level data exports**.
 
-The compatibility asset `provider_forecasts.tar.gz` is **provenance-only**. Each provider member may contain provider identity/version, generation time, season/scoring contract, supported horizons/runtime dependencies, and the SHA-256/byte identity of the corresponding frozen provider surface.
+The six-asset public allowlist remains unchanged for compatibility and attestation:
+
+- `public_attempt.json`
+- `canonical_forecast.json`
+- `provider_forecasts.tar.gz`
+- `governance.json`
+- `evidence.json`
+- `attestation.json`
+
+`canonical_forecast.json` uses `PROJECTION_COMMITMENT_ONLY_V2`. It may publish only the identities needed to verify the sealed production result: season/gameweek, serving provider identities and versions, scoring contract, qualified horizon, Official/canonical SHA-256 identities, private canonical-surface SHA-256, and row/catalog counts.
+
+It must explicitly state:
+
+- `forecast_rows_published: false`
+- `official_catalog_published: false`
+
+It must never contain:
+
+- projection rows or expected points;
+- player names, prices, statuses, FPL codes or the Official player catalog;
+- fixture rows or the Official fixture catalog;
+- private manager state or decisions.
+
+The compatibility asset `provider_forecasts.tar.gz` is also **provenance-only**. Each provider member may contain provider identity/version, generation time, season/scoring contract, supported horizons/runtime dependencies, and the SHA-256/byte identity of the corresponding frozen provider surface.
 
 It must never contain:
 
@@ -16,6 +39,36 @@ It must never contain:
 - private manager state, decisions, credentials, or other private/sensitive data.
 
 The frozen full provider surfaces are bound to the public provenance entries by exact SHA-256 and byte length. They are never republished as public provider exports.
+
+## Private canonical manager/display surface
+
+Authenticated production embeds the complete canonical serving/display surface inside the existing `private_manager_attempt.json`. The private manager Release remains exactly two assets:
+
+- `private_manager_attempt.json`
+- `private_attestation.json`
+
+No third manager asset is introduced.
+
+The private attempt includes:
+
+- `canonical_forecast` — the exact sealed player/fixture/projection surface needed by the owner UI;
+- `canonical_forecast_sha256` — SHA-256 of canonical JSON for that surface.
+
+The same digest is committed publicly as `private_canonical_forecast_sha256` in the commitment-only `canonical_forecast.json`. The private attempt ID also binds that digest, and the whole private payload remains covered by `private_attestation.json`.
+
+The Command Center BFF may return the player-level canonical surface only after all of these pass:
+
+1. the public Release is immutable and its public attestation verifies;
+2. Cloudflare Access identifies an authorized owner request;
+3. the matching private manager Release is immutable and its private attestation verifies;
+4. the existing public/private HMAC decision commitment verifies;
+5. season, Gameweek, Official snapshot hash and canonical projection hash agree;
+6. canonical JSON SHA-256 of the private display surface equals both the private payload digest and the public commitment; and
+7. player, fixture and projection-row counts equal the public commitment.
+
+If the latest Release uses the V2 commitment-only contract and those private proofs are unavailable, the BFF fails closed. It does not fall back to reconstructing or downloading a public player-level surface.
+
+Older immutable V1 Releases remain readable for audit/backward compatibility, but they are not the publication contract for new production attempts.
 
 ## Private prospective-evaluation contract
 
@@ -46,15 +99,17 @@ The evaluation workflow receives the private GitHub repository/token only so it 
 
 ## Cutover acceptance
 
-Before V2 cutover, both unit/privacy rehearsal and a real exact-head production rehearsal must prove that:
+Before V2 cutover, unit/privacy rehearsal and a real exact-head production rehearsal must prove that:
 
 1. public `provider_forecasts.tar.gz` contains provenance entries only;
 2. every public provenance entry binds to a valid 64-hex SHA-256 identity and byte length for its frozen provider surface;
 3. no public archive member contains `rows`, `expected_points`, or raw provider player-level projections;
-4. `canonical_forecast.json` remains the only public player-level serving forecast surface;
-5. the public Release retains the explicit six-asset allowlist and contains no private-manager state;
-6. authenticated production persists the separate immutable two-asset private evaluation Release before the public final Release;
-7. the private evaluation archive verifies byte-for-byte against the public pre-deadline commitments; and
-8. post-GW evaluation refuses regeneration and computes metrics only from those verified private frozen surfaces.
+4. public `canonical_forecast.json` is commitment-only and contains no player, fixture or projection rows;
+5. the full canonical display surface exists only inside the attested private manager payload and hashes exactly to the public commitment;
+6. the Access-protected BFF verifies public attestation, private attestation, decision HMAC, identities and canonical-surface hash before returning the private display surface;
+7. the public Release retains the explicit six-asset allowlist and contains no private-manager state;
+8. authenticated production persists the separate immutable two-asset private evaluation Release before the public final Release;
+9. the private evaluation archive verifies byte-for-byte against the public pre-deadline commitments; and
+10. post-GW evaluation refuses regeneration and computes metrics only from those verified private frozen surfaces.
 
 Any regression violates the provider publication/evaluation contract and blocks production publication/cutover.
