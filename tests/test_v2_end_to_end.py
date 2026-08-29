@@ -54,6 +54,7 @@ def test_frozen_snapshot_solves_without_source_layer(tmp_path: Path, monkeypatch
             2,
             1,
             float(p.element_id % 10 + 1),
+            p_appearance=1.0,
             coverage_status=CoverageStatus.FORECAST,
         )
         for p in official.players
