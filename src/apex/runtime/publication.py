@@ -55,6 +55,29 @@ PUBLIC_EVIDENCE_FIELDS_V1 = (
     "excerpt",
 )
 
+OFFICIAL_PLAYER_FIELDS_V1 = (
+    "element_id",
+    "web_name",
+    "team_id",
+    "position",
+    "price_tenths",
+    "status",
+    "can_transact",
+    "fpl_code",
+)
+OFFICIAL_FIXTURE_FIELDS_V1 = (
+    "fixture_id",
+    "gameweek",
+    "home_team_id",
+    "away_team_id",
+    "kickoff_time",
+)
+OFFICIAL_TEAM_FIELDS_V1 = (
+    "id",
+    "name",
+    "short_name",
+)
+
 PROJECTION_SURFACE_FIELDS_V1 = (
     "schema_version",
     "provider_id",
@@ -174,9 +197,6 @@ def _sanitize_provider_surface(raw: dict) -> dict:
     rows = []
     for raw_row in raw.get("rows", []):
         row = _project_fields(raw_row, PROJECTION_ROW_FIELDS_V1)
-        # Provider metadata is intentionally not part of the public contract.
-        # It is an extension point and therefore cannot cross the privacy
-        # boundary without an explicit future classification.
         row["metadata"] = {}
         rows.append(row)
     out["rows"] = rows
@@ -185,6 +205,34 @@ def _sanitize_provider_surface(raw: dict) -> dict:
 
 def _sanitize_public_evidence(rows: list[dict]) -> list[dict]:
     return [_project_fields(row, PUBLIC_EVIDENCE_FIELDS_V1) for row in rows]
+
+
+def _official_catalog(snapshot) -> dict:
+    official = snapshot.read_json("official.json")
+    try:
+        raw = snapshot.read_json("official_raw.json")
+    except FileNotFoundError:
+        raw = {}
+    return {
+        "schema_version": 1,
+        "season": official.get("season"),
+        "acquired_at": official.get("acquired_at"),
+        "source_hash": official.get("source_hash"),
+        "players": [
+            _project_fields(player, OFFICIAL_PLAYER_FIELDS_V1)
+            for player in official.get("players", [])
+        ],
+        "fixtures": [
+            _project_fields(fixture, OFFICIAL_FIXTURE_FIELDS_V1)
+            for fixture in official.get("fixtures", [])
+        ],
+        "deadlines": official.get("deadlines") or {},
+        "teams": [
+            _project_fields(team, OFFICIAL_TEAM_FIELDS_V1)
+            for team in raw.get("teams", [])
+            if isinstance(team, dict)
+        ],
+    }
 
 
 def _acquisition(snapshot) -> dict:
@@ -326,6 +374,7 @@ def _canonical_forecast(snapshot, decision: dict, run: dict) -> dict:
         "canonical_projection_sha256": decision.get(
             "canonical_projection_sha256", ""
         ),
+        "official": _official_catalog(snapshot),
         "rows": rows,
     }
 
@@ -460,10 +509,15 @@ def _private_attempt(
     key: bytes,
     reveal: dict,
 ) -> dict:
+    transfer_plan = (
+        ((decision.get("provider_diagnostics") or {}).get("decision_optimisation") or {}).get("weeks")
+        or []
+    )
     private_identity = {
         "public_attempt_id": public_attempt_id,
         "team_state": team_state,
         "system_decision": decision.get("system_decision"),
+        "transfer_plan": transfer_plan,
     }
     private_attempt_id = sha256_bytes(canonical_json_bytes(private_identity))
     return {
@@ -475,6 +529,7 @@ def _private_attempt(
         "target_gameweek": int(run["target_gameweek"]),
         "team_state": team_state,
         "system_decision": decision.get("system_decision"),
+        "transfer_plan": transfer_plan,
         "reveal_record": reveal,
         "commitment_key_b64": base64.b64encode(key).decode("ascii"),
     }
