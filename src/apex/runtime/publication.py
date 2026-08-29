@@ -401,6 +401,7 @@ def _provider_forecast_archive(
             staging.rmdir()
     return output, entries
 
+
 def _canonical_forecast(snapshot, decision: dict, run: dict) -> dict:
     diagnostics = decision.get("provider_diagnostics") or {}
     max_horizon = int(diagnostics.get("max_contiguous_horizon") or 0)
@@ -462,6 +463,7 @@ def _governance(
     acquisition: dict,
 ) -> dict:
     certification = decision.get("certification") or {}
+    diagnostics = decision.get("provider_diagnostics") or {}
     return {
         "schema_version": 1,
         "exposure_class": ExposureClass.GOVERNANCE_PUBLIC.value,
@@ -478,12 +480,15 @@ def _governance(
             "valid_until": certification.get("valid_until"),
         },
         "manager_actionability": _manager_actionability(acquisition, decision),
-        "max_contiguous_qualified_horizon": (
-            decision.get("provider_diagnostics") or {}
-        ).get("max_contiguous_horizon", 0),
-        "serving_provider_by_horizon": (
-            decision.get("provider_diagnostics") or {}
-        ).get("serving_provider_by_horizon", {}),
+        "max_contiguous_qualified_horizon": diagnostics.get(
+            "max_contiguous_horizon", 0
+        ),
+        "contingency_qualified_horizon": diagnostics.get(
+            "contingency_qualified_horizon", 0
+        ),
+        "serving_provider_by_horizon": diagnostics.get(
+            "serving_provider_by_horizon", {}
+        ),
         "evidence_manifest": decision.get("evidence_manifest") or {},
     }
 
