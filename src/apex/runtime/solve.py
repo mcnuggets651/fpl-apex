@@ -83,6 +83,39 @@ def _canonical(policy, max_horizon):
     )
 
 
+def _contingency_qualified_horizon(
+    canonical: ProductionProjectionSurface,
+    decision_universe: frozenset[int],
+    max_horizon: int,
+) -> tuple[int, dict[int, list[int]]]:
+    """Return contiguous horizons with complete, coherent appearance marginals."""
+    qualified = 0
+    missing_by_horizon: dict[int, list[int]] = {}
+    for horizon in range(1, int(max_horizon) + 1):
+        rows = {
+            int(row.element_id): row
+            for row in canonical.rows_for_horizon(horizon)
+        }
+        missing = []
+        for player_id in sorted(decision_universe):
+            row = rows.get(player_id)
+            if row is None or row.p_appearance is None:
+                missing.append(player_id)
+                continue
+            probability = float(row.p_appearance)
+            if (
+                probability <= 1e-12
+                and row.expected_points is not None
+                and abs(float(row.expected_points)) > 1e-9
+            ):
+                missing.append(player_id)
+        if missing:
+            missing_by_horizon[horizon] = missing
+            break
+        qualified = horizon
+    return qualified, missing_by_horizon
+
+
 def _evidence_acquisition_state(snapshot, run, official):
     required = bool(run.get("evidence_required", False))
     try:
@@ -149,6 +182,8 @@ def solve_snapshot(
     serving_h1 = policy.get(1)
     decision = None
     warnings = []
+    contingency_horizon = 0
+    contingency_missing: dict[int, list[int]] = {}
     decision_optimisation = {
         "kind": "NONE",
         "status": "NOT_RUN",
@@ -183,15 +218,35 @@ def solve_snapshot(
     ) = _evidence_acquisition_state(snapshot, run, official)
     warnings.extend(evidence_acquisition_warnings)
 
-    for source in evidence_acquisition.get("sources", []) if isinstance(evidence_acquisition, dict) else []:
+    for source in (
+        evidence_acquisition.get("sources", [])
+        if isinstance(evidence_acquisition, dict)
+        else []
+    ):
         if source.get("required") is not True and source.get("status") == "FAILED":
             warnings.append(
                 "optional evidence source failed: "
-                f"{source.get('name', 'unknown')} ({source.get('error', 'unknown error')})"
+                f"{source.get('name', 'unknown')} "
+                f"({source.get('error', 'unknown error')})"
             )
 
     if max_horizon >= 1:
         canonical = _canonical(policy, max_horizon)
+        contingency_horizon, contingency_missing = _contingency_qualified_horizon(
+            canonical,
+            universe,
+            max_horizon,
+        )
+        if contingency_horizon < max_horizon:
+            first_missing_horizon = contingency_horizon + 1
+            missing_count = len(contingency_missing.get(first_missing_horizon, []))
+            warnings.append(
+                "contingency-qualified decision horizon truncated to "
+                f"H{contingency_horizon} from serving H{max_horizon}; "
+                f"H{first_missing_horizon} lacks coherent appearance probabilities "
+                f"for {missing_count} decision-universe players"
+            )
+
         if team is None:
             result = optimise_initial_squad(
                 official,
@@ -213,7 +268,7 @@ def solve_snapshot(
                 official,
                 canonical,
                 team,
-                max_horizon=max_horizon,
+                max_horizon=contingency_horizon,
                 excluded_h1=excluded,
             )
             decision = transfer_result.decision
@@ -236,19 +291,6 @@ def solve_snapshot(
             elif reason:
                 warnings.append(reason)
 
-        horizon_rows = {
-            row.element_id: row
-            for row in canonical.rows_for_horizon(1)
-        }
-        if decision and not all(
-            horizon_rows.get(player_id)
-            and horizon_rows[player_id].p_appearance is not None
-            for player_id in decision.squad_ids
-        ):
-            warnings.append(
-                "appearance probabilities incomplete: contingent autosub/vice "
-                "fallback EV is not included in primary objective"
-            )
         canonical_hash = projection_surface_hash(canonical)
     else:
         canonical_hash = ""
@@ -276,6 +318,7 @@ def solve_snapshot(
         team_state=team,
         hard_evidence_conflict=bool(evidence_errors),
         evidence_acquisition_complete=evidence_acquisition_complete,
+        contingency_model_complete=(contingency_horizon >= 1),
         degraded_warnings=tuple(warnings),
         valid_until=run["deadline"],
         now=now,
@@ -307,6 +350,8 @@ def solve_snapshot(
         {
             "statuses": matrix,
             "max_contiguous_horizon": max_horizon,
+            "contingency_qualified_horizon": contingency_horizon,
+            "contingency_missing_by_horizon": contingency_missing,
             "serving_provider_by_horizon": {
                 str(horizon): provider.provider_id
                 for horizon, provider in policy.items()
