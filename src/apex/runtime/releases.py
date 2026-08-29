@@ -5,7 +5,6 @@ from pathlib import Path
 from urllib.parse import quote
 import hashlib
 import json
-import tarfile
 
 import requests
 
@@ -34,6 +33,10 @@ class GitHubReleaseStore:
     draft, all assets and GitHub-reported SHA-256 digests are verified, and only
     then is it published. If the publication is not reported immutable, the
     client best-effort removes the unusable mutable release and refuses success.
+
+    Publication payload construction does not belong in this store. Callers must
+    pass already-classified, explicitly allowlisted assets. In particular, V2 has
+    no helper here that can archive an arbitrary frozen snapshot.
     """
 
     def __init__(
@@ -187,36 +190,6 @@ class GitHubReleaseStore:
         return response.json()
 
 
-def create_bundle_archive(
-    snapshot_root: Path,
-    decision_path: Path,
-    output: Path,
-    *,
-    extra_files: dict[str, Path] | None = None,
-) -> dict:
-    snapshot_root = Path(snapshot_root)
-    decision_path = Path(decision_path)
-    output = Path(output)
-    extra_files = extra_files or {}
-    entries: dict[str, str] = {}
-    with tarfile.open(output, "w:gz") as archive:
-        for path in sorted(snapshot_root.rglob("*")):
-            if path.is_file():
-                arcname = f"snapshot/{path.relative_to(snapshot_root)}"
-                archive.add(path, arcname=arcname)
-                entries[arcname] = _sha(path)
-        archive.add(decision_path, arcname="decision_bundle.json")
-        entries["decision_bundle.json"] = _sha(decision_path)
-        for name, path in sorted(extra_files.items()):
-            archive.add(path, arcname=name)
-            entries[name] = _sha(path)
-    return {
-        "schema_version": 1,
-        "bundle_sha256": _sha(output),
-        "entries": entries,
-    }
-
-
 def write_attestation(path: Path, payload: dict) -> None:
     Path(path).write_text(
         json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
@@ -253,29 +226,3 @@ def download_release_asset(
     if expected_digest and expected_digest != f"sha256:{_sha(destination)}":
         raise RuntimeError(f"downloaded release asset failed GitHub digest: {name}")
     return destination
-
-
-def verify_attested_release(
-    store: GitHubReleaseStore,
-    release: dict,
-    workdir: Path,
-) -> dict:
-    if not bool(release.get("immutable", False)):
-        raise RuntimeError(f"release is not immutable: {release.get('tag_name')}")
-    workdir = Path(workdir)
-    attestation_path = download_release_asset(
-        store,
-        release,
-        "attestation.json",
-        workdir / "attestation.json",
-    )
-    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
-    bundle = download_release_asset(
-        store,
-        release,
-        "bundle.tar.gz",
-        workdir / "bundle.tar.gz",
-    )
-    if _sha(bundle) != attestation["bundle_sha256"]:
-        raise RuntimeError("release bundle hash differs from Apex attestation")
-    return attestation
