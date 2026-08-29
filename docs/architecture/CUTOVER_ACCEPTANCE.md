@@ -7,8 +7,11 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Apex V2 CI is a required check for production-code changes.
 - [ ] GitHub **Release immutability** is enabled for the public repository before the first production V2 release.
 - [ ] A dedicated private Apex manager-state repository exists before authenticated manager mode is enabled.
+- [ ] The private manager repository is private, initialized with a real default-branch commit and distinct from the public Apex repository.
 - [ ] GitHub **Release immutability** is enabled for every private production persistence repository as well as the public repository.
-- [ ] The private manager repository is not the public Apex repository and is not an unrelated application repository.
+- [ ] A private Release tag is anchored to the private repository's own default branch; the public Apex code SHA is never passed as `target_commitish` to the separate private repository.
+- [ ] The public code/config/snapshot identities remain cryptographically bound inside the public/private attempt payloads despite the separate repository anchors.
+- [ ] The private manager repository is not an unrelated application repository.
 - [ ] Production and evaluation workflows have only the permissions they need.
 - [ ] Browser clients never receive FPL credentials, private-repository tokens or other runtime secrets.
 
@@ -48,9 +51,10 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Production config explicitly requires the V2 evidence acquisition contract.
 - [ ] `apex-v2 acquire` owns required evidence collection; the requirement is not delegated solely to workflow convention.
 - [ ] Evidence acquisition emits an immutable-input manifest containing source outcomes, source-config SHA-256, retrieval time, target GW, expected/observed Official hash, record counts and required-source failures.
-- [ ] At least one configured Official-league/Official-club source is mandatory; a required Official source outage aborts acquisition.
+- [ ] At least one configured Official-league/Official-club source is mandatory; a required Official source outage or empty/unparseable response aborts acquisition.
 - [ ] Official FPL status/chance/news availability is captured as Official-league evidence.
-- [ ] Only unambiguous Official-league/Official-club absence evidence may create `HARD_EXCLUDE`; uncertain/doubtful states remain audit-only.
+- [ ] Only player-local unambiguous Official-league/Official-club absence evidence may create `HARD_EXCLUDE`; uncertain/doubtful states remain audit-only.
+- [ ] External claims are bound to the sentence/claim segment that actually names the player; an absence phrase about one player cannot cross-assign to another player in the same article.
 - [ ] Trusted-media evidence is structurally `AUDIT_ONLY` and cannot hard-exclude a player.
 - [ ] Evidence player identity matching is unambiguous before an external claim is attached to an Official element ID.
 - [ ] Evidence timestamps and expiry are validated before solve.
@@ -93,7 +97,9 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Raw `TeamState`, purchase prices, selling prices, bank, free transfers, pending chips and personalized `SystemDecision` never appear in public release assets or public diagnostic artifacts.
 - [ ] Randomized private sentinel values are absent from every public file, public tar member and diagnostic artifact during privacy rehearsal.
 - [ ] Provider metadata is sanitized before public persistence and cannot carry private manager fields by accident.
+- [ ] Authenticated production verifies the separate private repository is private, initialized and immutable before owner credentials are used.
 - [ ] Authenticated production publishes the immutable private manager attempt first; public final publication is refused if the private write/verification fails.
+- [ ] The private Release is anchored within the private repository while public code identity is retained inside the bound attempt records.
 - [ ] Private and public attempts are bound to the same run/code/config/Official/canonical identity and cannot drift.
 - [ ] A context-bound cryptographic commitment proves the private personalized decision existed pre-deadline without disclosing it pre-deadline.
 - [ ] Reveal verification rejects pre-deadline reveal, wrong attempt identity, tampered decision bytes and wrong commitment key.
@@ -119,6 +125,8 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Official final anchor and snapshot freeze succeed.
 - [ ] A public-fallback rehearsal explicitly records conditional/non-personalized action scope and never masquerades as the owner's current editable team.
 - [ ] Before cutover, a separate authenticated rehearsal must acquire the current editable team, exact purchase/selling prices, bank, remaining FT state and pending chip state, and must bind `/me/` to the configured entry.
+- [ ] The authenticated rehearsal private store preflight proves the separate repository is private, initialized and immutable before any owner-state acquisition.
+- [ ] The authenticated private release is anchored to the private repository's own default branch and still verifies the bound public code/config/snapshot identity.
 - [ ] Solver completes from frozen state or emits a typed/persisted blocking decision diagnostic.
 - [ ] Public safe release and, for authenticated mode, private manager release become immutable and verify.
 - [ ] Public release contains non-empty Official/canonical hashes, a coherent qualified horizon and no private sentinels/fields.
