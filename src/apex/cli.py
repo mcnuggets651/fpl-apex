@@ -22,7 +22,7 @@ def _store():
     return GitHubReleaseStore(repo, token)
 
 
-def _private_store():
+def _private_store(*, verify_policy: bool = True):
     from apex.runtime.releases import GitHubReleaseStore
 
     repo = os.environ.get("APEX_PRIVATE_GITHUB_REPOSITORY")
@@ -37,14 +37,15 @@ def _private_store():
             "private manager store must be a separate repository"
         )
     store = GitHubReleaseStore(repo, token)
-    store.assert_repository_policy(require_private=True, require_immutable=True)
+    if verify_policy:
+        store.assert_repository_policy(require_private=True, require_immutable=True)
     return store
 
 
 @app.command("private-store-preflight")
 def private_store_preflight():
     """Verify the owner-private persistence boundary before using FPL credentials."""
-    store = _private_store()
+    store = _private_store(verify_policy=False)
     policy = store.assert_repository_policy(
         require_private=True,
         require_immutable=True,
