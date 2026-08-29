@@ -1,0 +1,51 @@
+name: Apex V2 Privacy Rehearsal
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-v2-privacy-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Apex V2 tooling
+        run: pip install -e '.[dev]'
+
+      - name: Run privacy-boundary unit contracts
+        run: >-
+          pytest -q
+          tests/test_v2_cli.py
+          tests/test_v2_publication_privacy.py
+          tests/test_v2_workflow_privacy_contract.py
+
+      - name: Run fake-credential end-to-end rehearsal
+        env:
+          APEX_PRIVACY_SENTINEL: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.token }}-SENTINEL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rehearse_v2_privacy_boundary.py
+
+      - name: Upload only sanitized rehearsal diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v2-privacy-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/v2/privacy-rehearsal/publication/diagnostics/
+          if-no-files-found: error
+          retention-days: 14
