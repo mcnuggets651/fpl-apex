@@ -62,14 +62,16 @@ class GitHubReleaseStore:
         *,
         require_private: bool = False,
         require_immutable: bool = True,
+        require_initialized: bool = False,
     ) -> dict:
         """Verify storage policy before any sensitive production acquisition.
 
         Private-manager publication must never rely on an operator remembering to
-        configure repository visibility or release immutability correctly. The
-        token must be able to read the repository and GitHub's immutable-release
-        administration endpoint; a missing/disabled policy fails before owner FPL
-        credentials are used.
+        configure repository visibility, initialization or release immutability
+        correctly. A separate private release is anchored to that repository's own
+        default branch; public Apex commit identity is carried cryptographically in
+        the attempt payload rather than pretending the public commit exists in the
+        private repository.
         """
         repository_response = self.http.get(
             f"{self.api}/repos/{self.repo}",
@@ -83,6 +85,25 @@ class GitHubReleaseStore:
             raise RuntimeError(
                 "private manager store repository is not private; refuse owner-state acquisition"
             )
+
+        default_branch = str(repository.get("default_branch") or "").strip()
+        initialized = False
+        if require_initialized:
+            if not default_branch:
+                raise RuntimeError(
+                    "private manager store has no default branch; initialize it before owner-state acquisition"
+                )
+            branch_response = self.http.get(
+                f"{self.api}/repos/{self.repo}/branches/{quote(default_branch, safe='')}",
+                headers=self.headers,
+                timeout=30,
+            )
+            if branch_response.status_code == 404:
+                raise RuntimeError(
+                    "private manager store has no initialized default-branch commit"
+                )
+            branch_response.raise_for_status()
+            initialized = True
 
         immutable_payload = None
         immutable_enabled = False
@@ -107,6 +128,8 @@ class GitHubReleaseStore:
         return {
             "repository": self.repo,
             "private": is_private,
+            "default_branch": default_branch,
+            "initialized": initialized if require_initialized else None,
             "immutable_releases": immutable_enabled,
             "immutability_enforced_by_owner": (
                 immutable_payload.get("enforced_by_owner")
@@ -149,24 +172,26 @@ class GitHubReleaseStore:
         tag: str,
         files: dict[str, Path],
         *,
-        target_commitish: str,
+        target_commitish: str | None,
         name: str,
         body: str = "",
         require_immutable: bool = True,
     ) -> ReleaseRef:
         if self._get_by_tag(tag) is not None:
             raise RuntimeError(f"immutable release tag already exists: {tag}")
+        create_payload = {
+            "tag_name": tag,
+            "name": name,
+            "body": body,
+            "draft": True,
+            "prerelease": False,
+        }
+        if target_commitish is not None:
+            create_payload["target_commitish"] = target_commitish
         create = self.http.post(
             f"{self.api}/repos/{self.repo}/releases",
             headers=self.headers,
-            json={
-                "tag_name": tag,
-                "target_commitish": target_commitish,
-                "name": name,
-                "body": body,
-                "draft": True,
-                "prerelease": False,
-            },
+            json=create_payload,
             timeout=30,
         )
         create.raise_for_status()
