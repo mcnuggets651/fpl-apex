@@ -445,6 +445,7 @@ def _governance(
             "state": certification.get("state"),
             "actionable": certification.get("actionable"),
             "reasons": certification.get("reasons") or [],
+            "warnings": certification.get("warnings") or [],
             "valid_until": certification.get("valid_until"),
         },
         "manager_actionability": _manager_actionability(acquisition, decision),

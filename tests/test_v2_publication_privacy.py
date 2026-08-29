@@ -10,6 +10,7 @@ from apex.runtime.publication import (
     INTENT_FIELDS_V1,
     INTENT_RELEASE_ASSETS_V1,
     PUBLIC_RELEASE_ASSETS_V1,
+    _governance,
     _manager_actionability,
     _manager_state_mode,
     _required_sha256,
@@ -128,6 +129,46 @@ def test_public_identity_hashes_must_use_real_decision_bundle_digests():
         _required_sha256({}, "official_snapshot_hash")
     with pytest.raises(RuntimeError, match="not a valid SHA-256"):
         _required_sha256({"canonical_projection_hash": "not-a-hash"}, "canonical_projection_hash")
+
+
+def test_public_governance_preserves_degradation_warnings():
+    class Snapshot:
+        def read_json(self, name):
+            assert name == "qualification_matrix.json"
+            return []
+
+    acquisition = {
+        "mode": "PUBLIC_DEADLINE_FALLBACK",
+        "credential_present": False,
+        "state_complete_for_transfers": False,
+    }
+    warning = "serving projection lacks appearance probabilities"
+    decision = {
+        "certification": {
+            "state": "DEGRADED",
+            "actionable": True,
+            "reasons": [],
+            "warnings": [warning],
+            "valid_until": "2026-09-04T17:30:00Z",
+        },
+        "system_decision": {
+            "decision_mode": "HOLD_TEAM_STATE_INCOMPLETE"
+        },
+        "provider_diagnostics": {
+            "max_contiguous_horizon": 8,
+            "serving_provider_by_horizon": {"1": "airsenal"},
+        },
+        "evidence_manifest": {},
+    }
+    governance = _governance(
+        Snapshot(),
+        decision,
+        {"season": "2026-2027", "target_gameweek": 3},
+        acquisition,
+    )
+    assert governance["certification"]["state"] == "DEGRADED"
+    assert governance["certification"]["reasons"] == []
+    assert governance["certification"]["warnings"] == [warning]
 
 
 def test_public_deadline_state_is_never_personalized_actionable():
