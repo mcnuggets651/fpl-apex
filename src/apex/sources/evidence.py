@@ -540,16 +540,17 @@ def collect_v2_evidence(
                 retrieved_at=retrieved_at,
             )
             records.extend(source_records)
+            usable = bool(items)
             outcomes.append(
                 SourceOutcome(
                     source.name,
                     source.url,
                     source.tier,
                     source.required,
-                    "SUCCESS",
+                    "SUCCESS" if usable else "EMPTY",
                     len(items),
                     len(source_records),
-                    None,
+                    None if usable else "no parseable evidence items returned",
                 )
             )
         except Exception as exc:
