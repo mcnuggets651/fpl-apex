@@ -7,6 +7,7 @@ import type {
   TransferWeekV1,
 } from "../shared/contract";
 import {
+  certificationWarnings,
   isActionCurrent,
   playerMap,
   projectedXiScore,
@@ -155,6 +156,22 @@ describe("browser action authority", () => {
     expect(visiblePlan(plan, 2).map((week) => week.horizon)).toEqual([1, 2]);
     setVerificationCurrent(false);
     expect(visiblePlan(plan, 2)).toEqual([]);
+  });
+});
+
+describe("certification transparency", () => {
+  it("surfaces degradation warnings and stays compatible with older releases", () => {
+    const data = baseData();
+    expect(certificationWarnings(data)).toEqual([]);
+
+    data.public_attempt.certification.state = "DEGRADED";
+    data.public_attempt.certification.warnings = [
+      "appearance probabilities incomplete: contingent autosub/vice fallback EV is not included in primary objective",
+    ];
+    expect(certificationWarnings(data)).toEqual(data.public_attempt.certification.warnings);
+
+    delete data.public_attempt.certification.warnings;
+    expect(certificationWarnings(data)).toEqual([]);
   });
 });
 
