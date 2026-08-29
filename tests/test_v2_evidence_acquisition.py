@@ -230,6 +230,36 @@ def test_official_explicit_absence_can_hard_exclude(monkeypatch, tmp_path):
     assert external[0].effect == EvidenceEffect.HARD_EXCLUDE
 
 
+def test_multi_player_article_does_not_cross_assign_absence_claim():
+    source = evidence_module.EvidenceSource(
+        "Official League",
+        "https://official.test/news",
+        "official_league",
+        True,
+    )
+    records = evidence_module._external_records(
+        source=source,
+        items=[
+            {
+                "title": "Player One ruled out for weekend. Player Two will start.",
+                "summary": "",
+                "link": "https://official.test/article",
+                "published": "Sat, 29 Aug 2026 07:30:00 GMT",
+            }
+        ],
+        aliases={1: ("Player One",), 2: ("Player Two",)},
+        alias_owners={"player one": {1}, "player two": {2}},
+        target_gameweek=3,
+        deadline=datetime(2026, 9, 12, 10, 0, tzinfo=timezone.utc),
+        retrieved_at=datetime(2026, 8, 29, 8, 0, tzinfo=timezone.utc),
+    )
+    by_id = {row.element_id: row for row in records}
+    assert by_id[1].effect == EvidenceEffect.HARD_EXCLUDE
+    assert by_id[1].excerpt == "Player One ruled out for weekend."
+    assert by_id[2].effect == EvidenceEffect.AUDIT_ONLY
+    assert by_id[2].excerpt == "Player Two will start."
+
+
 def test_required_official_source_failure_writes_failed_manifest(
     monkeypatch,
     tmp_path,
