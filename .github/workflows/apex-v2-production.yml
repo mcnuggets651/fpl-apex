@@ -77,7 +77,7 @@ jobs:
             echo "Private-manager repository must be separate from the public Apex repository." >&2
             exit 1
           }
-          echo "Private-manager storage preflight passed."
+          apex-v2 private-store-preflight
 
       - name: Open immutable attempt intent
         id: intent
