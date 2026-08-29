@@ -10,6 +10,7 @@ import { ApexApiError, fetchClassicLatest } from "./api";
 import {
   actionLabel,
   actionReason,
+  certificationWarnings,
   fixtureLabel,
   isActionCurrent,
   percent,
@@ -76,6 +77,7 @@ function Home({ data }: { data: CommandCenterClassicV1 }) {
   const score = decision ? projectedXiScore(decision, h1) : null;
   const team = data.manager?.team_state;
   const action = actionLabel(decision, players);
+  const warnings = certificationWarnings(data);
 
   return (
     <main className="page-stack">
@@ -162,6 +164,7 @@ function Home({ data }: { data: CommandCenterClassicV1 }) {
           </header>
           <div className="trust-list">
             <div><span>Certification</span><strong>{data.public_attempt.certification.state}</strong></div>
+            {warnings.length ? <div><span>Degraded because</span><strong>{warnings.join(" · ")}</strong></div> : null}
             <div><span>Serving H1</span><strong>{data.public_attempt.serving_provider_by_horizon["1"] ?? "—"}</strong></div>
             <div><span>Immutable public release</span><strong>{data.public_release.immutable ? "Verified" : "No"}</strong></div>
             <div><span>Private identity</span><strong>{data.manager?.proof.public_identity_match ? "Verified" : "Unavailable"}</strong></div>
