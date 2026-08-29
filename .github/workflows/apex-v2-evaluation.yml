@@ -27,7 +27,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: apex-v2 audit-attempts --prefix apex-v2
+      - name: Preflight private provider evaluation store
+        env:
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+        run: apex-v2 private-store-preflight
       - name: Score newly completed Gameweeks prospectively
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
         run: apex-v2 evaluate-completed --season 2026-2027 --code-sha "$GITHUB_SHA"
