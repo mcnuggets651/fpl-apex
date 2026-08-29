@@ -193,16 +193,20 @@ def publish(
     code_sha: str = typer.Option(..., "--code-sha"),
     artifact_dir: Path = Path("artifacts/v2"),
 ):
+    from apex.runtime.evaluation_archive import (
+        build_private_provider_evaluation_material,
+    )
     from apex.runtime.publication import build_publication_materials
 
     material = build_publication_materials(snapshot, decision, artifact_dir)
 
-    # Persist owner-private state first. If it cannot be stored immutably, the
-    # public final release is never created. The private release tag is anchored
-    # to the private repository's own default branch; the public code SHA remains
-    # cryptographically bound inside the private/public attempt payloads.
+    # Persist every sensitive/private prerequisite before the public final Release.
+    # The manager Release remains a strict two-asset contract. Provider forecast
+    # rows are sealed separately so post-GW evaluation can score the exact frozen
+    # pre-deadline surfaces without publicly redistributing third-party rows.
     if material.authenticated_manager_state:
-        private_ref = _private_store().create_once(
+        private_store = _private_store()
+        private_ref = private_store.create_once(
             f"apex-v2/private/{season}/{run_id}",
             material.private_files,
             target_commitish=None,
@@ -217,6 +221,27 @@ def publish(
         )
         if not private_ref.immutable:
             raise RuntimeError("private manager release is not immutable")
+
+        evaluation_files = build_private_provider_evaluation_material(
+            snapshot,
+            artifact_dir / "private-evaluation",
+            public_attempt_id=material.public_attempt_id,
+        )
+        evaluation_ref = private_store.create_once(
+            f"apex-v2/private-evaluation/{season}/{run_id}",
+            evaluation_files,
+            target_commitish=None,
+            name=(
+                f"Apex V2 private provider evaluation inputs {season} "
+                f"GW{gameweek} {run_id}"
+            ),
+            body=(
+                "Owner-private immutable pre-deadline provider surfaces for "
+                "prospective post-Gameweek scoring. No manager state is stored here."
+            ),
+        )
+        if not evaluation_ref.immutable:
+            raise RuntimeError("private provider evaluation release is not immutable")
 
     tag = f"apex-v2/final/{season}/{run_id}"
     ref = _store().create_once(
@@ -251,6 +276,7 @@ def evaluate_completed(
 
     tags = evaluate_completed_attempts(
         _store(),
+        private_store=_private_store(),
         season=season,
         target_commitish=code_sha,
     )
