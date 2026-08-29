@@ -24,6 +24,13 @@ class ProviderConfig:
 
 
 @dataclass(frozen=True)
+class EvidenceConfig:
+    required: bool = False
+    records_path: str = "acquisition/evidence/hard.json"
+    manifest_path: str = "acquisition/evidence/acquisition.json"
+
+
+@dataclass(frozen=True)
 class ApexConfig:
     season: str
     entry_id: int
@@ -32,6 +39,7 @@ class ApexConfig:
     scoring_rules_version: str = CURRENT_SCORING_RULES_VERSION
     snapshot_dir: str = "data/v2/snapshots"
     release_prefix: str = "apex-v2"
+    evidence: EvidenceConfig = EvidenceConfig()
 
     @classmethod
     def load(cls, path):
@@ -52,14 +60,28 @@ class ApexConfig:
                     str(item["path"]),
                 )
             )
+        evidence = payload.get("evidence") or {}
         return cls(
-            str(payload.get("season", "2026-2027")),
-            int(payload["entry_id"]),
-            int(payload.get("max_horizon", 8)),
-            tuple(providers),
-            str(payload.get("scoring_rules_version", CURRENT_SCORING_RULES_VERSION)),
-            str(payload.get("snapshot_dir", "data/v2/snapshots")),
-            str(payload.get("release_prefix", "apex-v2")),
+            season=str(payload.get("season", "2026-2027")),
+            entry_id=int(payload["entry_id"]),
+            max_horizon=int(payload.get("max_horizon", 8)),
+            providers=tuple(providers),
+            scoring_rules_version=str(
+                payload.get("scoring_rules_version", CURRENT_SCORING_RULES_VERSION)
+            ),
+            snapshot_dir=str(payload.get("snapshot_dir", "data/v2/snapshots")),
+            release_prefix=str(payload.get("release_prefix", "apex-v2")),
+            evidence=EvidenceConfig(
+                required=bool(evidence.get("required", False)),
+                records_path=str(
+                    evidence.get("records_path", "acquisition/evidence/hard.json")
+                ),
+                manifest_path=str(
+                    evidence.get(
+                        "manifest_path", "acquisition/evidence/acquisition.json"
+                    )
+                ),
+            ),
         )
 
 
