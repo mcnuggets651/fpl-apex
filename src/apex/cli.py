@@ -38,7 +38,11 @@ def _private_store(*, verify_policy: bool = True):
         )
     store = GitHubReleaseStore(repo, token)
     if verify_policy:
-        store.assert_repository_policy(require_private=True, require_immutable=True)
+        store.assert_repository_policy(
+            require_private=True,
+            require_immutable=True,
+            require_initialized=True,
+        )
     return store
 
 
@@ -49,6 +53,7 @@ def private_store_preflight():
     policy = store.assert_repository_policy(
         require_private=True,
         require_immutable=True,
+        require_initialized=True,
     )
     typer.echo(json.dumps(policy, sort_keys=True))
 
@@ -193,13 +198,14 @@ def publish(
     material = build_publication_materials(snapshot, decision, artifact_dir)
 
     # Persist owner-private state first. If it cannot be stored immutably, the
-    # public final release is never created. This is the authenticated-run
-    # kill switch and prevents a future fallback to the public repository.
+    # public final release is never created. The private release tag is anchored
+    # to the private repository's own default branch; the public code SHA remains
+    # cryptographically bound inside the private/public attempt payloads.
     if material.authenticated_manager_state:
         private_ref = _private_store().create_once(
             f"apex-v2/private/{season}/{run_id}",
             material.private_files,
-            target_commitish=code_sha,
+            target_commitish=None,
             name=(
                 f"Apex V2 private manager attempt {season} "
                 f"GW{gameweek} {run_id}"
