@@ -54,17 +54,11 @@ jobs:
       - name: Private-manager storage preflight
         if: env.APEX_PRIVATE_MANAGER_ENABLED == '1'
         env:
-          FPL_SESSION_COOKIE: ${{ secrets.FPL_SESSION_COOKIE }}
-          FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}
           APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
           APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$FPL_SESSION_COOKIE$FPL_X_API_AUTHORIZATION" || {
-            echo "Private-manager mode requires an FPL owner credential." >&2
-            exit 1
-          }
           test -n "$APEX_PRIVATE_GITHUB_REPOSITORY" || {
             echo "Private-manager mode requires APEX_V2_PRIVATE_REPOSITORY." >&2
             exit 1
@@ -79,18 +73,23 @@ jobs:
           }
           apex-v2 private-store-preflight
 
-      - name: Verify FPL owner credential before provider work
+      - name: Verify and rotate FPL owner credential before provider work
         if: env.APEX_PRIVATE_MANAGER_ENABLED == '1'
         id: fpl_auth
         env:
           FPL_SESSION_COOKIE: ${{ secrets.FPL_SESSION_COOKIE }}
           FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}
+          FPL_REFRESH_TOKEN: ${{ secrets.FPL_REFRESH_TOKEN }}
+          FPL_REFRESH_WRAP_KEY: ${{ secrets.FPL_REFRESH_WRAP_KEY }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           python scripts/preflight_fpl_auth.py \
             --config config/apex_v2.yaml \
-            --github-output "$GITHUB_OUTPUT"
+            --github-output "$GITHUB_OUTPUT" \
+            --github-env "$GITHUB_ENV"
 
       - name: Open immutable attempt intent
         id: intent
@@ -167,17 +166,15 @@ jobs:
         id: freeze
         env:
           APEX_ENABLE_PRIVATE_MANAGER_STATE: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && '1' || '0' }}
-          FPL_SESSION_COOKIE: ${{ steps.fpl_auth.outputs.use_cookie == '1' && secrets.FPL_SESSION_COOKIE || '' }}
-          FPL_X_API_AUTHORIZATION: ${{ steps.fpl_auth.outputs.use_token == '1' && secrets.FPL_X_API_AUTHORIZATION || '' }}
         shell: bash
         run: |
           set -euo pipefail
           if [ "$APEX_PRIVATE_MANAGER_ENABLED" = "1" ]; then
             test "$APEX_ENABLE_PRIVATE_MANAGER_STATE" = "1"
-            test -n "$FPL_SESSION_COOKIE$FPL_X_API_AUTHORIZATION"
+            test -n "${FPL_SESSION_COOKIE:-}${FPL_X_API_AUTHORIZATION:-}"
           else
             test "$APEX_ENABLE_PRIVATE_MANAGER_STATE" = "0"
-            test -z "$FPL_SESSION_COOKIE$FPL_X_API_AUTHORIZATION"
+            test -z "${FPL_SESSION_COOKIE:-}${FPL_X_API_AUTHORIZATION:-}"
           fi
           SNAPSHOT="$(apex-v2 acquire \
             --config config/apex_v2.yaml \
