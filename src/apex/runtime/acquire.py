@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, TypeVar
@@ -104,6 +105,37 @@ def assert_official_acquisition_stable(
         )
 
 
+def assert_private_manager_credential_opt_in() -> None:
+    """Fail closed if owner credentials are present without an explicit opt-in.
+
+    This is deliberately enforced inside the production acquisition runtime as
+    well as in GitHub Actions. A developer running ``apex-v2 acquire`` manually
+    cannot accidentally turn a public/deadline-snapshot attempt into an owner-
+    private attempt merely because FPL credentials happen to be present in the
+    shell environment.
+    """
+
+    flag = os.getenv("APEX_ENABLE_PRIVATE_MANAGER_STATE", "0").strip()
+    if flag not in {"0", "1"}:
+        raise RuntimeError(
+            "APEX_ENABLE_PRIVATE_MANAGER_STATE must be exactly '0' or '1'"
+        )
+    credentials_present = bool(
+        os.getenv("FPL_SESSION_COOKIE", "").strip()
+        or os.getenv("FPL_X_API_AUTHORIZATION", "").strip()
+    )
+    if credentials_present and flag != "1":
+        raise RuntimeError(
+            "owner FPL credentials are present but private manager-state "
+            "acquisition is not explicitly enabled"
+        )
+    if flag == "1" and not credentials_present:
+        raise RuntimeError(
+            "private manager-state acquisition is enabled but no FPL owner "
+            "credential is present"
+        )
+
+
 def acquire_and_freeze(
     config_path: Path,
     *,
@@ -126,6 +158,7 @@ def acquire_and_freeze(
 
     official, raw_official = _stage("official_reanchor", _reanchor)
     target = _stage("target_gameweek", lambda: _target_gameweek(official, now))
+    _stage("private_manager_opt_in", assert_private_manager_credential_opt_in)
     team_acquisition = _stage(
         "team_state",
         lambda: acquire_team_state(config.entry_id, official, now=now),
