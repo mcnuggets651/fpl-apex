@@ -236,11 +236,15 @@ def _refresh_owner_credential(
     timeout: float = 20.0,
 ) -> tuple[str, str] | None:
     bootstrap = os.getenv("FPL_REFRESH_TOKEN", "").strip()
-    store = _private_store()
     fernet = _fernet()
 
-    if store is None and fernet is None and not bootstrap:
+    # Until refresh authentication is bootstrapped, preserve the independently
+    # verified direct bearer/cookie path. The private manager repository existing
+    # by itself does not imply that refresh state has been configured.
+    if fernet is None and not bootstrap:
         return None
+
+    store = _private_store()
     if store is None or fernet is None:
         raise RuntimeError(
             "FPL refresh authentication requires private storage and FPL_REFRESH_WRAP_KEY"
