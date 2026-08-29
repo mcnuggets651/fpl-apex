@@ -7,6 +7,7 @@ snapshot_dir: data/v2/snapshots
 release_prefix: apex-v2
 evidence:
   required: true
+  sources_path: config/news_sources.yaml
   records_path: acquisition/evidence/hard.json
   manifest_path: acquisition/evidence/acquisition.json
 providers:
