@@ -1,0 +1,118 @@
+name: Apex V2 Certification Warning Fix
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: >-
+      github.event.pull_request.number == 90 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/apex-v2-cleanroom' &&
+      github.event.label.name == 'help wanted'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Publish degradation warnings and add regression test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          publication = Path('src/apex/runtime/publication.py')
+          text = publication.read_text(encoding='utf-8')
+          old = '''        "certification": {
+                      "state": certification.get("state"),
+                      "actionable": certification.get("actionable"),
+                      "reasons": certification.get("reasons") or [],
+                      "valid_until": certification.get("valid_until"),
+                  },'''
+          new = '''        "certification": {
+                      "state": certification.get("state"),
+                      "actionable": certification.get("actionable"),
+                      "reasons": certification.get("reasons") or [],
+                      "warnings": certification.get("warnings") or [],
+                      "valid_until": certification.get("valid_until"),
+                  },'''
+          if old not in text:
+              raise SystemExit('publication certification block not found exactly')
+          publication.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test_path = Path('tests/test_v2_publication_privacy.py')
+          tests = test_path.read_text(encoding='utf-8')
+          import_old = '''    _manager_actionability,
+              _manager_state_mode,'''
+          import_new = '''    _governance,
+              _manager_actionability,
+              _manager_state_mode,'''
+          if import_old not in tests:
+              raise SystemExit('publication test import block not found exactly')
+          tests = tests.replace(import_old, import_new, 1)
+          marker = '''\ndef test_public_deadline_state_is_never_personalized_actionable():\n'''
+          regression = '''\ndef test_public_governance_preserves_degradation_warnings():
+              class Snapshot:
+                  def read_json(self, name):
+                      assert name == "qualification_matrix.json"
+                      return []
+
+              acquisition = {
+                  "mode": "PUBLIC_DEADLINE_FALLBACK",
+                  "credential_present": False,
+                  "state_complete_for_transfers": False,
+              }
+              warning = "serving projection lacks appearance probabilities"
+              decision = {
+                  "certification": {
+                      "state": "DEGRADED",
+                      "actionable": True,
+                      "reasons": [],
+                      "warnings": [warning],
+                      "valid_until": "2026-09-04T17:30:00Z",
+                  },
+                  "system_decision": {
+                      "decision_mode": "HOLD_TEAM_STATE_INCOMPLETE"
+                  },
+                  "provider_diagnostics": {
+                      "max_contiguous_horizon": 8,
+                      "serving_provider_by_horizon": {"1": "airsenal"},
+                  },
+                  "evidence_manifest": {},
+              }
+              governance = _governance(
+                  Snapshot(),
+                  decision,
+                  {"season": "2026-2027", "target_gameweek": 3},
+                  acquisition,
+              )
+              assert governance["certification"]["state"] == "DEGRADED"
+              assert governance["certification"]["reasons"] == []
+              assert governance["certification"]["warnings"] == [warning]
+
+          '''
+          if marker not in tests:
+              raise SystemExit('publication test insertion marker not found')
+          test_path.write_text(tests.replace(marker, regression + marker, 1), encoding='utf-8')
+          PY
+
+          git diff --check
+          git diff -- src/apex/runtime/publication.py tests/test_v2_publication_privacy.py
+
+      - name: Commit exact serializer fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/apex/runtime/publication.py tests/test_v2_publication_privacy.py
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          git commit -m "Expose V2 certification degradation warnings"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
