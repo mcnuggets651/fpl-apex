@@ -30,6 +30,9 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Missing H1 coverage blocks serving.
 - [ ] Provider timestamps and run-attempt freshness are checked.
 - [ ] AIrsenal export is regenerated during the attempt.
+- [ ] Production AIrsenal export explicitly requires model minute marginals (`AIRSENAL_REQUIRE_MINUTE_MARGINALS=1`); inability to load the pinned AIrsenal minute model fails the worker rather than silently emitting production blanks.
+- [ ] Single-fixture AIrsenal rows carry `expected_minutes`, `p_appearance` and `p_60` derived from the same recent-minutes sample used by the pinned points model.
+- [ ] Multi-fixture Gameweeks do not invent a joint appearance probability; blank joint marginals keep that horizon out of the contingency-qualified action horizon until a governed joint model exists.
 - [ ] A canonical Official FPL hash is captured immediately before provider generation.
 - [ ] The final Official FPL hash is reacquired before freeze and must exactly match the pre-provider hash.
 - [ ] An Official-hash mismatch aborts before team/provider qualification and requires a new run attempt.
@@ -81,6 +84,14 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] H1-only evidence withholds discretionary transfers.
 - [ ] Incomplete selling-price state withholds discretionary transfers.
 - [ ] Execution overlays update squad, bank, owned purchase/selling-price maps and remaining current-period FTs atomically.
+- [ ] Formation-valid automatic substitutions and reserve-goalkeeper replacement are valued from explicit appearance marginals; aggregated autosub EV matches full player-state enumeration in regression tests.
+- [ ] Captain/vice selection values the exact no-show fallback from unconditional provider xP and never awards a vice copy when the captain appears.
+- [ ] `HARD_EXCLUDE` overrides both appearance probability and effective contingency xP to zero, including for bench goalkeepers and outfield substitutes.
+- [ ] Missing/incoherent H1 appearance marginals block certification with `CONTINGENCY_MODEL_INCOMPLETE`; this is not downgraded to a warning.
+- [ ] Later missing appearance marginals truncate `contingency_qualified_horizon` rather than contaminating future transfer decisions.
+- [ ] `max_contiguous_qualified_horizon` (serving xP coverage) and `contingency_qualified_horizon` (decision-safe exact mechanics) remain distinct in diagnostics/public governance.
+- [ ] The MILP is a bounded primary-xP candidate generator; exact autosub/vice rescoring may change the selected squad/path only inside the governed regret band and only when the shortlist is proven complete.
+- [ ] If the exact-rescore shortlist cap is hit before completeness is proven, Apex retains the original maximum-primary-EV candidate rather than authorizing an incomplete secondary selection.
 - [ ] Secondary tie-break prefers fewer transfers without reducing primary EV.
 - [ ] Transfer optimiser infeasibility is returned as typed `INFEASIBLE`, persisted in the DecisionBundle diagnostics, and certifies fail-closed as `BLOCKED` / `DECISION_ILLEGAL` rather than surfacing as an unhandled exception.
 - [ ] Public/deadline manager state can never be labelled `personalized_actionable`, `lineup_actionable` or `transfer_actionable` for the current editable team.
@@ -105,6 +116,7 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] Reveal verification rejects pre-deadline reveal, wrong attempt identity, tampered decision bytes and wrong commitment key.
 - [ ] Public `official_snapshot_sha256` and `canonical_projection_sha256` are non-empty valid 64-hex digests sourced from the canonical DecisionBundle fields.
 - [ ] Public canonical rows include only the contiguous qualified serving horizon; no unqualified provider horizon is exposed as canonical.
+- [ ] Public governance exposes `contingency_qualified_horizon`; Command Center plan/execution surfaces never display future actionable steps beyond it even when wider serving xP is available for player research.
 - [ ] Public and private bundle/asset hashes are verified.
 - [ ] Native immutable-release status is verified during cutover for every production persistence repository.
 
@@ -119,6 +131,7 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] One genuine pre-deadline V2 intent is published.
 - [ ] Official pre-provider seal succeeds.
 - [ ] Fresh AIrsenal generation succeeds.
+- [ ] Fresh H1 AIrsenal appearance/minute marginals are present for the entire DecisionUniverse, or the attempt blocks explicitly with `CONTINGENCY_MODEL_INCOMPLETE`.
 - [ ] Optional challenger generation occurs before freeze and cannot invalidate the serving incumbent merely by failing.
 - [ ] Required V2 evidence acquisition succeeds and its manifest is bound to the same Official hash/GW as the final snapshot.
 - [ ] Official post-provider seal exactly matches the pre-provider seal.
@@ -129,10 +142,11 @@ Cutover is a binary governance event. A green unit test suite alone is insuffici
 - [ ] The authenticated private release is anchored to the private repository's own default branch and still verifies the bound public code/config/snapshot identity.
 - [ ] Solver completes from frozen state or emits a typed/persisted blocking decision diagnostic.
 - [ ] Public safe release and, for authenticated mode, private manager release become immutable and verify.
-- [ ] Public release contains non-empty Official/canonical hashes, a coherent qualified horizon and no private sentinels/fields.
+- [ ] Public release contains non-empty Official/canonical hashes, coherent serving and contingency-qualified horizons, and no private sentinels/fields.
 - [ ] Authenticated rehearsal reaches coherent manager action scope; transfer actionability is granted only when exact transfer state and the transfer optimiser are valid.
 - [ ] Recommendation is legal and certification/action scope are coherent.
-- [ ] The sealed personalized decision is adversarially checked against Official prices, current squad, bank, FTs, chip state, XI/captain/vice/bench and transfer legality before cutover.
+- [ ] The exact-rescore diagnostics identify candidate count, regret floor, shortlist completeness and whether the final selection came from exact contingency rescoring or primary-EV fallback.
+- [ ] The sealed personalized decision is adversarially checked against Official prices, current squad, bank, FTs, chip state, XI/captain/vice/bench, appearance evidence and transfer legality before cutover.
 - [ ] After the GW, outcome/evaluation releases are produced.
 
 Only after every applicable item is proven do we merge the cutover PR that retires V1 production writers/workflows.
