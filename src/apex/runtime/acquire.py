@@ -19,6 +19,7 @@ from apex.forecast.adapters.dastan import load_dastan
 from apex.forecast.adapters.openfpl import load_openfpl
 from apex.forecast.qualification import qualify_surface
 from apex.governance.evidence import validate_evidence
+from apex.sources.evidence import collect_v2_evidence
 from apex.sources.official import fetch_official_snapshot
 from apex.sources.team import acquire_team_state
 
@@ -194,6 +195,19 @@ def acquire_and_freeze(
 ):
     config = _stage("config", lambda: ApexConfig.load(config_path))
     now = datetime.now(timezone.utc)
+
+    if config.evidence.required:
+        _stage(
+            "external_evidence",
+            lambda: collect_v2_evidence(
+                sources_path=workdir / config.evidence.sources_path,
+                records_path=workdir / config.evidence.records_path,
+                manifest_path=workdir / config.evidence.manifest_path,
+                expected_official_hash=expected_official_hash,
+                season=config.season,
+                now=now,
+            ),
+        )
 
     def _reanchor():
         official, raw_official = fetch_official_snapshot(season=config.season)
