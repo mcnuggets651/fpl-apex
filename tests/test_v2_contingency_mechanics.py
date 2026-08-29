@@ -260,3 +260,35 @@ def test_hard_exclusion_forces_zero_appearance_in_autosub_model() -> None:
         outfield_order=(12, 6, 7),
     )
     assert weights[12] == 0.0
+
+
+def test_ruled_out_reserve_goalkeeper_has_no_phantom_autosub_value() -> None:
+    positions = {
+        player.element_id: player.position
+        for player in _squad_players()
+    }
+    xi = (1, 3, 4, 5, 8, 9, 10, 11, 13, 14, 15)
+    bench = (2, 6, 7, 12)
+    appearance = {player_id: 1.0 for player_id in range(1, 16)}
+    appearance[1] = 0.0
+    appearance[2] = 0.0
+    xp = {player_id: 0.0 for player_id in range(1, 16)}
+    xp[2] = 50.0
+
+    weights = _autosub_weights(
+        xi,
+        bench,
+        positions,
+        appearance,
+        outfield_order=(6, 7, 12),
+    )
+    value = _expected_autosub_points(
+        xi,
+        bench,
+        positions,
+        xp,
+        appearance,
+        outfield_order=(6, 7, 12),
+    )
+    assert weights[2] == 0.0
+    assert value == 0.0
