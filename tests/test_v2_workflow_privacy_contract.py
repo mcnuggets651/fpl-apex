@@ -49,3 +49,14 @@ def test_privacy_rehearsal_uses_no_real_credentials_and_uploads_only_sanitized_o
     assert "artifacts/v2/privacy-rehearsal/publication/diagnostics/" in text
     assert "publication/private" not in text
     assert "snapshots/" not in text
+
+
+def test_evaluation_uses_private_provider_store_without_fpl_credentials():
+    text = _workflow("apex-v2-evaluation.yml")
+    assert "Preflight private provider evaluation store" in text
+    assert "APEX_V2_PRIVATE_REPOSITORY" in text
+    assert "APEX_V2_PRIVATE_REPO_TOKEN" in text
+    assert "APEX_PRIVATE_GITHUB_REPOSITORY" in text
+    assert "APEX_PRIVATE_GITHUB_TOKEN" in text
+    assert "secrets.FPL_SESSION_COOKIE" not in text
+    assert "secrets.FPL_X_API_AUTHORIZATION" not in text
