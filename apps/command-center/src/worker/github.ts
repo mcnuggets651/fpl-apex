@@ -2,11 +2,17 @@ import type {
   CanonicalForecastV1,
   EvidenceV1,
   GovernanceV1,
+  ManagerViewV1,
   PublicAttemptV1,
   ReleaseSummaryV1,
   ReviewV1,
 } from "../shared/contract";
-import { revealEligible, sha256Hex, verifyPrivateCommitment } from "./security";
+import {
+  canonicalJson,
+  revealEligible,
+  sha256Hex,
+  verifyPrivateCommitment,
+} from "./security";
 
 const PUBLIC_ASSETS = new Set([
   "public_attempt.json",
@@ -43,6 +49,26 @@ interface AttestationV2 {
   assets: Record<string, string>;
 }
 
+interface CanonicalForecastCommitmentV2 {
+  schema_version: 2;
+  exposure_class: "GOVERNANCE_PUBLIC";
+  content_contract: "PROJECTION_COMMITMENT_ONLY_V2";
+  forecast_rows_published: false;
+  official_catalog_published: false;
+  season: string;
+  target_gameweek: number;
+  max_contiguous_qualified_horizon: number;
+  serving_provider_by_horizon: Record<string, string>;
+  provider_versions: Record<string, string>;
+  scoring_rules_version: string | null;
+  canonical_projection_sha256: string;
+  official_snapshot_sha256: string;
+  private_canonical_forecast_sha256: string;
+  projection_row_count: number;
+  official_player_count: number;
+  official_fixture_count: number;
+}
+
 interface PrivateManagerAttempt {
   schema_version: number;
   private_attempt_id: string;
@@ -52,6 +78,8 @@ interface PrivateManagerAttempt {
   team_state: Record<string, unknown>;
   system_decision: Record<string, unknown> | null;
   transfer_plan?: Array<Record<string, unknown>>;
+  canonical_forecast_sha256?: string;
+  canonical_forecast?: CanonicalForecastV1;
   reveal_record: Record<string, unknown>;
   commitment_key_b64: string;
 }
@@ -142,11 +170,29 @@ function verifyAttestationAgainstGitHub(
   }
 }
 
+function isCommitmentV2(value: unknown): value is CanonicalForecastCommitmentV2 {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return (
+    item.schema_version === 2 &&
+    item.content_contract === "PROJECTION_COMMITMENT_ONLY_V2" &&
+    item.forecast_rows_published === false &&
+    item.official_catalog_published === false
+  );
+}
+
+function isLegacyForecastV1(value: unknown): value is CanonicalForecastV1 {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return item.schema_version === 1 && Array.isArray(item.rows) && Boolean(item.official);
+}
+
 export interface LoadedPublic {
   release: GitHubRelease;
   summary: ReleaseSummaryV1;
   attempt: PublicAttemptV1;
-  forecast: CanonicalForecastV1;
+  forecast: CanonicalForecastV1 | null;
+  forecast_commitment: CanonicalForecastCommitmentV2 | null;
   governance: GovernanceV1;
   evidence: EvidenceV1;
 }
@@ -190,8 +236,8 @@ export async function loadLatestPublic(
   const assets = assetMap(release);
   assertImmutable(release, "public");
 
-  const [forecast, governance, evidence, attestation] = await Promise.all([
-    verifiedJson<CanonicalForecastV1>(assets.get("canonical_forecast.json")!, token),
+  const [rawForecast, governance, evidence, attestation] = await Promise.all([
+    verifiedJson<unknown>(assets.get("canonical_forecast.json")!, token),
     verifiedJson<GovernanceV1>(assets.get("governance.json")!, token),
     verifiedJson<EvidenceV1>(assets.get("evidence.json")!, token),
     verifiedJson<AttestationV2>(assets.get("attestation.json")!, token),
@@ -202,20 +248,40 @@ export async function loadLatestPublic(
   if (attestation.public_attempt_id !== attempt.public_attempt_id) {
     throw new Error("public attestation identity mismatch");
   }
+
+  let forecast: CanonicalForecastV1 | null = null;
+  let forecastCommitment: CanonicalForecastCommitmentV2 | null = null;
+  if (isCommitmentV2(rawForecast)) {
+    forecastCommitment = rawForecast;
+    if (
+      rawForecast.season !== season ||
+      rawForecast.target_gameweek !== attempt.target_gameweek ||
+      rawForecast.official_snapshot_sha256 !== attempt.official_snapshot_sha256 ||
+      rawForecast.canonical_projection_sha256 !== attempt.canonical_projection_sha256 ||
+      !/^[0-9a-f]{64}$/.test(rawForecast.private_canonical_forecast_sha256)
+    ) {
+      throw new Error("public canonical commitment identity mismatch");
+    }
+  } else if (isLegacyForecastV1(rawForecast)) {
+    forecast = rawForecast;
+    if (
+      forecast.season !== season ||
+      attempt.target_gameweek !== forecast.target_gameweek ||
+      forecast.official.source_hash !== attempt.official_snapshot_sha256 ||
+      forecast.canonical_projection_sha256 !== attempt.canonical_projection_sha256
+    ) {
+      throw new Error("legacy public canonical forecast identity mismatch");
+    }
+  } else {
+    throw new Error("unsupported canonical forecast publication contract");
+  }
+
   if (
     attempt.season !== season ||
-    forecast.season !== season ||
     governance.season !== season ||
-    attempt.target_gameweek !== forecast.target_gameweek ||
     attempt.target_gameweek !== governance.target_gameweek
   ) {
     throw new Error("public release season/gameweek identity mismatch");
-  }
-  if (forecast.official.source_hash !== attempt.official_snapshot_sha256) {
-    throw new Error("sealed Official catalog hash does not match public attempt");
-  }
-  if (forecast.canonical_projection_sha256 !== attempt.canonical_projection_sha256) {
-    throw new Error("canonical forecast hash does not match public attempt");
   }
 
   return {
@@ -228,6 +294,7 @@ export async function loadLatestPublic(
     },
     attempt,
     forecast,
+    forecast_commitment: forecastCommitment,
     governance,
     evidence,
   };
@@ -256,24 +323,18 @@ function revealMatchesDecision(
   );
 }
 
+export interface LoadedPrivateForPublic {
+  manager: ManagerViewV1;
+  forecast: CanonicalForecastV1 | null;
+}
+
 export async function loadPrivateForPublic(
   privateRepo: string,
   token: string,
   season: string,
   publicAttempt: PublicAttemptV1,
-): Promise<{
-  private_attempt_id: string;
-  public_attempt_id: string;
-  team_state: Record<string, unknown>;
-  system_decision: Record<string, unknown> | null;
-  transfer_plan: Array<Record<string, unknown>>;
-  proof: {
-    immutable_private_release: boolean;
-    public_identity_match: boolean;
-    commitment_verified: boolean;
-    reveal_eligible: boolean;
-  };
-} | null> {
+  forecastCommitment: CanonicalForecastCommitmentV2 | null = null,
+): Promise<LoadedPrivateForPublic | null> {
   const tag = `apex-v2/private/${season}/${publicAttempt.run_id}`;
   const release = await releaseByTag(privateRepo, tag, token);
   if (!release) return null;
@@ -312,12 +373,41 @@ export async function loadPrivateForPublic(
   );
   if (!commitmentVerified) throw new Error("private decision commitment failed verification");
 
-  return {
+  let privateForecast: CanonicalForecastV1 | null = null;
+  if (forecastCommitment) {
+    if (!payload.canonical_forecast || !payload.canonical_forecast_sha256) {
+      throw new Error("private canonical forecast missing for public commitment");
+    }
+    const computed = await sha256Hex(canonicalJson(payload.canonical_forecast));
+    if (
+      computed !== payload.canonical_forecast_sha256 ||
+      computed !== forecastCommitment.private_canonical_forecast_sha256
+    ) {
+      throw new Error("private canonical forecast hash verification failed");
+    }
+    if (
+      payload.canonical_forecast.season !== publicAttempt.season ||
+      payload.canonical_forecast.target_gameweek !== publicAttempt.target_gameweek ||
+      payload.canonical_forecast.official.source_hash !== publicAttempt.official_snapshot_sha256 ||
+      payload.canonical_forecast.canonical_projection_sha256 !==
+        publicAttempt.canonical_projection_sha256 ||
+      payload.canonical_forecast.rows.length !== forecastCommitment.projection_row_count ||
+      payload.canonical_forecast.official.players.length !==
+        forecastCommitment.official_player_count ||
+      payload.canonical_forecast.official.fixtures.length !==
+        forecastCommitment.official_fixture_count
+    ) {
+      throw new Error("private canonical forecast/public commitment identity mismatch");
+    }
+    privateForecast = payload.canonical_forecast;
+  }
+
+  const manager: ManagerViewV1 = {
     private_attempt_id: payload.private_attempt_id,
     public_attempt_id: payload.public_attempt_id,
-    team_state: payload.team_state,
-    system_decision: payload.system_decision,
-    transfer_plan: payload.transfer_plan ?? [],
+    team_state: payload.team_state as unknown as ManagerViewV1["team_state"],
+    system_decision: payload.system_decision as unknown as ManagerViewV1["system_decision"],
+    transfer_plan: (payload.transfer_plan ?? []) as unknown as ManagerViewV1["transfer_plan"],
     proof: {
       immutable_private_release: true,
       public_identity_match: true,
@@ -325,6 +415,8 @@ export async function loadPrivateForPublic(
       reveal_eligible: revealEligible(commitment as unknown as Record<string, unknown>),
     },
   };
+
+  return { manager, forecast: privateForecast };
 }
 
 async function optionalSingleAssetRelease(
