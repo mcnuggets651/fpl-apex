@@ -17,6 +17,7 @@ from apex.domain.rules import (
 )
 
 BASE = "https://fantasy.premierleague.com/api"
+_AUTHENTICATED_PRICE_SCALES = (1, 10)
 
 
 @dataclass(frozen=True)
@@ -177,6 +178,183 @@ def _pending_chip(payload: dict[str, Any]) -> str | None:
     return pending[0] if pending else None
 
 
+def _authenticated_money_error() -> RuntimeError:
+    """Return a privacy-safe failure for owner-private monetary inconsistencies."""
+    return RuntimeError(
+        "Official FPL authenticated monetary state is inconsistent with the frozen "
+        "Official market snapshot. Restart acquisition from a fresh Official seal."
+    )
+
+
+def _normalise_authenticated_owned_prices(
+    picks: list[dict[str, Any]],
+    players,
+) -> tuple[int, dict[int, int], dict[int, int]]:
+    """Prove one source scale against all 15 Official selling-price identities.
+
+    Apex's canonical money unit remains £0.1m. The undocumented owner endpoint has
+    historically emitted tenths, but live FPL clients can change representation.
+    A non-standard representation is accepted only when one common integer scale
+    makes every owned player's purchase/selling pair obey the exact FPL half-profit
+    rule against the frozen Official market snapshot. Mixed or ambiguous scales fail.
+    """
+    raw_rows: list[tuple[int, int, int]] = []
+    for row in picks:
+        if row.get("purchase_price") is None or row.get("selling_price") is None:
+            raise RuntimeError(
+                "Official FPL authenticated team omitted purchase/selling prices"
+            )
+        try:
+            player_id = int(row["element"])
+            raw_purchase = int(row["purchase_price"])
+            raw_selling = int(row["selling_price"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise _authenticated_money_error() from exc
+        if raw_purchase <= 0 or raw_selling <= 0:
+            raise _authenticated_money_error()
+        raw_rows.append((player_id, raw_purchase, raw_selling))
+
+    candidates: list[tuple[int, dict[int, int], dict[int, int]]] = []
+    for scale in _AUTHENTICATED_PRICE_SCALES:
+        purchase: dict[int, int] = {}
+        selling: dict[int, int] = {}
+        valid = True
+        for player_id, raw_purchase, raw_selling in raw_rows:
+            if raw_purchase % scale != 0 or raw_selling % scale != 0:
+                valid = False
+                break
+            purchase_price = raw_purchase // scale
+            selling_price = raw_selling // scale
+            if purchase_price <= 0 or selling_price <= 0:
+                valid = False
+                break
+            if (
+                calculate_selling_price(
+                    purchase_price,
+                    players[player_id].price_tenths,
+                )
+                != selling_price
+            ):
+                valid = False
+                break
+            purchase[player_id] = purchase_price
+            selling[player_id] = selling_price
+        if valid:
+            candidates.append((scale, purchase, selling))
+
+    if len(candidates) != 1:
+        raise _authenticated_money_error()
+    return candidates[0]
+
+
+def _derive_current_bank_from_authenticated_ledger(
+    entry_id: int,
+    *,
+    http,
+    headers: dict[str, str],
+    timeout: float,
+    published_gw: int,
+    target_gameweek: int | None,
+) -> int:
+    """Reconstruct current bank in canonical tenths from independent FPL surfaces."""
+    if published_gw <= 0 or target_gameweek is None:
+        raise _authenticated_money_error()
+
+    baseline_response = http.get(
+        f"{BASE}/entry/{int(entry_id)}/event/{int(published_gw)}/picks/",
+        timeout=timeout,
+    )
+    if baseline_response.status_code != 200:
+        raise _authenticated_money_error()
+    baseline_payload = baseline_response.json()
+    if not isinstance(baseline_payload, dict):
+        raise _authenticated_money_error()
+    entry_history = baseline_payload.get("entry_history") or {}
+    if entry_history.get("bank") is None:
+        raise _authenticated_money_error()
+    try:
+        baseline_bank = int(entry_history["bank"])
+    except (TypeError, ValueError) as exc:
+        raise _authenticated_money_error() from exc
+    if baseline_bank < 0:
+        raise _authenticated_money_error()
+
+    latest_response = http.get(
+        f"{BASE}/entry/{int(entry_id)}/transfers-latest/",
+        headers=headers,
+        timeout=timeout,
+    )
+    if latest_response.status_code in {401, 403}:
+        raise _authenticated_money_error()
+    latest_response.raise_for_status()
+    rows = latest_response.json()
+    if not isinstance(rows, list):
+        raise _authenticated_money_error()
+
+    bank = baseline_bank
+    for row in rows:
+        if not isinstance(row, dict):
+            raise _authenticated_money_error()
+        try:
+            if int(row.get("entry")) != int(entry_id):
+                raise _authenticated_money_error()
+            if int(row.get("event")) != int(target_gameweek):
+                raise _authenticated_money_error()
+            element_in_cost = int(row["element_in_cost"])
+            element_out_cost = int(row["element_out_cost"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise _authenticated_money_error() from exc
+        if element_in_cost <= 0 or element_out_cost <= 0:
+            raise _authenticated_money_error()
+        bank += element_out_cost - element_in_cost
+
+    if bank < 0:
+        raise _authenticated_money_error()
+    return bank
+
+
+def _normalise_authenticated_bank(
+    raw_bank_value: Any,
+    *,
+    owned_price_scale: int,
+    entry_id: int,
+    http,
+    headers: dict[str, str],
+    timeout: float,
+    published_gw: int,
+    target_gameweek: int | None,
+) -> int:
+    try:
+        raw_bank = int(raw_bank_value)
+    except (TypeError, ValueError) as exc:
+        raise _authenticated_money_error() from exc
+    if raw_bank < 0:
+        raise RuntimeError("Official FPL returned a negative bank balance")
+
+    # Preserve the established /my-team tenths contract on the standard path. If
+    # owned-price representation changed, independently reconstruct current bank
+    # from the last locked public bank plus authenticated current-period transfers.
+    if owned_price_scale == 1:
+        return raw_bank
+
+    expected_bank = _derive_current_bank_from_authenticated_ledger(
+        entry_id,
+        http=http,
+        headers=headers,
+        timeout=timeout,
+        published_gw=published_gw,
+        target_gameweek=target_gameweek,
+    )
+    normalized_values = {
+        raw_bank // scale
+        for scale in _AUTHENTICATED_PRICE_SCALES
+        if raw_bank % scale == 0 and raw_bank // scale == expected_bank
+    }
+    if normalized_values != {expected_bank}:
+        raise _authenticated_money_error()
+    return expected_bank
+
+
 def _authenticated_team_state(
     entry_id: int,
     official: OfficialSnapshot,
@@ -185,6 +363,7 @@ def _authenticated_team_state(
     headers: dict[str, str],
     timeout: float,
     published_gw: int,
+    target_gameweek: int | None,
 ) -> TeamState:
     me = http.get(f"{BASE}/me/", headers=headers, timeout=timeout)
     if me.status_code in {401, 403}:
@@ -212,48 +391,36 @@ def _authenticated_team_state(
             f"Official FPL current team must contain 15 picks; got {len(picks)}"
         )
 
-    squad = tuple(sorted(int(row["element"]) for row in picks))
+    try:
+        squad = tuple(sorted(int(row["element"]) for row in picks))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("Official FPL current team contains invalid player identities") from exc
     if len(set(squad)) != 15:
         raise RuntimeError("Official FPL current team contains duplicate player IDs")
     players = official.player_map()
-    unknown = sorted(set(squad) - set(players))
-    if unknown:
+    if set(squad) - set(players):
         raise RuntimeError(
-            f"Official FPL current team contains IDs outside authority snapshot: {unknown}"
+            "Official FPL current team contains a player outside the frozen authority snapshot"
         )
 
-    purchase: dict[int, int] = {}
-    selling: dict[int, int] = {}
-    for row in picks:
-        player_id = int(row["element"])
-        if row.get("purchase_price") is None or row.get("selling_price") is None:
-            raise RuntimeError(
-                "Official FPL authenticated team omitted purchase/selling prices"
-            )
-        purchase_price = int(row["purchase_price"])
-        selling_price = int(row["selling_price"])
-        if purchase_price <= 0 or selling_price <= 0:
-            raise RuntimeError("Official FPL returned non-positive owned-player price")
-        expected_selling = calculate_selling_price(
-            purchase_price,
-            players[player_id].price_tenths,
-        )
-        if selling_price != expected_selling:
-            raise RuntimeError(
-                "Official FPL team price state does not match the frozen Official "
-                f"market price for element {player_id}: expected sell "
-                f"{expected_selling}, got {selling_price}. Restart acquisition from "
-                "a fresh Official seal."
-            )
-        purchase[player_id] = purchase_price
-        selling[player_id] = selling_price
+    owned_price_scale, purchase, selling = _normalise_authenticated_owned_prices(
+        picks,
+        players,
+    )
 
     transfers = payload.get("transfers") or {}
     if transfers.get("bank") is None:
         raise RuntimeError("Official FPL authenticated team omitted bank state")
-    bank = int(transfers["bank"])
-    if bank < 0:
-        raise RuntimeError("Official FPL returned a negative bank balance")
+    bank = _normalise_authenticated_bank(
+        transfers["bank"],
+        owned_price_scale=owned_price_scale,
+        entry_id=entry_id,
+        http=http,
+        headers=headers,
+        timeout=timeout,
+        published_gw=published_gw,
+        target_gameweek=target_gameweek,
+    )
 
     transfer_status = str(transfers.get("status") or "").casefold()
     limit = transfers.get("limit")
@@ -420,6 +587,7 @@ def acquire_team_state(
             headers=headers,
             timeout=float(timeout),
             published_gw=elapsed[0] if elapsed else 0,
+            target_gameweek=target_gameweek,
         )
         return TeamStateAcquisition(
             state=state,
