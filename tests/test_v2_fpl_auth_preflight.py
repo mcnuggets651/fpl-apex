@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
-from scripts.preflight_fpl_auth import verify_owner_credential
+
+def _load_preflight_module():
+    path = Path(__file__).resolve().parents[1] / "scripts" / "preflight_fpl_auth.py"
+    spec = importlib.util.spec_from_file_location("apex_v2_preflight_fpl_auth", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+verify_owner_credential = _load_preflight_module().verify_owner_credential
 
 
 @dataclass
