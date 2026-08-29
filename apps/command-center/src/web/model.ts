@@ -6,6 +6,16 @@ import type {
   TransferWeekV1,
 } from "../shared/contract";
 
+let liveVerificationCurrent = false;
+
+export function setVerificationCurrent(value: boolean): void {
+  liveVerificationCurrent = value;
+}
+
+export function verificationCurrent(): boolean {
+  return liveVerificationCurrent;
+}
+
 export function playerMap(data: CommandCenterClassicV1): Map<number, OfficialPlayerV1> {
   return new Map(
     data.canonical_forecast.official.players.map((player) => [player.element_id, player]),
@@ -107,12 +117,14 @@ export function visiblePlan(
   plan: TransferWeekV1[],
   maxQualifiedHorizon: number,
 ): TransferWeekV1[] {
+  if (!liveVerificationCurrent) return [];
   return plan.filter(
     (week) => week.horizon >= 1 && week.horizon <= maxQualifiedHorizon,
   );
 }
 
 export function isActionCurrent(data: CommandCenterClassicV1, now = new Date()): boolean {
+  if (!liveVerificationCurrent) return false;
   if (!data.capabilities.canonical_action_available) return false;
   const validUntil = data.public_attempt.certification.valid_until;
   if (!validUntil) return false;
