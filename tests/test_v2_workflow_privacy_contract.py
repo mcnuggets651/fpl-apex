@@ -32,6 +32,7 @@ def test_production_credentials_and_source_opt_in_share_one_explicit_kill_switch
     assert "Private-manager storage preflight" in produce
     assert "APEX_V2_PRIVATE_REPOSITORY" in produce
     assert "APEX_V2_PRIVATE_REPO_TOKEN" in produce
+    assert "apex-v2 private-store-preflight" in produce
     assert (
         "APEX_ENABLE_PRIVATE_MANAGER_STATE: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && '1' || '0' }}"
         in produce
