@@ -3,6 +3,8 @@
 ## Normal production attempt
 `Apex V2 Production` creates an intent release, captures a canonical Official FPL pre-provider hash, regenerates AIrsenal, reacquires/final-validates Official FPL state, requires the pre/post hashes to match, freezes one snapshot, solves offline and publishes a completed final release. A BLOCKED final is a successful operational run with an unusable football decision; an orphaned intent is an operational failure.
 
+The production AIrsenal worker runs inside the exact pinned AIrsenal environment and sets `AIRSENAL_REQUIRE_MINUTE_MARGINALS=1`. The standalone exporter may omit minute marginals only for backwards-compatible identity tooling outside that worker. Production must never rely on that compatibility mode. Single-fixture rows must carry the model-derived `expected_minutes`, `p_appearance` and `p_60`; a multi-fixture Gameweek may intentionally leave the joint appearance probability blank and will therefore stop the contingency-qualified decision horizon there.
+
 ## Exact current team state
 Discretionary transfer planning requires the live editable team state from Official FPL, not merely the last public deadline squad. During the final Official re-anchor/freeze step, Apex may read one of the following GitHub Actions secrets:
 
@@ -20,6 +22,26 @@ If neither secret is configured, Apex deliberately falls back to the last public
 Every frozen snapshot records this boundary explicitly. `team_state_acquisition.json` contains the non-secret acquisition mode (`AUTHENTICATED_MY_TEAM`, `PUBLIC_DEADLINE_FALLBACK` or `NO_PUBLIC_DEADLINE`), whether a credential was present, exact-price counts and public-ledger diagnostics. `team_transfers_public.json` freezes the public transfer ledger as historical evidence. The ledger may support retrospective reconstruction after a deadline, but it never upgrades a deadline-redacted pre-deadline state to transaction-safe by itself. Credentials, cookies and authorization headers are never serialized.
 
 A current `my-team` transfer state with an unlimited transfer window (for example Wildcard/Free Hit or another null-limit state) is also not treated as an ordinary free-transfer state. Apex freezes the current squad/prices but marks transfer state incomplete until chip-aware optimisation is explicitly supported.
+
+## Contingency-model checks
+Two horizons must be inspected separately on every attempt:
+
+- `max_contiguous_qualified_horizon` is the contiguous authorized serving-xP horizon;
+- `contingency_qualified_horizon` is the stricter contiguous horizon over which every decision-universe player has the appearance inputs required for exact autosub and vice-captain valuation.
+
+H1 contingency completeness is mandatory. If it is zero or the certification includes `CONTINGENCY_MODEL_INCOMPLETE`, the attempt is not actionable even if serving xP is otherwise complete. Do not downgrade this to a warning. Missing later-horizon appearance inputs are allowed only by truncating transfer planning to the last contingency-qualified horizon.
+
+For a fixed squad, exact mechanics must satisfy all of the following:
+
+- goalkeeper replacement is valued only through the bench goalkeeper;
+- outfield substitutes enter in submitted priority order and only when the resulting formation remains FPL-legal;
+- captain/vice fallback uses unconditional provider xP and adds the vice copy only in the captain no-show state;
+- an active H1 `HARD_EXCLUDE` forces both contingency appearance probability and effective contingency xP to zero;
+- the submitted EV reconciles to XI xP + exact expected autosub value + exact expected captain/vice bonus.
+
+The transfer/initial-squad MILP remains the bounded primary-xP candidate generator. Inspect `decision_optimisation.solver` for candidate count, primary optimum/regret floor, shortlist completeness and final selection mode. Exact contingency rescoring may replace the primary candidate only when the governed regret-band shortlist is proven complete. If the candidate cap was reached before proof of completeness, the final selection must be the original primary-EV candidate and diagnostics must say so. Never interpret a capped shortlist as a certified exhaustive secondary search.
+
+Command Center may expose the wider serving horizon in Players/research views, but execution and plan surfaces must stop at `contingency_qualified_horizon`.
 
 ## Cutover platform controls
 V2 cutover is not permitted merely because code CI is green. `config/apex_v2_cutover_platform.yaml` is the machine-readable repository-control contract and `.github/workflows/apex-v2-cutover-platform.yml` freezes live GitHub evidence and certifies it with `scripts/check_v2_cutover_platform.py`.
@@ -52,8 +74,26 @@ The evidence artifact is retained for 90 days. `platform_ready=true` is required
 
 Current repository controls must be checked live; do not infer them from documentation or an earlier successful run. Release immutability protects only releases created after the setting is enabled, so no pre-setting release is accepted as proof.
 
+## Authenticated dress rehearsal inspection
+Before cutover, the authenticated production rehearsal must be run on the exact candidate head and the resulting immutable public/private records inspected together. Require all of the following before accepting the rehearsal:
+
+1. `APEX_CODE_SHA` equals the current PR head and the frozen run identity uses that SHA.
+2. `/me/` bound the credential to the configured entry and `/my-team/{entry_id}/` supplied the current 15-player editable squad, purchase/selling prices, bank, FT state and active chip state.
+3. The private-store preflight succeeded before owner credentials were consumed; the repository is separate, private, initialized and has native release immutability enabled.
+4. The private manager release was persisted and verified before the public final release.
+5. Public `official_snapshot_sha256` and `canonical_projection_sha256` are non-empty 64-hex hashes and match the sealed DecisionBundle identities.
+6. Evidence acquisition is complete and bound to the same target GW/Official hash; required-source failures are empty.
+7. `contingency_qualified_horizon >= 1`; there is no `CONTINGENCY_MODEL_INCOMPLETE` reason; the plan contains no week beyond the contingency horizon.
+8. Exact-rescore diagnostics show whether the regret-band shortlist was complete. If incomplete, verify the selected result is explicitly the primary-EV fallback rather than a secondary-rescore winner.
+9. `manager_actionability` is coherent: `FULL_MANAGER` and `transfer_actionable=true` only when current editable team and exact transfer state are both verified and the decision is a valid transfer-horizon decision.
+10. XI, captain, vice, bench order, transfers, hits and cash are legal under the same frozen Official snapshot; hard-excluded players contribute zero contingency value.
+11. Public diagnostic/release assets contain no private manager state, purchase/selling prices, bank, FT/chip state, credentials or sentinel values.
+12. Public/private attempt IDs, commitment and attestation verify without drift.
+
+A green workflow without these sealed facts is not sufficient cutover evidence.
+
 ## If AIrsenal fails
-Do not substitute cached xP. If an explicitly authorized standby has a fresh complete qualified H1 surface in the same frozen attempt, serving selection may use it. Otherwise final certification is BLOCKED. Shadow providers do not rescue production.
+Do not substitute cached xP. If an explicitly authorized standby has a fresh complete qualified H1 surface in the same frozen attempt, serving selection may use it. Otherwise final certification is BLOCKED. Shadow providers do not rescue production. A missing pinned AIrsenal package/minute model in the production worker is an explicit failure because production requires its minute marginals; do not fall back to the standalone exporter's blank compatibility mode.
 
 ## If Dastan/OpenFPL fail
 No production effect while they are non-serving challengers. Record failure in provider diagnostics.
