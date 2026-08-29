@@ -89,16 +89,18 @@ def _sources(path: Path, rows: list[dict]) -> Path:
 
 
 def _rss(title: str | None = None) -> bytes:
-    item = ""
-    if title:
-        item = f"""
-        <item>
-          <title>{title}</title>
-          <link>https://example.test/article</link>
-          <pubDate>Sat, 29 Aug 2026 07:30:00 GMT</pubDate>
-          <description>{title}</description>
-        </item>
-        """
+    # A healthy required source must now contain at least one parseable item.
+    # The default item is intentionally football-generic so it proves source
+    # usability without creating decision-relevant player evidence.
+    title = title or "General football roundup and weekend preview"
+    item = f"""
+    <item>
+      <title>{title}</title>
+      <link>https://example.test/article</link>
+      <pubDate>Sat, 29 Aug 2026 07:30:00 GMT</pubDate>
+      <description>{title}</description>
+    </item>
+    """
     return f"<rss><channel><title>Feed</title>{item}</channel></rss>".encode()
 
 
