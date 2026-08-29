@@ -10,7 +10,9 @@ from apex.runtime.publication import (
     INTENT_FIELDS_V1,
     INTENT_RELEASE_ASSETS_V1,
     PUBLIC_RELEASE_ASSETS_V1,
+    _manager_actionability,
     _manager_state_mode,
+    _required_sha256,
     assert_exact_asset_set,
     make_commitment,
     validate_intent_payload,
@@ -110,6 +112,77 @@ def test_private_opt_in_rejects_ambiguous_flag(monkeypatch):
     monkeypatch.setenv("APEX_ENABLE_PRIVATE_MANAGER_STATE", "true")
     with pytest.raises(RuntimeError, match="exactly '0' or '1'"):
         assert_private_manager_credential_opt_in()
+
+
+def test_public_identity_hashes_must_use_real_decision_bundle_digests():
+    official_hash = "a" * 64
+    canonical_hash = "b" * 64
+    decision = {
+        "official_snapshot_hash": official_hash,
+        "canonical_projection_hash": canonical_hash,
+    }
+    assert _required_sha256(decision, "official_snapshot_hash") == official_hash
+    assert _required_sha256(decision, "canonical_projection_hash") == canonical_hash
+
+    with pytest.raises(RuntimeError, match="not a valid SHA-256"):
+        _required_sha256({}, "official_snapshot_hash")
+    with pytest.raises(RuntimeError, match="not a valid SHA-256"):
+        _required_sha256({"canonical_projection_hash": "not-a-hash"}, "canonical_projection_hash")
+
+
+def test_public_deadline_state_is_never_personalized_actionable():
+    acquisition = {
+        "mode": "PUBLIC_DEADLINE_FALLBACK",
+        "credential_present": False,
+        "state_complete_for_transfers": False,
+    }
+    decision = {
+        "certification": {"actionable": True},
+        "system_decision": {"decision_mode": "HOLD_TEAM_STATE_INCOMPLETE"},
+    }
+    scoped = _manager_actionability(acquisition, decision)
+    assert scoped["engine_actionable"] is True
+    assert scoped["manager_state_scope"] == "PUBLIC_LAST_DEADLINE_CONDITIONAL"
+    assert scoped["current_editable_team_verified"] is False
+    assert scoped["personalized_actionable"] is False
+    assert scoped["lineup_actionable"] is False
+    assert scoped["transfer_actionable"] is False
+
+
+def test_authenticated_exact_state_can_be_fully_manager_actionable():
+    acquisition = {
+        "mode": "AUTHENTICATED_MY_TEAM",
+        "credential_present": True,
+        "state_complete_for_transfers": True,
+    }
+    decision = {
+        "certification": {"actionable": True},
+        "system_decision": {"decision_mode": "TRANSFER_HORIZON"},
+    }
+    scoped = _manager_actionability(acquisition, decision)
+    assert scoped["manager_state_scope"] == "FULL_MANAGER"
+    assert scoped["current_editable_team_verified"] is True
+    assert scoped["exact_transfer_state_verified"] is True
+    assert scoped["personalized_actionable"] is True
+    assert scoped["lineup_actionable"] is True
+    assert scoped["transfer_actionable"] is True
+
+
+def test_authenticated_incomplete_transfer_state_scopes_to_current_team_only():
+    acquisition = {
+        "mode": "AUTHENTICATED_MY_TEAM",
+        "credential_present": True,
+        "state_complete_for_transfers": False,
+    }
+    decision = {
+        "certification": {"actionable": True},
+        "system_decision": {"decision_mode": "HOLD_TEAM_STATE_INCOMPLETE"},
+    }
+    scoped = _manager_actionability(acquisition, decision)
+    assert scoped["manager_state_scope"] == "CURRENT_TEAM_ONLY"
+    assert scoped["personalized_actionable"] is True
+    assert scoped["lineup_actionable"] is True
+    assert scoped["transfer_actionable"] is False
 
 
 def _commitment_fixture():
