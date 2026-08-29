@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 120
     env:
       APEX_CODE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      APEX_PRIVATE_MANAGER_ENABLED: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -124,11 +125,19 @@ jobs:
       - name: Re-anchor Official truth and freeze all inputs once
         id: freeze
         env:
-          FPL_SESSION_COOKIE: ${{ secrets.FPL_SESSION_COOKIE }}
-          FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}
+          FPL_SESSION_COOKIE: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && secrets.FPL_SESSION_COOKIE || '' }}
+          FPL_X_API_AUTHORIZATION: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && secrets.FPL_X_API_AUTHORIZATION || '' }}
         shell: bash
         run: |
           set -euo pipefail
+          if [ "$APEX_PRIVATE_MANAGER_ENABLED" = "1" ]; then
+            test -n "$FPL_SESSION_COOKIE$FPL_X_API_AUTHORIZATION" || {
+              echo "Private-manager kill switch is enabled but no FPL credential is configured." >&2
+              exit 1
+            }
+          else
+            test -z "$FPL_SESSION_COOKIE$FPL_X_API_AUTHORIZATION"
+          fi
           SNAPSHOT="$(apex-v2 acquire \
             --config config/apex_v2.yaml \
             --run-id '${{ steps.intent.outputs.run_key }}' \
@@ -148,6 +157,8 @@ jobs:
         if: always() && steps.freeze.outputs.snapshot != ''
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -168,15 +179,13 @@ jobs:
             --run-id '${{ steps.intent.outputs.run_key }}' \
             --code-sha "$APEX_CODE_SHA"
 
-      - name: Upload diagnostic copy
+      - name: Upload sanitized diagnostics only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apex-v2-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            artifacts/v2/
-            acquisition/providers/
-            .dastan-raw/downloads.json
+          path: artifacts/v2/diagnostics/
+          if-no-files-found: ignore
           retention-days: 14
 
   diagnose:
@@ -291,11 +300,12 @@ jobs:
       - name: Re-anchor Official truth and freeze all inputs once
         id: freeze
         env:
-          FPL_SESSION_COOKIE: ${{ secrets.FPL_SESSION_COOKIE }}
-          FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}
+          FPL_SESSION_COOKIE: ""
+          FPL_X_API_AUTHORIZATION: ""
         shell: bash
         run: |
           set -euo pipefail
+          test -z "$FPL_SESSION_COOKIE$FPL_X_API_AUTHORIZATION"
           SNAPSHOT="$(apex-v2 acquire \
             --config config/apex_v2.yaml \
             --run-id '${{ steps.intent.outputs.run_key }}' \
@@ -311,11 +321,33 @@ jobs:
           python scripts/check_v2_architecture.py
           apex-v2 solve "${{ steps.freeze.outputs.snapshot }}" --output artifacts/v2/decision_bundle.json
 
+      - name: Build public-safe diagnostic material
+        env:
+          SNAPSHOT: ${{ steps.freeze.outputs.snapshot }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from apex.runtime.publication import build_publication_materials
+
+          material = build_publication_materials(
+              Path(os.environ["SNAPSHOT"]),
+              Path("artifacts/v2/decision_bundle.json"),
+              Path("artifacts/v2"),
+          )
+          assert not material.authenticated_manager_state
+          assert not material.private_files
+          print("Sanitized diagnostic publication material built successfully.")
+          PY
+
       - name: Assert diagnostic produced a sealed decision artifact
         shell: bash
         run: |
           set -euo pipefail
           test -s artifacts/v2/decision_bundle.json
+          test -s artifacts/v2/diagnostics/publication_summary.json
           python - <<'PY'
           import json
           decision = json.load(open("artifacts/v2/decision_bundle.json", encoding="utf-8"))
@@ -328,14 +360,11 @@ jobs:
           }, sort_keys=True))
           PY
 
-      - name: Upload full diagnostic snapshot
+      - name: Upload sanitized diagnostic snapshot
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apex-v2-downstream-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            artifacts/v2/
-            acquisition/providers/
-            data/v2/snapshots/
-            .dastan-raw/downloads.json
+          path: artifacts/v2/diagnostics/
+          if-no-files-found: ignore
           retention-days: 14
