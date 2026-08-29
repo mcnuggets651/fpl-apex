@@ -80,13 +80,20 @@ Repository-level **Release immutability must be enabled before cutover** for eve
 Apex also stores SHA-256 manifests inside each bundle. This is defense in depth, not a substitute for GitHub's native immutability.
 
 ## Decision semantics
-The primary objective is expected submitted FPL points plus captain copy, minus exact transfer hits. Free transfers are not assigned artificial point values. If two transfer plans are equal within numerical tolerance, a second optimization pass minimizes transfer count. Thus flexibility is a tie-break unless evidence demonstrates a measurable EV value.
+The primary forecast objective remains unconditional serving-provider FPL xP minus exact transfer hits; free transfers are not assigned artificial point values. The MILP is a **candidate generator**, not the final authority for XI/captain/vice/bench contingency mechanics. It enumerates distinct near-optimal initial squads or transfer paths inside the governed primary-xP regret band. Each candidate is then rescored with exact deadline mechanics: every legal XI is considered, captain/vice fallback is valued, and every legal outfield bench order is evaluated under FPL autosub formation constraints. The exact rescoring layer may select a different candidate only when the regret-band shortlist is proven complete. If the configured candidate cap is reached before completeness is proven, Apex retains the original maximum-primary-EV path rather than allowing an uncertified secondary selector to change the recommendation. Equal primary plans still prefer fewer transfers within numerical tolerance.
 
-If only H1 is qualified, discretionary transfers are withheld. The engine still optimizes the submitted XI/captain/bench for the current squad. It does not invent future xP.
+If only H1 is qualified, discretionary transfers are withheld. The engine still optimizes the submitted XI/captain/vice/bench for the current squad. It does not invent future xP.
 
 If exact current manager-state/selling-price evidence is unavailable, discretionary transfer optimization is withheld. The engine does not assume current market price equals sale value and does not assume the last deadline squad is still the editable squad.
 
-When the serving provider supplies no appearance probabilities, contingent autosub and captain-no-show fallback value are not invented. The decision remains legal and uses unconditional provider xP; certification is degraded with an explicit warning.
+### Contingency mechanics and horizon
+For a single-fixture Gameweek, the serving provider must provide a coherent appearance marginal for every player in the Official DecisionUniverse before that horizon is contingency-qualified. AIrsenal's production adapter derives `expected_minutes`, `p_appearance` and `p_60` from the same recent-minutes sample its pinned prediction model uses. The standalone identity exporter may leave these columns blank when run outside the isolated AIrsenal runtime, but the production worker explicitly sets `AIRSENAL_REQUIRE_MINUTE_MARGINALS=1`; failure to reconstruct the model marginals is therefore an acquisition/worker failure, never a silent production fallback.
+
+Given those marginals, Apex models player appearance states as independent Bernoulli marginals for deadline contingency valuation. Under that explicit approximation, the autosub evaluator is exact: goalkeeper replacement is handled separately; starting outfield no-shows are aggregated by position; the three substitute appearance states are enumerated in submitted order; and each replacement is admitted only if the resulting FPL formation remains legal. Captain/vice EV uses unconditional provider xP, so the extra captain copy is `xP(captain) + P(captain no-show) * xP(vice)`. Hard H1 exclusions override both appearance probability and effective contingency xP to zero, preventing stale provider rows from creating phantom bench or vice value.
+
+A multi-fixture Gameweek is deliberately not assigned a fabricated joint `P(appears at least once)`. AIrsenal's per-fixture minute sample does not identify that joint probability, so the exporter leaves the Gameweek appearance marginal blank. Such a horizon is not contingency-qualified until a reviewed joint model exists.
+
+`max_contiguous_qualified_horizon` means the serving forecast itself has contiguous authorized xP coverage. `contingency_qualified_horizon` is the stricter contiguous horizon over which exact autosub/vice mechanics also have complete appearance inputs. Missing H1 contingency inputs block certification with `CONTINGENCY_MODEL_INCOMPLETE`; they are no longer merely a degradation warning. Missing later-horizon contingency inputs truncate transfer planning to the last safe horizon without falsely shrinking the public research/forecast horizon. Public governance exposes both values, and Command Center execution/plan surfaces must use the contingency-qualified horizon while player research may browse the wider serving forecast horizon.
 
 ## Failure domains
 - Official truth failure: blocking.
@@ -95,6 +102,7 @@ When the serving provider supplies no appearance probabilities, contingent autos
 - Missing authenticated manager state when no credentials are configured: transfer planning withheld; current-squad HOLD remains possible from public state.
 - Public transfer-history acquisition failure: diagnostic degradation only while manager state is already public/incomplete; it can never manufacture current-state completeness.
 - Serving forecast stale/incomplete: blocking unless an explicitly authorized standby independently qualifies.
+- Missing/incoherent H1 contingency appearance inputs: blocking certification with `CONTINGENCY_MODEL_INCOMPLETE`; later missing inputs truncate `contingency_qualified_horizon`.
 - Shadow/challenger failure: warning only.
 - Optional trusted-media/enrichment failure: warning only.
 - Illegal squad/XI/cash state: blocking.
