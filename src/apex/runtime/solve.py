@@ -82,6 +82,32 @@ def _canonical(policy, max_horizon):
     )
 
 
+def _evidence_acquisition_state(snapshot, run, official):
+    required = bool(run.get("evidence_required", False))
+    try:
+        payload = snapshot.read_json("evidence_acquisition.json")
+    except (KeyError, FileNotFoundError):
+        payload = {}
+    if not required:
+        return True, payload, ()
+    complete = bool(
+        isinstance(payload, dict)
+        and payload.get("completed") is True
+        and str(payload.get("observed_official_hash") or "")
+        == str(official.source_hash)
+        and int(payload.get("target_gameweek", -1))
+        == int(run["target_gameweek"])
+        and not (payload.get("required_source_failures") or [])
+    )
+    warnings = []
+    if not complete:
+        warnings.append(
+            "required external evidence acquisition is missing, incomplete, "
+            "or not bound to this Official FPL snapshot"
+        )
+    return complete, payload, tuple(warnings)
+
+
 def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
     if os.getenv("APEX_ALLOW_NETWORK_DURING_SOLVE", "0") == "1":
         raise RuntimeError(
@@ -144,6 +170,19 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
         for row in evidence_rows
     )
     excluded = hard_exclusions(records, int(run["target_gameweek"]))
+    (
+        evidence_acquisition_complete,
+        evidence_acquisition,
+        evidence_acquisition_warnings,
+    ) = _evidence_acquisition_state(snapshot, run, official)
+    warnings.extend(evidence_acquisition_warnings)
+
+    for source in evidence_acquisition.get("sources", []) if isinstance(evidence_acquisition, dict) else []:
+        if source.get("required") is not True and source.get("status") == "FAILED":
+            warnings.append(
+                "optional evidence source failed: "
+                f"{source.get('name', 'unknown')} ({source.get('error', 'unknown error')})"
+            )
 
     if max_horizon >= 1:
         canonical = _canonical(policy, max_horizon)
@@ -230,6 +269,7 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
         decision=decision,
         team_state=team,
         hard_evidence_conflict=bool(evidence_errors),
+        evidence_acquisition_complete=evidence_acquisition_complete,
         degraded_warnings=tuple(warnings),
         valid_until=run["deadline"],
     )
@@ -268,7 +308,9 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
         },
         {
             "hard_evidence_count": len(records),
+            "hard_exclusion_count": len(excluded),
             "validation_errors": evidence_errors,
+            "acquisition": evidence_acquisition,
         },
     )
 
