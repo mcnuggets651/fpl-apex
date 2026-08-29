@@ -19,6 +19,8 @@ from apex.runtime.snapshot import SnapshotBuilder
 SEASON = "2026-2027"
 TARGET_GAMEWEEK = 3
 DEADLINE = "2026-09-12T10:00:00+00:00"
+OFFICIAL_HASH = "a" * 64
+CANONICAL_HASH = "b" * 64
 
 
 def _json(path: Path, payload) -> Path:
@@ -37,7 +39,7 @@ def _provider_surface(sentinel: str) -> dict:
         "provider_version": "privacy-rehearsal-v1",
         "generated_at": "2026-09-01T10:00:00+00:00",
         "season": SEASON,
-        "source_snapshot": "official-rehearsal-hash",
+        "source_snapshot": OFFICIAL_HASH,
         "scoring_rules_version": SEASON,
         "supported_horizons": [1],
         "runtime_dependencies": [],
@@ -133,7 +135,10 @@ def _build_snapshot(base: Path, sentinel: str) -> Path:
     ]
 
     builder = SnapshotBuilder()
-    builder.add_json("official.json", {"schema_version": 1, "source_hash": "official-rehearsal-hash"})
+    builder.add_json(
+        "official.json",
+        {"schema_version": 1, "source_hash": OFFICIAL_HASH},
+    )
     builder.add_json("team_state.json", team_state)
     builder.add_json("team_state_acquisition.json", acquisition)
     builder.add_json("team_transfers_public.json", [])
@@ -143,7 +148,10 @@ def _build_snapshot(base: Path, sentinel: str) -> Path:
     builder.add_json("providers/airsenal.json", _provider_surface(sentinel))
     builder.add_json("run.json", run)
     builder.add_bytes("config.yaml", b"privacy_rehearsal: true\n")
-    return builder.freeze(base / "snapshots", metadata={"frozen_at": run["frozen_at"]}).root
+    return builder.freeze(
+        base / "snapshots",
+        metadata={"frozen_at": run["frozen_at"]},
+    ).root
 
 
 def _build_decision(path: Path, sentinel: str) -> Path:
@@ -159,8 +167,8 @@ def _build_decision(path: Path, sentinel: str) -> Path:
             "frozen_at": "2026-09-01T10:00:01+00:00",
             "serving_provider_by_horizon": {"1": "airsenal"},
         },
-        "official_snapshot_sha256": "official-rehearsal-hash",
-        "canonical_projection_sha256": "canonical-rehearsal-hash",
+        "official_snapshot_hash": OFFICIAL_HASH,
+        "canonical_projection_hash": CANONICAL_HASH,
         "system_decision": {
             "schema_version": 1,
             "squad_ids": list(range(1, 16)),
@@ -188,7 +196,10 @@ def _build_decision(path: Path, sentinel: str) -> Path:
             "max_contiguous_horizon": 1,
             "serving_provider_by_horizon": {"1": "airsenal"},
         },
-        "evidence_manifest": {"hard_evidence_count": 0, "validation_errors": []},
+        "evidence_manifest": {
+            "hard_evidence_count": 0,
+            "validation_errors": [],
+        },
     }
     return _json(path, payload)
 
@@ -198,7 +209,9 @@ def _assert_no_sentinel(root: Path, sentinel: str) -> None:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if path.suffixes[-2:] == [".tar", ".gz"] or path.name.endswith(".tar.gz"):
+        if path.suffixes[-2:] == [".tar", ".gz"] or path.name.endswith(
+            ".tar.gz"
+        ):
             with tarfile.open(path, "r:gz") as archive:
                 for member in archive.getmembers():
                     if not member.isfile():
@@ -206,7 +219,8 @@ def _assert_no_sentinel(root: Path, sentinel: str) -> None:
                     handle = archive.extractfile(member)
                     if handle and needle in handle.read():
                         raise AssertionError(
-                            f"privacy sentinel leaked inside archive member {member.name}"
+                            "privacy sentinel leaked inside archive member "
+                            f"{member.name}"
                         )
         elif needle in path.read_bytes():
             raise AssertionError(f"privacy sentinel leaked into {path}")
@@ -237,7 +251,12 @@ def _assert_forbidden_manager_fields(root: Path) -> None:
 
 def main() -> int:
     sentinel = os.getenv("APEX_PRIVACY_SENTINEL") or secrets.token_urlsafe(36)
-    output = Path(os.getenv("APEX_PRIVACY_REHEARSAL_DIR", "artifacts/v2/privacy-rehearsal"))
+    output = Path(
+        os.getenv(
+            "APEX_PRIVACY_REHEARSAL_DIR",
+            "artifacts/v2/privacy-rehearsal",
+        )
+    )
     output.mkdir(parents=True, exist_ok=True)
 
     # Exercise the source-level fake-credential gate without making any network call.
@@ -248,14 +267,20 @@ def main() -> int:
 
     snapshot = _build_snapshot(output, sentinel)
     decision = _build_decision(output / "decision_bundle.json", sentinel)
-    material = build_publication_materials(snapshot, decision, output / "publication")
+    material = build_publication_materials(
+        snapshot,
+        decision,
+        output / "publication",
+    )
 
     assert material.authenticated_manager_state
     assert frozenset(material.public_files) == PUBLIC_RELEASE_ASSETS_V1
     assert frozenset(material.private_files) == PRIVATE_RELEASE_ASSETS_V1
     assert frozenset(material.diagnostics_files) == DIAGNOSTIC_ARTIFACT_ASSETS_V1
 
-    private_bytes = b"".join(path.read_bytes() for path in material.private_files.values())
+    private_bytes = b"".join(
+        path.read_bytes() for path in material.private_files.values()
+    )
     assert sentinel.encode("utf-8") in private_bytes
     _assert_no_sentinel(output / "publication" / "public", sentinel)
     _assert_no_sentinel(output / "publication" / "diagnostics", sentinel)
@@ -268,11 +293,21 @@ def main() -> int:
             if not member.isfile():
                 continue
             payload = json.loads(archive.extractfile(member).read())
-            assert all(row.get("metadata") == {} for row in payload.get("rows", []))
+            assert all(
+                row.get("metadata") == {}
+                for row in payload.get("rows", [])
+            )
 
     public_attempt = json.loads(
         material.public_files["public_attempt.json"].read_text(encoding="utf-8")
     )
+    assert public_attempt["official_snapshot_sha256"] == OFFICIAL_HASH
+    assert public_attempt["canonical_projection_sha256"] == CANONICAL_HASH
+    actionability = public_attempt["manager_actionability"]
+    assert actionability["manager_state_scope"] == "FULL_MANAGER"
+    assert actionability["personalized_actionable"] is True
+    assert actionability["transfer_actionable"] is True
+
     private_payload = json.loads(
         material.private_files["private_manager_attempt.json"].read_text(
             encoding="utf-8"
