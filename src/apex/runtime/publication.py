@@ -335,6 +335,13 @@ def _provider_forecast_archive(
     snapshot,
     output: Path,
 ) -> tuple[Path, dict[str, str]]:
+    """Publish provider provenance without redistributing forecast rows.
+
+    The frozen provider surfaces remain part of the sealed local snapshot and
+    are identified here by SHA-256. The public canonical forecast may expose
+    Apex's selected serving projection, but this compatibility archive must
+    never become a second copy of raw provider row exports.
+    """
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     entries: dict[str, str] = {}
@@ -344,7 +351,7 @@ def _provider_forecast_archive(
         if name.startswith("providers/") and name.endswith(".json")
     )
     if not provider_names:
-        raise RuntimeError("public provider forecast archive would be empty")
+        raise RuntimeError("public provider provenance archive would be empty")
     staging = output.parent / ".provider-publication"
     if staging.exists():
         for path in sorted(staging.rglob("*"), reverse=True):
@@ -356,9 +363,32 @@ def _provider_forecast_archive(
     try:
         with tarfile.open(output, "w:gz") as archive:
             for name in provider_names:
-                sanitized = _sanitize_provider_surface(snapshot.read_json(name))
+                raw = snapshot.read_json(name)
+                frozen = (snapshot.manifest.get("files") or {}).get(name) or {}
+                frozen_sha = str(frozen.get("sha256") or "").lower()
+                if len(frozen_sha) != 64 or any(
+                    char not in "0123456789abcdef" for char in frozen_sha
+                ):
+                    raise RuntimeError(
+                        f"frozen provider surface lacks valid SHA-256 identity: {name}"
+                    )
+                provenance = {
+                    "schema_version": 1,
+                    "publication_contract": "PROVENANCE_ONLY_V1",
+                    "forecast_rows_published": False,
+                    "provider_id": raw.get("provider_id"),
+                    "provider_version": raw.get("provider_version"),
+                    "generated_at": raw.get("generated_at"),
+                    "season": raw.get("season"),
+                    "source_snapshot": raw.get("source_snapshot"),
+                    "scoring_rules_version": raw.get("scoring_rules_version"),
+                    "supported_horizons": raw.get("supported_horizons") or [],
+                    "runtime_dependencies": raw.get("runtime_dependencies") or [],
+                    "frozen_provider_sha256": frozen_sha,
+                    "frozen_provider_bytes": int(frozen.get("bytes") or 0),
+                }
                 staged = staging / name
-                write_json(staged, sanitized)
+                write_json(staged, provenance)
                 archive.add(staged, arcname=name)
                 entries[name] = sha256_file(staged)
     finally:
@@ -370,7 +400,6 @@ def _provider_forecast_archive(
                     path.rmdir()
             staging.rmdir()
     return output, entries
-
 
 def _canonical_forecast(snapshot, decision: dict, run: dict) -> dict:
     diagnostics = decision.get("provider_diagnostics") or {}

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import json
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,7 @@ from apex.runtime.publication import (
     INTENT_FIELDS_V1,
     INTENT_RELEASE_ASSETS_V1,
     PUBLIC_RELEASE_ASSETS_V1,
+    _provider_forecast_archive,
     _governance,
     _manager_actionability,
     _manager_state_mode,
@@ -225,6 +228,55 @@ def test_authenticated_incomplete_transfer_state_scopes_to_current_team_only():
     assert scoped["lineup_actionable"] is True
     assert scoped["transfer_actionable"] is False
 
+
+
+def test_public_provider_archive_contains_provenance_not_forecast_rows(tmp_path: Path):
+    from apex.runtime.snapshot import SnapshotBuilder
+
+    builder = SnapshotBuilder()
+    builder.add_json(
+        "providers/airsenal.json",
+        {
+            "schema_version": 1,
+            "provider_id": "airsenal",
+            "provider_version": "upstream-sha",
+            "generated_at": "2026-08-29T12:00:00Z",
+            "season": "2026-2027",
+            "source_snapshot": "official-sha",
+            "scoring_rules_version": "fpl-2026-27-v1",
+            "supported_horizons": [1, 2],
+            "runtime_dependencies": ["python=3.12"],
+            "rows": [
+                {
+                    "element_id": 1,
+                    "horizon": 1,
+                    "expected_points": 9.9,
+                    "metadata": {"must_not_publish": "sentinel"},
+                }
+            ],
+        },
+    )
+    snapshot = builder.freeze(tmp_path / "snapshots")
+    archive_path, entries = _provider_forecast_archive(
+        snapshot,
+        tmp_path / "provider_forecasts.tar.gz",
+    )
+    with tarfile.open(archive_path, "r:gz") as archive:
+        assert archive.getnames() == ["providers/airsenal.json"]
+        member = archive.extractfile("providers/airsenal.json")
+        assert member is not None
+        published = json.loads(member.read())
+
+    assert published["publication_contract"] == "PROVENANCE_ONLY_V1"
+    assert published["forecast_rows_published"] is False
+    assert published["provider_id"] == "airsenal"
+    assert published["frozen_provider_sha256"] == snapshot.manifest["files"][
+        "providers/airsenal.json"
+    ]["sha256"]
+    assert "rows" not in published
+    assert "expected_points" not in published
+    assert "sentinel" not in json.dumps(published)
+    assert len(entries["providers/airsenal.json"]) == 64
 
 def _commitment_fixture():
     reveal = {
