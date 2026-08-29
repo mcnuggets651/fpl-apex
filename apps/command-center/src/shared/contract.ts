@@ -122,6 +122,7 @@ export interface GovernanceV1 {
   qualification_matrix: Array<Record<string, unknown>>;
   certification: CertificationV1;
   max_contiguous_qualified_horizon: number;
+  contingency_qualified_horizon: number;
   serving_provider_by_horizon: Record<string, string>;
   evidence_manifest: Record<string, unknown>;
   provider_archive_entries: Record<string, string>;
