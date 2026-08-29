@@ -16,6 +16,10 @@ export function verificationCurrent(): boolean {
   return liveVerificationCurrent;
 }
 
+export function certificationWarnings(data: CommandCenterClassicV1): string[] {
+  return [...(data.public_attempt.certification.warnings ?? [])];
+}
+
 export function playerMap(data: CommandCenterClassicV1): Map<number, OfficialPlayerV1> {
   return new Map(
     data.canonical_forecast.official.players.map((player) => [player.element_id, player]),
