@@ -88,6 +88,7 @@ function baseData(): CommandCenterClassicV1 {
         valid_until: "2026-08-30T10:00:00Z",
       },
       max_contiguous_qualified_horizon: 2,
+      contingency_qualified_horizon: 2,
       serving_provider_by_horizon: { "1": "airsenal", "2": "airsenal" },
       evidence_manifest: {},
       provider_archive_entries: {},
@@ -166,7 +167,7 @@ describe("certification transparency", () => {
 
     data.public_attempt.certification.state = "DEGRADED";
     data.public_attempt.certification.warnings = [
-      "appearance probabilities incomplete: contingent autosub/vice fallback EV is not included in primary objective",
+      "shadow openfpl: predictive qualification incomplete",
     ];
     expect(certificationWarnings(data)).toEqual(data.public_attempt.certification.warnings);
 
