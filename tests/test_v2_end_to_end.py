@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 import json
 
@@ -15,6 +16,8 @@ from apex.domain.models import (
 )
 from apex.runtime.snapshot import SnapshotBuilder
 from apex.runtime.solve import solve_snapshot
+
+TEST_NOW = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
 
 
 def synthetic_official():
@@ -113,7 +116,7 @@ def test_frozen_snapshot_solves_without_source_layer(tmp_path: Path, monkeypatch
         raise AssertionError("network attempted during frozen solve")
 
     monkeypatch.setattr(socket.socket, "connect", deny_network)
-    bundle = solve_snapshot(snapshot.root, output)
+    bundle = solve_snapshot(snapshot.root, output, now=TEST_NOW)
     assert bundle.certification.actionable
     assert bundle.system_decision is not None
     assert len(bundle.system_decision.squad_ids) == 15
@@ -227,7 +230,7 @@ def test_infeasible_transfer_is_persisted_as_blocked_diagnostic(
         "apex.runtime.solve.optimise_transfer_horizon",
         infeasible,
     )
-    bundle = solve_snapshot(snapshot.root, output)
+    bundle = solve_snapshot(snapshot.root, output, now=TEST_NOW)
     diagnostics = bundle.provider_diagnostics["decision_optimisation"]
 
     assert bundle.certification.actionable is False

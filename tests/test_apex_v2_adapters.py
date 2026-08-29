@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 from apex.domain.models import OfficialFixture, OfficialPlayer, OfficialSnapshot, Position
@@ -54,6 +55,7 @@ def test_qualification_requires_complete_requested_horizon(tmp_path: Path):
         decision_universe=official.decision_universe(),
         requested_horizons=(1,),
         max_age_hours=24,
+        now=datetime(2026, 8, 28, 11, 0, tzinfo=timezone.utc),
     )
     assert result.operational == Qualification.UNQUALIFIED
     assert result.health == ProviderHealth.INCOMPLETE

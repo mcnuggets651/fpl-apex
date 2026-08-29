@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from apex.forecast.adapters.openfpl import load_openfpl
 from apex.forecast.qualification import qualify_surface
 
 CURRENT_RULES = "fpl-2026-27-v1"
+TEST_NOW = datetime(2026, 8, 28, 11, 0, tzinfo=timezone.utc)
 
 
 def _official() -> OfficialSnapshot:
@@ -82,6 +84,7 @@ def test_legacy_openfpl_rules_cannot_qualify_for_current_apex(tmp_path: Path):
         requested_horizons=(1,),
         max_age_hours=24,
         required_scoring_rules_version=CURRENT_RULES,
+        now=TEST_NOW,
     )
     assert result.operational == Qualification.UNQUALIFIED
     assert any("scoring rules incompatible" in reason for reason in result.reasons)
@@ -99,5 +102,6 @@ def test_current_rules_challenger_can_pass_scoring_gate(tmp_path: Path):
         requested_horizons=(1,),
         max_age_hours=24,
         required_scoring_rules_version=CURRENT_RULES,
+        now=TEST_NOW,
     )
     assert result.operational == Qualification.QUALIFIED

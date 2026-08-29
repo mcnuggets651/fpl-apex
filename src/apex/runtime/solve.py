@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 
 from apex.decision.optimiser import optimise_initial_squad
@@ -108,7 +109,12 @@ def _evidence_acquisition_state(snapshot, run, official):
     return complete, payload, tuple(warnings)
 
 
-def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
+def solve_snapshot(
+    snapshot_path: Path,
+    output: Path,
+    *,
+    now: datetime | None = None,
+) -> DecisionBundle:
     if os.getenv("APEX_ALLOW_NETWORK_DURING_SOLVE", "0") == "1":
         raise RuntimeError(
             "network override is forbidden in production solve"
@@ -272,6 +278,7 @@ def solve_snapshot(snapshot_path: Path, output: Path) -> DecisionBundle:
         evidence_acquisition_complete=evidence_acquisition_complete,
         degraded_warnings=tuple(warnings),
         valid_until=run["deadline"],
+        now=now,
     )
     manifest = RunManifest(
         1,
