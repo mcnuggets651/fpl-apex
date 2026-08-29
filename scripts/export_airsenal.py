@@ -17,6 +17,13 @@ sample. Apex exports the marginals of that *same* sample rather than inferring
 availability from xP. This keeps expected minutes, P(appearance) and P(60+) tied
 to the model that generated the points forecast.
 
+The standalone exporter remains backwards-compatible with identity-only tooling:
+when it is intentionally run outside the isolated AIrsenal environment, minute
+marginals are left blank. Production sets ``AIRSENAL_REQUIRE_MINUTE_MARGINALS=1``
+and therefore fails immediately if the pinned AIrsenal runtime cannot reconstruct
+them. Even without that environment flag, downstream V2 certification refuses to
+make an actionable decision from incomplete H1 contingency probabilities.
+
 A multi-fixture Gameweek is intentionally different: AIrsenal reuses the same
 minute sample per fixture but does not define a joint probability that the player
 appears in at least one fixture. Apex therefore leaves Gameweek appearance
@@ -50,12 +57,17 @@ def _latest_tag(db: sqlite3.Connection) -> str:
     return str(row[0])
 
 
-def minute_marginals(minutes: list[float] | tuple[float, ...]) -> tuple[float, float, float]:
+def minute_marginals(
+    minutes: list[float] | tuple[float, ...],
+) -> tuple[float, float, float]:
     """Return the mean minutes and empirical appearance/60+ mass of a model sample."""
     values = [float(value) for value in minutes]
     if not values:
         raise ValueError("AIrsenal minute sample must not be empty")
-    if any(not math.isfinite(value) or value < 0.0 or value > 90.0 for value in values):
+    if any(
+        not math.isfinite(value) or value < 0.0 or value > 90.0
+        for value in values
+    ):
         raise ValueError("AIrsenal minute sample contains a value outside [0, 90]")
     count = float(len(values))
     return (
@@ -136,6 +148,34 @@ def _load_model_minute_marginals(
     return output
 
 
+def _minute_marginals_required() -> bool:
+    raw = os.getenv("AIRSENAL_REQUIRE_MINUTE_MARGINALS", "0").strip()
+    if raw not in {"0", "1"}:
+        raise ValueError("AIRSENAL_REQUIRE_MINUTE_MARGINALS must be 0 or 1")
+    return raw == "1"
+
+
+def _load_export_minute_marginals(
+    player_ids: set[int],
+    gameweeks: list[int],
+    fixture_counts: dict[tuple[int, int], int],
+) -> dict[tuple[int, int], tuple[float | None, float | None, float | None]]:
+    """Load model marginals, or blank them only for non-production standalone use."""
+    try:
+        return _load_model_minute_marginals(player_ids, gameweeks, fixture_counts)
+    except ModuleNotFoundError as error:
+        if _minute_marginals_required():
+            raise RuntimeError(
+                "production AIrsenal export requires the pinned AIrsenal runtime "
+                "for minute marginals"
+            ) from error
+        return {
+            (player_id, gameweek): (None, None, None)
+            for player_id in sorted(player_ids)
+            for gameweek in gameweeks
+        }
+
+
 def _csv_optional(value: float | None) -> str | float:
     return "" if value is None else float(value)
 
@@ -180,7 +220,7 @@ def main() -> None:
         (int(player_id), int(gameweek)): int(n_fixtures)
         for player_id, gameweek, _xp, n_fixtures in rows
     }
-    minute_model = _load_model_minute_marginals(
+    minute_model = _load_export_minute_marginals(
         player_ids,
         gameweeks,
         fixture_counts,
@@ -210,7 +250,7 @@ def main() -> None:
                 int(player_id),
                 int(gameweek),
                 float(xp),
-                float(minute_model[(int(player_id), int(gameweek))][0]),
+                _csv_optional(minute_model[(int(player_id), int(gameweek))][0]),
                 _csv_optional(minute_model[(int(player_id), int(gameweek))][1]),
                 _csv_optional(minute_model[(int(player_id), int(gameweek))][2]),
                 generated_at,
@@ -220,9 +260,14 @@ def main() -> None:
             for player_id, gameweek, xp, _n_fixtures in rows
         )
 
+    minute_status = (
+        "with AIrsenal minute marginals"
+        if any(value[0] is not None for value in minute_model.values())
+        else "without minute marginals (standalone compatibility mode)"
+    )
     print(
         f"Exported {len(rows)} player-gameweek rows for {len(player_ids)} official FPL "
-        f"players, GW={gameweeks}, tag={tag!r}, with AIrsenal minute marginals to {path}"
+        f"players, GW={gameweeks}, tag={tag!r}, {minute_status} to {path}"
     )
 
 
