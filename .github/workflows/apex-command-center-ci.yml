@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: apex-command-center-ci-${{ github.ref }}
@@ -27,6 +27,8 @@ jobs:
         working-directory: apps/command-center
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
@@ -34,6 +36,21 @@ jobs:
 
       - name: Bootstrap deterministic dependency lock
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Commit lockfile once to this PR branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "package-lock.json already committed"
+            exit 0
+          fi
+          git commit -m "Lock Command Center dependencies"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
 
       - name: Install exact dependency graph
         run: npm ci --no-audit --no-fund
@@ -55,14 +72,6 @@ jobs:
           ! grep -R -n -E 'FPL_SESSION_COOKIE|FPL_X_API_AUTHORIZATION|PRIVATE_GITHUB_TOKEN|APEX_V2_PRIVATE_REPO_TOKEN' dist
           ! grep -R -n 'github_pat_' dist
           ! grep -R -n 'ghp_' dist
-
-      - name: Upload bootstrapped lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: apex-command-center-lock-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/command-center/package-lock.json
-          if-no-files-found: error
-          retention-days: 2
 
       - name: Upload compiled shell for inspection
         uses: actions/upload-artifact@v4
