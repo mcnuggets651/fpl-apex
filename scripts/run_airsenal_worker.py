@@ -80,6 +80,21 @@ def _assert_export_contract(
     missing = sorted(set(requested_gameweeks) - covered)
     if missing:
         raise SystemExit(f"AIrsenal export is missing requested Gameweeks: {missing}")
+    contingency_missing = [
+        (int(row["player_id"]), int(row["gw"]))
+        for row in rows
+        if int(row["gw"]) == requested_gameweeks[0]
+        and (
+            row.get("expected_minutes", "") == ""
+            or row.get("p_appearance", "") == ""
+            or row.get("p_60", "") == ""
+        )
+    ]
+    if contingency_missing:
+        raise SystemExit(
+            "AIrsenal production export lacks H1 minute/appearance marginals for "
+            f"{len(contingency_missing)} player rows"
+        )
 
 
 def main() -> None:
@@ -103,6 +118,7 @@ def main() -> None:
         **os.environ,
         "AIRSENAL_DB_FILE": str(args.db.resolve()),
         "AIRSENAL_SOURCE_VERSION": _airsenal_pin(),
+        "AIRSENAL_REQUIRE_MINUTE_MARGINALS": "1",
     }
     subprocess.run(
         [
