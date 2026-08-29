@@ -125,17 +125,30 @@ async function classicLatest(request: Request, env: Env): Promise<Response> {
     env.ACCESS_AUD,
   );
   let manager: ManagerViewV1 | null = null;
+  let privateForecast = null;
   if (
     access &&
     env.PRIVATE_REPOSITORY &&
     env.PRIVATE_GITHUB_TOKEN
   ) {
-    manager = (await loadPrivateForPublic(
+    const privateData = await loadPrivateForPublic(
       env.PRIVATE_REPOSITORY,
       env.PRIVATE_GITHUB_TOKEN,
       env.SEASON,
       publicData.attempt,
-    )) as ManagerViewV1 | null;
+      publicData.forecast_commitment,
+    );
+    manager = privateData?.manager ?? null;
+    privateForecast = privateData?.forecast ?? null;
+  }
+
+  const canonicalForecast = privateForecast ?? publicData.forecast;
+  if (!canonicalForecast) {
+    return errorResponse(
+      "private_canonical_forecast_required",
+      403,
+      "The canonical display surface is private for this sealed run and requires verified owner access.",
+    );
   }
 
   const review = await loadReview(
@@ -155,7 +168,7 @@ async function classicLatest(request: Request, env: Env): Promise<Response> {
     fetched_at: new Date().toISOString(),
     public_release: publicData.summary,
     public_attempt: publicData.attempt,
-    canonical_forecast: publicData.forecast,
+    canonical_forecast: canonicalForecast,
     governance: publicData.governance,
     evidence: publicData.evidence,
     manager,
@@ -170,7 +183,7 @@ async function classicLatest(request: Request, env: Env): Promise<Response> {
 
   return jsonResponse(payload, 200, {
     ...cors,
-    "Cache-Control": manager ? "private, no-store" : "private, max-age=30",
+    "Cache-Control": "private, no-store",
   });
 }
 
