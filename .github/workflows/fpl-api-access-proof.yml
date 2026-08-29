@@ -1,0 +1,288 @@
+name: FPL API Access Proof
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    if: >-
+      github.event.pull_request.number == 90 &&
+      github.event.label.name == 'api-proof' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch both official APIs and emit encrypted proof
+        shell: bash
+        env:
+          FPL_SESSION_COOKIE: ${{ secrets.FPL_SESSION_COOKIE }}
+          FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}
+          CLASSIC_ENTRY_ID: '63984'
+          DRAFT_ENTRY_NAME: 'mcnuggets'
+          PROOF_PUBLIC_KEY: |
+            -----BEGIN PUBLIC KEY-----
+            MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAhHJV7CIwjZ318GzOX4PL
+            +yE07h8nR9H3vpYZaLZWNqmD8wIJSUwOB7qF8GgVIAGJ7djwxvfzLsUkzDwjBprf
+            BNb0scRyUxJ56UdaJO1mT0M3PqsvQ9moi6kl+80/5WDQfH85Fu4Rkl8A5vB+fuXZ
+            YU7dudgqGdyh4nqdp2YMd1J1qZD8y5rTLPJzBzdRF6gY/ukuJqnNUmwrMdyhemoW
+            xa2fqlD/L/aCRsOQTD4RppiSXLeDBE0g7bCvgHTM9wyc70TJrh7kuQCdM6Sjn4I6
+            TsTV/FlMteARb7sNGpPJh3v0YQLRheC19zI6raGE0P1D0sZJ1Tl5QWU2lcYSF6ef
+            2lSdLmXvvL1SeyI/csnem3y0MA7SU+BRW/+/B3z7razV7NqQU841Lv0jseQoOaVr
+            vbcq4O1GuX7F+dp62cZygdM3+LINwx2upvgI6BpvceZr6jgfko9QyBf/RldYQ6ef
+            0PY8CtyQyEBOEULq/1F8AiqWCKN4RVIPL82rZAUMUB1FJ1iXujJZtsAcBD8zwCjX
+            cPl/7xwJpqzfbzs0l+9d/nllCwk+MJFUzoH1D3/Z8oE5UtCwKFp0KgMXmHzT3m9Y
+            RTdQ5F0bde7MXkyBoTr6TMzZKPNjyhxHXdmVF3Rz8obI4kNR4JDXhBhMhNd3QJo/
+            sA1MRozK3ARGWV++Z9DHmN0CAwEAAQ==
+            -----END PUBLIC KEY-----
+        run: |
+          set +x
+          python - <<'PY'
+          import json, os, sys
+          from datetime import datetime, timezone
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          CLASSIC = "https://fantasy.premierleague.com/api"
+          DRAFT = "https://draft.premierleague.com/api"
+
+          def auth_headers():
+              headers = {
+                  "Accept": "application/json",
+                  "Referer": "https://fantasy.premierleague.com/",
+                  "User-Agent": "fpl-apex-api-proof/1",
+              }
+              cookie = os.getenv("FPL_SESSION_COOKIE", "").strip()
+              token = os.getenv("FPL_X_API_AUTHORIZATION", "").strip()
+              if cookie:
+                  headers["Cookie"] = cookie
+              if token:
+                  headers["X-API-Authorization"] = token if token.lower().startswith("bearer ") else f"Bearer {token}"
+              return headers
+
+          AUTH = auth_headers()
+          if "Cookie" not in AUTH and "X-API-Authorization" not in AUTH:
+              raise SystemExit("No FPL owner credential available")
+
+          def get_json(url, label, *, auth=False):
+              headers = AUTH if auth else {"Accept":"application/json", "User-Agent":"fpl-apex-api-proof/1"}
+              try:
+                  with urlopen(Request(url, headers=headers), timeout=25) as response:
+                      return json.loads(response.read().decode("utf-8"))
+              except HTTPError as exc:
+                  raise RuntimeError(f"{label} returned HTTP {exc.code}") from None
+              except URLError:
+                  raise RuntimeError(f"{label} network failure") from None
+              except Exception as exc:
+                  raise RuntimeError(f"{label} invalid response ({type(exc).__name__})") from None
+
+          def current_gw(bootstrap):
+              events = bootstrap.get("events") or []
+              for event in events:
+                  if event.get("is_current") is True:
+                      return int(event["id"])
+              started = [int(e["id"]) for e in events if e.get("finished") is False and e.get("deadline_time")]
+              if started:
+                  return min(started)
+              finished = [int(e["id"]) for e in events if e.get("finished") is True]
+              if finished:
+                  return max(finished)
+              raise RuntimeError("Official bootstrap has no resolvable gameweek")
+
+          def player_maps(bootstrap):
+              names = {int(e["id"]): str(e.get("web_name") or e.get("second_name") or e["id"]) for e in bootstrap.get("elements", [])}
+              pos_names = {int(t["id"]): str(t.get("singular_name_short") or t.get("singular_name") or t["id"]) for t in bootstrap.get("element_types", [])}
+              positions = {int(e["id"]): pos_names.get(int(e.get("element_type", 0)), "?") for e in bootstrap.get("elements", [])}
+              return names, positions
+
+          def live_map(payload):
+              rows = payload.get("elements", []) if isinstance(payload, dict) else payload if isinstance(payload, list) else []
+              result = {}
+              for row in rows:
+                  if not isinstance(row, dict):
+                      continue
+                  pid = row.get("id", row.get("element"))
+                  if pid is None:
+                      continue
+                  stats = row.get("stats") if isinstance(row.get("stats"), dict) else row
+                  pts = stats.get("total_points", stats.get("points"))
+                  if pts is not None:
+                      result[int(pid)] = int(pts)
+              return result
+
+          def pick_list(payload):
+              preferred = ("picks", "elements", "squad", "team")
+              if isinstance(payload, dict):
+                  for key in preferred:
+                      value = payload.get(key)
+                      if isinstance(value, list) and value and all(isinstance(x, dict) for x in value):
+                          if sum(1 for x in value if x.get("element", x.get("element_id")) is not None) >= 11:
+                              return value
+                  for value in payload.values():
+                      found = pick_list(value)
+                      if found:
+                          return found
+              return []
+
+          def reported_points(payload):
+              if not isinstance(payload, dict):
+                  return None
+              history = payload.get("entry_history")
+              if isinstance(history, dict) and history.get("points") is not None:
+                  return int(history["points"])
+              for key in ("points", "event_points", "gameweek_points"):
+                  value = payload.get(key)
+                  if isinstance(value, (int, float)):
+                      return int(value)
+              return None
+
+          proof = {
+              "schema_version": 1,
+              "generated_at": datetime.now(timezone.utc).isoformat(),
+              "classic": {"access_proven": False},
+              "draft": {"access_proven": False},
+          }
+
+          # Classic FPL: authenticate owner, read current editable 15, then bind live GW points to locked picks.
+          try:
+              bootstrap = get_json(f"{CLASSIC}/bootstrap-static/", "classic bootstrap")
+              gw = current_gw(bootstrap)
+              names, positions = player_maps(bootstrap)
+              me = get_json(f"{CLASSIC}/me/", "classic owner identity", auth=True)
+              entry_id = int(os.environ["CLASSIC_ENTRY_ID"])
+              actual_entry = int(((me.get("player") or {}).get("entry")))
+              if actual_entry != entry_id:
+                  raise RuntimeError("classic owner identity does not match configured entry")
+              my_team = get_json(f"{CLASSIC}/my-team/{entry_id}/", "classic current team", auth=True)
+              current_picks = my_team.get("picks") or []
+              if len(current_picks) != 15:
+                  raise RuntimeError("classic current team does not contain 15 picks")
+              locked = get_json(f"{CLASSIC}/entry/{entry_id}/event/{gw}/picks/", "classic locked gameweek team")
+              live = live_map(get_json(f"{CLASSIC}/event/{gw}/live/", "classic live points"))
+              locked_picks = locked.get("picks") or []
+              computed = sum(live.get(int(p["element"]), 0) * int(p.get("multiplier", 0) or 0) for p in locked_picks)
+              current_rows = []
+              for p in sorted(current_picks, key=lambda x: int(x.get("position", 99))):
+                  pid = int(p["element"])
+                  current_rows.append({"element_id":pid, "name":names.get(pid,str(pid)), "position":positions.get(pid,"?"), "slot":p.get("position")})
+              locked_rows = []
+              for p in sorted(locked_picks, key=lambda x: int(x.get("position", 99))):
+                  pid = int(p["element"])
+                  locked_rows.append({
+                      "element_id":pid, "name":names.get(pid,str(pid)), "position":positions.get(pid,"?"),
+                      "slot":p.get("position"), "multiplier":int(p.get("multiplier",0) or 0),
+                      "captain":bool(p.get("is_captain")), "vice":bool(p.get("is_vice_captain")),
+                      "live_points":live.get(pid,0),
+                  })
+              proof["classic"] = {
+                  "access_proven": True,
+                  "authenticated_owner_verified": True,
+                  "entry_id": entry_id,
+                  "gameweek": gw,
+                  "current_editable_squad": current_rows,
+                  "locked_gameweek_squad": locked_rows,
+                  "api_reported_gameweek_points": reported_points(locked),
+                  "computed_live_points_from_official_event_feed": computed,
+                  "active_chip": locked.get("active_chip"),
+              }
+          except Exception as exc:
+              proof["classic"] = {"access_proven": False, "error": str(exc)}
+
+          # Draft: user-specific bootstrap-dynamic discovers leagues; resolve team name, then current GW squad/live points.
+          try:
+              dynamic = get_json(f"{DRAFT}/bootstrap-dynamic", "draft owner bootstrap", auth=True)
+              league_rows = dynamic.get("leagues") if isinstance(dynamic, dict) else None
+              if isinstance(league_rows, dict):
+                  league_rows = list(league_rows.values())
+              if not isinstance(league_rows, list):
+                  raise RuntimeError("draft owner bootstrap did not expose leagues")
+              league_ids = []
+              for row in league_rows:
+                  if isinstance(row, dict):
+                      for key in ("id", "league_id"):
+                          if row.get(key) is not None:
+                              try:
+                                  league_ids.append(int(row[key]))
+                              except (TypeError, ValueError):
+                                  pass
+                              break
+              league_ids = list(dict.fromkeys(league_ids))
+              if not league_ids:
+                  raise RuntimeError("draft owner bootstrap returned no league IDs")
+
+              target = os.environ.get("DRAFT_ENTRY_NAME", "mcnuggets").strip().casefold()
+              matches = []
+              for league_id in league_ids:
+                  try:
+                      details = get_json(f"{DRAFT}/league/{league_id}/details", "draft league details", auth=True)
+                  except Exception:
+                      continue
+                  entries = details.get("league_entries") or []
+                  for entry in entries:
+                      if not isinstance(entry, dict) or entry.get("entry_id") is None:
+                          continue
+                      entry_name = str(entry.get("entry_name") or "").strip()
+                      if entry_name.casefold() == target or target in entry_name.casefold():
+                          matches.append((league_id, details, entry))
+              if len(matches) != 1:
+                  raise RuntimeError(f"draft team resolution expected one match and found {len(matches)}")
+              league_id, details, entry = matches[0]
+              draft_entry_id = int(entry["entry_id"])
+              dbootstrap = get_json(f"{DRAFT}/bootstrap-static", "draft bootstrap")
+              dnames, dpositions = player_maps(dbootstrap)
+              dgw = proof.get("classic", {}).get("gameweek") or current_gw(dbootstrap)
+              event = get_json(f"{DRAFT}/entry/{draft_entry_id}/event/{dgw}", "draft gameweek team", auth=True)
+              dlive = live_map(get_json(f"{DRAFT}/event/{dgw}/live", "draft live points", auth=True))
+              rows = pick_list(event)
+              if len(rows) < 11:
+                  raise RuntimeError("draft gameweek endpoint did not expose a squad")
+              squad = []
+              computed = 0
+              for idx, row in enumerate(rows, start=1):
+                  pid = int(row.get("element", row.get("element_id")))
+                  slot = int(row.get("position", idx) or idx)
+                  multiplier = row.get("multiplier")
+                  starter = (int(multiplier) > 0) if multiplier is not None else slot <= 11
+                  pts = dlive.get(pid)
+                  if starter and pts is not None:
+                      computed += int(pts)
+                  squad.append({
+                      "element_id":pid, "name":dnames.get(pid,str(pid)), "position":dpositions.get(pid,"?"),
+                      "slot":slot, "starter":starter, "live_points":pts,
+                      "row_points":row.get("points"),
+                  })
+              league_info = details.get("league") if isinstance(details.get("league"), dict) else {}
+              proof["draft"] = {
+                  "access_proven": True,
+                  "authenticated_user_bootstrap_verified": True,
+                  "league_id": league_id,
+                  "league_name": league_info.get("name"),
+                  "entry_id": draft_entry_id,
+                  "entry_name": entry.get("entry_name"),
+                  "gameweek": int(dgw),
+                  "squad": squad,
+                  "api_reported_gameweek_points": reported_points(event),
+                  "computed_live_points_from_official_event_feed": computed,
+                  "event_top_level_scalars": {k:v for k,v in event.items() if isinstance(v,(str,int,float,bool)) or v is None},
+              }
+          except Exception as exc:
+              proof["draft"] = {"access_proven": False, "error": str(exc)}
+
+          with open("/tmp/fpl_api_proof.json", "w", encoding="utf-8") as handle:
+              json.dump(proof, handle, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+          PY
+
+          printf '%s\n' "$PROOF_PUBLIC_KEY" > /tmp/proof_public.pem
+          openssl rand -hex 32 > /tmp/proof_key.txt
+          openssl enc -aes-256-cbc -salt -pbkdf2 -in /tmp/fpl_api_proof.json -out /tmp/fpl_api_proof.enc -pass file:/tmp/proof_key.txt
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/proof_public.pem -in /tmp/proof_key.txt -out /tmp/proof_key.enc -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          echo "APEX_PROOF_KEY=$(base64 -w0 /tmp/proof_key.enc)"
+          echo "APEX_PROOF_DATA=$(base64 -w0 /tmp/fpl_api_proof.enc)"
+          rm -f /tmp/proof_key.txt /tmp/fpl_api_proof.json /tmp/fpl_api_proof.enc /tmp/proof_key.enc /tmp/proof_public.pem
