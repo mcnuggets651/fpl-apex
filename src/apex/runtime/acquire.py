@@ -79,6 +79,53 @@ def _parse_evidence(path: Path) -> tuple[EvidenceRecord, ...]:
     )
 
 
+def _validate_evidence_acquisition(
+    manifest_path: Path,
+    records: tuple[EvidenceRecord, ...],
+    *,
+    required: bool,
+    official_hash: str,
+    target_gameweek: int,
+) -> dict:
+    if not manifest_path.exists():
+        if required:
+            raise RuntimeError(
+                "required external evidence acquisition manifest is missing"
+            )
+        return {
+            "schema_version": 1,
+            "completed": False,
+            "required": False,
+            "mode": "NOT_REQUIRED",
+            "record_count": len(records),
+        }
+
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or int(payload.get("schema_version", 0)) != 1:
+        raise RuntimeError("external evidence acquisition manifest schema invalid")
+    if required and payload.get("completed") is not True:
+        raise RuntimeError("required external evidence acquisition did not complete")
+    if str(payload.get("observed_official_hash") or "") != str(official_hash):
+        raise RuntimeError(
+            "external evidence Official FPL hash does not match final authority anchor"
+        )
+    if int(payload.get("target_gameweek", -1)) != int(target_gameweek):
+        raise RuntimeError(
+            "external evidence target gameweek does not match final authority anchor"
+        )
+    if int(payload.get("record_count", -1)) != len(records):
+        raise RuntimeError(
+            "external evidence manifest record count does not match evidence payload"
+        )
+    failures = payload.get("required_source_failures") or []
+    if required and failures:
+        raise RuntimeError(
+            "required external evidence source failures remain: "
+            + ", ".join(map(str, failures))
+        )
+    return payload
+
+
 def _target_gameweek(official, now):
     future = []
     for gameweek, value in official.deadlines.items():
@@ -256,11 +303,25 @@ def acquire_and_freeze(
         )
 
     def _evidence_stage():
-        evidence = _parse_evidence(workdir / "acquisition/evidence/hard.json")
+        records_path = workdir / config.evidence.records_path
+        manifest_path = workdir / config.evidence.manifest_path
+        if config.evidence.required and not records_path.exists():
+            raise RuntimeError("required external evidence record payload is missing")
+        evidence = _parse_evidence(records_path)
+        acquisition = _validate_evidence_acquisition(
+            manifest_path,
+            evidence,
+            required=config.evidence.required,
+            official_hash=official.source_hash,
+            target_gameweek=target,
+        )
         errors = validate_evidence(evidence, official, now=now)
-        return evidence, errors
+        return evidence, errors, acquisition
 
-    evidence, evidence_errors = _stage("evidence", _evidence_stage)
+    evidence, evidence_errors, evidence_acquisition = _stage(
+        "evidence",
+        _evidence_stage,
+    )
 
     def _freeze():
         builder = SnapshotBuilder()
@@ -285,6 +346,10 @@ def acquire_and_freeze(
         builder.add_json(
             "evidence_validation.json",
             {"errors": list(evidence_errors)},
+        )
+        builder.add_json(
+            "evidence_acquisition.json",
+            evidence_acquisition,
         )
 
         qualification_matrix = []
@@ -328,6 +393,7 @@ def acquire_and_freeze(
 
         builder.add_json("qualification_matrix.json", qualification_matrix)
         frozen_at = datetime.now(timezone.utc).isoformat()
+        evidence_complete = bool(evidence_acquisition.get("completed", False))
         builder.add_json(
             "run.json",
             {
@@ -354,6 +420,9 @@ def acquire_and_freeze(
                 "team_state_complete_for_transfers": (
                     team.state_complete_for_transfers if team else False
                 ),
+                "evidence_required": config.evidence.required,
+                "evidence_acquisition_complete": evidence_complete,
+                "evidence_record_count": len(evidence),
             },
         )
         builder.add_bytes("config.yaml", Path(config_path).read_bytes())
@@ -368,6 +437,8 @@ def acquire_and_freeze(
                 "official_final_hash": official.source_hash,
                 "scoring_rules_version": config.scoring_rules_version,
                 "team_state_mode": team_acquisition.mode,
+                "evidence_required": config.evidence.required,
+                "evidence_acquisition_complete": evidence_complete,
             },
         )
 
