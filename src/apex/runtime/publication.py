@@ -284,6 +284,53 @@ def _manager_state_mode(acquisition: dict) -> tuple[str, bool]:
     return mode, bool(credential_present)
 
 
+def _required_sha256(decision: dict, key: str) -> str:
+    value = str(decision.get(key) or "").lower()
+    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+        raise RuntimeError(f"DecisionBundle {key} is not a valid SHA-256 digest")
+    return value
+
+
+def _manager_actionability(acquisition: dict, decision: dict) -> dict:
+    mode, _ = _manager_state_mode(acquisition)
+    certification = decision.get("certification") or {}
+    engine_actionable = bool(certification.get("actionable"))
+    system = decision.get("system_decision") or {}
+    decision_mode = str(system.get("decision_mode") or "NO_DECISION")
+    state_complete = bool(acquisition.get("state_complete_for_transfers", False))
+
+    authenticated = mode == AUTHENTICATED_MODE
+    current_team_known = authenticated
+    lineup_actionable = bool(engine_actionable and current_team_known and system)
+    transfer_actionable = bool(
+        lineup_actionable
+        and state_complete
+        and decision_mode == "TRANSFER_HORIZON"
+    )
+    personalized_actionable = lineup_actionable
+
+    if transfer_actionable:
+        scope = "FULL_MANAGER"
+    elif lineup_actionable:
+        scope = "CURRENT_TEAM_ONLY"
+    elif mode == PUBLIC_MODE and engine_actionable and system:
+        scope = "PUBLIC_LAST_DEADLINE_CONDITIONAL"
+    else:
+        scope = "NONE"
+
+    return {
+        "schema_version": 1,
+        "manager_state_scope": scope,
+        "engine_actionable": engine_actionable,
+        "personalized_actionable": personalized_actionable,
+        "lineup_actionable": lineup_actionable,
+        "transfer_actionable": transfer_actionable,
+        "current_editable_team_verified": current_team_known,
+        "exact_transfer_state_verified": bool(current_team_known and state_complete),
+        "decision_mode": decision_mode,
+    }
+
+
 def _provider_forecast_archive(
     snapshot,
     output: Path,
@@ -371,15 +418,20 @@ def _canonical_forecast(snapshot, decision: dict, run: dict) -> dict:
         },
         "provider_versions": provider_versions,
         "scoring_rules_version": next(iter(scoring_rules), None),
-        "canonical_projection_sha256": decision.get(
-            "canonical_projection_sha256", ""
+        "canonical_projection_sha256": _required_sha256(
+            decision, "canonical_projection_hash"
         ),
         "official": _official_catalog(snapshot),
         "rows": rows,
     }
 
 
-def _governance(snapshot, decision: dict, run: dict) -> dict:
+def _governance(
+    snapshot,
+    decision: dict,
+    run: dict,
+    acquisition: dict,
+) -> dict:
     certification = decision.get("certification") or {}
     return {
         "schema_version": 1,
@@ -395,6 +447,7 @@ def _governance(snapshot, decision: dict, run: dict) -> dict:
             "reasons": certification.get("reasons") or [],
             "valid_until": certification.get("valid_until"),
         },
+        "manager_actionability": _manager_actionability(acquisition, decision),
         "max_contiguous_qualified_horizon": (
             decision.get("provider_diagnostics") or {}
         ).get("max_contiguous_horizon", 0),
@@ -420,11 +473,11 @@ def _public_identity(
         "code_sha": run["code_sha"],
         "config_sha": run["config_sha"],
         "snapshot_id": snapshot.snapshot_id,
-        "official_snapshot_sha256": decision.get(
-            "official_snapshot_sha256", ""
+        "official_snapshot_sha256": _required_sha256(
+            decision, "official_snapshot_hash"
         ),
-        "canonical_projection_sha256": decision.get(
-            "canonical_projection_sha256", ""
+        "canonical_projection_sha256": _required_sha256(
+            decision, "canonical_projection_hash"
         ),
         "serving_provider_by_horizon": canonical[
             "serving_provider_by_horizon"
@@ -510,7 +563,12 @@ def _private_attempt(
     reveal: dict,
 ) -> dict:
     transfer_plan = (
-        ((decision.get("provider_diagnostics") or {}).get("decision_optimisation") or {}).get("weeks")
+        (
+            (decision.get("provider_diagnostics") or {}).get(
+                "decision_optimisation"
+            )
+            or {}
+        ).get("weeks")
         or []
     )
     private_identity = {
@@ -594,7 +652,7 @@ def build_publication_materials(
         directory.mkdir(parents=True, exist_ok=True)
 
     canonical = _canonical_forecast(snapshot, decision, run)
-    governance = _governance(snapshot, decision, run)
+    governance = _governance(snapshot, decision, run, acquisition)
     evidence = {
         "schema_version": 1,
         "exposure_class": ExposureClass.PUBLIC_RESEARCH.value,
@@ -653,6 +711,7 @@ def build_publication_materials(
         "exposure_class": ExposureClass.PUBLIC_CANONICAL.value,
         "private_decision_commitment": commitment,
         "certification": governance["certification"],
+        "manager_actionability": governance["manager_actionability"],
     }
     public_attempt_path = write_json(
         public_dir / "public_attempt.json",
@@ -703,6 +762,7 @@ def build_publication_materials(
             "public_attempt_id": public_attempt_id,
             "public_asset_names": sorted(PUBLIC_RELEASE_ASSETS_V1),
             "private_store_required": bool(credential_present),
+            "manager_actionability": governance["manager_actionability"],
         },
     )
     diagnostics_files = {
