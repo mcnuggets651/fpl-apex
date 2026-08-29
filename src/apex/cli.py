@@ -130,7 +130,7 @@ def acquire(
         ),
     ),
     failure_output: Path = typer.Option(
-        Path("artifacts/v2/acquisition_failure.json"),
+        Path("artifacts/v2/diagnostics/acquisition_failure.json"),
         "--failure-output",
         help="Machine-readable fatal acquisition failure record.",
     ),
