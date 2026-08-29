@@ -377,6 +377,31 @@ def _official_fpl_records(
     return records
 
 
+def _claim_segments(text: str) -> tuple[str, ...]:
+    """Return conservative sentence/claim segments for player attribution.
+
+    A decisive phrase in one sentence must never be inherited by another player
+    merely because that player's name appears elsewhere in the same article or
+    feed summary. Semicolons and line breaks are also treated as claim boundaries
+    because football round-ups commonly join unrelated availability updates with
+    them.
+    """
+    segments = re.split(r"(?<=[.!?])\s+|[;\n]+", text)
+    return tuple(segment.strip() for segment in segments if segment.strip())
+
+
+def _attributable_text(text: str, matched_names: list[str]) -> str:
+    segments = [
+        segment
+        for segment in _claim_segments(text)
+        if any(
+            re.search(rf"(?<!\w){re.escape(name)}(?!\w)", segment, re.I)
+            for name in matched_names
+        )
+    ]
+    return " ".join(segments)
+
+
 def _external_records(
     *,
     source: EvidenceSource,
@@ -415,7 +440,13 @@ def _external_records(
                 continue
             if not any(len(alias_owners[name.casefold()]) == 1 for name in matched):
                 continue
-            strong = bool(STRONG_ABSENCE.search(text))
+            attributable = _attributable_text(text, matched)
+            if not attributable or not (
+                STRONG_ABSENCE.search(attributable)
+                or DECISION_RELEVANT.search(attributable)
+            ):
+                continue
+            strong = bool(STRONG_ABSENCE.search(attributable))
             effect = (
                 EvidenceEffect.HARD_EXCLUDE
                 if strong and source.tier in HARD_SOURCE_TIERS
@@ -424,7 +455,7 @@ def _external_records(
             expires = min(deadline, published + timedelta(days=7))
             if expires <= retrieved_at:
                 continue
-            excerpt = title if title else text
+            excerpt = attributable
             records.append(
                 _record(
                     element_id=element_id,
@@ -444,10 +475,11 @@ def _external_records(
                     excerpt=excerpt,
                     content_payload={
                         "title": title,
-                        "summary": summary[:500],
+                        "attributable_text": attributable[:500],
                         "link": link,
                         "published": published.isoformat(),
                         "source_tier": source.tier,
+                        "element_id": element_id,
                     },
                 )
             )
