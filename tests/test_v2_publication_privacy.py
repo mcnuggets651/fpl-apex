@@ -10,6 +10,7 @@ from apex.runtime.publication import (
     INTENT_FIELDS_V1,
     INTENT_RELEASE_ASSETS_V1,
     PUBLIC_RELEASE_ASSETS_V1,
+    _manager_state_mode,
     assert_exact_asset_set,
     make_commitment,
     validate_intent_payload,
@@ -61,6 +62,27 @@ def test_public_release_allowlist_has_exact_six_assets():
             "attestation.json",
         }
     )
+
+
+def test_pre_gw1_no_public_deadline_is_public_safe_not_private():
+    mode, credential_present = _manager_state_mode(
+        {
+            "mode": "NO_PUBLIC_DEADLINE",
+            "credential_present": False,
+        }
+    )
+    assert mode == "NO_PUBLIC_DEADLINE"
+    assert credential_present is False
+
+
+def test_pre_gw1_mode_rejects_any_claimed_owner_credential():
+    with pytest.raises(RuntimeError, match="cannot report owner credentials"):
+        _manager_state_mode(
+            {
+                "mode": "NO_PUBLIC_DEADLINE",
+                "credential_present": True,
+            }
+        )
 
 
 def test_owner_credentials_require_explicit_source_level_opt_in(monkeypatch):
