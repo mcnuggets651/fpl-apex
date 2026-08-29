@@ -79,6 +79,19 @@ jobs:
           }
           apex-v2 private-store-preflight
 
+      - name: Verify FPL owner credential before provider work
+        if: env.APEX_PRIVATE_MANAGER_ENABLED == '1'
+        id: fpl_auth
+        env:
+          FPL_SESSION_COOKIE: ${{ secrets.FPL_SESSION_COOKIE }}
+          FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/preflight_fpl_auth.py \
+            --config config/apex_v2.yaml \
+            --github-output "$GITHUB_OUTPUT"
+
       - name: Open immutable attempt intent
         id: intent
         env:
@@ -154,8 +167,8 @@ jobs:
         id: freeze
         env:
           APEX_ENABLE_PRIVATE_MANAGER_STATE: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && '1' || '0' }}
-          FPL_SESSION_COOKIE: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && secrets.FPL_SESSION_COOKIE || '' }}
-          FPL_X_API_AUTHORIZATION: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && secrets.FPL_X_API_AUTHORIZATION || '' }}
+          FPL_SESSION_COOKIE: ${{ steps.fpl_auth.outputs.use_cookie == '1' && secrets.FPL_SESSION_COOKIE || '' }}
+          FPL_X_API_AUTHORIZATION: ${{ steps.fpl_auth.outputs.use_token == '1' && secrets.FPL_X_API_AUTHORIZATION || '' }}
         shell: bash
         run: |
           set -euo pipefail
