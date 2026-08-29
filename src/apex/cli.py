@@ -36,7 +36,20 @@ def _private_store():
         raise typer.BadParameter(
             "private manager store must be a separate repository"
         )
-    return GitHubReleaseStore(repo, token)
+    store = GitHubReleaseStore(repo, token)
+    store.assert_repository_policy(require_private=True, require_immutable=True)
+    return store
+
+
+@app.command("private-store-preflight")
+def private_store_preflight():
+    """Verify the owner-private persistence boundary before using FPL credentials."""
+    store = _private_store()
+    policy = store.assert_repository_policy(
+        require_private=True,
+        require_immutable=True,
+    )
+    typer.echo(json.dumps(policy, sort_keys=True))
 
 
 @app.command()
