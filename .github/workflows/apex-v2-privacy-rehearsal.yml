@@ -35,11 +35,14 @@ jobs:
           tests/test_v2_workflow_privacy_contract.py
 
       - name: Run fake-credential end-to-end rehearsal
-        env:
-          APEX_PRIVACY_SENTINEL: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.token }}-SENTINEL
         shell: bash
         run: |
           set -euo pipefail
+          export APEX_PRIVACY_SENTINEL="$(python - <<'PY'
+          import secrets
+          print(secrets.token_urlsafe(48))
+          PY
+          )"
           python scripts/rehearse_v2_privacy_boundary.py
 
       - name: Upload only sanitized rehearsal diagnostics
