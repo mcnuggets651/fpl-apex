@@ -1,15 +1,18 @@
-# Default 2026/27 public news layer.
+# Default 2026/27 public evidence layer.
 # Official FPL status/chance fields remain stronger than every headline signal.
-# PremierLeague.com adds the official league / syndicated club-news channel;
-# BBC Sport and Sky Sports provide independent trusted-media cross-checks.
+# The Premier League source is required for a production evidence acquisition;
+# trusted-media sources are corroboration/audit only and may degrade independently.
 # Add direct official-club feeds here whenever a club publishes a stable feed.
 feeds:
   - name: Premier League News
     url: https://www.premierleague.com/en/news
     tier: official_league
+    required: true
   - name: BBC Sport Football
     url: https://feeds.bbci.co.uk/sport/football/rss.xml
     tier: trusted_media
+    required: false
   - name: Sky Sports Football
     url: https://www.skysports.com/rss/12040
     tier: trusted_media
+    required: false
