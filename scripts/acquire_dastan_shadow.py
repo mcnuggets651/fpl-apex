@@ -6,6 +6,7 @@ import math
 import os
 import shutil
 import subprocess
+import time
 import venv
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,8 +18,25 @@ from apex.runtime.config import CURRENT_SCORING_RULES_VERSION
 from apex.sources.official import fetch_official_snapshot
 
 
-def _run(command: list[str], *, env: dict[str, str] | None = None) -> None:
-    subprocess.run(command, check=True, env=env)
+def _run(
+    command: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    timeout_seconds: float | None = None,
+) -> None:
+    subprocess.run(
+        command,
+        check=True,
+        env=env,
+        timeout=timeout_seconds,
+    )
+
+
+def _remaining_seconds(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Dastan shadow acquisition exceeded its total time budget")
+    return remaining
 
 
 def _python_in_venv(venv_dir: Path) -> Path:
@@ -246,6 +264,14 @@ def acquire(args: argparse.Namespace) -> dict:
     preflight_path = artifacts / "dastan_identity_preflight.json"
     manifest_path = artifacts / "dastan_shadow_manifest.json"
     qualification_path = artifacts / "dastan_shadow_qualification.json"
+    deadline = time.monotonic() + float(args.total_timeout_seconds)
+
+    def run(command: list[str], *, env: dict[str, str] | None = None) -> None:
+        _run(
+            command,
+            env=env,
+            timeout_seconds=_remaining_seconds(deadline),
+        )
 
     pins = json.loads(
         (root / "upstreams.lock.json").read_text(encoding="utf-8")
@@ -262,7 +288,7 @@ def acquire(args: argparse.Namespace) -> dict:
     forecast_path.unlink(missing_ok=True)
     qualification_path.unlink(missing_ok=True)
 
-    _run(
+    run(
         [
             "git",
             "clone",
@@ -271,12 +297,13 @@ def acquire(args: argparse.Namespace) -> dict:
             str(worker),
         ]
     )
-    _run(["git", "-C", str(worker), "checkout", "--detach", commit])
+    run(["git", "-C", str(worker), "checkout", "--detach", commit])
 
+    _remaining_seconds(deadline)
     venv.EnvBuilder(with_pip=True, clear=True).create(venv_dir)
     provider_python = _python_in_venv(venv_dir)
-    _run([str(provider_python), "-m", "pip", "install", "-e", str(root)])
-    _run(
+    run([str(provider_python), "-m", "pip", "install", "-e", str(root)])
+    run(
         [
             str(provider_python),
             "-m",
@@ -289,8 +316,8 @@ def acquire(args: argparse.Namespace) -> dict:
 
     provider_env = os.environ.copy()
     provider_env["PYTHONPATH"] = str(worker)
-    _run([str(provider_python), "-m", "dastan.artifacts"], env=provider_env)
-    _run(
+    run([str(provider_python), "-m", "dastan.artifacts"], env=provider_env)
+    run(
         [
             str(provider_python),
             str(root / "scripts/dastan_identity_preflight.py"),
@@ -301,7 +328,7 @@ def acquire(args: argparse.Namespace) -> dict:
         ],
         env=provider_env,
     )
-    _run(
+    run(
         [
             str(provider_python),
             str(root / "scripts/run_dastan_shadow_worker.py"),
@@ -319,6 +346,7 @@ def acquire(args: argparse.Namespace) -> dict:
         env=provider_env,
     )
 
+    _remaining_seconds(deadline)
     report = _write_qualification_report(
         forecast_path=forecast_path,
         manifest_path=manifest_path,
@@ -342,7 +370,18 @@ def main() -> int:
     parser.add_argument("--worker-dir", default="workers/dastan")
     parser.add_argument("--venv-dir", default=".provider-envs/dastan")
     parser.add_argument("--max-age-hours", type=float, default=18.0)
+    parser.add_argument(
+        "--total-timeout-seconds",
+        type=float,
+        default=900.0,
+        help=(
+            "Hard wall-clock budget for the optional non-serving shadow. "
+            "Expiry fails Dastan without blocking the serving incumbent."
+        ),
+    )
     args = parser.parse_args()
+    if args.total_timeout_seconds <= 0:
+        parser.error("--total-timeout-seconds must be positive")
     acquire(args)
     return 0
 
