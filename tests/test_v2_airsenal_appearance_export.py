@@ -46,3 +46,33 @@ def test_minute_marginals_reject_invalid_model_samples(sample) -> None:
 def test_optional_csv_value_leaves_unmodelled_probability_blank() -> None:
     assert MODULE._csv_optional(None) == ""
     assert MODULE._csv_optional(0.75) == pytest.approx(0.75)
+
+
+def test_standalone_export_can_leave_marginals_blank_without_airsenal(
+    monkeypatch,
+) -> None:
+    def missing(*args, **kwargs):
+        raise ModuleNotFoundError("No module named 'airsenal'")
+
+    monkeypatch.setattr(MODULE, "_load_model_minute_marginals", missing)
+    monkeypatch.setenv("AIRSENAL_REQUIRE_MINUTE_MARGINALS", "0")
+    out = MODULE._load_export_minute_marginals({10}, [3], {(10, 3): 1})
+    assert out == {(10, 3): (None, None, None)}
+
+
+def test_production_export_fails_if_airsenal_marginals_are_unavailable(
+    monkeypatch,
+) -> None:
+    def missing(*args, **kwargs):
+        raise ModuleNotFoundError("No module named 'airsenal'")
+
+    monkeypatch.setattr(MODULE, "_load_model_minute_marginals", missing)
+    monkeypatch.setenv("AIRSENAL_REQUIRE_MINUTE_MARGINALS", "1")
+    with pytest.raises(RuntimeError, match="requires the pinned AIrsenal runtime"):
+        MODULE._load_export_minute_marginals({10}, [3], {(10, 3): 1})
+
+
+def test_invalid_minute_marginal_requirement_flag_is_rejected(monkeypatch) -> None:
+    monkeypatch.setenv("AIRSENAL_REQUIRE_MINUTE_MARGINALS", "yes")
+    with pytest.raises(ValueError, match="must be 0 or 1"):
+        MODULE._minute_marginals_required()
