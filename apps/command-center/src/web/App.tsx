@@ -107,7 +107,7 @@ function Home({ data }: { data: CommandCenterClassicV1 }) {
         <Metric
           label="Projected XI"
           value={score === null ? "—" : `${score.toFixed(1)} pts`}
-          sub="H1 serving xP + captain, before autosub contingency"
+          sub="Raw H1 serving xP + captain; execution EV also values autosub and vice fallback"
         />
         <Metric
           label="Free transfers"
@@ -116,9 +116,9 @@ function Home({ data }: { data: CommandCenterClassicV1 }) {
         />
         <Metric label="Bank" value={team ? price(team.bank_tenths) : "—"} />
         <Metric
-          label="Qualified horizon"
-          value={`H${data.public_attempt.max_contiguous_qualified_horizon}`}
-          sub="No plan is shown beyond this"
+          label="Decision horizon"
+          value={`H${data.governance.contingency_qualified_horizon}`}
+          sub={`Serving forecast remains available through H${data.public_attempt.max_contiguous_qualified_horizon}`}
         />
       </section>
 
@@ -345,15 +345,18 @@ function Players({ data }: { data: CommandCenterClassicV1 }) {
 }
 
 function Plan({ data }: { data: CommandCenterClassicV1 }) {
-  const plan = visiblePlan(data.manager?.transfer_plan ?? [], data.public_attempt.max_contiguous_qualified_horizon);
+  const plan = visiblePlan(
+    data.manager?.transfer_plan ?? [],
+    data.governance.contingency_qualified_horizon,
+  );
   const players = playerMap(data);
   return (
     <main className="page-stack">
-      <section className="section-heading"><div><p className="eyebrow">Receding-horizon optimizer</p><h1>Plan</h1></div><span className="muted">Certified only through H{data.public_attempt.max_contiguous_qualified_horizon}</span></section>
+      <section className="section-heading"><div><p className="eyebrow">Receding-horizon optimizer</p><h1>Plan</h1></div><span className="muted">Exact contingency mechanics certified through H{data.governance.contingency_qualified_horizon}</span></section>
       {!data.manager ? (
         <section className="panel empty-large"><h2>Private plan unavailable</h2><p>A personalized plan is never inferred from the public squad snapshot.</p></section>
       ) : plan.length === 0 ? (
-        <section className="panel empty-large"><h2>No multi-gameweek plan published</h2><p>The optimizer withheld a transfer horizon or only H1 is qualified. Apex will not manufacture future moves.</p></section>
+        <section className="panel empty-large"><h2>No multi-gameweek plan published</h2><p>The optimizer withheld a transfer horizon or only H1 is contingency-qualified. Apex will not manufacture future moves.</p></section>
       ) : (
         <section className="timeline">
           {plan.map((week) => (
