@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+import importlib.util
 import subprocess
+from pathlib import Path
 
 import pytest
 
-import scripts.acquire_dastan_shadow as dastan_shadow
+
+def _load_dastan_shadow_module():
+    path = Path(__file__).resolve().parents[1] / "scripts" / "acquire_dastan_shadow.py"
+    spec = importlib.util.spec_from_file_location("apex_test_acquire_dastan_shadow", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+dastan_shadow = _load_dastan_shadow_module()
 
 
 def test_dastan_subprocess_receives_and_enforces_timeout(monkeypatch):
