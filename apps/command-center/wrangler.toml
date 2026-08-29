@@ -1,0 +1,18 @@
+name = "fpl-apex-command-center"
+main = "src/worker/index.ts"
+compatibility_date = "2026-08-28"
+workers_dev = false
+
+[vars]
+PUBLIC_REPOSITORY = "mcnuggets651/fpl-apex"
+SEASON = "2026-2027"
+
+# Configure these in the Cloudflare environment, not in git:
+# PRIVATE_REPOSITORY               = dedicated private Apex manager repo
+# ACCESS_TEAM_DOMAIN               = <team>.cloudflareaccess.com
+# ACCESS_AUD                       = Cloudflare Access application audience
+# ALLOWED_ORIGIN                   = deployed Command Center origin
+#
+# Secrets (wrangler secret / Cloudflare dashboard only):
+# PRIVATE_GITHUB_TOKEN             = read-only PAT scoped only to PRIVATE_REPOSITORY
+# PUBLIC_GITHUB_TOKEN              = optional public-repo read token for rate limits
