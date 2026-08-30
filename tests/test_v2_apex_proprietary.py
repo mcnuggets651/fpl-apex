@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 from apex.domain.models import (
     OfficialFixture,
@@ -34,6 +38,15 @@ def _official() -> OfficialSnapshot:
             4: "2026-09-12T12:30:00Z",
         },
     )
+
+
+def _worker_module():
+    script = Path(__file__).resolve().parents[1] / "scripts/acquire_apex_proprietary_shadow.py"
+    spec = importlib.util.spec_from_file_location("apex_proprietary_worker", script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_apex_proprietary_adapter_is_a_separate_v2_surface(tmp_path):
@@ -68,12 +81,7 @@ def test_apex_proprietary_adapter_is_a_separate_v2_surface(tmp_path):
 
 
 def test_raw_export_ignores_legacy_blended_columns():
-    script = Path(__file__).resolve().parents[1] / "scripts/acquire_apex_proprietary_shadow.py"
-    spec = importlib.util.spec_from_file_location("apex_proprietary_worker", script)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
+    module = _worker_module()
     projections = pd.DataFrame(
         [
             {"player_id": 1, "gw": 3, "apex_xp": 5.0, "risk_adjusted_xp": 99.0},
@@ -111,3 +119,47 @@ def test_raw_export_ignores_legacy_blended_columns():
     assert exported["expected_points"].tolist() == [5.0, 4.0, 3.0, 6.0]
     assert 99.0 not in set(exported["expected_points"])
     assert set(exported["model_contract"]) == {"RAW_APEX_XP_ONLY_V1"}
+
+
+def test_runtime_core_lock_pins_resolved_commit_without_mutating_repo_lock(tmp_path):
+    module = _worker_module()
+    base = tmp_path / "base.lock.json"
+    original = {
+        "schema_version": 1,
+        "sources": {
+            "fpl_core_insights": {
+                "repository": module.CORE_REPOSITORY,
+                "commit": "a" * 40,
+                "committed_at": "2026-08-18T00:00:00+00:00",
+                "required_for_full_apex": True,
+            },
+            "airsenal": {"commit": "b" * 40},
+        },
+    }
+    base.write_text(json.dumps(original), encoding="utf-8")
+    runtime = module._runtime_core_lock(
+        base,
+        tmp_path / "runtime.lock.json",
+        resolved={
+            "sha": "c" * 40,
+            "committed_at": "2026-08-30T01:30:01+00:00",
+            "age_hours": 10.5,
+        },
+        now=datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc),
+    )
+    assert json.loads(base.read_text(encoding="utf-8")) == original
+    payload = json.loads(runtime.read_text(encoding="utf-8"))
+    core = payload["sources"]["fpl_core_insights"]
+    assert core["commit"] == "c" * 40
+    assert core["required_for_full_apex"] is False
+    assert payload["sources"]["airsenal"]["commit"] == "b" * 40
+
+
+def test_internal_source_gate_rejects_degraded_challenger():
+    module = _worker_module()
+    sources = [
+        SimpleNamespace(name=name, ok=(name != "fpl_core_previous_season"), detail=name, version="v")
+        for name in module.REQUIRED_INTERNAL_SOURCES
+    ]
+    with pytest.raises(RuntimeError, match="fpl_core_previous_season"):
+        module._assert_internal_source_health(sources)
