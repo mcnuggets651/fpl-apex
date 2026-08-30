@@ -46,6 +46,39 @@ def _private_store(*, verify_policy: bool = True):
     return store
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write a small machine handoff atomically on the same filesystem."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(path)
+
+
+def _write_acquisition_failure(
+    *,
+    output: Path,
+    run_id: str,
+    code_sha: str,
+    stage: str,
+    cause_type: str,
+    cause_message: str,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "code_sha": code_sha,
+        "failed_at": datetime.now(timezone.utc).isoformat(),
+        "stage": stage,
+        "cause_type": cause_type,
+        "cause_message": cause_message,
+    }
+    _atomic_write_text(
+        output,
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+    )
+    return payload
+
+
 @app.command("private-store-preflight")
 def private_store_preflight():
     """Verify the owner-private persistence boundary before using FPL credentials."""
@@ -134,8 +167,31 @@ def acquire(
         "--failure-output",
         help="Machine-readable fatal acquisition failure record.",
     ),
+    snapshot_output: Path | None = typer.Option(
+        None,
+        "--snapshot-output",
+        help=(
+            "Optional machine-readable handoff file containing exactly one "
+            "successful frozen snapshot path. Stdout remains a human log channel."
+        ),
+    ),
 ):
-    from apex.runtime.acquire import AcquisitionStageError, acquire_and_freeze
+    try:
+        from apex.runtime.acquire import AcquisitionStageError, acquire_and_freeze
+    except Exception as exc:
+        payload = _write_acquisition_failure(
+            output=failure_output,
+            run_id=run_id,
+            code_sha=code_sha,
+            stage="runtime_import",
+            cause_type=type(exc).__name__,
+            cause_message=(
+                "Apex acquisition runtime could not be loaded; exception text is "
+                "intentionally omitted from public-safe diagnostics."
+            ),
+        )
+        typer.echo(json.dumps(payload, sort_keys=True), err=True)
+        raise typer.Exit(1) from exc
 
     try:
         snap = acquire_and_freeze(
@@ -147,21 +203,37 @@ def acquire(
             expected_official_hash=expected_official_hash,
         )
     except AcquisitionStageError as exc:
-        payload = {
-            "schema_version": 1,
-            "run_id": run_id,
-            "code_sha": code_sha,
-            "failed_at": datetime.now(timezone.utc).isoformat(),
-            **exc.as_dict(),
-        }
-        failure_output.parent.mkdir(parents=True, exist_ok=True)
-        failure_output.write_text(
-            json.dumps(payload, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        details = exc.as_dict()
+        payload = _write_acquisition_failure(
+            output=failure_output,
+            run_id=run_id,
+            code_sha=code_sha,
+            stage=str(details["stage"]),
+            cause_type=str(details["cause_type"]),
+            cause_message=str(details["cause_message"]),
         )
         typer.echo(json.dumps(payload, sort_keys=True), err=True)
         raise typer.Exit(1) from exc
-    typer.echo(str(snap.root))
+    except Exception as exc:
+        payload = _write_acquisition_failure(
+            output=failure_output,
+            run_id=run_id,
+            code_sha=code_sha,
+            stage="acquire_unclassified",
+            cause_type=type(exc).__name__,
+            cause_message=(
+                "Unclassified acquisition failure; exception text is intentionally "
+                "omitted from public-safe diagnostics. Inspect the authenticated "
+                "runner log for the private exception detail."
+            ),
+        )
+        typer.echo(json.dumps(payload, sort_keys=True), err=True)
+        raise typer.Exit(1) from exc
+
+    snapshot_path = str(snap.root)
+    if snapshot_output is not None:
+        _atomic_write_text(snapshot_output, snapshot_path + "\n")
+    typer.echo(snapshot_path)
 
 
 @app.command()
