@@ -15,6 +15,7 @@ from apex.domain.models import (
     dataclass_to_dict,
 )
 from apex.forecast.adapters.airsenal import load_airsenal
+from apex.forecast.adapters.apex_proprietary import load_apex_proprietary
 from apex.forecast.adapters.dastan import load_dastan
 from apex.forecast.adapters.openfpl import load_openfpl
 from apex.forecast.adapters.pitchside import load_pitchside
@@ -290,6 +291,12 @@ def acquire_and_freeze(
                         target_gameweek=target,
                         scoring_rules_version=config.scoring_rules_version,
                         max_horizon=max(provider_config.requested_horizons),
+                    )
+                elif provider_config.provider_id == "apex_proprietary":
+                    surface = load_apex_proprietary(
+                        path,
+                        official=official,
+                        target_gameweek=target,
                     )
                 elif provider_config.provider_id == "openfpl":
                     surface = load_openfpl(
