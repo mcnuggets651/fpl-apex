@@ -493,6 +493,7 @@ def evaluate_completed_attempts(
             "actual_points": actual,
             "actual_minutes": minutes,
         }
+        certification = public_attempt.get("certification") or {}
         metrics_payload = {
             "schema_version": 2,
             "season": season,
@@ -500,6 +501,8 @@ def evaluate_completed_attempts(
             "run_id": run_id,
             "public_attempt_id": public_attempt["public_attempt_id"],
             "frozen_at": public_attempt.get("frozen_at"),
+            "valid_until": certification.get("valid_until"),
+            "certification_actionable": bool(certification.get("actionable")),
             "champion_provider_id": champion_provider_id,
             "providers": metrics,
             "paired_vs_champion": paired,
