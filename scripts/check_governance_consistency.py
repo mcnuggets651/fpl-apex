@@ -22,6 +22,9 @@ FINAL_PROMOTION_ENTRYPOINTS = (
 )
 ACTIVE_WORKFLOWS = {
     "airsenal.yml",
+    "apex-v2-daily-evaluation.yml",
+    "apex-v2-daily-production.yml",
+    "apex-v2-ops-contract.yml",
     "apex.yml",
     "gw1-final-2026.yml",
     "joint-path-promotion-audit.yml",

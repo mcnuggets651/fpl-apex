@@ -1,12 +1,8 @@
+# RETIRED: manual-only legacy workflow. Apex V2 resolves/freeze-checks Core at acquisition time.
 name: Refresh FPL Core data pin
 
 on:
   workflow_dispatch:
-  schedule:
-    # FPL Core documents two daily data refreshes. Resolve its moving data branch
-    # shortly before each six-hour Apex production run so the live data stays
-    # current while every Apex run still uses one immutable, auditable commit.
-    - cron: "3 */6 * * *"
 
 permissions:
   contents: write

@@ -1,9 +1,8 @@
+# RETIRED: manual-only legacy workflow. Apex V2 owns scheduled AIrsenal generation.
 name: AIrsenal forecast worker
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "23 4 * * *"
 
 permissions:
   contents: write

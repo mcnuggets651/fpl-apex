@@ -1,11 +1,8 @@
+# RETIRED: manual-only legacy workflow. Apex V2 is the sole scheduled publisher.
 name: Apex Unified
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "47 */6 * * *"
-  push:
-    branches: [main]
 
 permissions:
   contents: write

@@ -1,0 +1,218 @@
+name: Apex V2 Ops Contract
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/apex-v2-daily-production.yml"
+      - ".github/workflows/apex-v2-daily-evaluation.yml"
+      - ".github/workflows/apex-v2-ops-contract.yml"
+      - ".github/workflows/pinnacle.yml"
+      - ".github/workflows/airsenal.yml"
+      - ".github/workflows/refresh-core-pin.yml"
+      - "scripts/check_governance_consistency.py"
+      - "docs/APEX_V2_DAILY_OPERATIONS.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-v2-ops-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert operations-only change surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          python - <<'PY'
+          import subprocess
+
+          allowed = {
+              ".github/workflows/apex-v2-daily-production.yml",
+              ".github/workflows/apex-v2-daily-evaluation.yml",
+              ".github/workflows/apex-v2-ops-contract.yml",
+              ".github/workflows/pinnacle.yml",
+              ".github/workflows/airsenal.yml",
+              ".github/workflows/refresh-core-pin.yml",
+              "scripts/check_governance_consistency.py",
+              "docs/APEX_V2_DAILY_OPERATIONS.md",
+          }
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "origin/main...HEAD"],
+                  text=True,
+              ).splitlines()
+          )
+          unexpected = sorted(changed - allowed)
+          if unexpected:
+              raise SystemExit(f"ops PR touched non-operational paths: {unexpected}")
+          if not changed:
+              raise SystemExit("ops PR has no changes")
+
+          governance_diff = subprocess.check_output(
+              [
+                  "git",
+                  "diff",
+                  "--unified=0",
+                  "origin/main...HEAD",
+                  "--",
+                  "scripts/check_governance_consistency.py",
+              ],
+              text=True,
+          )
+          added = {
+              line[1:].strip()
+              for line in governance_diff.splitlines()
+              if line.startswith("+") and not line.startswith("+++")
+          }
+          removed = [
+              line
+              for line in governance_diff.splitlines()
+              if line.startswith("-") and not line.startswith("---")
+          ]
+          expected_added = {
+              '"apex-v2-daily-production.yml",',
+              '"apex-v2-daily-evaluation.yml",',
+              '"apex-v2-ops-contract.yml",',
+          }
+          if added != expected_added or removed:
+              raise SystemExit(
+                  "governance script change must be exactly the three V2 workflow "
+                  f"inventory additions; added={sorted(added)} removed={removed}"
+              )
+          PY
+
+      - name: Assert frozen production contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          frozen = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+          path = Path(".github/workflows/apex-v2-daily-production.yml")
+          text = path.read_text(encoding="utf-8")
+          required = [
+              frozen,
+              'cron: "17 4 * * *"',
+              "ref: $" + "{{ env.APEX_CODE_SHA }}",
+              "apex-v2 private-store-preflight",
+              "scripts/preflight_fpl_auth.py",
+              "apex-v2 official-hash",
+              "scripts/acquire_dastan_shadow.py",
+              "--snapshot-output \"$SNAPSHOT_FILE\"",
+              'APEX_ALLOW_NETWORK_DURING_SOLVE: "0"',
+              "scripts/check_v2_architecture.py",
+              "apex-v2 solve",
+              "apex-v2 publish",
+              "artifacts/v2/diagnostics/",
+          ]
+          missing = [needle for needle in required if needle not in text]
+          if missing:
+              raise SystemExit(f"daily production contract missing: {missing}")
+          forbidden = ["pull_request:", "github.sha"]
+          present = [needle for needle in forbidden if needle in text]
+          if present:
+              raise SystemExit(f"daily production must remain frozen-SHA operational only: {present}")
+          PY
+
+      - name: Assert evaluation and single-publisher contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          frozen = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+          text = Path(".github/workflows/apex-v2-daily-evaluation.yml").read_text(encoding="utf-8")
+          required = [
+              frozen,
+              'cron: "41 6 * * *"',
+              "ref: $" + "{{ env.FROZEN_APEX_SHA }}",
+              "apex-v2 audit-attempts --prefix apex-v2",
+              "apex-v2 private-store-preflight",
+              "apex-v2 evaluate-completed",
+              "--code-sha \"$FROZEN_APEX_SHA\"",
+              "apex-v2 tournament-standings",
+          ]
+          missing = [needle for needle in required if needle not in text]
+          if missing:
+              raise SystemExit(f"daily evaluation contract missing: {missing}")
+
+          legacy = [
+              Path(".github/workflows/pinnacle.yml"),
+              Path(".github/workflows/airsenal.yml"),
+              Path(".github/workflows/refresh-core-pin.yml"),
+          ]
+          for path in legacy:
+              if not path.is_file():
+                  raise SystemExit(f"legacy compatibility workflow missing: {path}")
+              body = path.read_text(encoding="utf-8")
+              if "workflow_dispatch:" not in body:
+                  raise SystemExit(f"legacy workflow is not manually invokable: {path}")
+              if "schedule:" in body or "cron:" in body:
+                  raise SystemExit(f"legacy workflow still has an automatic schedule: {path}")
+              if path.name == "pinnacle.yml" and "\n  push:" in body:
+                  raise SystemExit("legacy Apex Unified still has an automatic push trigger")
+              first = body.splitlines()[0] if body.splitlines() else ""
+              if "RETIRED: manual-only legacy workflow" not in first:
+                  raise SystemExit(f"legacy retirement marker missing: {path}")
+
+          governance = Path("scripts/check_governance_consistency.py").read_text(encoding="utf-8")
+          for name in (
+              "apex-v2-daily-production.yml",
+              "apex-v2-daily-evaluation.yml",
+              "apex-v2-ops-contract.yml",
+          ):
+              if f'"{name}"' not in governance:
+                  raise SystemExit(f"governance inventory does not register {name}")
+          PY
+
+  readiness:
+    needs: contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pin resolves to certified V2 implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$FROZEN_APEX_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$FROZEN_APEX_SHA"
+          git show "$FROZEN_APEX_SHA:.github/workflows/apex-v2-production.yml" | grep -F -- '--snapshot-output'
+          git show "$FROZEN_APEX_SHA:.github/workflows/apex-v2-production.yml" | grep -F -- 'APEX_ALLOW_NETWORK_DURING_SOLVE'
+          git show "$FROZEN_APEX_SHA:.github/workflows/apex-v2-production.yml" | grep -F -- 'apex-v2 publish'
+          git show "$FROZEN_APEX_SHA:.github/workflows/apex-v2-evaluation.yml" | grep -F -- 'apex-v2 evaluate-completed'
+          git show "$FROZEN_APEX_SHA:.github/workflows/apex-v2-evaluation.yml" | grep -F -- 'apex-v2 tournament-standings'
+
+      - name: Prove frozen engine source is untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if git diff --name-only origin/main...HEAD -- src config tests | grep -q .; then
+            echo "Operations cutover modified frozen-engine source/config/test paths." >&2
+            git diff --name-only origin/main...HEAD -- src config tests >&2
+            exit 1
+          fi
+          unexpected_scripts="$(git diff --name-only origin/main...HEAD -- scripts | grep -v '^scripts/check_governance_consistency.py$' || true)"
+          if [ -n "$unexpected_scripts" ]; then
+            echo "Operations cutover modified an unexpected script path." >&2
+            printf '%s\n' "$unexpected_scripts" >&2
+            exit 1
+          fi
