@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from apex_fpl.config import load_settings
 from apex_fpl.services.draft import (
     DraftAPIError,
     DraftFPLClient,
@@ -32,15 +33,15 @@ class FakeSession:
         return FakeResponse(self.payloads[url])
 
 
-def test_snapshot_and_availability_contract():
+def test_snapshot_and_availability_contract_supports_entry_id_schema():
     base = "https://draft.example/api"
     session = FakeSession(
         {
             f"{base}/league/123/details": {
                 "league": {"name": "Apex Draft"},
                 "league_entries": [
-                    {"id": 9, "entry_name": "mcnuggets"},
-                    {"id": 10, "entry_name": "rival"},
+                    {"id": 900, "entry_id": 9, "entry_name": "mcnuggets"},
+                    {"id": 1000, "entry_id": 10, "entry_name": "rival"},
                 ],
             },
             f"{base}/league/123/element-status": [
@@ -58,11 +59,30 @@ def test_snapshot_and_availability_contract():
     assert snapshot.available_element_ids == (1,)
     assert snapshot.locked_element_ids == (3,)
     assert snapshot.owner_by_element() == {2: 9}
+    assert snapshot.owner_name_lookup()[9] == "mcnuggets"
+    assert snapshot.owner_name_lookup()[900] == "mcnuggets"
     assert snapshot.resolve_entry_id("MCNUGGETS") == 9
     assert session.calls == [
         (f"{base}/league/123/details", 3.0),
         (f"{base}/league/123/element-status", 3.0),
     ]
+
+
+def test_snapshot_falls_back_when_details_only_has_id():
+    base = "https://draft.example/api"
+    session = FakeSession(
+        {
+            f"{base}/league/123/details": {
+                "league": {"name": "Apex Draft"},
+                "league_entries": [{"id": 9, "entry_name": "mcnuggets"}],
+            },
+            f"{base}/league/123/element-status": [],
+        }
+    )
+    snapshot = DraftFPLClient(session=session, base_url=base).snapshot(123)
+
+    assert snapshot.resolve_entry_id("mcnuggets") == 9
+    assert snapshot.entries[0].transaction_entry_id == 9
 
 
 def test_resolve_entry_id_fails_closed_for_unknown_name():
@@ -81,7 +101,7 @@ def test_build_draft_pool_keeps_draft_ids_separate_and_maps_owner():
     snapshot = DraftLeagueSnapshot(
         league_id=123,
         league_name="Apex Draft",
-        entries=(DraftLeagueEntry(9, "mcnuggets"),),
+        entries=(DraftLeagueEntry(900, "mcnuggets", team_entry_id=9),),
         element_status=(
             {"element": 101, "status": "a", "owner": None},
             {"element": 202, "status": "o", "owner": 9},
@@ -126,3 +146,26 @@ def test_build_draft_pool_keeps_draft_ids_separate_and_maps_owner():
     assert rows[1]["draft_element_id"] == 202
     assert rows[1]["owner_entry_id"] == 9
     assert rows[1]["owner_entry_name"] == "mcnuggets"
+
+
+def test_load_settings_reads_draft_identity(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cfg = tmp_path / "apex.yaml"
+    cfg.write_text("", encoding="utf-8")
+    monkeypatch.setenv("FPL_DRAFT_LEAGUE_ID", "12345")
+    monkeypatch.setenv("FPL_DRAFT_ENTRY_NAME", "mcnuggets")
+
+    settings = load_settings(cfg)
+
+    assert settings.fpl_draft_league_id == 12345
+    assert settings.fpl_draft_entry_name == "mcnuggets"
+
+
+def test_load_settings_rejects_invalid_draft_league_id(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cfg = tmp_path / "apex.yaml"
+    cfg.write_text("", encoding="utf-8")
+    monkeypatch.setenv("FPL_DRAFT_LEAGUE_ID", "0")
+
+    with pytest.raises(ValueError, match="FPL Draft league ID must be a positive integer"):
+        load_settings(cfg)
