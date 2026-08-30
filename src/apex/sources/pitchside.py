@@ -71,6 +71,11 @@ def acquire_pitchside_shadow(
     raw_meta, meta = _get_json(http, f"{base}/meta.json")
     raw_xp, xp = _get_json(http, f"{base}/xp.json")
     raw_players, players = _get_json(http, f"{base}/players.json")
+    raw_meta_after, meta_after = _get_json(http, f"{base}/meta.json")
+    if raw_meta_after != raw_meta or meta_after != meta:
+        raise RuntimeError(
+            "PITCHSIDE public bundle changed during acquisition; discard and retry"
+        )
 
     if not isinstance(meta, dict):
         raise RuntimeError("PITCHSIDE meta.json must be an object")
