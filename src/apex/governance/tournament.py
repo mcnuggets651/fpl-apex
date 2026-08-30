@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from itertools import combinations
 from statistics import median
 from typing import Iterable
 
@@ -84,6 +85,41 @@ def independent_challenger_consensus(
         return None
     family_values = [float(median(values)) for values in families.values()]
     return float(median(family_values))
+
+
+def paired_error_summaries(
+    predictions: dict[str, dict[int, float]],
+    *,
+    decision_surface: frozenset[int],
+    actual: dict[int, float],
+) -> dict[str, dict]:
+    """Return aggregate all-vs-all errors on identical player observations.
+
+    Only aggregate sums/counts leave this function. Persisting every provider
+    pair prospectively means a future champion can still be compared over the
+    expanding season without regenerating historical forecasts or publishing
+    raw third-party rows.
+    """
+
+    required = frozenset(int(pid) for pid in decision_surface if int(pid) in actual)
+    output: dict[str, dict] = {}
+    for provider_a, provider_b in combinations(sorted(predictions), 2):
+        rows_a = predictions[provider_a]
+        rows_b = predictions[provider_b]
+        overlap = sorted(required & rows_a.keys() & rows_b.keys())
+        error_a = sum(abs(float(rows_a[pid]) - float(actual[pid])) for pid in overlap)
+        error_b = sum(abs(float(rows_b[pid]) - float(actual[pid])) for pid in overlap)
+        key = f"{provider_a}::{provider_b}"
+        output[key] = {
+            "provider_a": provider_a,
+            "provider_b": provider_b,
+            "paired_rows": len(overlap),
+            "provider_a_absolute_error_sum": float(error_a),
+            "provider_b_absolute_error_sum": float(error_b),
+            "provider_a_mae": error_a / len(overlap) if overlap else None,
+            "provider_b_mae": error_b / len(overlap) if overlap else None,
+        }
+    return output
 
 
 def _h1_rows(surface: dict, gameweek: int) -> list[dict]:
