@@ -3,6 +3,11 @@ horizon: 8
 budget: 100.0
 max_per_team: 3
 fpl_entry_id: 63984
+# FPL Draft support is read-only and deliberately separate from Classic-FPL
+# production. Persist the numeric league ID here once resolved from the Draft
+# league/settings page or official Draft API request path.
+fpl_draft_league_id:
+fpl_draft_entry_name: "mcnuggets"
 # Pre-GW1 prior policy across the three production experts that actually exist.
 # These preserve the prior 24:46:20 relative weights after removing the dormant
 # 10% market slot, so the change is semantic/auditable rather than a retune to a
