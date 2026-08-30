@@ -50,7 +50,7 @@ def _configured_news_sources(raw: dict[str, Any]) -> list[dict[str, str]]:
     return sources
 
 
-def _optional_int(value: Any) -> int | None:
+def _optional_int(value: Any, *, label: str = "FPL entry ID") -> int | None:
     if value is None:
         return None
     text = str(value).strip()
@@ -58,7 +58,7 @@ def _optional_int(value: Any) -> int | None:
         return None
     parsed = int(text)
     if parsed <= 0:
-        raise ValueError("FPL entry ID must be a positive integer")
+        raise ValueError(f"{label} must be a positive integer")
     return parsed
 
 
@@ -105,6 +105,8 @@ class Settings:
     news_feeds: list[str] = field(default_factory=list)
     news_sources: list[dict[str, str]] = field(default_factory=list)
     fpl_entry_id: int | None = None
+    fpl_draft_league_id: int | None = None
+    fpl_draft_entry_name: str = "mcnuggets"
     current_squad_path: Path = Path("data/manual/current_squad.csv")
     team_state_path: Path = Path("data/manual/team_state.yaml")
     tactical_roles_path: Path = Path("data/manual/tactical_roles.csv")
@@ -182,8 +184,22 @@ def load_settings(path: str | Path = "config/apex.yaml") -> Settings:
         news_feeds=[row["url"] for row in news_sources],
         news_sources=news_sources,
         fpl_entry_id=_optional_int(
-            os.getenv("FPL_ENTRY_ID", raw.get("fpl_entry_id", default.fpl_entry_id))
+            os.getenv("FPL_ENTRY_ID", raw.get("fpl_entry_id", default.fpl_entry_id)),
+            label="FPL entry ID",
         ),
+        fpl_draft_league_id=_optional_int(
+            os.getenv(
+                "FPL_DRAFT_LEAGUE_ID",
+                raw.get("fpl_draft_league_id", default.fpl_draft_league_id),
+            ),
+            label="FPL Draft league ID",
+        ),
+        fpl_draft_entry_name=str(
+            os.getenv(
+                "FPL_DRAFT_ENTRY_NAME",
+                raw.get("fpl_draft_entry_name", default.fpl_draft_entry_name),
+            )
+        ).strip(),
         current_squad_path=Path(
             os.getenv("APEX_CURRENT_SQUAD", "data/manual/current_squad.csv")
         ),
