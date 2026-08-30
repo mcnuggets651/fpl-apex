@@ -92,7 +92,8 @@ Workflow: `.github/workflows/apex-v2-ops-contract.yml`
 
 The operations PR is rejected if it:
 
-- modifies `src/`, `config/`, `scripts/` or `tests/`;
+- modifies `src/`, `config/`, `tests/`, or any `scripts/` path other than the machine-enforced workflow inventory at `scripts/check_governance_consistency.py`;
+- changes that governance script for anything beyond registering the operations workflow surface;
 - changes or removes the frozen SHA pin accidentally;
 - removes the daily production/evaluation schedules;
 - stops using the atomic snapshot-output handoff;
@@ -101,7 +102,7 @@ The operations PR is rejected if it:
 - removes a legacy compatibility workflow or restores any legacy automatic `schedule`/`push` trigger;
 - points the scheduler at a SHA that does not contain the certified V2 production/evaluation contracts.
 
-The point is to make operational scheduling changeable without silently turning it into a second core-engineering surface.
+The point is to make operational scheduling changeable without silently turning it into a second core-engineering surface. The governance inventory update is required because the repository already treats the executable workflow set as a machine-enforced contract; adding real default-branch workflows without registering them would correctly fail CI.
 
 ## Updating the frozen pin
 
