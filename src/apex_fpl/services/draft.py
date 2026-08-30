@@ -14,10 +14,24 @@ class DraftAPIError(RuntimeError):
 
 @dataclass(frozen=True)
 class DraftLeagueEntry:
-    entry_id: int
+    league_entry_id: int
     entry_name: str
+    team_entry_id: int | None = None
     player_first_name: str = ""
     player_last_name: str = ""
+
+    @property
+    def transaction_entry_id(self) -> int:
+        """Return the team entry ID used by entry-specific Draft endpoints."""
+        return self.team_entry_id or self.league_entry_id
+
+    @property
+    def owner_keys(self) -> tuple[int, ...]:
+        """IDs that may be referenced by element-status.owner across API versions."""
+        values = [self.league_entry_id]
+        if self.team_entry_id is not None and self.team_entry_id not in values:
+            values.append(self.team_entry_id)
+        return tuple(values)
 
 
 @dataclass(frozen=True)
@@ -53,10 +67,17 @@ class DraftLeagueSnapshot:
             owners[int(element)] = int(owner)
         return owners
 
+    def owner_name_lookup(self) -> dict[int, str]:
+        lookup: dict[int, str] = {}
+        for entry in self.entries:
+            for owner_key in entry.owner_keys:
+                lookup[owner_key] = entry.entry_name
+        return lookup
+
     def resolve_entry_id(self, entry_name: str) -> int:
         wanted = entry_name.strip().casefold()
         matches = [
-            entry.entry_id
+            entry.transaction_entry_id
             for entry in self.entries
             if entry.entry_name.strip().casefold() == wanted
         ]
@@ -118,20 +139,30 @@ class DraftFPLClient:
         details = self.league_details(league_id)
         league = details.get("league") or {}
         raw_entries = details.get("league_entries") or []
-        entries = tuple(
-            DraftLeagueEntry(
-                entry_id=int(row["id"]),
-                entry_name=str(row.get("entry_name") or ""),
-                player_first_name=str(row.get("player_first_name") or ""),
-                player_last_name=str(row.get("player_last_name") or ""),
+        entries: list[DraftLeagueEntry] = []
+        for row in raw_entries:
+            league_entry_raw = row.get("id")
+            team_entry_raw = row.get("entry_id")
+            if league_entry_raw is None and team_entry_raw is None:
+                continue
+            league_entry_id = int(
+                league_entry_raw if league_entry_raw is not None else team_entry_raw
             )
-            for row in raw_entries
-            if row.get("id") is not None
-        )
+            entries.append(
+                DraftLeagueEntry(
+                    league_entry_id=league_entry_id,
+                    team_entry_id=(
+                        int(team_entry_raw) if team_entry_raw is not None else None
+                    ),
+                    entry_name=str(row.get("entry_name") or ""),
+                    player_first_name=str(row.get("player_first_name") or ""),
+                    player_last_name=str(row.get("player_last_name") or ""),
+                )
+            )
         return DraftLeagueSnapshot(
             league_id=int(league_id),
             league_name=str(league.get("name") or ""),
-            entries=entries,
+            entries=tuple(entries),
             element_status=tuple(self.element_status(league_id)),
         )
 
@@ -153,7 +184,9 @@ def build_draft_pool(
         if row.get("id") is not None
     }
     positions = {
-        int(row["id"]): str(row.get("singular_name_short") or row.get("singular_name") or "")
+        int(row["id"]): str(
+            row.get("singular_name_short") or row.get("singular_name") or ""
+        )
         for row in bootstrap.get("element_types", [])
         if row.get("id") is not None
     }
@@ -162,7 +195,7 @@ def build_draft_pool(
         for row in bootstrap.get("elements", [])
         if row.get("id") is not None
     }
-    entry_names = {entry.entry_id: entry.entry_name for entry in snapshot.entries}
+    entry_names = snapshot.owner_name_lookup()
 
     output: list[dict[str, Any]] = []
     for status_row in snapshot.element_status:
@@ -178,12 +211,16 @@ def build_draft_pool(
                 "draft_element_id": element_id,
                 "first_name": str(player.get("first_name") or ""),
                 "second_name": str(player.get("second_name") or ""),
-                "web_name": str(player.get("web_name") or player.get("second_name") or ""),
+                "web_name": str(
+                    player.get("web_name") or player.get("second_name") or ""
+                ),
                 "team": teams.get(int(player.get("team") or 0), ""),
                 "position": positions.get(int(player.get("element_type") or 0), ""),
                 "status": str(status_row.get("status") or ""),
                 "owner_entry_id": owner_id,
-                "owner_entry_name": entry_names.get(owner_id, "") if owner_id is not None else "",
+                "owner_entry_name": (
+                    entry_names.get(owner_id, "") if owner_id is not None else ""
+                ),
             }
         )
     return output
