@@ -263,14 +263,28 @@ class GitHubReleaseStore:
             raise
 
     def list_releases(self, per_page: int = 100):
-        response = self.http.get(
-            f"{self.api}/repos/{self.repo}/releases",
-            headers=self.headers,
-            params={"per_page": per_page},
-            timeout=30,
-        )
-        response.raise_for_status()
-        return response.json()
+        """Return the complete release history, not only GitHub's first page."""
+        per_page = int(per_page)
+        if not 1 <= per_page <= 100:
+            raise ValueError("per_page must be between 1 and 100")
+        releases = []
+        page = 1
+        while True:
+            response = self.http.get(
+                f"{self.api}/repos/{self.repo}/releases",
+                headers=self.headers,
+                params={"per_page": per_page, "page": page},
+                timeout=30,
+            )
+            response.raise_for_status()
+            batch = response.json()
+            if not isinstance(batch, list):
+                raise RuntimeError("GitHub releases endpoint returned a non-list payload")
+            releases.extend(batch)
+            if len(batch) < per_page:
+                break
+            page += 1
+        return releases
 
 
 def write_attestation(path: Path, payload: dict) -> None:
