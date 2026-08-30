@@ -10,11 +10,31 @@ Important identity rule: ``player_prediction.player_id`` is AIrsenal's internal
 primary key, *not* the official FPL element ID. The exporter therefore joins the
 ``player`` table and emits ``player.fpl_api_id``. This prevents an internal
 AIrsenal ID from ever being mistaken for a canonical FPL player ID.
+
+AIrsenal does not persist a separate appearance-probability forecast. Its points
+model does, however, integrate every forecast over a concrete recent-minutes
+sample. Apex exports the marginals of that *same* sample rather than inferring
+availability from xP. This keeps expected minutes, P(appearance) and P(60+) tied
+to the model that generated the points forecast.
+
+The standalone exporter remains backwards-compatible with identity-only tooling:
+when it is intentionally run outside the isolated AIrsenal environment, minute
+marginals are left blank. Production sets ``AIRSENAL_REQUIRE_MINUTE_MARGINALS=1``
+and therefore fails immediately if the pinned AIrsenal runtime cannot reconstruct
+them. Even without that environment flag, downstream V2 certification refuses to
+make an actionable decision from incomplete H1 contingency probabilities.
+
+A multi-fixture Gameweek is intentionally different: AIrsenal reuses the same
+minute sample per fixture but does not define a joint probability that the player
+appears in at least one fixture. Apex therefore leaves Gameweek appearance
+probabilities blank for multi-fixture rows so its contingency gate fails closed
+instead of inventing an independence assumption.
 """
 from __future__ import annotations
 
 import csv
 from datetime import datetime, timezone
+import math
 import os
 from pathlib import Path
 import sqlite3
@@ -37,6 +57,129 @@ def _latest_tag(db: sqlite3.Connection) -> str:
     return str(row[0])
 
 
+def minute_marginals(
+    minutes: list[float] | tuple[float, ...],
+) -> tuple[float, float, float]:
+    """Return the mean minutes and empirical appearance/60+ mass of a model sample."""
+    values = [float(value) for value in minutes]
+    if not values:
+        raise ValueError("AIrsenal minute sample must not be empty")
+    if any(
+        not math.isfinite(value) or value < 0.0 or value > 90.0
+        for value in values
+    ):
+        raise ValueError("AIrsenal minute sample contains a value outside [0, 90]")
+    count = float(len(values))
+    return (
+        sum(values) / count,
+        sum(value > 0.0 for value in values) / count,
+        sum(value >= 60.0 for value in values) / count,
+    )
+
+
+def _load_model_minute_marginals(
+    player_ids: set[int],
+    gameweeks: list[int],
+    fixture_counts: dict[tuple[int, int], int],
+) -> dict[tuple[int, int], tuple[float, float | None, float | None]]:
+    """Reconstruct the minute sample used by the pinned AIrsenal prediction model.
+
+    This function is called inside the pinned AIrsenal virtual environment created
+    by the production workflow. Imports are deliberately local so Apex's own test
+    environment does not need AIrsenal installed.
+    """
+    if not gameweeks:
+        raise ValueError("AIrsenal export has no predicted Gameweeks")
+
+    from airsenal.framework.schema import session  # type: ignore[import-not-found]
+    from airsenal.framework.season import CURRENT_SEASON  # type: ignore[import-not-found]
+    from airsenal.framework.utils import (  # type: ignore[import-not-found]
+        get_player_from_api_id,
+        get_recent_minutes_for_player,
+    )
+
+    first_gameweek = min(gameweeks)
+    sample_size = max(3, len(gameweeks))
+    output: dict[tuple[int, int], tuple[float, float | None, float | None]] = {}
+
+    for player_id in sorted(player_ids):
+        player = get_player_from_api_id(player_id, dbsession=session)
+        if player is None:
+            raise RuntimeError(
+                f"AIrsenal database cannot resolve official FPL id {player_id}"
+            )
+        minute_sample = get_recent_minutes_for_player(
+            player,
+            num_match_to_use=sample_size,
+            season=CURRENT_SEASON,
+            last_gw=first_gameweek - 1,
+            dbsession=session,
+        )
+        expected_fixture_minutes, p_appearance, p_60 = minute_marginals(minute_sample)
+
+        for gameweek in gameweeks:
+            fixture_count = int(fixture_counts.get((player_id, gameweek), 0))
+            if fixture_count < 1:
+                raise RuntimeError(
+                    "AIrsenal prediction row has no underlying fixture for "
+                    f"official FPL id {player_id}, GW{gameweek}"
+                )
+            if player.is_injured_or_suspended(
+                CURRENT_SEASON,
+                first_gameweek,
+                gameweek,
+            ):
+                output[(player_id, gameweek)] = (0.0, 0.0, 0.0)
+                continue
+
+            expected_minutes = expected_fixture_minutes * fixture_count
+            if fixture_count == 1:
+                output[(player_id, gameweek)] = (
+                    expected_minutes,
+                    p_appearance,
+                    p_60,
+                )
+            else:
+                # The per-fixture minute model has no joint no-show probability for
+                # a double/triple Gameweek. Expected minutes remain additive, while
+                # autosub/vice probability is intentionally withheld.
+                output[(player_id, gameweek)] = (expected_minutes, None, None)
+
+    return output
+
+
+def _minute_marginals_required() -> bool:
+    raw = os.getenv("AIRSENAL_REQUIRE_MINUTE_MARGINALS", "0").strip()
+    if raw not in {"0", "1"}:
+        raise ValueError("AIRSENAL_REQUIRE_MINUTE_MARGINALS must be 0 or 1")
+    return raw == "1"
+
+
+def _load_export_minute_marginals(
+    player_ids: set[int],
+    gameweeks: list[int],
+    fixture_counts: dict[tuple[int, int], int],
+) -> dict[tuple[int, int], tuple[float | None, float | None, float | None]]:
+    """Load model marginals, or blank them only for non-production standalone use."""
+    try:
+        return _load_model_minute_marginals(player_ids, gameweeks, fixture_counts)
+    except ModuleNotFoundError as error:
+        if _minute_marginals_required():
+            raise RuntimeError(
+                "production AIrsenal export requires the pinned AIrsenal runtime "
+                "for minute marginals"
+            ) from error
+        return {
+            (player_id, gameweek): (None, None, None)
+            for player_id in sorted(player_ids)
+            for gameweek in gameweeks
+        }
+
+
+def _csv_optional(value: float | None) -> str | float:
+    return "" if value is None else float(value)
+
+
 def main() -> None:
     if len(sys.argv) != 4:
         raise SystemExit(
@@ -49,7 +192,11 @@ def main() -> None:
         tag = _latest_tag(db) if requested_tag.upper() == "LATEST" else requested_tag
         rows = db.execute(
             """
-            SELECT p.fpl_api_id, f.gameweek, SUM(pp.predicted_points)
+            SELECT
+                p.fpl_api_id,
+                f.gameweek,
+                SUM(pp.predicted_points),
+                COUNT(DISTINCT pp.fixture_id)
             FROM player_prediction AS pp
             JOIN player AS p ON p.player_id = pp.player_id
             JOIN fixture AS f ON f.fixture_id = pp.fixture_id
@@ -67,6 +214,18 @@ def main() -> None:
     if not rows:
         raise SystemExit(f"No official-ID AIrsenal predictions found for tag {tag!r}")
 
+    player_ids = {int(row[0]) for row in rows}
+    gameweeks = sorted({int(row[1]) for row in rows})
+    fixture_counts = {
+        (int(player_id), int(gameweek)): int(n_fixtures)
+        for player_id, gameweek, _xp, n_fixtures in rows
+    }
+    minute_model = _load_export_minute_marginals(
+        player_ids,
+        gameweeks,
+        fixture_counts,
+    )
+
     generated_at = datetime.now(timezone.utc).isoformat()
     source_version = os.getenv("AIRSENAL_SOURCE_VERSION", "")
     path = Path(output)
@@ -78,21 +237,37 @@ def main() -> None:
                 "player_id",
                 "gw",
                 "xp",
+                "expected_minutes",
+                "p_appearance",
+                "p_60",
                 "generated_at",
                 "source_version",
                 "prediction_tag",
             ]
         )
         writer.writerows(
-            (int(player_id), int(gameweek), float(xp), generated_at, source_version, tag)
-            for player_id, gameweek, xp in rows
+            (
+                int(player_id),
+                int(gameweek),
+                float(xp),
+                _csv_optional(minute_model[(int(player_id), int(gameweek))][0]),
+                _csv_optional(minute_model[(int(player_id), int(gameweek))][1]),
+                _csv_optional(minute_model[(int(player_id), int(gameweek))][2]),
+                generated_at,
+                source_version,
+                tag,
+            )
+            for player_id, gameweek, xp, _n_fixtures in rows
         )
 
-    unique_players = len({int(row[0]) for row in rows})
-    gameweeks = sorted({int(row[1]) for row in rows})
+    minute_status = (
+        "with AIrsenal minute marginals"
+        if any(value[0] is not None for value in minute_model.values())
+        else "without minute marginals (standalone compatibility mode)"
+    )
     print(
-        f"Exported {len(rows)} player-gameweek rows for {unique_players} official FPL "
-        f"players, GW={gameweeks}, tag={tag!r}, to {path}"
+        f"Exported {len(rows)} player-gameweek rows for {len(player_ids)} official FPL "
+        f"players, GW={gameweeks}, tag={tag!r}, {minute_status} to {path}"
     )
 
 

@@ -103,6 +103,7 @@ def main() -> None:
         **os.environ,
         "AIRSENAL_DB_FILE": str(args.db.resolve()),
         "AIRSENAL_SOURCE_VERSION": _airsenal_pin(),
+        "AIRSENAL_REQUIRE_MINUTE_MARGINALS": "1",
     }
     subprocess.run(
         [

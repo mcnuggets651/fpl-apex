@@ -7,27 +7,126 @@ specific team, but it is irrelevant to Apex's independent player forecast worker
 and would make the worker depend on an arbitrary public team ID after GW1.
 
 Run this script *inside the pinned AIrsenal environment*. It reuses the exact
-upstream update functions for players, attributes, fixtures, results and player
-scores while deliberately skipping only ``update_transactions``.
+upstream update functions for players, attributes, fixtures and results while
+deliberately skipping only ``update_transactions``.
+
+Three Apex-owned transport/cache guards sit outside the forecast model itself:
+- bounded retry for transient Official FPL HTTP 429/5xx responses;
+- deterministic rewind of only the current-season PlayerAttributes window that
+  upstream itself intends to rebuild from the last completed GW onward;
+- scoped autoflush while the pinned attribute refiller runs, so its own lookup/
+  update logic can observe rows inserted earlier in the same refresh.
+
+None substitutes cached forecasts, changes projection logic, or weakens
+freshness/coverage qualification. Persistent failures remain fatal.
 """
 from __future__ import annotations
 
+from airsenal.framework.data_fetcher import FPLDataFetcher
+from airsenal.framework.env import AIRSENAL_DB_FILE
 from airsenal.framework.schema import database_is_empty, session_scope
-from airsenal.framework.utils import CURRENT_SEASON
+from airsenal.framework.utils import (
+    CURRENT_SEASON,
+    get_last_complete_gameweek_in_db,
+)
 from airsenal.scripts.fill_fixture_table import fill_fixtures_from_api
-from airsenal.scripts.update_db import update_attributes, update_players, update_results
+from airsenal.scripts.fill_player_attributes_table import fill_attributes_table_from_api
+from airsenal.scripts.update_db import update_players, update_results
+
+from airsenal_attribute_refresh import refiller_autoflush, rewind_player_attributes
+from airsenal_transient_retry import retry_transient_http
+
+
+def _install_transient_http_retry() -> None:
+    current = FPLDataFetcher._get_request
+    if getattr(current, "_apex_transient_retry", False):
+        return
+
+    original = current
+
+    def wrapped(
+        self,
+        url,
+        err_msg="Unable to access FPL API",
+        attempts=3,
+        **params,
+    ):
+        def operation():
+            return original(
+                self,
+                url,
+                err_msg=err_msg,
+                attempts=attempts,
+                **params,
+            )
+
+        def on_retry(
+            attempt: int,
+            status: int,
+            delay: float,
+            _exc: BaseException,
+        ) -> None:
+            print(
+                "AIrsenal worker: transient FPL HTTP "
+                f"{status} for {url}; retrying after {delay:g}s "
+                f"(attempt {attempt + 1}/4)"
+            )
+
+        return retry_transient_http(
+            operation,
+            max_attempts=4,
+            base_delay_seconds=1.0,
+            on_retry=on_retry,
+        )
+
+    wrapped._apex_transient_retry = True  # type: ignore[attr-defined]
+    FPLDataFetcher._get_request = wrapped
 
 
 def main() -> None:
+    _install_transient_http_retry()
+
+    # Update identity first and commit it before touching the mutable attributes
+    # window. The upstream function commits its own player-table changes, and the
+    # surrounding scope preserves the same fail-closed transaction semantics.
     with session_scope() as session:
         if database_is_empty(session):
-            raise SystemExit("AIrsenal database is empty; run airsenal_setup_initial_db first")
-
+            raise SystemExit(
+                "AIrsenal database is empty; run airsenal_setup_initial_db first"
+            )
         new_players = update_players(CURRENT_SEASON, session)
-        # Keep the same upstream behaviour: new players require current attributes,
-        # and otherwise refresh attributes on every worker run for current price,
-        # team, FPL position and availability context inside the forecast model.
-        update_attributes(CURRENT_SEASON, session)
+        last_complete = get_last_complete_gameweek_in_db(
+            CURRENT_SEASON,
+            dbsession=session,
+        )
+
+    # Upstream update_attributes() refills from and including last_complete (or
+    # from 0 before any completed GW). A restored cache can already contain those
+    # mutable rows, so rewind exactly that rebuild window first.
+    if not AIRSENAL_DB_FILE:
+        raise SystemExit("AIRSENAL_DB_FILE must be set for the isolated Apex worker")
+    refresh_from = max(1, int(last_complete or 0))
+    removed = rewind_player_attributes(
+        AIRSENAL_DB_FILE,
+        season=CURRENT_SEASON,
+        from_gameweek=refresh_from,
+    )
+    print(
+        "AIrsenal worker: rewound "
+        f"{removed} mutable attribute row(s) from GW{refresh_from} onward"
+    )
+
+    with session_scope() as session:
+        # The pinned sessionmaker uses autoflush=False. The live API may expose a
+        # gameweek through both summary and per-player history in the same refresh.
+        # The refiller's second get_player_attributes() must therefore see the
+        # first pending insert. Enable autoflush only across this one upstream call.
+        with refiller_autoflush(session):
+            fill_attributes_table_from_api(
+                season=CURRENT_SEASON,
+                gw_start=int(last_complete or 0),
+                dbsession=session,
+            )
         print(f"AIrsenal worker: added {new_players} new player(s)")
 
         print("AIrsenal worker: updating fixtures")

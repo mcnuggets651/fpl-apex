@@ -1,0 +1,207 @@
+schema_version: 1
+contract_id: apex-openfpl-method-derivative-v1
+provider_family: openfpl
+implementation_id: apex-openfpl-method-derivative
+upstream_reference_identity: openfpl-reference-inference
+upstream_repository: daniegr/OpenFPL
+upstream_commit: ad055ba7270145ce8ecc1f19581423493b1357e7
+paper: arXiv:2508.09992v1
+scoring_rules_version: fpl-2026-27-v1
+feature_contract_version: openfpl-current-nonscore-v1
+exact_upstream_training_reproduction_claim: false
+
+provenance:
+  upstream_publishes_trained_models: true
+  upstream_publishes_inference_code: true
+  upstream_publishes_sample_matrix: true
+  upstream_publishes_sample_construction_pipeline: false
+  upstream_publishes_training_pipeline: false
+  paper_specifies_method_level_training_recipe: true
+  independent_semantics_reference:
+    repository: qazybekb/smartplayfpl-dastan
+    commit: 19376523afdec4836d0e6b5632c6773d0fe40c53
+    path: dastan/rebuild/features.py
+    authority: non_authoritative_cross_check_only
+  reference_sample_equivalence_required_before_model_build: true
+
+history:
+  windows: [1, 3, 5, 10, 38]
+  aggregation: arithmetic_mean
+  current_match_excluded: true
+  shift_completed_matches: 1
+  minimum_periods: 1
+  chronological_order_key: kickoff_time
+  player_identity_must_be_stable_across_club_transfers: true
+  team_league_rank_resets_each_season: true
+  future_placeholder_invariance_required: true
+
+# The upstream 235-column shared sample matrix contains 7 identifiers, 225 rolling
+# columns and 3 status columns. Position-specific model feature subsets are selected
+# from it. Four player feature families are removed in the current-rules derivative
+# because they encode historical scoring rules directly.
+reference_sample_matrix:
+  total_columns: 235
+  identifier_columns: [season, gw, position, player, team, opponent, home]
+  rolling_feature_columns: 225
+  status_columns:
+    - status player availability
+    - status team league rank
+    - status opponent league rank
+  player_rolling_family_count: 23
+  team_rolling_family_count: 12
+  opponent_rolling_family_count: 10
+
+excluded_score_dependent_player_families:
+  - fpl points
+  - relevant fpl points
+  - bps
+  - fpl bonus points
+
+player_families:
+  common_current:
+    - minutes played
+    - influence
+    - creativity
+    - threat
+    - assists
+    - goals conceded
+    - own goals
+    - yellow cards
+    - red cards
+    - xgchain
+    - xgbuildup
+    - key passes
+    - xa
+  goalkeeper_only:
+    - saves
+    - penalties saved
+  field_only:
+    - goals scored
+    - penalties missed
+    - shots
+    - xg
+
+team_families_current:
+  - goals scored
+  - goals conceded
+  - xg
+  - deep allowed
+  - ppda allowed att
+  - ppda allowed def
+  - xga
+  - deep
+  - ppda att
+  - ppda def
+
+opponent_families_current:
+  - goals scored
+  - goals conceded
+  - xg
+  - deep allowed
+  - ppda allowed att
+  - ppda allowed def
+  - xga
+  - deep
+  - ppda att
+  - ppda def
+
+position_feature_contract:
+  GK:
+    current_feature_count: 176
+    player_family_count: 15
+    team_family_count: 10
+    opponent_family_count: 10
+    status_features: [player availability]
+  DEF:
+    current_feature_count: 186
+    player_family_count: 17
+    team_family_count: 10
+    opponent_family_count: 10
+    status_features: [player availability]
+  MID:
+    current_feature_count: 186
+    player_family_count: 17
+    team_family_count: 10
+    opponent_family_count: 10
+    status_features: [player availability]
+  FWD:
+    current_feature_count: 186
+    player_family_count: 17
+    team_family_count: 10
+    opponent_family_count: 10
+    status_features: [player availability]
+
+availability:
+  authority: Official FPL
+  reference_values_percent: [0, 25, 50, 75, 100]
+  expected_minutes_projection_used: false
+
+training:
+  target: current-rule FPL points in upcoming match
+  positions: [GK, DEF, MID, FWD]
+  cross_validation:
+    folds: 5
+    grouping: Premier League team
+    validation_unit: held-out team groups
+  feature_scaler:
+    type: MinMaxScaler
+    range: [0, 1]
+  target_scaler:
+    type: MinMaxScaler
+    range: [0, 1]
+  sample_weighting:
+    discretizer: KBinsDiscretizer
+    encode: ordinal
+    strategy: entropy-derived-position-specific
+    bins:
+      GK: 2
+      DEF: 3
+      MID: 4
+      FWD: 3
+    class_weight: balanced
+    clip_percentile: 95
+    rescale_mean: 1.0
+  search:
+    algorithm: K-Best Search
+    population_size: 10
+    objective: RMSE
+    preliminary_threshold: lowest RMSE of first K candidates
+    random_state: 42
+    n_jobs: -1
+    random_forest:
+      n_estimators: [200, 400, 800]
+      max_depth: [10, 20, null]
+      min_samples_split: [2, 5]
+      min_samples_leaf: [1, 2, 5]
+      max_features: [sqrt, 0.2, 1.0]
+      bootstrap: [true, false]
+    xgboost:
+      n_estimators: [300, 600, 1200]
+      max_depth: [3, 5, 7]
+      learning_rate: [0.01, 0.05, 0.1]
+      subsample: [0.5, 0.75, 1.0]
+      colsample_bytree: [0.5, 0.75, 1.0]
+      min_child_weight: [1.0, 5.0]
+      gamma: [0.0, 0.1]
+      reg_lambda: [1.0, 5.0]
+      early_stopping_rounds: 30
+      eval_metric: rmse
+  ensemble:
+    top_models_per_fold: 10
+    folds: 5
+    individual_models_per_position: 50
+    aggregation: median
+
+build_gates:
+  governed_training_policy: openfpl-current-training-v1
+  minimum_completed_exact_rule_gameweeks: 10
+  labels_only_from_season: 2026-27
+  model_build_before_history_gate: forbidden
+  independent_feature_construction_validation: required
+  reference_sample_semantics_validation: required
+  model_manifest_policy_hash_binding: required
+  training_dataset_hash: required
+  model_artifact_hash: required
+  official_decision_universe_coverage: 1.0
+  serve_authorized: false
+  prospective_qualification_required_for_serving: true

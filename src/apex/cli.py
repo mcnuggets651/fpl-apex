@@ -1,0 +1,375 @@
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+import typer
+
+from apex.domain.models import dataclass_to_dict
+
+app = typer.Typer(no_args_is_help=True)
+
+
+def _store():
+    from apex.runtime.releases import GitHubReleaseStore
+
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    token = os.environ.get("GITHUB_TOKEN")
+    if not repo or not token:
+        raise typer.BadParameter("GITHUB_REPOSITORY and GITHUB_TOKEN are required")
+    return GitHubReleaseStore(repo, token)
+
+
+def _private_store(*, verify_policy: bool = True):
+    from apex.runtime.releases import GitHubReleaseStore
+
+    repo = os.environ.get("APEX_PRIVATE_GITHUB_REPOSITORY")
+    token = os.environ.get("APEX_PRIVATE_GITHUB_TOKEN")
+    if not repo or not token:
+        raise typer.BadParameter(
+            "authenticated manager publication requires "
+            "APEX_PRIVATE_GITHUB_REPOSITORY and APEX_PRIVATE_GITHUB_TOKEN"
+        )
+    if repo == os.environ.get("GITHUB_REPOSITORY"):
+        raise typer.BadParameter(
+            "private manager store must be a separate repository"
+        )
+    store = GitHubReleaseStore(repo, token)
+    if verify_policy:
+        store.assert_repository_policy(
+            require_private=True,
+            require_immutable=True,
+            require_initialized=True,
+        )
+    return store
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write a small machine handoff atomically on the same filesystem."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(path)
+
+
+def _write_acquisition_failure(
+    *,
+    output: Path,
+    run_id: str,
+    code_sha: str,
+    stage: str,
+    cause_type: str,
+    cause_message: str,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "code_sha": code_sha,
+        "failed_at": datetime.now(timezone.utc).isoformat(),
+        "stage": stage,
+        "cause_type": cause_type,
+        "cause_message": cause_message,
+    }
+    _atomic_write_text(
+        output,
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+    )
+    return payload
+
+
+@app.command("private-store-preflight")
+def private_store_preflight():
+    """Verify the owner-private persistence boundary before using FPL credentials."""
+    store = _private_store(verify_policy=False)
+    policy = store.assert_repository_policy(
+        require_private=True,
+        require_immutable=True,
+        require_initialized=True,
+    )
+    typer.echo(json.dumps(policy, sort_keys=True))
+
+
+@app.command()
+def intent(
+    run_id: str = typer.Option(..., "--run-id"),
+    season: str = typer.Option(..., "--season"),
+    gameweek: int = typer.Option(..., "--gameweek"),
+    code_sha: str = typer.Option(..., "--code-sha"),
+    output: Path = Path("artifacts/v2/intent.json"),
+    publish: bool = True,
+):
+    from apex.runtime.publication import (
+        INTENT_RELEASE_ASSETS_V1,
+        assert_exact_asset_set,
+        validate_intent_payload,
+    )
+
+    now = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "season": season,
+        "gameweek": gameweek,
+        "code_sha": code_sha,
+        "started_at": now,
+    }
+    validate_intent_payload(payload)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    files = {"intent.json": output}
+    assert_exact_asset_set(files, INTENT_RELEASE_ASSETS_V1, "intent release")
+    if publish:
+        tag = f"apex-v2/intent/{season}/{run_id}"
+        _store().create_once(
+            tag,
+            files,
+            target_commitish=code_sha,
+            name=f"Apex V2 intent {season} GW{gameweek} {run_id}",
+            body=(
+                "Immutable production-attempt intent. A missing matching final "
+                "release is an operational failure."
+            ),
+        )
+    typer.echo(now)
+
+
+@app.command("official-hash")
+def official_hash(season: str = "2026-2027"):
+    """Capture the canonical Official-FPL authority seal before acquisition."""
+    from apex.sources.official import fetch_official_snapshot
+
+    official, _ = fetch_official_snapshot(season=season)
+    typer.echo(official.source_hash)
+
+
+@app.command()
+def acquire(
+    config: Path = Path("config/apex_v2.yaml"),
+    run_id: str = typer.Option(...),
+    code_sha: str = typer.Option(...),
+    run_started_at: str = typer.Option(...),
+    workdir: Path = Path("."),
+    expected_official_hash: str | None = typer.Option(
+        None,
+        "--expected-official-hash",
+        help=(
+            "Official FPL authority hash captured immediately before provider "
+            "generation. Acquisition aborts if the final authority state differs."
+        ),
+    ),
+    failure_output: Path = typer.Option(
+        Path("artifacts/v2/diagnostics/acquisition_failure.json"),
+        "--failure-output",
+        help="Machine-readable fatal acquisition failure record.",
+    ),
+    snapshot_output: Path | None = typer.Option(
+        None,
+        "--snapshot-output",
+        help=(
+            "Optional machine-readable handoff file containing exactly one "
+            "successful frozen snapshot path. Stdout remains a human log channel."
+        ),
+    ),
+):
+    try:
+        from apex.runtime.acquire import AcquisitionStageError, acquire_and_freeze
+    except Exception as exc:
+        payload = _write_acquisition_failure(
+            output=failure_output,
+            run_id=run_id,
+            code_sha=code_sha,
+            stage="runtime_import",
+            cause_type=type(exc).__name__,
+            cause_message=(
+                "Apex acquisition runtime could not be loaded; exception text is "
+                "intentionally omitted from public-safe diagnostics."
+            ),
+        )
+        typer.echo(json.dumps(payload, sort_keys=True), err=True)
+        raise typer.Exit(1) from exc
+
+    try:
+        snap = acquire_and_freeze(
+            config,
+            run_id=run_id,
+            code_sha=code_sha,
+            run_started_at=run_started_at,
+            workdir=workdir,
+            expected_official_hash=expected_official_hash,
+        )
+    except AcquisitionStageError as exc:
+        details = exc.as_dict()
+        payload = _write_acquisition_failure(
+            output=failure_output,
+            run_id=run_id,
+            code_sha=code_sha,
+            stage=str(details["stage"]),
+            cause_type=str(details["cause_type"]),
+            cause_message=str(details["cause_message"]),
+        )
+        typer.echo(json.dumps(payload, sort_keys=True), err=True)
+        raise typer.Exit(1) from exc
+    except Exception as exc:
+        payload = _write_acquisition_failure(
+            output=failure_output,
+            run_id=run_id,
+            code_sha=code_sha,
+            stage="acquire_unclassified",
+            cause_type=type(exc).__name__,
+            cause_message=(
+                "Unclassified acquisition failure; exception text is intentionally "
+                "omitted from public-safe diagnostics. Inspect the authenticated "
+                "runner log for the private exception detail."
+            ),
+        )
+        typer.echo(json.dumps(payload, sort_keys=True), err=True)
+        raise typer.Exit(1) from exc
+
+    snapshot_path = str(snap.root)
+    if snapshot_output is not None:
+        _atomic_write_text(snapshot_output, snapshot_path + "\n")
+    typer.echo(snapshot_path)
+
+
+@app.command()
+def solve(
+    snapshot: Path,
+    output: Path = Path("artifacts/v2/decision_bundle.json"),
+):
+    from apex.runtime.solve import solve_snapshot
+
+    bundle = solve_snapshot(snapshot, output)
+    typer.echo(
+        json.dumps(
+            {
+                "state": bundle.certification.state.value,
+                "actionable": bundle.certification.actionable,
+                "output": str(output),
+            }
+        )
+    )
+
+
+@app.command()
+def publish(
+    snapshot: Path,
+    decision: Path,
+    season: str = typer.Option(..., "--season"),
+    gameweek: int = typer.Option(..., "--gameweek"),
+    run_id: str = typer.Option(..., "--run-id"),
+    code_sha: str = typer.Option(..., "--code-sha"),
+    artifact_dir: Path = Path("artifacts/v2"),
+):
+    from apex.runtime.evaluation_archive import (
+        build_private_provider_evaluation_material,
+    )
+    from apex.runtime.publication import build_publication_materials
+
+    material = build_publication_materials(snapshot, decision, artifact_dir)
+
+    # Persist every sensitive/private prerequisite before the public final Release.
+    # The manager Release remains a strict two-asset contract. Provider forecast
+    # rows are sealed separately so post-GW evaluation can score the exact frozen
+    # pre-deadline surfaces without publicly redistributing third-party rows.
+    if material.authenticated_manager_state:
+        private_store = _private_store()
+        private_ref = private_store.create_once(
+            f"apex-v2/private/{season}/{run_id}",
+            material.private_files,
+            target_commitish=None,
+            name=(
+                f"Apex V2 private manager attempt {season} "
+                f"GW{gameweek} {run_id}"
+            ),
+            body=(
+                "Owner-private immutable manager attempt. Never mirror these "
+                "assets into the public Apex repository."
+            ),
+        )
+        if not private_ref.immutable:
+            raise RuntimeError("private manager release is not immutable")
+
+        evaluation_files = build_private_provider_evaluation_material(
+            snapshot,
+            artifact_dir / "private-evaluation",
+            public_attempt_id=material.public_attempt_id,
+        )
+        evaluation_ref = private_store.create_once(
+            f"apex-v2/private-evaluation/{season}/{run_id}",
+            evaluation_files,
+            target_commitish=None,
+            name=(
+                f"Apex V2 private provider evaluation inputs {season} "
+                f"GW{gameweek} {run_id}"
+            ),
+            body=(
+                "Owner-private immutable pre-deadline provider surfaces for "
+                "prospective post-Gameweek scoring. No manager state is stored here."
+            ),
+        )
+        if not evaluation_ref.immutable:
+            raise RuntimeError("private provider evaluation release is not immutable")
+
+    tag = f"apex-v2/final/{season}/{run_id}"
+    ref = _store().create_once(
+        tag,
+        material.public_files,
+        target_commitish=code_sha,
+        name=f"Apex V2 final {season} GW{gameweek} {run_id}",
+        body=(
+            "Immutable public production/audit attempt. Personalized manager "
+            "state and decisions are structurally excluded from this release."
+        ),
+    )
+    typer.echo(ref.html_url)
+
+
+@app.command("audit-attempts")
+def audit_attempts(prefix: str = "apex-v2"):
+    from apex.runtime.attempts import audit_release_tags
+
+    audit = audit_release_tags(_store().list_releases(), prefix)
+    typer.echo(json.dumps(dataclass_to_dict(audit), indent=2))
+    if audit.missing_finals:
+        raise typer.Exit(2)
+
+
+@app.command("evaluate-completed")
+def evaluate_completed(
+    season: str = "2026-2027",
+    code_sha: str = typer.Option(...),
+):
+    from apex.runtime.evaluate import evaluate_completed_attempts
+
+    tags = evaluate_completed_attempts(
+        _store(),
+        private_store=_private_store(),
+        season=season,
+        target_commitish=code_sha,
+    )
+    typer.echo(json.dumps({"published": tags}, indent=2))
+
+
+@app.command("tournament-standings")
+def tournament_standings(
+    season: str = "2026-2027",
+    output: Path = Path("artifacts/v2/tournament/standings.json"),
+):
+    """Build derived prospective champion-challenger season standings."""
+    from apex.runtime.tournament_standings import write_tournament_standings
+
+    payload = write_tournament_standings(
+        _store(),
+        season=season,
+        output=output,
+    )
+    typer.echo(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
+
+
+if __name__ == "__main__":
+    app()

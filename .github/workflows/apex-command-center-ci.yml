@@ -1,0 +1,64 @@
+name: Apex Command Center CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/command-center/**"
+      - "src/apex/runtime/publication.py"
+      - "src/apex/runtime/reveal.py"
+      - "src/apex/runtime/solve.py"
+      - ".github/workflows/apex-command-center-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-command-center-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/command-center
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/command-center/package-lock.json
+
+      - name: Install exact dependency graph
+        run: npm ci --no-audit --no-fund
+
+      - name: Strict browser and Worker typecheck
+        run: npm run check
+
+      - name: Contract and fail-closed tests
+        run: npm test
+
+      - name: Production web build
+        run: npm run build
+
+      - name: Assert build contains no source credentials or GitHub tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d dist
+          ! grep -R -n -E 'FPL_SESSION_COOKIE|FPL_X_API_AUTHORIZATION|PRIVATE_GITHUB_TOKEN|APEX_V2_PRIVATE_REPO_TOKEN' dist
+          ! grep -R -n 'github_pat_' dist
+          ! grep -R -n 'ghp_' dist
+
+      - name: Upload compiled shell for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-command-center-web-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/command-center/dist/
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,17 @@
+{
+  "name": "FPL Apex Command Center",
+  "short_name": "FPL Apex",
+  "description": "Private, fail-closed FPL Apex decision command center.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070b12",
+  "theme_color": "#0a0f19",
+  "icons": [
+    {
+      "src": "/apex-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -22,6 +22,13 @@ FINAL_PROMOTION_ENTRYPOINTS = (
 )
 ACTIVE_WORKFLOWS = {
     "airsenal.yml",
+    "apex-command-center-ci.yml",
+    "apex-v2-challenger-preflight.yml",
+    "apex-v2-ci.yml",
+    "apex-v2-cutover-platform.yml",
+    "apex-v2-evaluation.yml",
+    "apex-v2-privacy-rehearsal.yml",
+    "apex-v2-production.yml",
     "apex.yml",
     "gw1-final-2026.yml",
     "joint-path-promotion-audit.yml",
@@ -42,6 +49,8 @@ ARCHIVED_WORKFLOWS = {
     "understat-player-predictive-audit.yml",
 }
 CONCURRENT_PR_AUDITS = {
+    "apex-v2-challenger-preflight.yml": "github.event.pull_request.number || github.ref",
+    "apex-v2-ci.yml": "github.event.pull_request.number || github.ref",
     "apex.yml": "github.event.pull_request.number || github.ref",
     "joint-path-promotion-audit.yml": "github.event.pull_request.number || github.ref",
     "projection-policy-audit.yml": "github.event.pull_request.number || github.ref",
@@ -102,9 +111,13 @@ def main() -> None:
             failures.append(
                 f"required-source refresh can leave a stale actionable decision: {name}"
             )
-        if "apex_answer_context.json" not in text or "apex_recommendation_latest.json" not in text:
+        if (
+            "apex_answer_context.json" not in text
+            or "apex_recommendation_latest.json" not in text
+        ):
             failures.append(
-                f"required-source refresh does not atomically stage invalidated canonical files: {name}"
+                f"required-source refresh does not atomically stage invalidated "
+                f"canonical files: {name}"
             )
 
     workflow = _text(active_dir / "pinnacle.yml")
@@ -122,13 +135,17 @@ def main() -> None:
         if "DecisionBundle.load" not in script:
             failures.append(f"{script_name} does not consume the sealed decision bundle")
         if "run_pipeline" in script or "OfficialFPLClient" in script:
-            failures.append(f"{script_name} contains an independent live retrieval path")
+            failures.append(
+                f"{script_name} contains an independent live retrieval path"
+            )
 
     staging = _text("scripts/build_canonical_recommendation.py")
     if "strategy_base_ready" not in staging or '"ready_to_act": False' not in staging:
         failures.append("canonical base builder is not explicitly staging-only")
     if '"recommendation": None' not in staging:
-        failures.append("canonical base builder can expose an intermediate recommendation")
+        failures.append(
+            "canonical base builder can expose an intermediate recommendation"
+        )
     if "exact_horizon_staging" not in staging or '"authority": False' not in staging:
         failures.append("static exact-horizon result is not explicitly diagnostic-only")
 
@@ -137,9 +154,13 @@ def main() -> None:
         if selector not in finaliser:
             failures.append(f"final strategy assembler lacks selector: {selector}")
     if "build_selected_player_evidence" not in finaliser:
-        failures.append("final strategy assembler does not rebuild evidence for the actual final 15")
+        failures.append(
+            "final strategy assembler does not rebuild evidence for the actual final 15"
+        )
     if "final_selected_player_evidence" not in finaliser:
-        failures.append("final strategy assembler does not publish final evidence identity")
+        failures.append(
+            "final strategy assembler does not publish final evidence identity"
+        )
     if "all_player_truth" not in finaliser:
         failures.append("final strategy assembler does not require all-player truth")
 
@@ -149,29 +170,41 @@ def main() -> None:
     final_positions = [pos for pos in final_positions if pos >= 0]
     final_pos = min(final_positions) if final_positions else -1
     if truth_pos < 0 or final_pos < 0 or truth_pos > final_pos:
-        failures.append("single Apex runner does not gate final selection behind all-player truth")
+        failures.append(
+            "single Apex runner does not gate final selection behind all-player truth"
+        )
 
     answer = _text("src/apex_fpl/services/answer_context.py")
     for selector in FINAL_SELECTORS:
         if selector not in answer:
             failures.append(f"answer contract does not recognise final selector: {selector}")
     if "final_selected_player_evidence" not in answer:
-        failures.append("answer contract does not use the actual final selected-player evidence")
+        failures.append(
+            "answer contract does not use the actual final selected-player evidence"
+        )
     if '"selection_regret": None' not in answer:
-        failures.append("answer contract can misattribute static exact-horizon regret to final picks")
+        failures.append(
+            "answer contract can misattribute static exact-horizon regret to final picks"
+        )
 
     canonical_policy = _text("docs/APEX_CANONICAL_DECISION_POLICY.md")
     architecture = _text("docs/APEX_ARCHITECTURE.md")
     operating = _text(AUTHORITY)
     for selector in FINAL_SELECTORS:
         if selector not in canonical_policy:
-            failures.append(f"canonical decision policy is stale for selector: {selector}")
+            failures.append(
+                f"canonical decision policy is stale for selector: {selector}"
+            )
     if "GW1-first" not in architecture or "receding-horizon" not in architecture:
-        failures.append("architecture document does not describe the final adaptive strategy")
+        failures.append(
+            "architecture document does not describe the final adaptive strategy"
+        )
     if "adverse-evidence-only" not in operating:
         failures.append("operating manual does not preserve the EV-first evidence policy")
     if "architecture freeze" not in operating.casefold():
-        failures.append("operating manual does not define the post-PR64 architecture freeze")
+        failures.append(
+            "operating manual does not define the post-PR64 architecture freeze"
+        )
 
     gw1 = _text(active_dir / "gw1-final-2026.yml")
     if "scripts/run_apex.py" not in gw1:

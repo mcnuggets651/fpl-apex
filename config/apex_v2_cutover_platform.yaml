@@ -1,0 +1,32 @@
+schema_version: 1
+policy_id: apex-v2-cutover-platform-v1
+default_branch: main
+
+branch_governance:
+  require_protected_branch: true
+  require_active_repository_ruleset: true
+  accepted_ref_targets:
+    - refs/heads/main
+    - ~DEFAULT_BRANCH
+  required_rule_types:
+    - deletion
+    - non_fast_forward
+    - pull_request
+    - required_status_checks
+  required_status_checks:
+    - test
+    - contract
+    - readiness
+  strict_required_status_checks_policy: true
+  allow_bypass_actors: false
+
+release_governance:
+  immutable_releases_required: true
+  github_setting_endpoint: /repos/{owner}/{repo}/immutable-releases
+  enabled_status_code: 200
+  disabled_status_code: 404
+
+rationale:
+  - V2 production state is persisted as GitHub Releases, so release immutability is a correctness control rather than a convenience setting.
+  - Main must not accept direct unverified updates, deletion or non-fast-forward history rewrites after cutover.
+  - All three independent repository gates must be required on the commit being merged: full tests, V2 contract tests and projection-policy readiness.

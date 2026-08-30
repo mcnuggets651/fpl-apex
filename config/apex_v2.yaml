@@ -1,0 +1,53 @@
+schema_version: 1
+season: 2026-2027
+entry_id: 63984
+max_horizon: 8
+scoring_rules_version: fpl-2026-27-v1
+snapshot_dir: data/v2/snapshots
+release_prefix: apex-v2
+evidence:
+  required: true
+  sources_path: config/news_sources.yaml
+  records_path: acquisition/evidence/hard.json
+  manifest_path: acquisition/evidence/acquisition.json
+providers:
+  - id: airsenal
+    role: CHAMPION
+    priority: 0
+    serve_authorized: true
+    predictive_status: INSUFFICIENT_HISTORY
+    max_age_hours: 18
+    requested_horizons: [1,2,3,4,5,6,7,8]
+    path: acquisition/providers/airsenal.csv
+  - id: dastan
+    role: SHADOW
+    priority: 10
+    serve_authorized: false
+    predictive_status: INSUFFICIENT_HISTORY
+    max_age_hours: 18
+    requested_horizons: [1]
+    path: acquisition/providers/dastan.csv
+  - id: pitchside
+    role: SHADOW
+    priority: 20
+    serve_authorized: false
+    predictive_status: INSUFFICIENT_HISTORY
+    max_age_hours: 18
+    requested_horizons: [1,2,3,4,5,6,7,8]
+    path: acquisition/providers/pitchside.json
+  - id: apex_proprietary
+    role: SHADOW
+    priority: 30
+    serve_authorized: false
+    predictive_status: INSUFFICIENT_HISTORY
+    max_age_hours: 18
+    requested_horizons: [1,2,3,4,5,6,7,8]
+    path: acquisition/providers/apex_proprietary.csv
+  - id: openfpl
+    role: SHADOW
+    priority: 40
+    serve_authorized: false
+    predictive_status: INSUFFICIENT_HISTORY
+    max_age_hours: 18
+    requested_horizons: [1]
+    path: acquisition/providers/openfpl.csv
