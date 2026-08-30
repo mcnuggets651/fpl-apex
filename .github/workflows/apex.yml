@@ -30,7 +30,63 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - run: python scripts/check_governance_consistency.py
 
+  # `test`, `contract`, and `readiness` are the repository-wide required check
+  # contexts on main. Keep these deterministic and available for every PR.
+  # Product/runtime workflows may add stricter domain-specific gates, but an
+  # unrelated path filter must never make a normal source PR unmergeable.
+  contract:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+      - name: Verify repository contract
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/check_upstreams.py
+          python scripts/check_governance_consistency.py
+          python - <<'PY'
+          from apex_fpl.config import load_settings
+
+          settings = load_settings()
+          assert settings.season
+          assert settings.horizon > 0
+          assert settings.budget > 0
+          assert settings.required_sources
+          print("repository contract OK")
+          PY
+
+  readiness:
+    needs: [test, contract]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+      - name: Verify installed package and CLI readiness
+        run: |
+          apex-fpl --help >/dev/null
+          python - <<'PY'
+          from apex_fpl.config import load_settings
+          from apex_fpl.services.pipeline import run_pipeline
+
+          settings = load_settings()
+          assert callable(run_pipeline)
+          assert settings.cache_dir.exists()
+          assert settings.snapshot_dir.exists()
+          assert settings.report_dir.exists()
+          print("repository readiness OK")
+          PY
+
 # Production team generation is intentionally excluded from this workflow.
-# The only scheduled/user-facing decision workflow is `.github/workflows/pinnacle.yml`
-# (display name: Apex Unified), which runs `scripts/run_apex.py` and publishes only
-# `data/generated/apex_recommendation_latest.*`.
+# Live decision publication belongs to the dedicated production workflows; this
+# workflow provides deterministic repository CI and the universal main-ruleset
+# `test`, `contract`, and `readiness` contexts.
