@@ -60,19 +60,19 @@ The evaluator:
 
 ## Single canonical publisher
 
-The following legacy scheduled workflows are retired from the default branch when this operations cutover is merged:
+The following legacy workflows remain on the default branch only as **manual-only compatibility/forensic workflows**:
 
 - `.github/workflows/pinnacle.yml` (`Apex Unified`)
 - `.github/workflows/airsenal.yml` (standalone legacy AIrsenal worker)
 - `.github/workflows/refresh-core-pin.yml` (legacy mutable Core-pin refresher)
 
-They are retained in Git history if forensic comparison is ever required, but they must not run alongside V2.
+Their old `schedule` triggers are removed, and `Apex Unified` also loses its automatic `push` trigger. Each keeps only `workflow_dispatch` so the existing legacy contract/governance tests can continue to validate those historical paths without letting them execute automatically. Their first line is an explicit `RETIRED: manual-only legacy workflow` marker.
 
-This guarantees one operational decision publisher. AIrsenal remains the sole V2 serving provider H1-H8; challengers remain sealed/nonserving unless the formal promotion policy is satisfied.
+This guarantees one automated operational decision publisher: **Apex V2 Daily Production**. AIrsenal remains the sole V2 serving provider H1-H8; challengers remain sealed/nonserving unless the formal promotion policy is satisfied.
 
 ## Why the old Core-pin refresher is retired
 
-Apex V2 Proprietary does not trust a mutable pin written to the default branch. The certified proprietary worker resolves the current Core `main` revision during acquisition, rejects stale Core according to the frozen freshness policy, freezes the accepted revision into the run-local provenance chain and rejects source drift. Keeping the old six-hour repository pin writer would add mutation/noise without improving V2 truth.
+Apex V2 Proprietary does not trust a mutable pin written to the default branch. The certified proprietary worker resolves the current Core `main` revision during acquisition, rejects stale Core according to the frozen freshness policy, freezes the accepted revision into the run-local provenance chain and rejects source drift. Keeping the old six-hour repository pin writer would add mutation/noise without improving V2 truth. The legacy workflow remains manually invokable only for forensic/backward-compatibility purposes.
 
 ## Failure behavior
 
@@ -98,7 +98,7 @@ The operations PR is rejected if it:
 - stops using the atomic snapshot-output handoff;
 - enables network access during solve;
 - removes immutable publication or prospective evaluation commands;
-- leaves any of the three legacy scheduled production paths present;
+- removes a legacy compatibility workflow or restores any legacy automatic `schedule`/`push` trigger;
 - points the scheduler at a SHA that does not contain the certified V2 production/evaluation contracts.
 
 The point is to make operational scheduling changeable without silently turning it into a second core-engineering surface.
@@ -111,9 +111,11 @@ A pin change is allowed only after the replacement engine SHA satisfies the Apex
 
 ## Manual runs
 
-Both daily workflows retain `workflow_dispatch` for incident recovery or an explicitly requested additional run. Manual execution must still use the frozen SHA and the same privacy/publication contracts. It is not a bypass around certification.
+Both daily V2 workflows retain `workflow_dispatch` for incident recovery or an explicitly requested additional run. Manual execution must still use the frozen SHA and the same privacy/publication contracts. It is not a bypass around certification.
 
-Routine operation should rely on the daily schedules. Additional pre-deadline runs should be used only when there is a material reason such as late injury/team news or an FPL rule/API incident; do not create duplicate runs merely for reassurance.
+The three retired legacy workflows are also technically manual-only for compatibility. They are **not** part of normal operations and must never be used as an alternate canonical decision publisher.
+
+Routine operation should rely on the V2 daily schedules. Additional pre-deadline V2 runs should be used only when there is a material reason such as late injury/team news or an FPL rule/API incident; do not create duplicate runs merely for reassurance.
 
 ## Operational acceptance
 
