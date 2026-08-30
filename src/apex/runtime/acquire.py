@@ -17,10 +17,12 @@ from apex.domain.models import (
 from apex.forecast.adapters.airsenal import load_airsenal
 from apex.forecast.adapters.dastan import load_dastan
 from apex.forecast.adapters.openfpl import load_openfpl
+from apex.forecast.adapters.pitchside import load_pitchside
 from apex.forecast.qualification import qualify_surface
 from apex.governance.evidence import validate_evidence
 from apex.sources.evidence import collect_v2_evidence
 from apex.sources.official import fetch_official_snapshot
+from apex.sources.pitchside import acquire_pitchside_shadow
 from apex.sources.team import acquire_team_state
 
 from .config import ApexConfig, config_sha
@@ -209,6 +211,25 @@ def acquire_and_freeze(
             ),
         )
 
+    optional_provider_errors: dict[str, str] = {}
+    for provider_config in config.providers:
+        if provider_config.provider_id != "pitchside":
+            continue
+        path = workdir / provider_config.path
+        if path.exists():
+            continue
+        try:
+            acquire_pitchside_shadow(
+                path,
+                season=config.season,
+                expected_official_hash=expected_official_hash,
+                now=now,
+            )
+        except Exception as exc:
+            optional_provider_errors[provider_config.provider_id] = (
+                f"{type(exc).__name__}: {exc}"
+            )
+
     def _reanchor():
         official, raw_official = fetch_official_snapshot(season=config.season)
         assert_official_acquisition_stable(
@@ -237,6 +258,11 @@ def acquire_and_freeze(
         path = workdir / provider_config.path
         surface = None
         reasons = []
+        if provider_config.provider_id in optional_provider_errors:
+            reasons.append(
+                "optional provider acquisition failed: "
+                + optional_provider_errors[provider_config.provider_id]
+            )
         health = ProviderHealth.ERROR
         qualification_by_horizon = {
             horizon: Qualification.UNQUALIFIED
@@ -256,6 +282,14 @@ def acquire_and_freeze(
                         path,
                         official=official,
                         target_gameweek=target,
+                    )
+                elif provider_config.provider_id == "pitchside":
+                    surface = load_pitchside(
+                        path,
+                        official=official,
+                        target_gameweek=target,
+                        scoring_rules_version=config.scoring_rules_version,
+                        max_horizon=max(provider_config.requested_horizons),
                     )
                 elif provider_config.provider_id == "openfpl":
                     surface = load_openfpl(
