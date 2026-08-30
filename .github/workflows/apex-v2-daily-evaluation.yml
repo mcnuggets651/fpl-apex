@@ -1,0 +1,74 @@
+name: Apex V2 Daily Evaluation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apex-v2-evaluation
+  cancel-in-progress: false
+
+env:
+  FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FROZEN_APEX_SHA }}
+          fetch-depth: 0
+
+      - name: Verify frozen evaluation identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          echo "Apex V2 daily evaluation pinned to $FROZEN_APEX_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -e '.[dev]'
+
+      - name: Detect orphaned production attempts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: apex-v2 audit-attempts --prefix apex-v2
+
+      - name: Preflight private provider evaluation store
+        env:
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+        run: apex-v2 private-store-preflight
+
+      - name: Score newly completed Gameweeks prospectively
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+        run: apex-v2 evaluate-completed --season 2026-2027 --code-sha "$FROZEN_APEX_SHA"
+
+      - name: Build champion challenger season standings
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          apex-v2 tournament-standings
+          --season 2026-2027
+          --output artifacts/v2/tournament/standings.json
+
+      - name: Upload derived tournament standings
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v2-tournament-standings-${{ github.run_id }}
+          path: artifacts/v2/tournament/standings.json
+          retention-days: 90
+          if-no-files-found: error
