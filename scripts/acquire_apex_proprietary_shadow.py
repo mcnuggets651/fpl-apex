@@ -16,6 +16,15 @@ from apex_fpl.services.pipeline import run_pipeline
 
 MODEL_ID = "apex_proprietary"
 MODEL_VERSION = "apex-proprietary-v1"
+REQUIRED_INTERNAL_SOURCES = frozenset(
+    {
+        "official_fpl",
+        "fpl_core_playerstats",
+        "fpl_core_previous_season",
+        "understat_team_model",
+        "fixture_model",
+    }
+)
 
 
 def _parse_utc(value: str) -> datetime:
@@ -42,6 +51,26 @@ def _fixture_count(official, element_id: int, gameweek: int) -> int:
         if fixture.gameweek == int(gameweek)
         and player.team_id in {fixture.home_team_id, fixture.away_team_id}
     )
+
+
+def _assert_internal_source_health(sources) -> dict[str, str]:
+    by_name = {str(source.name): source for source in sources}
+    failures: list[str] = []
+    health: dict[str, str] = {}
+    for name in sorted(REQUIRED_INTERNAL_SOURCES):
+        source = by_name.get(name)
+        if source is None:
+            failures.append(f"{name}: missing source-health record")
+            continue
+        health[name] = str(source.detail)
+        if not bool(source.ok):
+            failures.append(f"{name}: {source.detail}")
+    if failures:
+        raise RuntimeError(
+            "Apex proprietary required internal source gate failed: "
+            + " | ".join(failures)
+        )
+    return health
 
 
 def _export_raw_apex(
@@ -190,6 +219,7 @@ def acquire(args: argparse.Namespace) -> dict:
         else:
             os.environ["APEX_UNDERSTAT_PLAYER_MODEL_MODE"] = previous_player_mode
 
+    source_health = _assert_internal_source_health(result.sources)
     if list(map(int, result.gameweeks)) != gameweeks:
         raise RuntimeError(
             f"legacy raw Apex horizon mismatch: {result.gameweeks} != {gameweeks}"
@@ -223,6 +253,8 @@ def acquire(args: argparse.Namespace) -> dict:
         "rows": len(frame),
         "players_per_gameweek": per_gw,
         "source_snapshot": official_after.source_hash,
+        "required_internal_sources": sorted(REQUIRED_INTERNAL_SOURCES),
+        "internal_source_health": source_health,
         "raw_contract": "RAW_APEX_XP_ONLY_V1",
         "serve_authorized": False,
     }
