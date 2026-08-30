@@ -73,7 +73,7 @@ jobs:
           required = [
               frozen,
               'cron: "17 4 * * *"',
-              "ref: ${{ env.APEX_CODE_SHA }}",
+              "ref: $" + "{{ env.APEX_CODE_SHA }}",
               "apex-v2 private-store-preflight",
               "scripts/preflight_fpl_auth.py",
               "apex-v2 official-hash",
@@ -106,7 +106,7 @@ jobs:
           required = [
               frozen,
               'cron: "41 6 * * *"',
-              "ref: ${{ env.FROZEN_APEX_SHA }}",
+              "ref: $" + "{{ env.FROZEN_APEX_SHA }}",
               "apex-v2 audit-attempts --prefix apex-v2",
               "apex-v2 private-store-preflight",
               "apex-v2 evaluate-completed",
