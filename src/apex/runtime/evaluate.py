@@ -20,6 +20,7 @@ from apex.governance.tournament import (
     build_model_neutral_decision_surface,
     disagreement_material,
     independent_challenger_consensus,
+    paired_error_summaries,
 )
 from apex.runtime.evaluation_archive import (
     PRIVATE_EVALUATION_RELEASE_ASSETS_V1,
@@ -471,6 +472,11 @@ def evaluate_completed_attempts(
             decision_surface=decision_surface,
             actual=actual,
         )
+        all_pairwise = paired_error_summaries(
+            predictions,
+            decision_surface=decision_surface,
+            actual=actual,
+        )
         disagreement_count = _material_disagreement_count(
             predictions,
             champion_provider_id=champion_provider_id,
@@ -497,6 +503,7 @@ def evaluate_completed_attempts(
             "champion_provider_id": champion_provider_id,
             "providers": metrics,
             "paired_vs_champion": paired,
+            "all_pairwise": all_pairwise,
             "decision_surface": {
                 "method": DECISION_SURFACE_METHOD,
                 "player_count": len(decision_surface),
