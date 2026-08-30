@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, TypeVar
@@ -214,18 +216,44 @@ def acquire_and_freeze(
 
     optional_provider_errors: dict[str, str] = {}
     for provider_config in config.providers:
-        if provider_config.provider_id != "pitchside":
+        if provider_config.provider_id not in {"pitchside", "apex_proprietary"}:
             continue
         path = workdir / provider_config.path
         if path.exists():
             continue
         try:
-            acquire_pitchside_shadow(
-                path,
-                season=config.season,
-                expected_official_hash=expected_official_hash,
-                now=now,
-            )
+            if provider_config.provider_id == "pitchside":
+                acquire_pitchside_shadow(
+                    path,
+                    season=config.season,
+                    expected_official_hash=expected_official_hash,
+                    now=now,
+                )
+            else:
+                if not expected_official_hash:
+                    raise RuntimeError(
+                        "Apex proprietary shadow requires the pre-provider Official seal"
+                    )
+                script = workdir / "scripts/acquire_apex_proprietary_shadow.py"
+                subprocess.run(
+                    [
+                        sys.executable,
+                        str(script),
+                        "--expected-official-hash",
+                        str(expected_official_hash),
+                        "--code-sha",
+                        str(code_sha),
+                        "--season",
+                        str(config.season),
+                        "--horizon",
+                        str(config.max_horizon),
+                        "--output",
+                        str(path),
+                    ],
+                    cwd=workdir,
+                    check=True,
+                    timeout=1200,
+                )
         except Exception as exc:
             optional_provider_errors[provider_config.provider_id] = (
                 f"{type(exc).__name__}: {exc}"
