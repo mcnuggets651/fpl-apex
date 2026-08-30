@@ -14,6 +14,7 @@ from apex_fpl.config import load_settings
 from apex_fpl.data.http import CachedHttp
 from apex_fpl.data.official import OfficialFPLClient
 from apex_fpl.models.backtest import score_predictions
+from apex_fpl.services.draft import DraftFPLClient, build_draft_pool
 from apex_fpl.services.pipeline import run_pipeline
 from apex_fpl.services.team_state import resolve_team_state, write_team_state_report
 
@@ -128,6 +129,50 @@ def sync_team(force: bool = typer.Option(True)):
     console.print(resolution.detail)
     if not resolution.ok:
         raise typer.Exit(1)
+
+
+@app.command("draft-pool")
+def draft_pool():
+    """Materialise live FPL Draft availability/ownership for waiver diagnostics."""
+    settings = load_settings()
+    if not settings.fpl_draft_league_id:
+        raise typer.BadParameter(
+            "No FPL Draft league is configured. Set FPL_DRAFT_LEAGUE_ID or "
+            "fpl_draft_league_id in config/apex.yaml."
+        )
+
+    client = DraftFPLClient()
+    snapshot = client.snapshot(settings.fpl_draft_league_id)
+    bootstrap = client.bootstrap_static()
+    rows = build_draft_pool(snapshot, bootstrap)
+    own_entry_id = None
+    if settings.fpl_draft_entry_name:
+        own_entry_id = snapshot.resolve_entry_id(settings.fpl_draft_entry_name)
+
+    settings.report_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = settings.report_dir / "draft_pool.csv"
+    json_path = settings.report_dir / "draft_pool.json"
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    payload = {
+        "contract": "apex-draft-pool-v1",
+        "league_id": snapshot.league_id,
+        "league_name": snapshot.league_name,
+        "entry_name": settings.fpl_draft_entry_name,
+        "entry_id": own_entry_id,
+        "available_count": sum(row["status"] == "a" for row in rows),
+        "owned_count": sum(row["status"] == "o" for row in rows),
+        "locked_count": sum(row["status"] == "l" for row in rows),
+        "players": rows,
+    }
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    console.print(
+        f"Draft league: [bold]{snapshot.league_name or snapshot.league_id}[/bold] | "
+        f"available={payload['available_count']} owned={payload['owned_count']} "
+        f"locked={payload['locked_count']}"
+    )
+    console.print(f"Draft pool: {csv_path.resolve()}")
+    console.print(f"Draft snapshot: {json_path.resolve()}")
 
 
 @app.command("plan-transfers")
