@@ -283,5 +283,21 @@ def evaluate_completed(
     typer.echo(json.dumps({"published": tags}, indent=2))
 
 
+@app.command("tournament-standings")
+def tournament_standings(
+    season: str = "2026-2027",
+    output: Path = Path("artifacts/v2/tournament/standings.json"),
+):
+    """Build derived prospective champion-challenger season standings."""
+    from apex.runtime.tournament_standings import write_tournament_standings
+
+    payload = write_tournament_standings(
+        _store(),
+        season=season,
+        output=output,
+    )
+    typer.echo(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
+
+
 if __name__ == "__main__":
     app()
