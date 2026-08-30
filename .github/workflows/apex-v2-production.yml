@@ -176,13 +176,22 @@ jobs:
             test "$APEX_ENABLE_PRIVATE_MANAGER_STATE" = "0"
             test -z "${FPL_SESSION_COOKIE:-}${FPL_X_API_AUTHORIZATION:-}"
           fi
-          SNAPSHOT="$(apex-v2 acquire \
+          SNAPSHOT_FILE="$RUNNER_TEMP/apex-v2-snapshot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.txt"
+          rm -f "$SNAPSHOT_FILE"
+          apex-v2 acquire \
             --config config/apex_v2.yaml \
             --run-id '${{ steps.intent.outputs.run_key }}' \
             --code-sha "$APEX_CODE_SHA" \
             --run-started-at '${{ steps.intent.outputs.started }}' \
-            --expected-official-hash '${{ steps.official_seal.outputs.hash }}')"
-          echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
+            --expected-official-hash '${{ steps.official_seal.outputs.hash }}' \
+            --snapshot-output "$SNAPSHOT_FILE"
+          test -s "$SNAPSHOT_FILE"
+          test "$(wc -l < "$SNAPSHOT_FILE" | tr -d '[:space:]')" = "1"
+          SNAPSHOT="$(cat "$SNAPSHOT_FILE")"
+          test -n "$SNAPSHOT"
+          test -d "$SNAPSHOT"
+          test -s "$SNAPSHOT/manifest.json"
+          printf 'snapshot=%s\n' "$SNAPSHOT" >> "$GITHUB_OUTPUT"
 
       - name: Solve frozen snapshot with network-independent decision code
         env:
@@ -346,13 +355,22 @@ jobs:
           set -euo pipefail
           test "$APEX_ENABLE_PRIVATE_MANAGER_STATE" = "0"
           test -z "$FPL_SESSION_COOKIE$FPL_X_API_AUTHORIZATION"
-          SNAPSHOT="$(apex-v2 acquire \
+          SNAPSHOT_FILE="$RUNNER_TEMP/apex-v2-diagnostic-snapshot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.txt"
+          rm -f "$SNAPSHOT_FILE"
+          apex-v2 acquire \
             --config config/apex_v2.yaml \
             --run-id '${{ steps.intent.outputs.run_key }}' \
             --code-sha "$APEX_CODE_SHA" \
             --run-started-at '${{ steps.intent.outputs.started }}' \
-            --expected-official-hash '${{ steps.official_seal.outputs.hash }}')"
-          echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
+            --expected-official-hash '${{ steps.official_seal.outputs.hash }}' \
+            --snapshot-output "$SNAPSHOT_FILE"
+          test -s "$SNAPSHOT_FILE"
+          test "$(wc -l < "$SNAPSHOT_FILE" | tr -d '[:space:]')" = "1"
+          SNAPSHOT="$(cat "$SNAPSHOT_FILE")"
+          test -n "$SNAPSHOT"
+          test -d "$SNAPSHOT"
+          test -s "$SNAPSHOT/manifest.json"
+          printf 'snapshot=%s\n' "$SNAPSHOT" >> "$GITHUB_OUTPUT"
 
       - name: Solve frozen snapshot offline
         env:
