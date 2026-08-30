@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
+import urllib.request
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +18,7 @@ from apex_fpl.services.pipeline import run_pipeline
 
 MODEL_ID = "apex_proprietary"
 MODEL_VERSION = "apex-proprietary-v1"
+CORE_REPOSITORY = "olbauday/FPL-Core-Insights"
 REQUIRED_INTERNAL_SOURCES = frozenset(
     {
         "official_fpl",
@@ -53,16 +56,88 @@ def _fixture_count(official, element_id: int, gameweek: int) -> int:
     )
 
 
-def _assert_internal_source_health(sources) -> dict[str, str]:
+def _latest_core_commit(*, now: datetime, max_age_hours: float) -> dict[str, str | float]:
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{CORE_REPOSITORY}/commits/main",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "fpl-apex-proprietary-shadow",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
+        payload = json.loads(response.read().decode("utf-8"))
+    sha = str(payload.get("sha") or "").strip()
+    commit = payload.get("commit") or {}
+    committer = commit.get("committer") or {}
+    raw_time = str(committer.get("date") or "").strip()
+    if len(sha) != 40 or not raw_time:
+        raise RuntimeError("latest FPL Core response lacks immutable SHA/timestamp")
+    committed = _parse_utc(raw_time)
+    age_hours = (now - committed).total_seconds() / 3600.0
+    if age_hours < -0.5:
+        raise RuntimeError(
+            f"latest FPL Core commit timestamp is {abs(age_hours):.1f}h in the future"
+        )
+    if age_hours > float(max_age_hours):
+        raise RuntimeError(
+            f"latest FPL Core commit is stale ({age_hours:.1f}h; max {max_age_hours:.1f}h)"
+        )
+    return {
+        "sha": sha,
+        "committed_at": committed.isoformat(),
+        "age_hours": max(age_hours, 0.0),
+    }
+
+
+def _runtime_core_lock(
+    base_lock_path: Path,
+    output_path: Path,
+    *,
+    resolved: dict[str, str | float],
+    now: datetime,
+) -> Path:
+    payload = json.loads(Path(base_lock_path).read_text(encoding="utf-8"))
+    sources = payload.setdefault("sources", {})
+    current = dict(sources.get("fpl_core_insights") or {})
+    current.update(
+        {
+            "repository": CORE_REPOSITORY,
+            "commit": str(resolved["sha"]),
+            "committed_at": str(resolved["committed_at"]),
+            "resolved_at": now.isoformat(),
+            "resolved_age_hours": float(resolved["age_hours"]),
+            "newer_revision_available": False,
+            "resolution_policy": (
+                "run-local latest-main resolution for non-serving Apex proprietary shadow"
+            ),
+            "role": "enrichment_data",
+            "required_for_full_apex": False,
+        }
+    )
+    sources["fpl_core_insights"] = current
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
+
+
+def _assert_internal_source_health(sources) -> dict[str, dict[str, str | bool]]:
     by_name = {str(source.name): source for source in sources}
     failures: list[str] = []
-    health: dict[str, str] = {}
+    health: dict[str, dict[str, str | bool]] = {}
     for name in sorted(REQUIRED_INTERNAL_SOURCES):
         source = by_name.get(name)
         if source is None:
             failures.append(f"{name}: missing source-health record")
             continue
-        health[name] = str(source.detail)
+        health[name] = {
+            "ok": bool(source.ok),
+            "detail": str(source.detail),
+            "version": str(source.version),
+        }
         if not bool(source.ok):
             failures.append(f"{name}: {source.detail}")
     if failures:
@@ -174,12 +249,24 @@ def acquire(args: argparse.Namespace) -> dict:
     if not gameweeks:
         raise RuntimeError("no future Official FPL deadlines for Apex proprietary shadow")
 
+    base_settings = load_settings()
+    core_resolution = _latest_core_commit(
+        now=now,
+        max_age_hours=base_settings.max_core_age_hours,
+    )
+    runtime_lock = _runtime_core_lock(
+        base_settings.upstreams_lock_path,
+        Path(args.workdir) / "runtime-upstreams.lock.json",
+        resolved=core_resolution,
+        now=now,
+    )
+
     # Keep the legacy engine isolated and turn off every external forecast/blend vote.
     # The worker exports only project_players(...).apex_xp, computed before the
     # legacy blend. News is disabled here because V2 owns the canonical evidence
     # layer; verified manual role files may still act as factual football context.
     settings = replace(
-        load_settings(),
+        base_settings,
         season=args.season,
         horizon=args.horizon,
         weights={
@@ -195,6 +282,7 @@ def acquire(args: argparse.Namespace) -> dict:
         news_sources=[],
         fpl_entry_id=None,
         required_sources=[],
+        upstreams_lock_path=runtime_lock,
         understat_enabled=True,
         understat_team_model_mode="production",
         report_dir=Path(args.workdir) / "legacy-reports",
@@ -253,6 +341,7 @@ def acquire(args: argparse.Namespace) -> dict:
         "rows": len(frame),
         "players_per_gameweek": per_gw,
         "source_snapshot": official_after.source_hash,
+        "resolved_core": core_resolution,
         "required_internal_sources": sorted(REQUIRED_INTERNAL_SOURCES),
         "internal_source_health": source_health,
         "raw_contract": "RAW_APEX_XP_ONLY_V1",
@@ -274,7 +363,7 @@ def main() -> int:
     if args.horizon <= 0:
         parser.error("--horizon must be positive")
     report = acquire(args)
-    print(report)
+    print(json.dumps(report, sort_keys=True))
     return 0
 
 
