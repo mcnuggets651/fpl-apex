@@ -3,6 +3,7 @@ from apex.governance.tournament import (
     build_model_neutral_decision_surface,
     disagreement_material,
     independent_challenger_consensus,
+    paired_error_summaries,
 )
 
 
@@ -19,6 +20,22 @@ def test_correlated_openfpl_lineage_counts_as_one_family():
         {"airsenal": 7.0, "dastan": 4.0, "openfpl": 8.0, "pitchside": 10.0},
     )
     assert consensus == 8.0
+
+
+def test_all_pairwise_scoring_preserves_same_observation_set_per_pair():
+    result = paired_error_summaries(
+        {
+            "airsenal": {1: 5.0, 2: 4.0, 3: 8.0},
+            "dastan": {1: 4.0, 2: 2.0},
+            "pitchside": {1: 3.0, 3: 7.0},
+        },
+        decision_surface=frozenset({1, 2, 3}),
+        actual={1: 3.0, 2: 5.0, 3: 7.0},
+    )
+    assert result["airsenal::dastan"]["paired_rows"] == 2
+    assert result["airsenal::dastan"]["provider_a_absolute_error_sum"] == 3.0
+    assert result["airsenal::dastan"]["provider_b_absolute_error_sum"] == 4.0
+    assert result["dastan::pitchside"]["paired_rows"] == 1
 
 
 def test_model_neutral_surface_is_union_across_models_and_manager_state():
