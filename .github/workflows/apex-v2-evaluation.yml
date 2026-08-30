@@ -38,3 +38,17 @@ jobs:
           APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
           APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
         run: apex-v2 evaluate-completed --season 2026-2027 --code-sha "$GITHUB_SHA"
+      - name: Build champion challenger season standings
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          apex-v2 tournament-standings
+          --season 2026-2027
+          --output artifacts/v2/tournament/standings.json
+      - name: Upload derived tournament standings
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v2-tournament-standings
+          path: artifacts/v2/tournament/standings.json
+          retention-days: 90
+          if-no-files-found: error
