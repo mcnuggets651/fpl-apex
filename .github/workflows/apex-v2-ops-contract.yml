@@ -60,6 +60,38 @@ jobs:
               raise SystemExit(f"ops PR touched non-operational paths: {unexpected}")
           if not changed:
               raise SystemExit("ops PR has no changes")
+
+          governance_diff = subprocess.check_output(
+              [
+                  "git",
+                  "diff",
+                  "--unified=0",
+                  "origin/main...HEAD",
+                  "--",
+                  "scripts/check_governance_consistency.py",
+              ],
+              text=True,
+          )
+          added = {
+              line[1:].strip()
+              for line in governance_diff.splitlines()
+              if line.startswith("+") and not line.startswith("+++")
+          }
+          removed = [
+              line
+              for line in governance_diff.splitlines()
+              if line.startswith("-") and not line.startswith("---")
+          ]
+          expected_added = {
+              '"apex-v2-daily-production.yml",',
+              '"apex-v2-daily-evaluation.yml",',
+              '"apex-v2-ops-contract.yml",',
+          }
+          if added != expected_added or removed:
+              raise SystemExit(
+                  "governance script change must be exactly the three V2 workflow "
+                  f"inventory additions; added={sorted(added)} removed={removed}"
+              )
           PY
 
       - name: Assert frozen production contract
