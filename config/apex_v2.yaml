@@ -27,9 +27,17 @@ providers:
     max_age_hours: 18
     requested_horizons: [1]
     path: acquisition/providers/dastan.csv
-  - id: openfpl
+  - id: pitchside
     role: SHADOW
     priority: 20
+    serve_authorized: false
+    predictive_status: INSUFFICIENT_HISTORY
+    max_age_hours: 18
+    requested_horizons: [1,2,3,4,5,6,7,8]
+    path: acquisition/providers/pitchside.json
+  - id: openfpl
+    role: SHADOW
+    priority: 30
     serve_authorized: false
     predictive_status: INSUFFICIENT_HISTORY
     max_age_hours: 18
