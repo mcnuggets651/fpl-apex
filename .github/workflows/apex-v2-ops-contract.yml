@@ -117,14 +117,24 @@ jobs:
           if missing:
               raise SystemExit(f"daily evaluation contract missing: {missing}")
 
-          retired = [
+          legacy = [
               Path(".github/workflows/pinnacle.yml"),
               Path(".github/workflows/airsenal.yml"),
               Path(".github/workflows/refresh-core-pin.yml"),
           ]
-          present = [str(path) for path in retired if path.exists()]
-          if present:
-              raise SystemExit(f"legacy scheduled production paths still present: {present}")
+          for path in legacy:
+              if not path.is_file():
+                  raise SystemExit(f"legacy compatibility workflow missing: {path}")
+              body = path.read_text(encoding="utf-8")
+              if "workflow_dispatch:" not in body:
+                  raise SystemExit(f"legacy workflow is not manually invokable: {path}")
+              if "schedule:" in body or "cron:" in body:
+                  raise SystemExit(f"legacy workflow still has an automatic schedule: {path}")
+              if path.name == "pinnacle.yml" and "\n  push:" in body:
+                  raise SystemExit("legacy Apex Unified still has an automatic push trigger")
+              first = body.splitlines()[0] if body.splitlines() else ""
+              if "RETIRED: manual-only legacy workflow" not in first:
+                  raise SystemExit(f"legacy retirement marker missing: {path}")
           PY
 
   readiness:
