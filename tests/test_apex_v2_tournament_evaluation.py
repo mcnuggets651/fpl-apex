@@ -36,4 +36,6 @@ def test_material_disagreement_collapses_correlated_family():
         champion_provider_id="airsenal",
         decision_surface=frozenset({1, 2}),
     )
-    assert count == 2
+    # Player 1 clears both frozen thresholds. Player 2's family consensus is
+    # only 0.975 xP below the champion, so it must not be rounded up to 1.0.
+    assert count == 1
