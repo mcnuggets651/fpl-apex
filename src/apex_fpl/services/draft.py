@@ -55,7 +55,11 @@ class DraftLeagueSnapshot:
 
     def resolve_entry_id(self, entry_name: str) -> int:
         wanted = entry_name.strip().casefold()
-        matches = [entry.entry_id for entry in self.entries if entry.entry_name.strip().casefold() == wanted]
+        matches = [
+            entry.entry_id
+            for entry in self.entries
+            if entry.entry_name.strip().casefold() == wanted
+        ]
         if not matches:
             raise DraftAPIError(
                 f"Draft entry {entry_name!r} was not found in league {self.league_id}"
@@ -130,3 +134,56 @@ class DraftFPLClient:
             entries=entries,
             element_status=tuple(self.element_status(league_id)),
         )
+
+
+def build_draft_pool(
+    snapshot: DraftLeagueSnapshot,
+    bootstrap: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Join Draft ownership status to Draft player metadata.
+
+    Draft element IDs are intentionally kept in their own namespace; they are not
+    assumed to equal Classic-FPL element IDs. Apex projection joins should therefore
+    reconcile on identity fields (name/club/position) rather than raw numeric ID.
+    """
+
+    teams = {
+        int(row["id"]): str(row.get("name") or row.get("short_name") or "")
+        for row in bootstrap.get("teams", [])
+        if row.get("id") is not None
+    }
+    positions = {
+        int(row["id"]): str(row.get("singular_name_short") or row.get("singular_name") or "")
+        for row in bootstrap.get("element_types", [])
+        if row.get("id") is not None
+    }
+    players = {
+        int(row["id"]): row
+        for row in bootstrap.get("elements", [])
+        if row.get("id") is not None
+    }
+    entry_names = {entry.entry_id: entry.entry_name for entry in snapshot.entries}
+
+    output: list[dict[str, Any]] = []
+    for status_row in snapshot.element_status:
+        element_raw = status_row.get("element")
+        if element_raw is None:
+            continue
+        element_id = int(element_raw)
+        player = players.get(element_id, {})
+        owner_raw = status_row.get("owner")
+        owner_id = int(owner_raw) if owner_raw is not None else None
+        output.append(
+            {
+                "draft_element_id": element_id,
+                "first_name": str(player.get("first_name") or ""),
+                "second_name": str(player.get("second_name") or ""),
+                "web_name": str(player.get("web_name") or player.get("second_name") or ""),
+                "team": teams.get(int(player.get("team") or 0), ""),
+                "position": positions.get(int(player.get("element_type") or 0), ""),
+                "status": str(status_row.get("status") or ""),
+                "owner_entry_id": owner_id,
+                "owner_entry_name": entry_names.get(owner_id, "") if owner_id is not None else "",
+            }
+        )
+    return output
