@@ -26,6 +26,16 @@ A scheduled/manual workflow may not replace the frozen checkout with `main`. Ins
 
 The operations contract CI unit-tests these controllers and rejects any repair PR that modifies `src/`, `config/` or the frozen `tests/` tree.
 
+### Post-operations-change runtime acceptance
+
+CI proves code and static contracts, but authentication and private-release evaluation also depend on real repository secrets and live external state. To prevent a green operations PR from remaining unproven until the next cron, the existing non-serving workflows also run once after relevant operations changes are merged to `main`:
+
+- Auth keepalive runs on a `main` push only when the keepalive workflow, daily production auth surface, or `scripts/apex_v2_auth_ops.py` changes.
+- Daily evaluation runs on a `main` push only when the evaluation workflow or `scripts/apex_v2_attempt_audit_ops.py` changes.
+- Daily production deliberately has **no push trigger**. An operations merge must never manufacture a production attempt or recommendation merely to prove orchestration.
+
+These post-change executions use the same frozen checkout, concurrency groups, secrets, private-store checks and fail-closed rules as their scheduled counterparts. They therefore provide real secret-bearing runtime acceptance without creating a second implementation or another production rehearsal. Regression tests in `ops_tests/` require these triggers and explicitly prove production remains schedule/manual-only.
+
 ## Active daily lifecycle
 
 ### 0. Owner-auth keepalive — every six hours
@@ -173,6 +183,7 @@ The operations PR is rejected if it:
 - weakens the exact-manager identity proof or persistence-before-use recovery invariant;
 - changes the historical acknowledgement set without updating the tested operations controller;
 - allows any unacknowledged missing final to pass;
+- removes the post-operations-change auth/evaluation acceptance triggers or adds a production push trigger;
 - stops using the atomic snapshot-output handoff;
 - enables network access during solve;
 - removes immutable publication or prospective evaluation commands;
@@ -203,8 +214,8 @@ The repaired daily layer is considered healthy when:
 
 1. the operations repair PR is merged to the repository default branch (`main`);
 2. the ops regression suite, governance, frozen-source and workflow-contract checks are green;
-3. auth keepalive can rotate/persist a valid refresh state, or clearly reports that an external bootstrap re-seed is required;
-4. evaluation runs through the six acknowledged historical failures while still proving there are no unacknowledged orphans;
+3. the automatic post-change auth keepalive proves live secret-bearing rotation/persistence without serving behavior;
+4. the automatic post-change evaluator runs through the six acknowledged historical failures while still proving there are no unacknowledged orphans and can build the prospective standings surface;
 5. the next justified production run uses the frozen SHA, authenticates the exact configured manager, freezes once, solves offline and creates its immutable matching final.
 
 PR #90 remains draft and unmerged while this scheduler operates, because these workflows fetch the certified frozen SHA explicitly. Merging or changing PR #90 is not required to operate the frozen engine.
