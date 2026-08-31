@@ -221,6 +221,13 @@ class AuthOperationsTests(unittest.TestCase):
                 )
             self.assertIn("auth_recovery=none", output.read_text(encoding="utf-8"))
 
+    def test_wrapper_suppresses_arbitrary_exception_detail(self):
+        rendered = ops._format_wrapper_error(RuntimeError("super-secret-token-material"))
+        self.assertIn("RuntimeError", rendered)
+        self.assertNotIn("super-secret-token-material", rendered)
+        safe = ops._format_wrapper_error(ops.AuthOpsError("static safe failure"))
+        self.assertIn("static safe failure", safe)
+
 
 if __name__ == "__main__":
     unittest.main()
