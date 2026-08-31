@@ -1,0 +1,111 @@
+name: Temporary Live Draft Trade Scout
+
+on:
+  push:
+    branches:
+      - agent/draft-trade-scout-live-20260831
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch and map live Draft league
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+          from collections import defaultdict
+
+          LEAGUE_ID = 33160
+          BASE = 'https://draft.premierleague.com/api'
+
+          def get_json(url):
+              req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 ApexDraftScout/1.0'})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+
+          details = get_json(f'{BASE}/league/{LEAGUE_ID}/details')
+          status = get_json(f'{BASE}/league/{LEAGUE_ID}/element-status')
+          bootstrap = get_json(f'{BASE}/bootstrap-static')
+
+          elements = bootstrap.get('elements') or []
+          by_id = {int(e['id']): e for e in elements if e.get('id') is not None}
+          teams = {int(t['id']): t.get('short_name') or t.get('name') or str(t['id']) for t in (bootstrap.get('teams') or []) if t.get('id') is not None}
+          types = {int(t['id']): t.get('singular_name_short') or t.get('singular_name') or str(t['id']) for t in (bootstrap.get('element_types') or []) if t.get('id') is not None}
+
+          entries = details.get('league_entries') or details.get('entries') or []
+          owner_names = {}
+          owner_meta = {}
+          for e in entries:
+              ids = []
+              for key in ('id','entry_id','league_entry_id'):
+                  if e.get(key) is not None:
+                      try: ids.append(int(e[key]))
+                      except Exception: pass
+              team_name = e.get('entry_name') or e.get('team_name') or e.get('name') or ''
+              manager = ' '.join(x for x in [e.get('player_first_name'), e.get('player_last_name')] if x).strip()
+              display = team_name or manager or (str(ids[0]) if ids else 'unknown')
+              for oid in ids:
+                  owner_names[oid] = display
+                  owner_meta[oid] = {'team_name': team_name, 'manager': manager, 'raw': e}
+
+          rosters = defaultdict(list)
+          available = []
+          for s in status.get('element_status', status if isinstance(status, list) else []):
+              pid = int(s['element'])
+              e = by_id.get(pid, {})
+              rec = {
+                  'id': pid,
+                  'name': e.get('web_name') or e.get('second_name') or str(pid),
+                  'team': teams.get(int(e.get('team',0)), str(e.get('team',''))),
+                  'position': types.get(int(e.get('element_type',0)), str(e.get('element_type',''))),
+                  'owner': s.get('owner'),
+                  'status': s.get('status'),
+              }
+              if s.get('status') == 'o' and s.get('owner') is not None:
+                  rosters[int(s['owner'])].append(rec)
+              elif s.get('status') == 'a':
+                  available.append(rec)
+
+          print('DETAIL_KEYS', sorted(details.keys()))
+          print('LEAGUE', json.dumps(details.get('league') or {}, ensure_ascii=False))
+          print('ENTRY_COUNT', len(entries))
+          print('ENTRIES')
+          for e in entries:
+              print(json.dumps(e, ensure_ascii=False, sort_keys=True))
+
+          print('ROSTERS')
+          for owner in sorted(rosters):
+              meta = owner_meta.get(owner, {})
+              print(f"OWNER {owner} | TEAM={meta.get('team_name','')} | MANAGER={meta.get('manager','')} | DISPLAY={owner_names.get(owner,'UNKNOWN')}")
+              for r in sorted(rosters[owner], key=lambda x:(x['position'], x['name'])):
+                  print(f"  {r['position']:>3} | {r['name']} | {r['team']} | id={r['id']}")
+
+          print('AVAILABLE_COUNT', len(available))
+
+          out = {
+              'league_id': LEAGUE_ID,
+              'league': details.get('league') or {},
+              'entries': entries,
+              'rosters': {str(k): v for k,v in rosters.items()},
+              'available': available,
+          }
+          with open('draft-live-scout.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
+          PY
+      - name: Upload scout snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: draft-live-scout
+          path: draft-live-scout.json
+          retention-days: 1
