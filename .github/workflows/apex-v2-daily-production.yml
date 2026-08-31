@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: apex-v2-production
+  group: apex-v2-fpl-auth
   cancel-in-progress: false
 
 env:
@@ -32,6 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
           test "$APEX_CODE_SHA" = "$FROZEN_APEX_SHA"
           test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
           echo "Apex V2 daily production pinned to $FROZEN_APEX_SHA"
@@ -66,7 +67,22 @@ jobs:
           }
           apex-v2 private-store-preflight
 
-      - name: Verify and rotate FPL owner credential before provider work
+      - name: Materialize exact operations auth controller
+        if: env.APEX_PRIVATE_MANAGER_ENABLED == '1'
+        env:
+          CONTROL_PLANE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test -n "$CONTROL_PLANE_SHA"
+          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
+          git show "$CONTROL_PLANE_SHA:scripts/apex_v2_auth_ops.py" > "$RUNNER_TEMP/apex_v2_auth_ops.py"
+          test -s "$RUNNER_TEMP/apex_v2_auth_ops.py"
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
+      - name: Verify and recover FPL owner credential before provider work
         if: env.APEX_PRIVATE_MANAGER_ENABLED == '1'
         id: fpl_auth
         env:
@@ -79,7 +95,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/preflight_fpl_auth.py \
+          python "$RUNNER_TEMP/apex_v2_auth_ops.py" \
+            --mode production \
+            --preflight-script scripts/preflight_fpl_auth.py \
             --config config/apex_v2.yaml \
             --github-output "$GITHUB_OUTPUT" \
             --github-env "$GITHUB_ENV"
