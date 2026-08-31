@@ -2,6 +2,13 @@ name: Apex V2 Auth Keepalive
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/apex-v2-auth-keepalive.yml"
+      - ".github/workflows/apex-v2-daily-production.yml"
+      - "scripts/apex_v2_auth_ops.py"
   schedule:
     - cron: "22 */6 * * *"
 
