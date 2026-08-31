@@ -1,0 +1,60 @@
+name: Apex V2 Deadline Watch
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/apex-v2-deadline-watch.yml"
+      - "scripts/apex_v2_deadline_ops.py"
+  schedule:
+    - cron: "11,41 * * * *"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: apex-v2-deadline-watch
+  cancel-in-progress: false
+
+env:
+  FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify operations-only watcher identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          grep -F -- "$FROZEN_APEX_SHA" .github/workflows/apex-v2-daily-production.yml >/dev/null
+          grep -F -- 'cron: "17 4 * * *"' .github/workflows/apex-v2-daily-production.yml >/dev/null
+          echo "Deadline watcher observes Official FPL only; frozen engine pin is $FROZEN_APEX_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check actual Official FPL deadline and dispatch at most one near-deadline refresh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/apex_v2_deadline_ops.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --token "$GITHUB_TOKEN" \
+            --ref main \
+            --min-minutes 90 \
+            --max-minutes 150

@@ -1,0 +1,89 @@
+name: Apex V2 Decision Quality
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/apex-v2-decision-quality.yml"
+      - "scripts/apex_v2_decision_quality_ops.py"
+  workflow_run:
+    workflows:
+      - "Apex V2 Daily Evaluation"
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-v2-decision-quality
+  cancel-in-progress: false
+
+env:
+  FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+
+jobs:
+  score:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FROZEN_APEX_SHA }}
+          fetch-depth: 0
+
+      - name: Verify frozen retrospective source tooling identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install frozen Apex V2 release tooling
+        run: pip install -e '.[dev]'
+
+      - name: Materialize exact decision-quality controller
+        env:
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CONTROL_PLANE_SHA"
+          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
+          git show "$CONTROL_PLANE_SHA:scripts/apex_v2_decision_quality_ops.py" > "$RUNNER_TEMP/apex_v2_decision_quality_ops.py"
+          test -s "$RUNNER_TEMP/apex_v2_decision_quality_ops.py"
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
+      - name: Preflight private decision-quality store
+        env:
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+        run: apex-v2 private-store-preflight
+
+      - name: Score immutable completed decisions observationally
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/apex_v2_decision_quality_ops.py" \
+            --season 2026-2027 \
+            --control-plane-sha "$CONTROL_PLANE_SHA"
+
+      - name: Prove frozen worktree stayed untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"

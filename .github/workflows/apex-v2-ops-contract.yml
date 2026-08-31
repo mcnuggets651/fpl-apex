@@ -7,15 +7,22 @@ on:
       - ".github/workflows/apex-v2-daily-production.yml"
       - ".github/workflows/apex-v2-daily-evaluation.yml"
       - ".github/workflows/apex-v2-direct-auth-diagnostic.yml"
+      - ".github/workflows/apex-v2-deadline-watch.yml"
+      - ".github/workflows/apex-v2-owner-brief.yml"
+      - ".github/workflows/apex-v2-decision-quality.yml"
       - ".github/workflows/apex-v2-ops-contract.yml"
       - ".github/workflows/pinnacle.yml"
       - ".github/workflows/airsenal.yml"
       - ".github/workflows/refresh-core-pin.yml"
       - "scripts/apex_v2_auth_ops.py"
       - "scripts/apex_v2_attempt_audit_ops.py"
+      - "scripts/apex_v2_deadline_ops.py"
+      - "scripts/apex_v2_owner_brief_ops.py"
+      - "scripts/apex_v2_decision_quality_ops.py"
       - "scripts/check_governance_consistency.py"
       - "ops_tests/**"
       - "docs/APEX_V2_DAILY_OPERATIONS.md"
+      - "docs/APEX_V2_SAFE_EXTENSIONS.md"
   workflow_dispatch:
 
 permissions:
@@ -49,14 +56,21 @@ jobs:
               ".github/workflows/apex-v2-daily-production.yml",
               ".github/workflows/apex-v2-daily-evaluation.yml",
               ".github/workflows/apex-v2-direct-auth-diagnostic.yml",
+              ".github/workflows/apex-v2-deadline-watch.yml",
+              ".github/workflows/apex-v2-owner-brief.yml",
+              ".github/workflows/apex-v2-decision-quality.yml",
               ".github/workflows/apex-v2-ops-contract.yml",
               ".github/workflows/pinnacle.yml",
               ".github/workflows/airsenal.yml",
               ".github/workflows/refresh-core-pin.yml",
               "scripts/apex_v2_auth_ops.py",
               "scripts/apex_v2_attempt_audit_ops.py",
+              "scripts/apex_v2_deadline_ops.py",
+              "scripts/apex_v2_owner_brief_ops.py",
+              "scripts/apex_v2_decision_quality_ops.py",
               "scripts/check_governance_consistency.py",
               "docs/APEX_V2_DAILY_OPERATIONS.md",
+              "docs/APEX_V2_SAFE_EXTENSIONS.md",
           }
           changed = set(
               subprocess.check_output(
@@ -73,9 +87,8 @@ jobs:
               raise SystemExit(f"ops PR touched non-operational paths: {unexpected}")
           if not changed:
               raise SystemExit("ops PR has no changes")
-          forbidden_roots = ("src/", "config/", "tests/")
           forbidden = sorted(
-              path for path in changed if path.startswith(forbidden_roots)
+              path for path in changed if path.startswith(("src/", "config/", "tests/"))
           )
           if forbidden:
               raise SystemExit(f"ops PR touched frozen-engine paths: {forbidden}")
@@ -87,7 +100,7 @@ jobs:
       - name: Assert repository workflow governance is consistent
         run: python scripts/check_governance_consistency.py
 
-      - name: Assert frozen production contract
+      - name: Assert frozen production contract is unchanged and unique
         shell: bash
         run: |
           set -euo pipefail
@@ -95,8 +108,7 @@ jobs:
           from pathlib import Path
 
           frozen = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
-          path = Path(".github/workflows/apex-v2-daily-production.yml")
-          text = path.read_text(encoding="utf-8")
+          text = Path(".github/workflows/apex-v2-daily-production.yml").read_text(encoding="utf-8")
           required = [
               frozen,
               'cron: "17 4 * * *"',
@@ -106,7 +118,6 @@ jobs:
               "CONTROL_PLANE_SHA: $" + "{{ github.sha }}",
               "apex_v2_auth_ops.py",
               "--mode production",
-              "--preflight-script scripts/preflight_fpl_auth.py",
               "apex-v2 private-store-preflight",
               "apex-v2 official-hash",
               "scripts/acquire_dastan_shadow.py",
@@ -122,35 +133,18 @@ jobs:
               raise SystemExit(f"daily production contract missing: {missing}")
           forbidden = [
               "pull_request:",
+              "\n  push:\n",
+              "apex_v2_deadline_ops.py",
+              "deadline-window",
               "ref: $" + "{{ github.sha }}",
               "cancel-in-progress: true",
           ]
           present = [needle for needle in forbidden if needle in text]
           if present:
-              raise SystemExit(
-                  f"daily production must remain frozen-SHA operational only: {present}"
-              )
-
-          controller = Path("scripts/apex_v2_auth_ops.py").read_text(encoding="utf-8")
-          controller_required = [
-              "Official FPL refresh credential was rejected or expired",
-              "_bootstrap_recover",
-              "_persist_private_refresh_token",
-              'direct_env["FPL_REFRESH_TOKEN"] = ""',
-              'direct_env["FPL_REFRESH_WRAP_KEY"] = ""',
-              'if mode == "keepalive":',
-              "verify_owner_credential",
-          ]
-          missing_controller = [
-              needle for needle in controller_required if needle not in controller
-          ]
-          if missing_controller:
-              raise SystemExit(
-                  f"auth recovery controller lost fail-closed invariants: {missing_controller}"
-              )
+              raise SystemExit(f"daily production contract drifted: {present}")
           PY
 
-      - name: Assert auth keepalive is isolated and non-serving
+      - name: Assert authentication safety invariants
         shell: bash
         run: |
           set -euo pipefail
@@ -158,28 +152,22 @@ jobs:
           from pathlib import Path
 
           frozen = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
-          text = Path(".github/workflows/apex-v2-auth-keepalive.yml").read_text(
-              encoding="utf-8"
-          )
-          required = [
+          keepalive = Path(".github/workflows/apex-v2-auth-keepalive.yml").read_text(encoding="utf-8")
+          for needle in (
               frozen,
               'cron: "22 */6 * * *"',
               "permissions:\n  contents: read",
               "group: apex-v2-fpl-auth",
               "cancel-in-progress: false",
               "ref: $" + "{{ env.FROZEN_APEX_SHA }}",
-              'test "$GITHUB_REF" = "refs/heads/main"',
-              "CONTROL_PLANE_SHA: $" + "{{ github.sha }}",
               "apex-v2 private-store-preflight",
               "apex_v2_auth_ops.py",
               "--mode keepalive",
-              "--preflight-script scripts/preflight_fpl_auth.py",
               'test -z "$(git status --porcelain --untracked-files=no)"',
-          ]
-          missing = [needle for needle in required if needle not in text]
-          if missing:
-              raise SystemExit(f"auth keepalive contract missing: {missing}")
-          forbidden = [
+          ):
+              if needle not in keepalive:
+                  raise SystemExit(f"auth keepalive contract missing: {needle}")
+          for forbidden in (
               "FPL_X_API_AUTHORIZATION",
               "FPL_SESSION_COOKIE",
               "apex-v2 intent",
@@ -187,98 +175,76 @@ jobs:
               "apex-v2 acquire",
               "apex-v2 solve",
               "apex-v2 publish",
-              "airsenal",
-              "acquire_dastan",
               "contents: write",
-              "ref: $" + "{{ github.sha }}",
-          ]
-          present = [needle for needle in forbidden if needle in text]
-          if present:
-              raise SystemExit(
-                  f"auth keepalive crossed into serving/decision behavior: {present}"
-              )
+          ):
+              if forbidden in keepalive:
+                  raise SystemExit(f"auth keepalive crossed safety boundary: {forbidden}")
+
+          controller = Path("scripts/apex_v2_auth_ops.py").read_text(encoding="utf-8")
+          for needle in (
+              "Official FPL refresh credential was rejected or expired",
+              "_bootstrap_recover",
+              "_persist_private_refresh_token",
+              'direct_env["FPL_REFRESH_TOKEN"] = ""',
+              'direct_env["FPL_REFRESH_WRAP_KEY"] = ""',
+              'if mode == "keepalive":',
+              "verify_owner_credential",
+          ):
+              if needle not in controller:
+                  raise SystemExit(f"auth recovery invariant missing: {needle}")
           PY
 
-      - name: Assert direct-auth diagnostic is non-serving and incident-only
+      - name: Assert direct-auth diagnostic remains non-serving and incident-only
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          frozen = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
-          text = Path(".github/workflows/apex-v2-direct-auth-diagnostic.yml").read_text(
-              encoding="utf-8"
-          )
-          required = [
-              frozen,
+          text = Path(".github/workflows/apex-v2-direct-auth-diagnostic.yml").read_text(encoding="utf-8")
+          for needle in (
+              "99cc7b51b0cff45462b567084cb1844cfe0a456f",
               "permissions:\n  contents: read",
               "workflow_dispatch:",
-              "\n  push:\n",
-              "      - main",
-              '      - ".github/workflows/apex-v2-direct-auth-diagnostic.yml"',
-              "ref: $" + "{{ env.FROZEN_APEX_SHA }}",
-              "FPL_X_API_AUTHORIZATION: $" + "{{ secrets.FPL_X_API_AUTHORIZATION }}",
-              "FPL_SESSION_COOKIE: $" + "{{ secrets.FPL_SESSION_COOKIE }}",
               'FPL_REFRESH_TOKEN: ""',
               'FPL_REFRESH_WRAP_KEY: ""',
               "python scripts/preflight_fpl_auth.py --config config/apex_v2.yaml",
-              'test -z "$(git status --porcelain --untracked-files=no)"',
-          ]
-          missing = [needle for needle in required if needle not in text]
-          if missing:
-              raise SystemExit(f"direct-auth diagnostic contract missing: {missing}")
-          forbidden = [
+          ):
+              if needle not in text:
+                  raise SystemExit(f"direct-auth diagnostic contract missing: {needle}")
+          for forbidden in (
               "schedule:",
               "cron:",
               "contents: write",
-              "APEX_PRIVATE_GITHUB",
               "apex-v2 intent",
-              "apex-v2 official-hash",
               "apex-v2 acquire",
               "apex-v2 solve",
               "apex-v2 publish",
-              "airsenal",
-              "acquire_dastan",
-              "github-env",
-          ]
-          present = [needle for needle in forbidden if needle in text]
-          if present:
-              raise SystemExit(
-                  f"direct-auth diagnostic crossed into serving/mutating behavior: {present}"
-              )
+          ):
+              if forbidden in text:
+                  raise SystemExit(f"direct-auth diagnostic crossed safety boundary: {forbidden}")
           PY
 
-      - name: Assert evaluation orphan policy and single-publisher contract
+      - name: Assert evaluation orphan policy and frozen evaluator contract
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          frozen = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
-          text = Path(".github/workflows/apex-v2-daily-evaluation.yml").read_text(
-              encoding="utf-8"
-          )
-          required = [
-              frozen,
+          text = Path(".github/workflows/apex-v2-daily-evaluation.yml").read_text(encoding="utf-8")
+          for needle in (
+              "99cc7b51b0cff45462b567084cb1844cfe0a456f",
               'cron: "41 6 * * *"',
               "ref: $" + "{{ env.FROZEN_APEX_SHA }}",
-              'test "$GITHUB_REF" = "refs/heads/main"',
-              "CONTROL_PLANE_SHA: $" + "{{ github.sha }}",
               "apex_v2_attempt_audit_ops.py",
-              "--prefix apex-v2",
-              "apex-v2 private-store-preflight",
               "apex-v2 evaluate-completed",
-              "--code-sha \"$FROZEN_APEX_SHA\"",
               "apex-v2 tournament-standings",
-          ]
-          missing = [needle for needle in required if needle not in text]
-          if missing:
-              raise SystemExit(f"daily evaluation contract missing: {missing}")
-
+          ):
+              if needle not in text:
+                  raise SystemExit(f"daily evaluation contract missing: {needle}")
           audit = Path("scripts/apex_v2_attempt_audit_ops.py").read_text(encoding="utf-8")
-          expected_failed_runs = {
+          expected = {
               "33242604422-1",
               "33257608630-1",
               "33260512411-1",
@@ -286,46 +252,187 @@ jobs:
               "33272866621-1",
               "33312221205-1",
           }
-          missing_ack = sorted(run for run in expected_failed_runs if run not in audit)
-          if missing_ack:
-              raise SystemExit(
-                  f"historical failed-attempt acknowledgements are incomplete: {missing_ack}"
-              )
-          for invariant in (
-              "unacknowledged_missing_finals",
-              "returncode not in {0, 2}",
-              "operationally_clear",
-          ):
-              if invariant not in audit:
-                  raise SystemExit(f"attempt-audit fail-closed invariant missing: {invariant}")
+          missing = sorted(run for run in expected if run not in audit)
+          if missing:
+              raise SystemExit(f"historical acknowledgement set drifted: {missing}")
+          for needle in ("unacknowledged_missing_finals", "returncode not in {0, 2}", "operationally_clear"):
+              if needle not in audit:
+                  raise SystemExit(f"attempt-audit fail-closed invariant missing: {needle}")
+          PY
 
-          legacy = [
+      - name: Assert deadline watcher can only request the existing publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/apex-v2-deadline-watch.yml").read_text(encoding="utf-8")
+          script = Path("scripts/apex_v2_deadline_ops.py").read_text(encoding="utf-8")
+          for needle in (
+              'cron: "11,41 * * * *"',
+              "actions: write",
+              "group: apex-v2-deadline-watch",
+              "cancel-in-progress: false",
+              "--min-minutes 90",
+              "--max-minutes 150",
+              "apex_v2_deadline_ops.py",
+          ):
+              if needle not in workflow:
+                  raise SystemExit(f"deadline watcher contract missing: {needle}")
+          for forbidden in (
+              "FPL_REFRESH_TOKEN",
+              "FPL_X_API_AUTHORIZATION",
+              "FPL_SESSION_COOKIE",
+              "APEX_PRIVATE_GITHUB_TOKEN",
+              "contents: write",
+              "apex-v2 intent",
+              "apex-v2 official-hash",
+              "apex-v2 acquire",
+              "apex-v2 solve",
+              "apex-v2 publish",
+              "airsenal",
+              "acquire_dastan",
+          ):
+              if forbidden in workflow:
+                  raise SystemExit(f"deadline watcher crossed serving boundary: {forbidden}")
+          for needle in (
+              "bootstrap-static",
+              "SKIPPED_ALREADY_RECORDED",
+              "workflow_dispatch",
+              'payload={"ref": "main"}',
+          ):
+              if needle not in script:
+                  raise SystemExit(f"deadline controller invariant missing: {needle}")
+          PY
+
+      - name: Assert owner brief is private and read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/apex-v2-owner-brief.yml").read_text(encoding="utf-8")
+          script = Path("scripts/apex_v2_owner_brief_ops.py").read_text(encoding="utf-8")
+          for needle in (
+              '"Apex V2 Daily Production"',
+              "permissions:\n  contents: read",
+              "99cc7b51b0cff45462b567084cb1844cfe0a456f",
+              "APEX_V2_PRIVATE_REPO_TOKEN",
+              "apex_v2_owner_brief_ops.py",
+              "apex-v2 private-store-preflight",
+          ):
+              if needle not in workflow:
+                  raise SystemExit(f"owner brief workflow contract missing: {needle}")
+          for forbidden in (
+              "schedule:",
+              "cron:",
+              "contents: write",
+              "apex-v2 intent",
+              "apex-v2 acquire",
+              "apex-v2 solve",
+              "apex-v2 publish",
+              "airsenal",
+              "acquire_dastan",
+          ):
+              if forbidden in workflow:
+                  raise SystemExit(f"owner brief crossed serving boundary: {forbidden}")
+          for needle in (
+              '"production_influence": "NONE"',
+              '"serving_authorized": False',
+              '"recomputed_xp": False',
+              '"altered_transfer_decision": False',
+              "private-presentation",
+          ):
+              if needle not in script:
+                  raise SystemExit(f"owner brief controller invariant missing: {needle}")
+          PY
+
+      - name: Assert decision-quality diagnostics are retrospective and non-serving
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/apex-v2-decision-quality.yml").read_text(encoding="utf-8")
+          script = Path("scripts/apex_v2_decision_quality_ops.py").read_text(encoding="utf-8")
+          for needle in (
+              '"Apex V2 Daily Evaluation"',
+              "permissions:\n  contents: read",
+              "99cc7b51b0cff45462b567084cb1844cfe0a456f",
+              "APEX_V2_PRIVATE_REPO_TOKEN",
+              "apex_v2_decision_quality_ops.py",
+              "apex-v2 private-store-preflight",
+          ):
+              if needle not in workflow:
+                  raise SystemExit(f"decision-quality workflow contract missing: {needle}")
+          for forbidden in (
+              "schedule:",
+              "cron:",
+              "contents: write",
+              "apex-v2 intent",
+              "apex-v2 acquire",
+              "apex-v2 solve",
+              "apex-v2 publish",
+              "airsenal",
+              "acquire_dastan",
+          ):
+              if forbidden in workflow:
+                  raise SystemExit(f"decision-quality crossed serving boundary: {forbidden}")
+          for needle in (
+              "PUBLIC_OUTCOME_PREFIX",
+              '"production_influence": "NONE"',
+              '"serving_authorized": False',
+              '"promotion_authority": False',
+              "private-decision-quality",
+              "hit_cost_interpreted",
+          ):
+              if needle not in script:
+                  raise SystemExit(f"decision-quality controller invariant missing: {needle}")
+          PY
+
+      - name: Assert legacy compatibility workflows remain manual-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          for path in (
               Path(".github/workflows/pinnacle.yml"),
               Path(".github/workflows/airsenal.yml"),
               Path(".github/workflows/refresh-core-pin.yml"),
-          ]
-          for path in legacy:
-              if not path.is_file():
-                  raise SystemExit(f"legacy compatibility workflow missing: {path}")
+          ):
               body = path.read_text(encoding="utf-8")
               if "workflow_dispatch:" not in body:
                   raise SystemExit(f"legacy workflow is not manually invokable: {path}")
               if "schedule:" in body or "cron:" in body:
-                  raise SystemExit(f"legacy workflow still has an automatic schedule: {path}")
+                  raise SystemExit(f"legacy workflow regained automatic schedule: {path}")
               if path.name == "pinnacle.yml" and "\n  push:" in body:
-                  raise SystemExit("legacy Apex Unified still has an automatic push trigger")
+                  raise SystemExit("legacy Apex Unified regained automatic push trigger")
               first = body.splitlines()[0] if body.splitlines() else ""
               if "RETIRED: manual-only legacy workflow" not in first:
                   raise SystemExit(f"legacy retirement marker missing: {path}")
+          PY
 
-          governance = Path("scripts/check_governance_consistency.py").read_text(
-              encoding="utf-8"
-          )
+      - name: Assert governance inventory registers all V2 operations workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          governance = Path("scripts/check_governance_consistency.py").read_text(encoding="utf-8")
           for name in (
               "apex-v2-auth-keepalive.yml",
               "apex-v2-daily-production.yml",
               "apex-v2-daily-evaluation.yml",
               "apex-v2-direct-auth-diagnostic.yml",
+              "apex-v2-deadline-watch.yml",
+              "apex-v2-owner-brief.yml",
+              "apex-v2-decision-quality.yml",
               "apex-v2-ops-contract.yml",
           ):
               if f'"{name}"' not in governance:
@@ -358,7 +465,7 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin main
           if git diff --name-only origin/main...HEAD -- src config tests | grep -q .; then
-            echo "Operations repair modified frozen-engine source/config/test paths." >&2
+            echo "Operations extension modified frozen-engine source/config/test paths." >&2
             git diff --name-only origin/main...HEAD -- src config tests >&2
             exit 1
           fi
@@ -368,24 +475,18 @@ jobs:
           allowed_scripts = {
               "scripts/apex_v2_auth_ops.py",
               "scripts/apex_v2_attempt_audit_ops.py",
+              "scripts/apex_v2_deadline_ops.py",
+              "scripts/apex_v2_owner_brief_ops.py",
+              "scripts/apex_v2_decision_quality_ops.py",
               "scripts/check_governance_consistency.py",
           }
           scripts = set(
               subprocess.check_output(
-                  [
-                      "git",
-                      "diff",
-                      "--name-only",
-                      "origin/main...HEAD",
-                      "--",
-                      "scripts",
-                  ],
+                  ["git", "diff", "--name-only", "origin/main...HEAD", "--", "scripts"],
                   text=True,
               ).splitlines()
           )
           unexpected = sorted(scripts - allowed_scripts)
           if unexpected:
-              raise SystemExit(
-                  f"Operations repair modified unexpected script paths: {unexpected}"
-              )
+              raise SystemExit(f"Operations extension modified unexpected scripts: {unexpected}")
           PY

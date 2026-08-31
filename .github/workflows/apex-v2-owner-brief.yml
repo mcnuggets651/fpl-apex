@@ -1,0 +1,91 @@
+name: Apex V2 Owner Brief
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/apex-v2-owner-brief.yml"
+      - "scripts/apex_v2_owner_brief_ops.py"
+  workflow_run:
+    workflows:
+      - "Apex V2 Daily Production"
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-v2-owner-brief
+  cancel-in-progress: false
+
+env:
+  FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+
+jobs:
+  render:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FROZEN_APEX_SHA }}
+          fetch-depth: 0
+
+      - name: Verify frozen read-only source tooling identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install frozen Apex V2 release tooling
+        run: pip install -e '.[dev]'
+
+      - name: Materialize exact owner-brief controller
+        env:
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CONTROL_PLANE_SHA"
+          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
+          git show "$CONTROL_PLANE_SHA:scripts/apex_v2_owner_brief_ops.py" > "$RUNNER_TEMP/apex_v2_owner_brief_ops.py"
+          test -s "$RUNNER_TEMP/apex_v2_owner_brief_ops.py"
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
+      - name: Preflight private owner presentation store
+        env:
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+        run: apex-v2 private-store-preflight
+
+      - name: Publish immutable private read-only owner brief
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          SOURCE_RUN_ID: ${{ github.event_name == 'workflow_run' && format('{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/apex_v2_owner_brief_ops.py" \
+            --season 2026-2027 \
+            --run-id "$SOURCE_RUN_ID" \
+            --control-plane-sha "$CONTROL_PLANE_SHA"
+
+      - name: Prove frozen worktree stayed untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
