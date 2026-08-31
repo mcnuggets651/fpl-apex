@@ -6,6 +6,7 @@ on:
       - ".github/workflows/apex-v2-auth-keepalive.yml"
       - ".github/workflows/apex-v2-daily-production.yml"
       - ".github/workflows/apex-v2-daily-evaluation.yml"
+      - ".github/workflows/apex-v2-direct-auth-diagnostic.yml"
       - ".github/workflows/apex-v2-ops-contract.yml"
       - ".github/workflows/pinnacle.yml"
       - ".github/workflows/airsenal.yml"
@@ -47,6 +48,7 @@ jobs:
               ".github/workflows/apex-v2-auth-keepalive.yml",
               ".github/workflows/apex-v2-daily-production.yml",
               ".github/workflows/apex-v2-daily-evaluation.yml",
+              ".github/workflows/apex-v2-direct-auth-diagnostic.yml",
               ".github/workflows/apex-v2-ops-contract.yml",
               ".github/workflows/pinnacle.yml",
               ".github/workflows/airsenal.yml",
@@ -197,6 +199,56 @@ jobs:
               )
           PY
 
+      - name: Assert direct-auth diagnostic is non-serving and incident-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          frozen = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+          text = Path(".github/workflows/apex-v2-direct-auth-diagnostic.yml").read_text(
+              encoding="utf-8"
+          )
+          required = [
+              frozen,
+              "permissions:\n  contents: read",
+              "workflow_dispatch:",
+              "\n  push:\n",
+              "      - main",
+              '      - ".github/workflows/apex-v2-direct-auth-diagnostic.yml"',
+              "ref: $" + "{{ env.FROZEN_APEX_SHA }}",
+              "FPL_X_API_AUTHORIZATION: $" + "{{ secrets.FPL_X_API_AUTHORIZATION }}",
+              "FPL_SESSION_COOKIE: $" + "{{ secrets.FPL_SESSION_COOKIE }}",
+              'FPL_REFRESH_TOKEN: ""',
+              'FPL_REFRESH_WRAP_KEY: ""',
+              "python scripts/preflight_fpl_auth.py --config config/apex_v2.yaml",
+              'test -z "$(git status --porcelain --untracked-files=no)"',
+          ]
+          missing = [needle for needle in required if needle not in text]
+          if missing:
+              raise SystemExit(f"direct-auth diagnostic contract missing: {missing}")
+          forbidden = [
+              "schedule:",
+              "cron:",
+              "contents: write",
+              "APEX_PRIVATE_GITHUB",
+              "apex-v2 intent",
+              "apex-v2 official-hash",
+              "apex-v2 acquire",
+              "apex-v2 solve",
+              "apex-v2 publish",
+              "airsenal",
+              "acquire_dastan",
+              "github-env",
+          ]
+          present = [needle for needle in forbidden if needle in text]
+          if present:
+              raise SystemExit(
+                  f"direct-auth diagnostic crossed into serving/mutating behavior: {present}"
+              )
+          PY
+
       - name: Assert evaluation orphan policy and single-publisher contract
         shell: bash
         run: |
@@ -273,6 +325,7 @@ jobs:
               "apex-v2-auth-keepalive.yml",
               "apex-v2-daily-production.yml",
               "apex-v2-daily-evaluation.yml",
+              "apex-v2-direct-auth-diagnostic.yml",
               "apex-v2-ops-contract.yml",
           ):
               if f'"{name}"' not in governance:
