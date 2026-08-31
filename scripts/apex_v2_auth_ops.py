@@ -294,6 +294,15 @@ def authenticate(
     return "direct"
 
 
+def _format_wrapper_error(exc: Exception) -> str:
+    if isinstance(exc, AuthOpsError):
+        return f"Apex V2 auth operations failure: {type(exc).__name__}: {exc}"
+    return (
+        "Apex V2 auth operations failure: "
+        f"{type(exc).__name__}: unexpected detail suppressed"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("production", "keepalive"), required=True)
@@ -317,9 +326,10 @@ def main() -> int:
             env=os.environ,
         )
     except Exception as exc:
-        # Do not include secret/token material in wrapper errors. Underlying frozen
-        # diagnostics are shown only where they are already secret-safe.
-        print(f"Apex V2 auth operations failure: {type(exc).__name__}: {exc}", file=sys.stderr)
+        # AuthOpsError messages are deliberately static and secret-free. Arbitrary
+        # exceptions are reduced to their type so a library/runtime error cannot
+        # accidentally echo credential material into a GitHub Actions log.
+        print(_format_wrapper_error(exc), file=sys.stderr)
         return 1
     return 0
 
