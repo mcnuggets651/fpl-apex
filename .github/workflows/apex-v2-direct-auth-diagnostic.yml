@@ -1,3 +1,9 @@
+# INCIDENT-ONLY, NON-SERVING DIAGNOSTIC.
+# This workflow proves whether the repository's direct FPL bearer/cookie can
+# authenticate the configured manager through the frozen owner preflight.
+# It deliberately disables refresh auth and has no schedule, write permission,
+# provider acquisition, intent, solve or publication path. It is not a fallback
+# keepalive and cannot rebuild a rotating refresh-token chain.
 name: Apex V2 Direct Auth Diagnostic
 
 on:
