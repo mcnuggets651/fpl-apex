@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -12,6 +13,7 @@ def _load_module():
     spec = importlib.util.spec_from_file_location("apex_v2_attempt_audit_ops", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
