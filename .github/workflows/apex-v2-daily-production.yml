@@ -32,6 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
           test "$APEX_CODE_SHA" = "$FROZEN_APEX_SHA"
           test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
           echo "Apex V2 daily production pinned to $FROZEN_APEX_SHA"
@@ -73,6 +74,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
           test -n "$CONTROL_PLANE_SHA"
           git fetch --no-tags origin "$CONTROL_PLANE_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
