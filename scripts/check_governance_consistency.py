@@ -25,6 +25,7 @@ ACTIVE_WORKFLOWS = {
     "apex-v2-auth-keepalive.yml",
     "apex-v2-daily-evaluation.yml",
     "apex-v2-daily-production.yml",
+    "apex-v2-direct-auth-diagnostic.yml",
     "apex-v2-ops-contract.yml",
     "apex.yml",
     "gw1-final-2026.yml",
