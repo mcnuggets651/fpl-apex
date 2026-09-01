@@ -351,7 +351,12 @@ def build_readiness(
     frozen_at = _parse_utc(str(public_attempt.get("frozen_at") or ""))
     certification = public_attempt.get("certification") or {}
     deadline = _parse_utc(str(certification.get("valid_until") or ""))
-    sealed_at = (candidate_sealed_at or frozen_at).astimezone(timezone.utc)
+    if candidate_sealed_at is not None:
+        sealed_at = candidate_sealed_at.astimezone(timezone.utc)
+    elif pitchside_capture.get("checked_at"):
+        sealed_at = _parse_utc(str(pitchside_capture["checked_at"]))
+    else:
+        sealed_at = frozen_at
 
     if not season or gameweek <= 0 or len(official_hash) != 64:
         raise TournamentContractError(
