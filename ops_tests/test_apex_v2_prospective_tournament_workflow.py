@@ -57,6 +57,33 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", self.text)
         self.assertIn("  maintenance:\n    needs: seal\n    if: >-\n      always()", self.text)
 
+    def test_relevant_main_ops_push_bootstraps_without_running_production(self):
+        for needle in (
+            "\n  push:\n",
+            "      - main",
+            '      - ".github/workflows/apex-v2-prospective-tournament.yml"',
+            '      - "scripts/apex_v2_tournament_ops.py"',
+            '      - "scripts/apex_v2_shadow_provider_ops.py"',
+            "github.event_name == 'push'",
+            "EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT",
+            '"status": "NO_ELIGIBLE_SOURCE"',
+            'echo "has_source=false"',
+            "steps.source.outputs.has_source == 'true'",
+        ):
+            self.assertIn(needle, self.text)
+
+    def test_bootstrap_selector_is_predeadline_actionable_immutable_and_champion_safe(self):
+        for needle in (
+            'release.get("immutable") is not True',
+            'payload.get("certification") or {}',
+            'get("personalized_actionable") is not True',
+            "frozen_at >= deadline or now >= deadline",
+            '!= "airsenal" for h in range(1, 9)',
+            "current_deadline = min(row[\"deadline\"] for row in candidates)",
+            "selected = max(current, key=lambda row: row[\"frozen_at\"])",
+        ):
+            self.assertIn(needle, self.text)
+
 
 if __name__ == "__main__":
     unittest.main()
