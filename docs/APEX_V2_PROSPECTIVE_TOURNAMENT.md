@@ -276,16 +276,25 @@ Every release is create-once and requires repository release immutability.
 
 ## Automation
 
-`Apex V2 Prospective Tournament` runs in two modes:
+`Apex V2 Prospective Tournament` has three governed entry paths:
 
 - after a successful `Apex V2 Daily Production`, it seals a candidate for that exact production run;
+- after a relevant tournament/provider-ops push to `main`, it performs post-ops runtime acceptance by resolving the latest eligible immutable production final and sealing it idempotently;
 - hourly maintenance retains GW2 diagnostics, canonicalizes any deadline-passed observation, scores newly completed horizons and materializes the public status artifact.
 
-For production-triggered/manual sealing, maintenance has an explicit dependency on the seal job and uses `always()`. This prevents maintenance racing ahead of a candidate while still allowing scheduled hourly maintenance to run when the seal job is intentionally skipped.
+A manual dispatch can still provide an exact production run key. If the manual input is blank, it uses the same bounded resolver as post-ops acceptance.
+
+The post-ops resolver is deliberately non-authoritative. It only chooses which already-immutable production final should be handed to `seal-run`; `seal-run` still performs the complete attestation, private-provider archive and common-snapshot verification. Resolver eligibility requires an immutable non-draft final, exact season/run identity, target GW3+, actionable production, verified personalized actionability, AIrsenal H1-H8 serving authority, a production snapshot before its deadline and a deadline that is still in the future. Among eligible records it chooses `EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT`. If no source is eligible it records `NO_ELIGIBLE_SOURCE` and exits successfully without manufacturing a candidate.
+
+This push path is a permanent post-ops acceptance mechanism, not a production trigger. `Apex V2 Daily Production` still has no `push` trigger, and tournament bootstrap cannot invoke acquire, solve or publish.
+
+For production-triggered, manual and post-ops sealing, maintenance has an explicit dependency on the seal job and uses `always()`. This prevents maintenance racing ahead of a candidate while still allowing scheduled hourly maintenance to run when the seal job is intentionally skipped or when post-ops bootstrap has no eligible source.
 
 The workflow checks out the frozen engine SHA and materializes the exact four-module tournament operations controller from the current control-plane SHA. It has no FPL owner cookies/tokens, cannot run `apex-v2 solve`, cannot publish a production decision, cannot acquire AIrsenal/Dastan and cannot dispatch production.
 
 The private release token is present only because exact prospectively sealed provider surfaces and manager-decision identity are stored in the separate private immutable repository.
+
+`Apex V2 External Shadow Health` follows the same post-ops acceptance pattern for its own workflow and provider-ops controller: relevant merges to `main` run the read-only health monitor immediately in addition to its fixed schedules. That workflow has `contents: read` only and no manager or serving credentials.
 
 ## Status surface and GW3 readiness
 
