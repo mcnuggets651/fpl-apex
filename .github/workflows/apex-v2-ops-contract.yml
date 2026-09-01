@@ -52,6 +52,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
       - name: Assert operations-only change surface
         shell: bash
         run: |
@@ -113,6 +118,9 @@ jobs:
           if not changed:
               raise SystemExit("ops PR has no changes")
           PY
+
+      - name: Install repository runtime for real evaluator regressions
+        run: python -m pip install -e .
 
       - name: Run operations regression tests
         run: python -m unittest discover -s ops_tests -p 'test_*.py' -v
@@ -248,28 +256,45 @@ jobs:
               if forbidden in workflow:
                   raise SystemExit(f"prospective tournament crossed serving boundary: {forbidden}")
 
+          common = Path("scripts/apex_v2_tournament_common.py").read_text(encoding="utf-8")
           contract = Path("scripts/apex_v2_tournament_contract.py").read_text(encoding="utf-8")
+          scoring = Path("scripts/apex_v2_tournament_scoring.py").read_text(encoding="utf-8")
+          ops = Path("scripts/apex_v2_tournament_ops.py").read_text(encoding="utf-8")
           for needle in (
               "DIAGNOSTIC_REHEARSAL_NON_CANONICAL",
               "PROSPECTIVE_READY_CANDIDATE",
               "CANONICAL_PROSPECTIVE_OBSERVATION",
               "TRAINING_READY_NO_MODEL",
+          ):
+              if needle not in common:
+                  raise SystemExit(f"tournament common state machine missing: {needle}")
+          for needle in (
               "LAST_VALID_COMMON_PREDEADLINE_SEAL",
               '"production_influence": "NONE"',
-              '"serving_authorized": False',
+              '"serve_authorized": False',
+              '"eligible_common_predeadline_candidate": ready',
+              '"history_commit": row.get("observed_history_commit")',
           ):
               if needle not in contract:
                   raise SystemExit(f"tournament governance invariant missing: {needle}")
-
-          scoring = Path("scripts/apex_v2_tournament_scoring.py").read_text(encoding="utf-8")
           for needle in (
               "score_predictions",
-              "NOT_SCOREABLE",
-              "minutes_mae",
-              "appearance_probability_brier",
+              "COMMON_FORECAST_INTERSECTION",
+              "CATASTROPHIC_XP_RESIDUAL",
+              "entered provider surface missing at evaluation",
+              "NOT_SCOREABLE_NO_REALIZED_START_LABEL",
           ):
               if needle not in scoring:
                   raise SystemExit(f"tournament scoring invariant missing: {needle}")
+          for needle in (
+              "existing candidate run identity mismatch",
+              "immutable private tournament supplement already exists with different bytes",
+              "published tournament selection exists without immutability",
+              "gw3_prospective_tournament_ready",
+              "evaluator changed the sealed entrant set",
+          ):
+              if needle not in ops:
+                  raise SystemExit(f"tournament orchestration invariant missing: {needle}")
           PY
 
       - name: Assert auth, deadline, owner and decision diagnostics remain bounded
