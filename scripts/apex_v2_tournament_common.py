@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import argparse
 import gzip
 import hashlib
 import io
 import json
 import math
 import os
-import re
-import statistics
 import subprocess
 import tarfile
-import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -67,6 +64,12 @@ GW2_DIAGNOSTIC_PREFIX = "apex-v2/tournament-diagnostic"
 
 class TournamentContractError(RuntimeError):
     pass
+
+
+class TournamentCaptureError(TournamentContractError):
+    def __init__(self, dns_code: str, message: str):
+        super().__init__(message)
+        self.dns_code = str(dns_code)
 
 
 def _parse_utc(value: str) -> datetime:
@@ -144,21 +147,50 @@ def _write_deterministic_tar_gz(output: Path, members: dict[str, bytes]) -> Path
                     info.size = len(data)
                     info.mtime = 0
                     info.mode = 0o644
-                    info.uid = info.gid = 0
-                    info.uname = info.gname = ""
+                    info.uid = 0
+                    info.gid = 0
+                    info.uname = ""
+                    info.gname = ""
                     archive.addfile(info, io.BytesIO(data))
     return output
 
 
-def _http_json(session: Any, url: str, *, timeout: float = 30.0) -> tuple[bytes, Any]:
-    response = session.get(url, timeout=timeout)
-    response.raise_for_status()
-    raw = bytes(response.content)
-    return raw, response.json()
+def _transient_http_error(exc: Exception) -> bool:
+    if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+        return True
+    if isinstance(exc, requests.HTTPError):
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+        return status in {408, 425, 429} or (isinstance(status, int) and 500 <= status <= 599)
+    return False
+
+
+def _http_json(
+    session: Any,
+    url: str,
+    *,
+    timeout: float = 30.0,
+    attempts: int = 3,
+    sleeper: Any = time.sleep,
+) -> tuple[bytes, Any]:
+    last: Exception | None = None
+    for attempt in range(1, max(1, int(attempts)) + 1):
+        try:
+            response = session.get(url, timeout=timeout)
+            response.raise_for_status()
+            raw = bytes(response.content)
+            return raw, response.json()
+        except Exception as exc:
+            last = exc
+            if attempt >= attempts or not _transient_http_error(exc):
+                raise
+            sleeper(min(2.0 * attempt, 6.0))
+    assert last is not None
+    raise last
 
 
 def _next_actionable_event(bootstrap: dict[str, Any], now: datetime) -> dict[str, Any]:
-    future = []
+    future: list[tuple[datetime, dict[str, Any]]] = []
     for event in bootstrap.get("events") or []:
         deadline = event.get("deadline_time")
         if event.get("id") is None or not deadline:
@@ -170,7 +202,7 @@ def _next_actionable_event(bootstrap: dict[str, Any], now: datetime) -> dict[str
         if when > now:
             future.append((when, event))
     if not future:
-        raise TournamentContractError("Official FPL exposes no future deadline")
+        raise TournamentCaptureError(DNS_TARGET, "Official FPL exposes no future deadline")
     return min(future, key=lambda pair: pair[0])[1]
 
 
@@ -185,7 +217,10 @@ def _fixture_ids(
         event = fixture.get("event")
         if event is None or int(event) != int(gameweek):
             continue
-        if int(team_id) not in {int(fixture.get("team_h", -1)), int(fixture.get("team_a", -1))}:
+        if int(team_id) not in {
+            int(fixture.get("team_h", -1)),
+            int(fixture.get("team_a", -1)),
+        }:
             continue
         if fixture.get("id") is not None:
             output.append(int(fixture["id"]))
@@ -218,21 +253,30 @@ def capture_pitchside(
     now: datetime | None = None,
     session: Any = None,
     max_age_hours: float = DEFAULT_MAX_AGE_HOURS,
+    official_hash_resolver: Any = None,
 ) -> dict[str, Any]:
-    """Capture a no-hindsight PITCHSIDE tournament surface outside serving certification.
+    """Capture a no-hindsight PITCHSIDE surface without serving influence.
 
-    The exact Apex Official hash is re-checked before the capture is eligible. Players
-    with Official status ``u`` are retained as explicit NO_FORECAST rows; they do not
-    count as missing forecastable players. Every other Official player must have a
-    finite forecast for a horizon to qualify that horizon.
+    A real run rechecks the exact Official hash before and after the external download.
+    Tests may inject ``current_official_hash`` to model a stable already-verified seal.
+    Official status ``u`` rows remain explicit NO_FORECAST records and never count as
+    missing forecastable players. Every other Official identity requires a finite xP
+    value for each exact horizon PITCHSIDE claims to support.
     """
+
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    deadline = deadline.astimezone(timezone.utc)
     expected_official_hash = str(expected_official_hash).lower()
     if len(expected_official_hash) != 64:
         raise TournamentContractError("expected Official hash must be SHA-256")
-    current = (current_official_hash or _run_current_official_hash(season=season)).lower()
+    hash_resolver = official_hash_resolver or _run_current_official_hash
+    current = (
+        str(current_official_hash).lower()
+        if current_official_hash is not None
+        else str(hash_resolver(season=season)).lower()
+    )
     result: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "provider_id": "pitchside",
         "production_influence": "NONE",
         "serve_authorized": False,
@@ -263,59 +307,84 @@ def capture_pitchside(
         raw_players, source_players = _http_json(http, f"{PITCHSIDE_BASE}/players.json")
         raw_meta_after, meta_after = _http_json(http, f"{PITCHSIDE_BASE}/meta.json")
         if raw_meta_after != raw_meta or meta_after != meta:
-            raise TournamentContractError("PITCHSIDE deployment changed during acquisition")
+            raise TournamentCaptureError(
+                DNS_UPSTREAM,
+                "PITCHSIDE deployment changed during acquisition",
+            )
         if not isinstance(bootstrap, dict) or not isinstance(fixtures, list):
-            raise TournamentContractError("Official public payload schema invalid")
+            raise TournamentCaptureError(DNS_SCHEMA_INVALID, "Official public payload schema invalid")
         if not isinstance(meta, dict) or not isinstance(xp, dict) or not isinstance(source_players, list):
-            raise TournamentContractError("PITCHSIDE public bundle schema invalid")
+            raise TournamentCaptureError(DNS_SCHEMA_INVALID, "PITCHSIDE public bundle schema invalid")
 
         event = _next_actionable_event(bootstrap, now)
         live_target = int(event["id"])
         live_deadline = _parse_utc(str(event["deadline_time"]))
         if live_target != int(target_gameweek):
-            raise TournamentContractError(
-                f"Official target changed during external capture: {live_target} != {target_gameweek}"
+            raise TournamentCaptureError(
+                DNS_TARGET,
+                f"Official target changed during external capture: {live_target} != {target_gameweek}",
             )
-        if live_deadline != deadline.astimezone(timezone.utc):
-            raise TournamentContractError("Official deadline changed relative to source production seal")
+        if live_deadline != deadline:
+            raise TournamentCaptureError(
+                DNS_TARGET,
+                "Official deadline changed relative to source production seal",
+            )
 
         generated_raw = str(meta.get("generated_utc") or "")
         if not generated_raw:
-            raise TournamentContractError("PITCHSIDE generated_utc missing")
+            raise TournamentCaptureError(DNS_SCHEMA_INVALID, "PITCHSIDE generated_utc missing")
         generated = _parse_utc(generated_raw)
         age_hours = (now - generated).total_seconds() / 3600.0
         if generated >= deadline:
-            raise TournamentContractError("PITCHSIDE forecast was generated at/after target deadline")
+            raise TournamentCaptureError(
+                DNS_AFTER_CUTOFF,
+                "PITCHSIDE forecast was generated at/after target deadline",
+            )
         if age_hours < -0.1:
-            raise TournamentContractError("PITCHSIDE generated timestamp is in the future")
+            raise TournamentCaptureError(
+                DNS_SCHEMA_INVALID,
+                "PITCHSIDE generated timestamp is in the future",
+            )
 
         source_season = int(meta.get("season", -1))
         expected_start = int(str(season).split("-", 1)[0])
         if source_season != expected_start:
-            raise TournamentContractError(
-                f"PITCHSIDE season mismatch: {source_season} != {expected_start}"
+            raise TournamentCaptureError(
+                DNS_TARGET,
+                f"PITCHSIDE season mismatch: {source_season} != {expected_start}",
             )
         gws = [int(value) for value in xp.get("gws") or []]
         forecasts = xp.get("players")
         if not isinstance(forecasts, dict):
-            raise TournamentContractError("PITCHSIDE xp.players must be an object")
-        selected_gws = [
+            raise TournamentCaptureError(DNS_SCHEMA_INVALID, "PITCHSIDE xp.players must be an object")
+        selected_gws = sorted(
             gw
-            for gw in gws
+            for gw in set(gws)
             if int(target_gameweek) <= gw < int(target_gameweek) + len(ALL_HORIZONS)
-        ]
+        )
         if int(target_gameweek) not in selected_gws:
-            raise TournamentContractError(f"PITCHSIDE has no target GW{target_gameweek} forecast")
+            raise TournamentCaptureError(
+                DNS_NO_H1,
+                f"PITCHSIDE has no target GW{target_gameweek} forecast",
+            )
         gw_index = {gw: gws.index(gw) for gw in selected_gws}
+        available_horizons = {
+            gw - int(target_gameweek) + 1 for gw in selected_gws
+        }
 
         elements = bootstrap.get("elements") or []
+        if not isinstance(elements, list):
+            raise TournamentCaptureError(DNS_SCHEMA_INVALID, "Official elements must be a list")
         code_to_element: dict[int, dict[str, Any]] = {}
         for player in elements:
-            if player.get("code") is None or player.get("id") is None:
+            if not isinstance(player, dict) or player.get("code") is None or player.get("id") is None:
                 continue
             code = int(player["code"])
             if code in code_to_element:
-                raise TournamentContractError(f"duplicate Official player code {code}")
+                raise TournamentCaptureError(
+                    DNS_SCHEMA_INVALID,
+                    f"duplicate Official player code {code}",
+                )
             code_to_element[code] = player
 
         rows: list[dict[str, Any]] = []
@@ -325,12 +394,16 @@ def capture_pitchside(
         forecastable_ids = {
             int(player["id"])
             for player in elements
-            if player.get("id") is not None and str(player.get("status") or "") != "u"
+            if isinstance(player, dict)
+            and player.get("id") is not None
+            and str(player.get("status") or "") != "u"
         }
         unavailable_ids = {
             int(player["id"])
             for player in elements
-            if player.get("id") is not None and str(player.get("status") or "") == "u"
+            if isinstance(player, dict)
+            and player.get("id") is not None
+            and str(player.get("status") or "") == "u"
         }
 
         by_code: dict[int, list[Any]] = {}
@@ -340,10 +413,16 @@ def capture_pitchside(
             except (TypeError, ValueError):
                 continue
             if not isinstance(values, list) or len(values) != len(gws):
-                raise TournamentContractError(f"PITCHSIDE xP vector length mismatch for code {raw_code}")
+                raise TournamentCaptureError(
+                    DNS_SCHEMA_INVALID,
+                    f"PITCHSIDE xP vector length mismatch for code {raw_code}",
+                )
             by_code[code] = values
 
-        for code, player in sorted(code_to_element.items(), key=lambda pair: int(pair[1]["id"])):
+        for code, player in sorted(
+            code_to_element.items(),
+            key=lambda pair: int(pair[1]["id"]),
+        ):
             element_id = int(player["id"])
             status = str(player.get("status") or "")
             values = by_code.get(code)
@@ -354,10 +433,17 @@ def capture_pitchside(
                 coverage_status = "FORECAST"
                 expected_points: float | None = None
                 if raw_value is not None:
-                    expected_points = float(raw_value)
+                    try:
+                        expected_points = float(raw_value)
+                    except (TypeError, ValueError) as exc:
+                        raise TournamentCaptureError(
+                            DNS_SCHEMA_INVALID,
+                            f"PITCHSIDE non-numeric xP for element {element_id}, GW{gw}",
+                        ) from exc
                     if not math.isfinite(expected_points):
-                        raise TournamentContractError(
-                            f"PITCHSIDE non-finite xP for element {element_id}, GW{gw}"
+                        raise TournamentCaptureError(
+                            DNS_SCHEMA_INVALID,
+                            f"PITCHSIDE non-finite xP for element {element_id}, GW{gw}",
                         )
                     forecast_counts[str(horizon)] += 1
                 elif status == "u":
@@ -395,7 +481,7 @@ def capture_pitchside(
         qualified_horizons = [
             h
             for h in ALL_HORIZONS
-            if h <= len(selected_gws) and not missing_forecastable[str(h)]
+            if h in available_horizons and not missing_forecastable[str(h)]
         ]
         source_hashes = {
             "meta.json": _sha256_bytes(raw_meta),
@@ -407,22 +493,26 @@ def capture_pitchside(
         bundle_sha = canonical_sha256(source_hashes)
         health = "HEALTHY"
         reasons: list[str] = []
+        dns_code: str | None = None
         if age_hours > float(max_age_hours):
             health = "STALE"
+            dns_code = DNS_FORECAST_STALE
             reasons.append(
                 f"source age {age_hours:.2f}h exceeds governed {float(max_age_hours):.2f}h"
             )
         missing_h1 = missing_forecastable["1"]
         if missing_h1:
             health = "INCOMPLETE" if health == "HEALTHY" else health
+            dns_code = dns_code or DNS_INCOMPLETE_UNIVERSE
             reasons.append(
                 f"H1 missing {len(missing_h1)} forecastable Official players: {missing_h1}"
             )
         for h in ALL_HORIZONS[1:]:
-            if h <= len(selected_gws) and missing_forecastable[str(h)]:
+            if h in available_horizons and missing_forecastable[str(h)]:
                 reasons.append(
                     f"H{h} missing {len(missing_forecastable[str(h)])} forecastable Official players"
                 )
+
         surface = {
             "schema_version": 1,
             "provider_id": "pitchside",
@@ -431,24 +521,34 @@ def capture_pitchside(
             "season": str(season),
             "source_snapshot": f"pitchside:{bundle_sha}",
             "scoring_rules_version": f"fpl-{season}-current",
-            "supported_horizons": list(range(1, len(selected_gws) + 1)),
+            "supported_horizons": sorted(available_horizons),
             "runtime_dependencies": [PITCHSIDE_BASE],
-            "rows": sorted(rows, key=lambda row: (int(row["horizon"]), int(row["element_id"]))),
+            "rows": sorted(
+                rows,
+                key=lambda row: (int(row["horizon"]), int(row["element_id"])),
+            ),
         }
+
+        final_hash = (
+            current
+            if current_official_hash is not None
+            else str(hash_resolver(season=season)).lower()
+        )
+        result["post_capture_official_hash"] = final_hash
+        if final_hash != expected_official_hash:
+            raise TournamentCaptureError(
+                DNS_OFFICIAL_HASH,
+                "exact Official hash changed during PITCHSIDE acquisition",
+            )
+
         result.update(
             {
                 "health": health,
-                "dns_code": (
-                    None
-                    if health == "HEALTHY"
-                    else DNS_FORECAST_STALE
-                    if health == "STALE"
-                    else DNS_INCOMPLETE_UNIVERSE
-                ),
+                "dns_code": dns_code,
                 "reasons": reasons,
                 "generated_at": generated.isoformat(),
                 "age_hours": round(age_hours, 4),
-                "deadline": deadline.astimezone(timezone.utc).isoformat(),
+                "deadline": deadline.isoformat(),
                 "official_player_count": len(elements),
                 "forecastable_player_count": len(forecastable_ids),
                 "official_unavailable_player_count": len(unavailable_ids),
@@ -462,11 +562,20 @@ def capture_pitchside(
                 "surface": surface,
             }
         )
+    except TournamentCaptureError as exc:
+        result.update(
+            {
+                "health": "ERROR",
+                "dns_code": exc.dns_code,
+                "reasons": [str(exc)],
+                "surface": None,
+            }
+        )
     except Exception as exc:
         result.update(
             {
                 "health": "ERROR",
-                "dns_code": DNS_UPSTREAM,
+                "dns_code": DNS_UPSTREAM if _transient_http_error(exc) else DNS_SCHEMA_INVALID,
                 "reasons": [f"{type(exc).__name__}: {exc}"],
                 "surface": None,
             }
@@ -491,7 +600,9 @@ def verify_public_release_files(files: dict[str, Path]) -> dict[str, Any]:
     attestation = _load_json(files["attestation.json"])
     if str(attestation.get("scope") or "") != "PUBLIC":
         raise TournamentContractError("public attestation scope mismatch")
-    if str(attestation.get("public_attempt_id") or "") != str(public_attempt.get("public_attempt_id") or ""):
+    if str(attestation.get("public_attempt_id") or "") != str(
+        public_attempt.get("public_attempt_id") or ""
+    ):
         raise TournamentContractError("public attempt identity mismatch")
     assets = attestation.get("assets") or {}
     for name in required - {"attestation.json"}:
@@ -501,7 +612,9 @@ def verify_public_release_files(files: dict[str, Path]) -> dict[str, Any]:
             raise TournamentContractError(f"source final attestation mismatch: {name}")
     if str(governance.get("season") or "") != str(public_attempt.get("season") or ""):
         raise TournamentContractError("governance/public season mismatch")
-    if int(governance.get("target_gameweek", -1)) != int(public_attempt.get("target_gameweek", -2)):
+    if int(governance.get("target_gameweek", -1)) != int(
+        public_attempt.get("target_gameweek", -2)
+    ):
         raise TournamentContractError("governance/public target mismatch")
     return public_attempt
 
@@ -586,25 +699,48 @@ def _openfpl_dns(readiness: dict[str, Any] | None) -> tuple[str, list[str], str]
         return DNS_EXPORT_MISSING, ["OpenFPL readiness artifact missing"], "UNKNOWN"
     state = str(readiness.get("state") or "UNKNOWN")
     reasons = [str(value) for value in readiness.get("reasons") or []]
-    if state in {"DEFERRED_BY_GOVERNANCE", "CURRENT_LABEL_HISTORY_INSUFFICIENT"}:
+    if state in {
+        "DEFERRED_BY_GOVERNANCE",
+        "CURRENT_LABEL_HISTORY_INSUFFICIENT",
+        "TRAINING_NOT_READY",
+    }:
         return DNS_TRAINING_NOT_READY, [state, *reasons], state
     if state in {"READY_FOR_SHADOW_BUILD", "TRAINING_READY_NO_MODEL"}:
         return DNS_TRAINING_READY_NO_MODEL, [state, *reasons], state
     if readiness.get("model_export_available") is True:
-        return DNS_EXPORT_MISSING, ["model marked available but no tournament surface was supplied"], state
+        return (
+            DNS_EXPORT_MISSING,
+            ["model marked available but no tournament surface was supplied"],
+            state,
+        )
+    if str(readiness.get("health") or "").upper() == "ERROR":
+        return DNS_UPSTREAM, [state, *reasons], state
     return DNS_EXPORT_MISSING, [state, *reasons], state
 
 
-def _scoreable_tasks(surface: dict[str, Any] | None, *, entered: bool, horizon: int = 1) -> dict[str, bool]:
+def _scoreable_tasks(
+    surface: dict[str, Any] | None,
+    *,
+    entered: bool,
+    horizon: int = 1,
+) -> dict[str, bool]:
     rows = _surface_rows(surface or {}, horizon)
     return {
         "player_xp": bool(entered),
         "player_ranking": bool(entered),
         "captain_ranking": bool(entered and horizon == 1),
-        "minutes": bool(entered and any(row.get("expected_minutes") is not None for row in rows)),
-        "appearance_probability": bool(entered and any(row.get("p_appearance") is not None for row in rows)),
-        "start_probability": bool(entered and any(row.get("p_start") is not None for row in rows)),
-        "p60_probability": bool(entered and any(row.get("p_60") is not None for row in rows)),
+        "minutes": bool(
+            entered and any(row.get("expected_minutes") is not None for row in rows)
+        ),
+        "appearance_probability": bool(
+            entered and any(row.get("p_appearance") is not None for row in rows)
+        ),
+        "start_probability": bool(
+            entered and any(row.get("p_start") is not None for row in rows)
+        ),
+        "p60_probability": bool(
+            entered and any(row.get("p_60") is not None for row in rows)
+        ),
         "attacking_return": bool(
             entered
             and any(
@@ -615,9 +751,18 @@ def _scoreable_tasks(surface: dict[str, Any] | None, *, entered: bool, horizon: 
         "clean_sheet_defensive": bool(
             entered
             and any(
-                any(key in row for key in ("p_clean_sheet", "p_cs", "expected_clean_sheet_points"))
+                any(
+                    key in row
+                    for key in ("p_clean_sheet", "p_cs", "expected_clean_sheet_points")
+                )
                 for row in rows
             )
         ),
-        "bonus": bool(entered and any(any(key in row for key in ("expected_bonus", "p_bonus")) for row in rows)),
+        "bonus": bool(
+            entered
+            and any(
+                any(key in row for key in ("expected_bonus", "p_bonus"))
+                for row in rows
+            )
+        ),
     }
