@@ -74,19 +74,29 @@ class PostOpsRuntimeAcceptanceTests(unittest.TestCase):
 
     def test_tournament_runs_post_ops_bootstrap_without_production(self) -> None:
         text = _workflow("apex-v2-prospective-tournament.yml")
+        resolver = (ROOT / "scripts" / "apex_v2_tournament_source_resolver.py").read_text(
+            encoding="utf-8"
+        )
         for required in (
             FROZEN,
             "\n  push:\n",
             "      - main",
             '      - ".github/workflows/apex-v2-prospective-tournament.yml"',
             '      - "scripts/apex_v2_tournament_ops.py"',
-            "EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT",
-            "NO_ELIGIBLE_SOURCE",
+            '      - "scripts/apex_v2_tournament_source_resolver.py"',
+            "source_resolution.json",
             "seal-run",
             "needs: seal",
             "cancel-in-progress: false",
         ):
             self.assertIn(required, text)
+        for required in (
+            "EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT",
+            "NO_ELIGIBLE_SOURCE",
+            "MISSING_PUBLIC_ATTEMPT_ASSET",
+            "serving authority drift in immutable final",
+        ):
+            self.assertIn(required, resolver)
         for forbidden in (
             "FPL_SESSION_COOKIE",
             "FPL_X_API_AUTHORIZATION",
