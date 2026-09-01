@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ PITCHSIDE_BASE = "https://bjarkisigur7.github.io/fpl-ai-assistant/data"
 FPL_BOOTSTRAP = "https://fantasy.premierleague.com/api/bootstrap-static/"
 FPL_FIXTURES = "https://fantasy.premierleague.com/api/fixtures/"
 OPENFPL_MIN_GAMEWEEKS = 10
+GW_FILE_RE = re.compile(r"^gw(\d+)\.csv$")
 
 
 def _utc(value: str) -> datetime:
@@ -157,12 +159,21 @@ def _official_public(client: RetryHttp, now: datetime) -> dict[str, Any]:
     if not future:
         raise ValueError("no future Official FPL deadline")
     target = min(future)
+    completed = sorted(
+        int(event["id"])
+        for event in bootstrap.get("events") or []
+        if event.get("id") is not None
+        and int(event["id"]) < target
+        and event.get("finished") is True
+        and event.get("data_checked") is True
+    )
     digest = hashlib.sha256()
     digest.update(raw_bootstrap)
     digest.update(b"\0")
     digest.update(raw_fixtures)
     return {
         "target_gameweek": target,
+        "completed_gameweeks": completed,
         "elements": bootstrap.get("elements") or [],
         "public_payload_sha256": digest.hexdigest(),
     }
@@ -256,7 +267,22 @@ def pitchside_health(*, report: Path, now: datetime | None = None, session: Any 
     return result
 
 
-def openfpl_readiness(*, policy_path: Path, lock_path: Path, report: Path) -> dict[str, Any]:
+def openfpl_readiness(
+    *,
+    policy_path: Path,
+    lock_path: Path,
+    report: Path,
+    now: datetime | None = None,
+    session: Any = None,
+) -> dict[str, Any]:
+    """Evaluate when a current-rules OpenFPL shadow build becomes permissible.
+
+    The pinned history identity remains provenance, but readiness is observed from
+    the current upstream history directory so the monitor advances automatically
+    during the season. Readiness never constructs, promotes, blends, or serves a
+    model.
+    """
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     policy = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
     source = (lock.get("sources") or {}).get("openfpl") or {}
@@ -266,13 +292,14 @@ def openfpl_readiness(*, policy_path: Path, lock_path: Path, report: Path) -> di
         raise ValueError(f"unexpected OpenFPL governed history floor: {minimum}")
     if (policy.get("model_contract") or {}).get("serve_authorized") is not False:
         raise ValueError("OpenFPL policy unexpectedly grants serving authority")
-    payload = {
-        "schema_version": 1,
+
+    payload: dict[str, Any] = {
+        "schema_version": 2,
         "provider_id": "openfpl",
         "role": "EXTERNAL_DIAGNOSTIC",
         "serve_authorized": False,
         "production_influence": PRODUCTION_INFLUENCE,
-        "state": "DEFERRED_BY_GOVERNANCE",
+        "checked_at": now.isoformat(),
         "model_export_expected_in_frozen_v2": False,
         "minimum_exact_rule_gameweeks": minimum,
         "training_label_seasons": policy.get("training_label_seasons") or [],
@@ -284,13 +311,70 @@ def openfpl_readiness(*, policy_path: Path, lock_path: Path, report: Path) -> di
             "committed_at": history.get("committed_at"),
             "coverage_note": history.get("coverage_note"),
         },
-        "reasons": [
-            "Frozen V2 has no authorised 2026/27 OpenFPL projection export.",
-            "Governed policy requires 10 completed exact-rule 2026/27 gameweeks before model construction.",
-            "Pinned upstream OpenFPL reference uses legacy scoring and cannot be promoted or reused as current-rules weights.",
-        ],
-        "next_transition": "A separately governed current-rules shadow build may be introduced only after the history floor and validation contract pass; no automatic promotion.",
+        "auto_build": False,
+        "auto_promotion": False,
     }
+    try:
+        client = RetryHttp(session or requests.Session())
+        official = _official_public(client, now)
+        target = int(official["target_gameweek"])
+        repository = str(history.get("repository") or "vaastav/Fantasy-Premier-League")
+        history_url = f"https://api.github.com/repos/{repository}/contents/data/2026-27/gws"
+        response = client.get(history_url)
+        entries = response.json()
+        if not isinstance(entries, list):
+            raise ValueError("OpenFPL current-history directory response must be an array")
+        rows = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            match = GW_FILE_RE.match(str(entry.get("name") or ""))
+            if not match:
+                continue
+            gw = int(match.group(1))
+            if gw >= target:
+                continue
+            rows.append({
+                "gameweek": gw,
+                "name": entry.get("name"),
+                "blob_sha": entry.get("sha"),
+                "size": entry.get("size"),
+            })
+        rows.sort(key=lambda row: row["gameweek"])
+        official_completed = set(int(gw) for gw in official.get("completed_gameweeks") or [])
+        rows = [row for row in rows if int(row["gameweek"]) in official_completed]
+        gameweeks = [int(row["gameweek"]) for row in rows]
+        history_digest = hashlib.sha256(
+            json.dumps(rows, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        ready = len(gameweeks) >= minimum
+        payload.update({
+            "health": "HEALTHY",
+            "state": "READY_FOR_SHADOW_BUILD" if ready else "DEFERRED_BY_GOVERNANCE",
+            "target_gameweek": target,
+            "official_completed_gameweeks": sorted(official_completed),
+            "completed_exact_rule_gameweeks": gameweeks,
+            "exact_rule_gameweek_count": len(gameweeks),
+            "history_remaining_to_floor": max(0, minimum - len(gameweeks)),
+            "observed_history_url": history_url,
+            "observed_history_manifest_sha256": history_digest,
+            "reasons": ([] if ready else [
+                f"{len(gameweeks)} completed exact-rule 2026/27 gameweeks are currently available; governed minimum is {minimum}.",
+                "Pinned upstream OpenFPL reference uses legacy scoring and cannot be promoted or reused as current-rules weights.",
+            ]),
+            "next_transition": (
+                "History floor satisfied: an explicit separately governed current-rules SHADOW build may now be created and validated; no automatic build or promotion."
+                if ready else
+                "Continue observing completed exact-rule history; no model export is expected until the governed floor is satisfied."
+            ),
+        })
+    except Exception as exc:
+        payload.update({
+            "health": "ERROR",
+            "state": "READINESS_CHECK_ERROR",
+            "reasons": [f"{type(exc).__name__}: {exc}"],
+            "next_transition": "Retry the isolated readiness monitor; production remains unaffected.",
+        })
     _atomic_json(report, payload)
     return payload
 
