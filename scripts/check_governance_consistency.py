@@ -30,6 +30,7 @@ ACTIVE_WORKFLOWS = {
     "apex-v2-direct-auth-diagnostic.yml",
     "apex-v2-ops-contract.yml",
     "apex-v2-owner-brief.yml",
+    "apex-v2-prospective-tournament.yml",
     "apex-v2-shadow-health.yml",
     "apex.yml",
     "gw1-final-2026.yml",
@@ -201,6 +202,65 @@ def main() -> None:
     ):
         if forbidden in shadow:
             failures.append(f"shadow-provider health workflow crossed serving boundary: {forbidden}")
+
+    tournament = _text(active_dir / "apex-v2-prospective-tournament.yml")
+    for needle in (
+        'workflows: ["Apex V2 Daily Production"]',
+        'cron: "23 * * * *"',
+        "99cc7b51b0cff45462b567084cb1844cfe0a456f",
+        "apex_v2_tournament_common.py",
+        "apex_v2_tournament_contract.py",
+        "apex_v2_tournament_ops.py",
+        "apex_v2_tournament_scoring.py",
+        "seal-run",
+        "retain-gw2",
+        "canonicalize",
+        "evaluate",
+        "status",
+    ):
+        if needle not in tournament:
+            failures.append(f"prospective tournament workflow missing safety contract: {needle}")
+    for forbidden in (
+        "FPL_SESSION_COOKIE",
+        "FPL_X_API_AUTHORIZATION",
+        "FPL_REFRESH_TOKEN",
+        "apex-v2 intent",
+        "apex-v2 official-hash",
+        "apex-v2 acquire",
+        "apex-v2 solve",
+        "apex-v2 publish",
+        "scripts/acquire_dastan_shadow.py",
+        "run_airsenal_worker.py",
+    ):
+        if forbidden in tournament:
+            failures.append(f"prospective tournament workflow crossed serving boundary: {forbidden}")
+
+    tournament_contract = _text("scripts/apex_v2_tournament_contract.py")
+    for needle in (
+        "DIAGNOSTIC_REHEARSAL_NON_CANONICAL",
+        "PROSPECTIVE_READY_CANDIDATE",
+        "CANONICAL_PROSPECTIVE_OBSERVATION",
+        "TRAINING_READY_NO_MODEL",
+        "LAST_VALID_COMMON_PREDEADLINE_SEAL",
+        '"production_influence": "NONE"',
+        '"serving_authorized": False',
+    ):
+        if needle not in tournament_contract:
+            failures.append(f"prospective tournament governance contract missing: {needle}")
+
+    tournament_doc = _text("docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md")
+    for needle in (
+        "GW2",
+        "DIAGNOSTIC_REHEARSAL_NON_CANONICAL",
+        "GW3",
+        "LAST_VALID_COMMON_PREDEADLINE_SEAL",
+        "Universal H1",
+        "Strategic H2-H8",
+        "TRAINING_READY_NO_MODEL",
+        "production_influence=NONE",
+    ):
+        if needle not in tournament_doc:
+            failures.append(f"prospective tournament documentation missing: {needle}")
 
     if failures:
         raise SystemExit("\n".join(failures))
