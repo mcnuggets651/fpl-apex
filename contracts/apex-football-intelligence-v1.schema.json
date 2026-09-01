@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apex.local/contracts/apex-football-intelligence-v1.schema.json",
+  "title": "Apex Football Intelligence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact_id", "payload_sha256", "payload"],
+  "properties": {
+    "artifact_id": {"type": "string", "pattern": "^afi-v1:[0-9a-f]{24}$"},
+    "payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "rollout_mode",
+        "generated_at",
+        "information_as_of",
+        "producer",
+        "competition",
+        "producer_readiness",
+        "source_health",
+        "source_snapshot_hashes",
+        "market_independence",
+        "source_governance",
+        "capabilities",
+        "official_snapshot",
+        "gameweeks",
+        "fixtures",
+        "players"
+      ],
+      "properties": {
+        "schema_version": {"const": "apex-football-intelligence-v1"},
+        "rollout_mode": {"const": "SHADOW_RESEARCH_ONLY"},
+        "generated_at": {"type": "string", "format": "date-time"},
+        "information_as_of": {"type": "string", "format": "date-time"},
+        "producer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "commit_sha", "model_version", "input_lineage_id"],
+          "properties": {
+            "repository": {"const": "mcnuggets651/fpl-apex"},
+            "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "model_version": {"const": "apex-fpl-native-football-primitives-v1"},
+            "input_lineage_id": {"type": "string", "pattern": "^afi-input:[0-9a-f]{64}$"}
+          }
+        },
+        "competition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["competition_id", "name", "country", "season"],
+          "properties": {
+            "competition_id": {"const": "premier-league"},
+            "name": {"const": "Premier League"},
+            "country": {"const": "England"},
+            "season": {"type": "string", "minLength": 1}
+          }
+        },
+        "producer_readiness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["safe_to_act", "full_apex_ready", "blockers", "warnings"],
+          "properties": {
+            "safe_to_act": {"type": "boolean"},
+            "full_apex_ready": {"type": "boolean"},
+            "blockers": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+            "warnings": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+          }
+        },
+        "source_health": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "ok", "configured", "version", "checked_at"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "ok": {"type": "boolean"},
+              "configured": {"type": "boolean"},
+              "version": {"type": ["string", "null"]},
+              "checked_at": {"type": ["string", "null"], "format": "date-time"}
+            }
+          }
+        },
+        "source_snapshot_hashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "official_bootstrap_source_sha256",
+            "official_fixtures_source_sha256",
+            "persisted_bootstrap_sha256",
+            "persisted_fixtures_sha256",
+            "official_manifest_sha256",
+            "player_primitive_subset_sha256",
+            "projection_primitive_subset_sha256"
+          ],
+          "properties": {
+            "official_bootstrap_source_sha256": {"type": ["string", "null"]},
+            "official_fixtures_source_sha256": {"type": ["string", "null"]},
+            "persisted_bootstrap_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "persisted_fixtures_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "official_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "player_primitive_subset_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "projection_primitive_subset_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        },
+        "market_independence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policy", "verified_by_contract", "forbidden_source", "forbidden_export_fields"],
+          "properties": {
+            "policy": {"const": "pre_ensemble_apex_native_primitives_only"},
+            "verified_by_contract": {"const": true},
+            "forbidden_source": {"const": "market_odds"},
+            "forbidden_export_fields": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+          }
+        },
+        "source_governance": {"type": "object"},
+        "capabilities": {"type": "object"},
+        "official_snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["snapshot_id", "retrieved_at", "player_count", "fixture_count"],
+          "properties": {
+            "snapshot_id": {"type": "string", "minLength": 1},
+            "retrieved_at": {"type": "string", "format": "date-time"},
+            "player_count": {"type": "integer", "minimum": 1},
+            "fixture_count": {"type": "integer", "minimum": 1}
+          }
+        },
+        "gameweeks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 1}},
+        "fixtures": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["producer_fixture_id", "fpl_fixture_id", "gameweek", "scheduled_kickoff_utc", "home_team", "away_team"],
+            "properties": {
+              "producer_fixture_id": {"type": "string", "pattern": "^fpl-fixture:[0-9]+$"},
+              "fpl_fixture_id": {"type": "integer", "minimum": 1},
+              "gameweek": {"type": "integer", "minimum": 1},
+              "scheduled_kickoff_utc": {"type": "string", "format": "date-time"},
+              "home_team": {"$ref": "#/$defs/teamIdentity"},
+              "away_team": {"$ref": "#/$defs/teamIdentity"}
+            }
+          }
+        },
+        "players": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/player"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "teamIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producer_team_id", "fpl_team_id", "canonical_name"],
+      "properties": {
+        "producer_team_id": {"type": "string", "pattern": "^fpl-team:[0-9]+$"},
+        "fpl_team_id": {"type": "integer", "minimum": 1},
+        "canonical_name": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidence": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["source_name", "source_tier", "source_locator_sha256", "evidence_type", "published_at", "retrieved_at", "expires_at"],
+      "properties": {
+        "source_name": {"type": ["string", "null"]},
+        "source_tier": {"type": ["string", "null"]},
+        "source_locator_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "evidence_type": {"type": ["string", "null"]},
+        "published_at": {"type": ["string", "null"], "format": "date-time"},
+        "retrieved_at": {"type": ["string", "null"], "format": "date-time"},
+        "expires_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    },
+    "player": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "availability", "minutes", "tactical", "attacking_rates", "defensive_rates", "set_pieces", "news_state"],
+      "properties": {
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["producer_player_id", "fpl_player_id", "canonical_name", "web_name", "team", "position"],
+          "properties": {
+            "producer_player_id": {"type": "string", "pattern": "^fpl:[0-9]+$"},
+            "fpl_player_id": {"type": "integer", "minimum": 1},
+            "canonical_name": {"type": "string", "minLength": 1},
+            "web_name": {"type": "string", "minLength": 1},
+            "team": {"$ref": "#/$defs/teamIdentity"},
+            "position": {"enum": ["GK", "DEF", "MID", "FWD"]}
+          }
+        },
+        "availability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["official_status", "official_chance_percent", "availability_probability", "evidence"],
+          "properties": {
+            "official_status": {"type": ["string", "null"]},
+            "official_chance_percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+            "availability_probability": {"type": "number", "minimum": 0, "maximum": 1},
+            "evidence": {"$ref": "#/$defs/evidence"}
+          }
+        },
+        "minutes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["expected_minutes", "start_probability", "appearance_probability", "minutes_60_plus_probability", "confidence"],
+          "properties": {
+            "expected_minutes": {"type": "number", "minimum": 0, "maximum": 90},
+            "start_probability": {"type": "number", "minimum": 0, "maximum": 1},
+            "appearance_probability": {"type": "number", "minimum": 0, "maximum": 1},
+            "minutes_60_plus_probability": {"type": "number", "minimum": 0, "maximum": 1},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "tactical": {"type": "object"},
+        "attacking_rates": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["xg90", "xa90", "xg_rate_credibility_adjusted", "xa_rate_credibility_adjusted", "reliability"],
+          "properties": {
+            "xg90": {"type": "number", "minimum": 0},
+            "xa90": {"type": "number", "minimum": 0},
+            "xg_rate_credibility_adjusted": {"type": "boolean"},
+            "xa_rate_credibility_adjusted": {"type": "boolean"},
+            "reliability": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "defensive_rates": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["defensive_contribution90", "reliability"],
+          "properties": {
+            "defensive_contribution90": {"type": "number", "minimum": 0},
+            "reliability": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "set_pieces": {"type": "object"},
+        "news_state": {"$ref": "#/$defs/evidence"}
+      }
+    }
+  }
+}
