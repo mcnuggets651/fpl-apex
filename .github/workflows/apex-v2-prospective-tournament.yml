@@ -54,11 +54,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
           git fetch --no-tags origin "$CONTROL_PLANE_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
-          git show "$CONTROL_PLANE_SHA:scripts/apex_v2_tournament_ops.py" > "$RUNNER_TEMP/apex_v2_tournament_ops.py"
+          for name in apex_v2_tournament_common.py apex_v2_tournament_contract.py apex_v2_tournament_scoring.py apex_v2_tournament_ops.py; do
+            git show "$CONTROL_PLANE_SHA:scripts/$name" > "$RUNNER_TEMP/$name"
+            test -s "$RUNNER_TEMP/$name"
+          done
           git show "$CONTROL_PLANE_SHA:scripts/apex_v2_shadow_provider_ops.py" > "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py"
           git show "$FROZEN_APEX_SHA:config/openfpl_training_policy.yaml" > "$RUNNER_TEMP/openfpl_training_policy.yaml"
           git show "$FROZEN_APEX_SHA:upstreams.lock.json" > "$RUNNER_TEMP/apex-v2-upstreams.lock.json"
-          test -s "$RUNNER_TEMP/apex_v2_tournament_ops.py"
           test -s "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py"
           test -s "$RUNNER_TEMP/openfpl_training_policy.yaml"
           test -s "$RUNNER_TEMP/apex-v2-upstreams.lock.json"
@@ -146,7 +148,7 @@ jobs:
       - name: Install frozen Apex V2 tooling
         run: pip install -e '.[dev]'
 
-      - name: Materialize exact tournament operations controller
+      - name: Materialize exact tournament operations controllers
         env:
           CONTROL_PLANE_SHA: ${{ github.sha }}
         shell: bash
@@ -155,8 +157,10 @@ jobs:
           test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
           git fetch --no-tags origin "$CONTROL_PLANE_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
-          git show "$CONTROL_PLANE_SHA:scripts/apex_v2_tournament_ops.py" > "$RUNNER_TEMP/apex_v2_tournament_ops.py"
-          test -s "$RUNNER_TEMP/apex_v2_tournament_ops.py"
+          for name in apex_v2_tournament_common.py apex_v2_tournament_contract.py apex_v2_tournament_scoring.py apex_v2_tournament_ops.py; do
+            git show "$CONTROL_PLANE_SHA:scripts/$name" > "$RUNNER_TEMP/$name"
+            test -s "$RUNNER_TEMP/$name"
+          done
           test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
 
       - name: Retain GW2 diagnostic evidence without canonicalising it
