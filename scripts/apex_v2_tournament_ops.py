@@ -16,7 +16,7 @@ from apex_v2_tournament_common import (
     GW2_DIAGNOSTIC_PREFIX, INTERNAL_PROVIDERS, PITCHSIDE_BASE, PRIVATE_TOURNAMENT_PREFIX, PROSPECTIVE_READY_CANDIDATE, SELECTION_PREFIX,
     TournamentContractError, _find_release, _load_json, _parse_utc,
     _release_asset_map, _sha256_bytes, _write_deterministic_tar_gz, _write_json,
-    canonical_bytes, canonical_sha256, capture_pitchside, sha256_path, verify_public_release_files,
+    canonical_bytes, canonical_sha256, capture_pitchside, sha256_path,
 )
 from apex_v2_tournament_contract import (
     GW2_CLASSIFICATION, build_readiness, canonicalize_selected_observation,
@@ -77,13 +77,16 @@ def _load_internal_private_surfaces(
     workdir: Path,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, str], dict[str, Path], dict[str, Any]]:
     from apex.runtime.evaluation_archive import load_verified_private_provider_surfaces
+    from apex.runtime.publication import PUBLIC_RELEASE_ASSETS_V1, verify_public_attestation
 
     public_assets = _release_asset_map(public_release)
-    required_public = {"public_attempt.json", "governance.json", "provider_forecasts.tar.gz", "attestation.json"}
-    if not required_public.issubset(public_assets):
-        raise TournamentContractError("source final does not expose required public provenance assets")
-    public_files = _download_release_files(public_store, public_release, required_public, workdir / "public")
-    public_attempt = verify_public_release_files(public_files)
+    if frozenset(public_assets) != PUBLIC_RELEASE_ASSETS_V1:
+        raise TournamentContractError("source final public asset set does not match frozen V2 contract")
+    public_files = _download_release_files(
+        public_store, public_release, PUBLIC_RELEASE_ASSETS_V1, workdir / "public"
+    )
+    verify_public_attestation(public_files)
+    public_attempt = _load_json(public_files["public_attempt.json"])
     private_required = {"provider_forecasts.tar.gz", "provider_attestation.json"}
     if set(_release_asset_map(private_release)) != private_required:
         raise TournamentContractError("private evaluation release asset set mismatch")
