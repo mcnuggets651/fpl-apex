@@ -226,6 +226,10 @@ def main() -> None:
         "dastan-pin-health",
         "pitchside-health",
         "openfpl-readiness",
+        "\n  push:\n",
+        "      - main",
+        '      - ".github/workflows/apex-v2-shadow-health.yml"',
+        '      - "scripts/apex_v2_shadow_provider_ops.py"',
     ):
         if needle not in shadow:
             failures.append(
@@ -259,6 +263,16 @@ def main() -> None:
         "canonicalize",
         "evaluate",
         "status",
+        "\n  push:\n",
+        "      - main",
+        "EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT",
+        "NO_ELIGIBLE_SOURCE",
+        'echo "has_source=false"',
+        "steps.source.outputs.has_source == 'true'",
+        'release.get("immutable") is not True',
+        'get("personalized_actionable") is not True',
+        "frozen_at >= deadline or now >= deadline",
+        '!= "airsenal" for h in range(1, 9)',
     ):
         if needle not in tournament:
             failures.append(
