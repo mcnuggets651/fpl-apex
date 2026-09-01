@@ -9,7 +9,9 @@ FROZEN = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
 
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
-        self.text = (ROOT / ".github/workflows/apex-v2-prospective-tournament.yml").read_text(encoding="utf-8")
+        self.text = (
+            ROOT / ".github/workflows/apex-v2-prospective-tournament.yml"
+        ).read_text(encoding="utf-8")
 
     def test_source_and_frozen_contract(self):
         for needle in (
@@ -24,7 +26,13 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn(needle, self.text)
 
     def test_tournament_commands_complete_lifecycle(self):
-        for needle in ("seal-run", "retain-gw2", "canonicalize", "evaluate", "status"):
+        for needle in (
+            "seal-run",
+            "retain-gw2",
+            "canonicalize",
+            "evaluate",
+            "status",
+        ):
             self.assertIn(needle, self.text)
 
     def test_no_serving_or_manager_auth_authority(self):
@@ -44,9 +52,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("APEX_PRIVATE_GITHUB_TOKEN", self.text)
         self.assertIn("contents: write", self.text)
 
-    def test_hourly_maintenance_and_non_cancelling(self):
+    def test_hourly_maintenance_is_ordered_and_non_cancelling(self):
         self.assertIn('cron: "23 * * * *"', self.text)
         self.assertIn("cancel-in-progress: false", self.text)
+        self.assertIn("  maintenance:\n    needs: seal\n    if: >-\n      always()", self.text)
 
 
 if __name__ == "__main__":
