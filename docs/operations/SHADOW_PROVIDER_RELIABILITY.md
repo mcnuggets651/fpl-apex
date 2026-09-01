@@ -148,6 +148,23 @@ This does **not** remove them from research accountability:
 
 Dastan and Apex Proprietary remain attempt-local SHADOW providers inside the frozen production snapshot. AIrsenal remains sole serving champion.
 
+## Post-ops runtime acceptance
+
+External shadow health is part of the repository's permanent post-ops acceptance pattern. In addition to manual dispatch and fixed schedules, `Apex V2 External Shadow Health` runs after a relevant push to `main` that changes its workflow or `scripts/apex_v2_shadow_provider_ops.py`.
+
+That push path remains strictly read-only:
+
+- `contents: read` only;
+- no FPL manager credentials;
+- no private-manager token;
+- no solver;
+- no production publish;
+- no provider serving authority.
+
+The prospective tournament follows the same principle for tournament/provider-ops changes. A relevant `main` push may bootstrap the newest eligible immutable current-GW production final into the non-serving tournament, but it cannot run production. Bootstrap source selection requires an immutable actionable still-predeadline final with personalized actionability and unchanged AIrsenal H1-H8 serving authority. `seal-run` then performs the full existing attestation/private-archive/common-snapshot verification. If no eligible source exists, bootstrap is a successful no-op rather than a retrospective reconstruction.
+
+`Apex V2 Daily Production` intentionally retains no `push` trigger.
+
 ## Privacy and no-hindsight boundary
 
 Public production releases contain provider commitments/provenance, not raw third-party forecast rows.
@@ -195,6 +212,9 @@ Operations tests cover:
 - GW3 candidate versus postdeadline canonical observation;
 - latest-valid-common-predeadline selection;
 - privacy/commitment verification;
+- post-ops read-only shadow-health trigger;
+- post-ops tournament bootstrap eligibility/no-source behavior;
+- proof that production itself still has no push trigger;
 - non-serving workflow boundaries.
 
 The repository operations contract additionally proves that the frozen engine SHA and serving architecture remain unchanged.

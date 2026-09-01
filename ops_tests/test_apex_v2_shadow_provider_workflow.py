@@ -50,6 +50,17 @@ class ShadowProviderWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(needle, text)
 
+    def test_external_health_runs_after_relevant_main_ops_merges(self):
+        text = (ROOT / ".github/workflows/apex-v2-shadow-health.yml").read_text(encoding="utf-8")
+        for needle in (
+            "\n  push:\n",
+            "      - main",
+            '      - ".github/workflows/apex-v2-shadow-health.yml"',
+            '      - "scripts/apex_v2_shadow_provider_ops.py"',
+        ):
+            self.assertIn(needle, text)
+        self.assertNotIn(".github/workflows/apex-v2-daily-production.yml", text)
+
 
 if __name__ == "__main__":
     unittest.main()
