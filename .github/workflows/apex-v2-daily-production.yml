@@ -82,6 +82,32 @@ jobs:
           test -s "$RUNNER_TEMP/apex_v2_auth_ops.py"
           test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
 
+      - name: Materialize exact external-shadow operations controller
+        env:
+          CONTROL_PLANE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test -n "$CONTROL_PLANE_SHA"
+          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
+          git show "$CONTROL_PLANE_SHA:scripts/apex_v2_shadow_provider_ops.py" > "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py"
+          test -s "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py"
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
+      - name: Derive production config with external diagnostics isolated
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/v2/diagnostics/external-shadow
+          python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" derive-runtime-config \
+            --source config/apex_v2.yaml \
+            --output "$RUNNER_TEMP/apex_v2_runtime.yaml" \
+            --report artifacts/v2/diagnostics/external-shadow/boundary.json
+          test -s "$RUNNER_TEMP/apex_v2_runtime.yaml"
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
       - name: Verify and recover FPL owner credential before provider work
         if: env.APEX_PRIVATE_MANAGER_ENABLED == '1'
         id: fpl_auth
@@ -123,6 +149,26 @@ jobs:
           test -n "$OFFICIAL_HASH"
           echo "hash=$OFFICIAL_HASH" >> "$GITHUB_OUTPUT"
           echo "Official FPL pre-provider hash: $OFFICIAL_HASH"
+
+      - name: Capture external diagnostic health without production influence
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" pitchside-health \
+            --report artifacts/v2/diagnostics/external-shadow/pitchside.json || true
+          python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" openfpl-readiness \
+            --policy config/openfpl_training_policy.yaml \
+            --lock upstreams.lock.json \
+            --report artifacts/v2/diagnostics/external-shadow/openfpl.json || true
+          if [ -s artifacts/v2/diagnostics/external-shadow/pitchside.json ] \
+             && [ -s artifacts/v2/diagnostics/external-shadow/openfpl.json ]; then
+            python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" combine \
+              --config-report artifacts/v2/diagnostics/external-shadow/boundary.json \
+              --pitchside-report artifacts/v2/diagnostics/external-shadow/pitchside.json \
+              --openfpl-report artifacts/v2/diagnostics/external-shadow/openfpl.json \
+              --output artifacts/v2/diagnostics/external-shadow/health.json || true
+          fi
 
       - name: Resolve pinned AIrsenal
         id: airsenal
@@ -190,7 +236,7 @@ jobs:
           SNAPSHOT_FILE="$RUNNER_TEMP/apex-v2-snapshot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.txt"
           rm -f "$SNAPSHOT_FILE"
           apex-v2 acquire \
-            --config config/apex_v2.yaml \
+            --config "$RUNNER_TEMP/apex_v2_runtime.yaml" \
             --run-id '${{ steps.intent.outputs.run_key }}' \
             --code-sha "$APEX_CODE_SHA" \
             --run-started-at '${{ steps.intent.outputs.started }}' \
