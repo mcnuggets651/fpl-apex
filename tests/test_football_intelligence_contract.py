@@ -17,6 +17,8 @@ from apex_fpl.contracts.football_intelligence import (
 
 COMMIT = "1" * 40
 NOW = datetime(2026, 9, 1, 7, 0, tzinfo=timezone.utc)
+GOLDEN_PAYLOAD_SHA256 = "e484cde56d578bdee0dcddfed99ecfd7deb5f7d7f130812a5016a1a094c82e4a"
+GOLDEN_ARTIFACT_ID = "afi-v1:e484cde56d578bdee0dcddfe"
 
 
 def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
@@ -253,6 +255,8 @@ def test_golden_contract_is_deterministic_and_market_independent(tmp_path: Path)
         now=NOW,
     )
     assert first == second
+    assert first["payload_sha256"] == GOLDEN_PAYLOAD_SHA256
+    assert first["artifact_id"] == GOLDEN_ARTIFACT_ID
     assert first["payload"]["schema_version"] == CONTRACT_VERSION
     assert first["payload"]["rollout_mode"] == "SHADOW_RESEARCH_ONLY"
     assert len(first["payload"]["players"]) == 2
@@ -260,18 +264,18 @@ def test_golden_contract_is_deterministic_and_market_independent(tmp_path: Path)
     assert first["payload"]["capabilities"]["fpl_expected_points"] is False
     assert first["payload"]["capabilities"]["betting_probability"] is False
 
+    source_names = {row["name"] for row in first["payload"]["source_health"]}
+    assert "market_odds" not in source_names
+    assert "airsenal" not in source_names
+    assert "market_xp" in first["payload"]["market_independence"]["forbidden_export_fields"]
+
     serialized = json.dumps(first, sort_keys=True)
-    for forbidden in (
-        "market_xp",
-        "canonical_ev_xp",
-        "risk_adjusted_xp",
-        "airsenal_xp",
-        "official_xp",
+    for leaked_value in (
         "market-must-not-leak",
         "expert-must-not-leak",
         "https://club.invalid",
     ):
-        assert forbidden not in serialized
+        assert leaked_value not in serialized
 
 
 def test_market_and_ensemble_changes_do_not_change_snapshot(tmp_path: Path) -> None:
