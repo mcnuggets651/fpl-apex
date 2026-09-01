@@ -14,12 +14,17 @@ concurrency:
   group: apex-v2-external-shadow-health
   cancel-in-progress: true
 
+env:
+  FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+
 jobs:
   health:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -28,6 +33,24 @@ jobs:
 
       - name: Install diagnostic dependencies
         run: python -m pip install 'requests>=2.31' 'PyYAML>=6.0'
+
+      - name: Materialize frozen provider provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$FROZEN_APEX_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$FROZEN_APEX_SHA"
+          git show "$FROZEN_APEX_SHA:upstreams.lock.json" > "$RUNNER_TEMP/apex-v2-upstreams.lock.json"
+          git show "$FROZEN_APEX_SHA:config/openfpl_training_policy.yaml" > "$RUNNER_TEMP/openfpl_training_policy.yaml"
+          test -s "$RUNNER_TEMP/apex-v2-upstreams.lock.json"
+          test -s "$RUNNER_TEMP/openfpl_training_policy.yaml"
+
+      - name: Check Dastan frozen pin availability
+        if: always()
+        run: |
+          python scripts/apex_v2_shadow_provider_ops.py dastan-pin-health \
+            --lock "$RUNNER_TEMP/apex-v2-upstreams.lock.json" \
+            --report artifacts/v2/diagnostics/external-shadow/dastan.json
 
       - name: Check PITCHSIDE external diagnostic
         if: always()
@@ -39,8 +62,9 @@ jobs:
         if: always()
         run: |
           python scripts/apex_v2_shadow_provider_ops.py openfpl-readiness \
-            --policy config/openfpl_training_policy.yaml \
-            --lock upstreams.lock.json \
+            --policy "$RUNNER_TEMP/openfpl_training_policy.yaml" \
+            --lock "$RUNNER_TEMP/apex-v2-upstreams.lock.json" \
+            --history-ref master \
             --report artifacts/v2/diagnostics/external-shadow/openfpl.json
 
       - name: Classify external diagnostic health
@@ -52,17 +76,32 @@ jobs:
           from pathlib import Path
 
           root = Path("artifacts/v2/diagnostics/external-shadow")
+          dastan = json.loads((root / "dastan.json").read_text())
           pitchside = json.loads((root / "pitchside.json").read_text())
           openfpl = json.loads((root / "openfpl.json").read_text())
-          print("### Apex V2 external shadow health")
-          print(f"PITCHSIDE: {pitchside.get('health')} — coverage={pitchside.get('coverage_ratio')} age_h={pitchside.get('age_hours')}")
-          print(f"OpenFPL: {openfpl.get('health')} / {openfpl.get('state')} — exact-rule GWs={openfpl.get('exact_rule_gameweek_count')}/{openfpl.get('minimum_exact_rule_gameweeks')}")
-          for provider in (pitchside, openfpl):
+          print("### Apex V2 shadow-provider health")
+          print(f"Dastan: {dastan.get('health')} / {dastan.get('state')} — pin={dastan.get('pinned_commit')}")
+          print(
+              f"PITCHSIDE: {pitchside.get('health')} — "
+              f"decision_coverage={pitchside.get('decision_universe_coverage_ratio')} "
+              f"age_h={pitchside.get('age_hours')} H1={pitchside.get('h1_available')} "
+              f"H2-H8={pitchside.get('h2_h8_available')}"
+          )
+          print(
+              f"OpenFPL: {openfpl.get('health')} / {openfpl.get('state')} — "
+              f"exact-rule GWs={openfpl.get('exact_rule_gameweek_count')}/"
+              f"{openfpl.get('minimum_exact_rule_gameweeks')} "
+              f"history_sha={openfpl.get('observed_history_commit')}"
+          )
+          for provider in (dastan, pitchside, openfpl):
               health = str(provider.get("health") or "ERROR")
               if health in {"INCOMPLETE", "STALE"}:
-                  print(f"::warning::{provider.get('provider_id')} external diagnostic is {health}: {'; '.join(provider.get('reasons') or [])}")
-          if any(str(provider.get("health") or "ERROR") == "ERROR" for provider in (pitchside, openfpl)):
-              raise SystemExit("external diagnostic monitor encountered an ERROR state")
+                  print(
+                      f"::warning::{provider.get('provider_id')} external diagnostic is {health}: "
+                      f"{' ; '.join(provider.get('reasons') or [])}"
+                  )
+          if any(str(provider.get("health") or "ERROR") == "ERROR" for provider in (dastan, pitchside, openfpl)):
+              raise SystemExit("shadow-provider monitor encountered an ERROR state")
           PY
 
       - name: Upload health diagnostics
