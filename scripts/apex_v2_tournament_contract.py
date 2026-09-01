@@ -16,7 +16,6 @@ from apex_v2_tournament_common import (
     DNS_INCOMPLETE_UNIVERSE,
     DNS_NO_H1,
     DNS_SCHEMA_INVALID,
-    DNS_TRAINING_READY_NO_MODEL,
     DNS_UNQUALIFIED,
     EXPECTED_PROVIDERS,
     GW2_CLASSIFICATION,
@@ -214,9 +213,7 @@ def _pitchside_provider_record(capture: dict[str, Any]) -> dict[str, Any]:
         capture.get("missing_forecastable_ids_by_horizon") or {}
     ).get("1") or []
     dns_code = (
-        None
-        if entered
-        else str(capture.get("dns_code") or DNS_UNQUALIFIED)
+        None if entered else str(capture.get("dns_code") or DNS_UNQUALIFIED)
     )
     strategic = bool(
         entered and all(horizon in qualified for horizon in STRATEGIC_HORIZONS)
@@ -249,9 +246,7 @@ def _pitchside_provider_record(capture: dict[str, Any]) -> dict[str, Any]:
             "missing_forecastable_players": len(missing_h1),
             "no_forecast_expected_unavailable": int(
                 (
-                    capture.get(
-                        "unavailable_no_forecast_expected_by_horizon"
-                    )
+                    capture.get("unavailable_no_forecast_expected_by_horizon")
                     or {}
                 ).get("1", 0)
             ),
@@ -273,16 +268,13 @@ def _pitchside_provider_record(capture: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "missing_forecastable_players": len(
                     (
-                        capture.get("missing_forecastable_ids_by_horizon")
-                        or {}
+                        capture.get("missing_forecastable_ids_by_horizon") or {}
                     ).get(str(horizon))
                     or []
                 ),
                 "no_forecast_expected_unavailable": int(
                     (
-                        capture.get(
-                            "unavailable_no_forecast_expected_by_horizon"
-                        )
+                        capture.get("unavailable_no_forecast_expected_by_horizon")
                         or {}
                     ).get(str(horizon), 0)
                 ),
@@ -317,13 +309,9 @@ def _openfpl_provider_record(
         "qualified_horizons": [],
         "training_state": state,
         "exact_rule_gameweek_count": row.get("exact_rule_gameweek_count"),
-        "minimum_exact_rule_gameweeks": row.get(
-            "minimum_exact_rule_gameweeks"
-        ),
+        "minimum_exact_rule_gameweeks": row.get("minimum_exact_rule_gameweeks"),
         "history_commit": row.get("observed_history_commit"),
-        "history_manifest_sha256": row.get(
-            "observed_history_manifest_sha256"
-        ),
+        "history_manifest_sha256": row.get("observed_history_manifest_sha256"),
         "h1": {
             "status": "DNS",
             "dns_code": code,
@@ -355,6 +343,7 @@ def build_readiness(
     private_tournament_release_tag: str | None,
     market_benchmark: dict[str, Any] | None = None,
     max_age_hours: float = DEFAULT_MAX_AGE_HOURS,
+    candidate_sealed_at: datetime | None = None,
 ) -> dict[str, Any]:
     season = str(public_attempt.get("season") or "")
     gameweek = int(public_attempt.get("target_gameweek") or 0)
@@ -362,19 +351,16 @@ def build_readiness(
     frozen_at = _parse_utc(str(public_attempt.get("frozen_at") or ""))
     certification = public_attempt.get("certification") or {}
     deadline = _parse_utc(str(certification.get("valid_until") or ""))
+    sealed_at = (candidate_sealed_at or frozen_at).astimezone(timezone.utc)
 
     if not season or gameweek <= 0 or len(official_hash) != 64:
         raise TournamentContractError(
             "public attempt lacks tournament authority fields"
         )
     if frozen_at >= deadline:
-        raise TournamentContractError(
-            "source production seal is not predeadline"
-        )
+        raise TournamentContractError("source production seal is not predeadline")
     if source_release.get("immutable") is not True:
-        raise TournamentContractError(
-            "source production release is not immutable"
-        )
+        raise TournamentContractError("source production release is not immutable")
 
     internal_qualification = _internal_qualification(governance)
     records: dict[str, dict[str, Any]] = {}
@@ -406,8 +392,7 @@ def build_readiness(
     strategic = [
         provider_id
         for provider_id in EXPECTED_PROVIDERS
-        if records[provider_id]["strategic_h2_h8"]["status"]
-        == "ENTERED"
+        if records[provider_id]["strategic_h2_h8"]["status"] == "ENTERED"
     ]
     dns = {
         provider_id: {
@@ -473,6 +458,7 @@ def build_readiness(
         == post_external_hash
         == official_hash
     )
+    candidate_predeadline = sealed_at < deadline
 
     ready = bool(
         gameweek >= 3
@@ -481,16 +467,13 @@ def build_readiness(
         and challenger_entered
         and evaluator_scoreable
         and exact_common_hash
+        and candidate_predeadline
     )
     blockers: list[str] = []
     if not production_actionable:
-        blockers.append(
-            "independent production recommendation is not actionable"
-        )
+        blockers.append("independent production recommendation is not actionable")
     if not champion_entered:
-        blockers.append(
-            "AIrsenal champion is not a valid H1 tournament entrant"
-        )
+        blockers.append("AIrsenal champion is not a valid H1 tournament entrant")
     if not challenger_entered:
         blockers.append("no challenger has a valid H1 tournament entry")
     if not evaluator_scoreable:
@@ -499,6 +482,10 @@ def build_readiness(
         blockers.append(
             "external capture is not bound to the exact production Official hash"
         )
+    if not candidate_predeadline:
+        blockers.append(
+            "prospective tournament candidate itself was not sealed before the Official deadline"
+        )
 
     classification = (
         PROSPECTIVE_READY_CANDIDATE if ready else PROSPECTIVE_NOT_READY
@@ -506,9 +493,7 @@ def build_readiness(
     if gameweek == 2:
         classification = GW2_CLASSIFICATION
         ready = False
-        blockers.append(
-            "GW2 is retained as diagnostic/rehearsal evidence only"
-        )
+        blockers.append("GW2 is retained as diagnostic/rehearsal evidence only")
 
     payload = {
         "schema_version": 2,
@@ -526,6 +511,7 @@ def build_readiness(
             "run_id": public_attempt.get("run_id"),
             "snapshot_id": public_attempt.get("snapshot_id"),
             "snapshot_frozen_at": frozen_at.isoformat(),
+            "tournament_sealed_at": sealed_at.isoformat(),
             "official_snapshot_sha256": official_hash,
             "external_capture_official_sha256": current_external_hash,
             "external_capture_post_official_sha256": post_external_hash,
@@ -573,9 +559,7 @@ def build_readiness(
             "sealed_forecasts_only": True,
             "post_deadline_regeneration_forbidden": True,
             "forecast_quality_separate_from_decision_quality": True,
-            "decision_quality_release_prefix": (
-                "apex-v2/private-decision-quality"
-            ),
+            "decision_quality_release_prefix": "apex-v2/private-decision-quality",
             "specialist_metrics_only_when_both_sealed_prediction_and_realized_label_exist": True,
             "silent_entrant_exclusion_forbidden": True,
             "strategic_comparison_surface": "COMMON_FORECAST_INTERSECTION",
@@ -603,10 +587,17 @@ def select_latest_valid_common_seal(
             continue
         try:
             frozen = _parse_utc(str(seal["snapshot_frozen_at"]))
+            tournament_sealed = _parse_utc(
+                str(seal.get("tournament_sealed_at") or seal["snapshot_frozen_at"])
+            )
             deadline = _parse_utc(str(seal["deadline"]))
         except Exception:
             continue
-        if frozen >= deadline or seal.get("source_release_immutable") is not True:
+        if (
+            frozen >= deadline
+            or tournament_sealed >= deadline
+            or seal.get("source_release_immutable") is not True
+        ):
             continue
         eligible.append(candidate)
 
@@ -642,21 +633,18 @@ def canonicalize_selected_observation(
 
     seal = selected.get("common_seal") or {}
     if seal.get("eligible_common_predeadline_candidate") is not True:
-        raise TournamentContractError(
-            "cannot canonicalize ineligible common seal"
-        )
+        raise TournamentContractError("cannot canonicalize ineligible common seal")
     frozen = _parse_utc(str(seal.get("snapshot_frozen_at") or ""))
-    deadline = _parse_utc(str(seal.get("deadline") or ""))
-    when = (selected_at or datetime.now(timezone.utc)).astimezone(
-        timezone.utc
+    tournament_sealed = _parse_utc(
+        str(seal.get("tournament_sealed_at") or seal.get("snapshot_frozen_at") or "")
     )
+    deadline = _parse_utc(str(seal.get("deadline") or ""))
+    when = (selected_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
     if when < deadline:
+        raise TournamentContractError("cannot canonicalize before Official deadline")
+    if frozen >= deadline or tournament_sealed >= deadline:
         raise TournamentContractError(
-            "cannot canonicalize before Official deadline"
-        )
-    if frozen >= deadline:
-        raise TournamentContractError(
-            "selected candidate is not predeadline"
+            "selected candidate is not a fully predeadline tournament seal"
         )
 
     selected_seal = dict(seal)
@@ -706,15 +694,12 @@ def reliability_summary(
                 code = str(h1.get("dns_code") or "UNKNOWN")
                 dns[code] = dns.get(code, 0) + 1
             generated = record.get("generated_at")
-            frozen = (payload.get("common_seal") or {}).get(
-                "snapshot_frozen_at"
-            )
+            frozen = (payload.get("common_seal") or {}).get("snapshot_frozen_at")
             if generated and frozen:
                 try:
                     ages.append(
                         (
-                            _parse_utc(str(frozen))
-                            - _parse_utc(str(generated))
+                            _parse_utc(str(frozen)) - _parse_utc(str(generated))
                         ).total_seconds()
                         / 3600.0
                     )
