@@ -30,6 +30,7 @@ ACTIVE_WORKFLOWS = {
     "apex-v2-direct-auth-diagnostic.yml",
     "apex-v2-ops-contract.yml",
     "apex-v2-owner-brief.yml",
+    "apex-v2-shadow-health.yml",
     "apex.yml",
     "gw1-final-2026.yml",
     "joint-path-promotion-audit.yml",
@@ -98,22 +99,16 @@ def main() -> None:
     for name, group_expr in CONCURRENT_PR_AUDITS.items():
         text = _text(active_dir / name)
         if "cancel-in-progress: true" not in text or group_expr not in text:
-            failures.append(
-                f"expensive PR workflow does not cancel superseded runs: {name}"
-            )
+            failures.append(f"expensive PR workflow does not cancel superseded runs: {name}")
 
     if not Path("scripts/invalidate_published_decision.py").exists():
         failures.append("required-source canonical invalidation CLI is missing")
     for name, source_arg in REQUIRED_SOURCE_INVALIDATORS.items():
         text = _text(active_dir / name)
         if "scripts/invalidate_published_decision.py" not in text or source_arg not in text:
-            failures.append(
-                f"required-source refresh can leave a stale actionable decision: {name}"
-            )
+            failures.append(f"required-source refresh can leave a stale actionable decision: {name}")
         if "apex_answer_context.json" not in text or "apex_recommendation_latest.json" not in text:
-            failures.append(
-                f"required-source refresh does not atomically stage invalidated canonical files: {name}"
-            )
+            failures.append(f"required-source refresh does not atomically stage invalidated canonical files: {name}")
 
     workflow = _text(active_dir / "pinnacle.yml")
     if "scripts/run_apex.py" not in workflow:
@@ -184,6 +179,28 @@ def main() -> None:
     gw1 = _text(active_dir / "gw1-final-2026.yml")
     if "scripts/run_apex.py" not in gw1:
         failures.append("GW1 final workflow bypasses the single canonical runner")
+
+    shadow = _text(active_dir / "apex-v2-shadow-health.yml")
+    for needle in (
+        "contents: read",
+        "99cc7b51b0cff45462b567084cb1844cfe0a456f",
+        "dastan-pin-health",
+        "pitchside-health",
+        "openfpl-readiness",
+    ):
+        if needle not in shadow:
+            failures.append(f"shadow-provider health workflow missing safety contract: {needle}")
+    for forbidden in (
+        "FPL_SESSION_COOKIE",
+        "FPL_X_API_AUTHORIZATION",
+        "FPL_REFRESH_TOKEN",
+        "APEX_PRIVATE_GITHUB_TOKEN",
+        "apex-v2 solve",
+        "apex-v2 publish",
+        "contents: write",
+    ):
+        if forbidden in shadow:
+            failures.append(f"shadow-provider health workflow crossed serving boundary: {forbidden}")
 
     if failures:
         raise SystemExit("\n".join(failures))
