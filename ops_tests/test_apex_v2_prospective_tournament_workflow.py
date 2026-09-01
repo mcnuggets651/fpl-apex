@@ -72,15 +72,41 @@ class WorkflowTests(unittest.TestCase):
         ):
             self.assertIn(needle, self.text)
 
-    def test_bootstrap_selector_is_predeadline_actionable_immutable_and_champion_safe(self):
+    def test_legacy_final_without_modern_asset_is_rejected_not_fatal(self):
         for needle in (
-            'release.get("immutable") is not True',
-            'payload.get("certification") or {}',
-            'get("personalized_actionable") is not True',
+            'MISSING_PUBLIC_ATTEMPT_ASSET = "MISSING_PUBLIC_ATTEMPT_ASSET"',
+            'if "public_attempt.json" not in asset_names:',
+            "except FileNotFoundError:",
+            "Legacy releases and a release-list/asset-read race are ineligible",
+            'reject(rejections, tag, MISSING_PUBLIC_ATTEMPT_ASSET)',
+            '"rejection_counts": rejection_counts',
+            '"rejections": rejections',
+            '"examined_final_release_count": examined',
+        ):
+            self.assertIn(needle, self.text)
+
+    def test_modern_authority_corruption_still_fails_closed(self):
+        for needle in (
+            "final release run identity mismatch",
+            "final release season mismatch",
+            "invalid final authority fields",
             "frozen_at >= deadline or now >= deadline",
+            'get("personalized_actionable") is not True',
             '!= "airsenal" for h in range(1, 9)',
-            "current_deadline = min(row[\"deadline\"] for row in candidates)",
-            "selected = max(current, key=lambda row: row[\"frozen_at\"])",
+            "serving authority drift in immutable final",
+        ):
+            self.assertIn(needle, self.text)
+
+    def test_source_resolution_is_persisted_before_sealing(self):
+        for needle in (
+            "Upload source-resolution proof",
+            "apex-v2-tournament-source-${{ github.run_id }}",
+            "steps.source.conclusion == 'success'",
+            "EXACT_PRODUCTION_WORKFLOW_RUN",
+            "EXACT_MANUAL_RUN_ID",
+            "RESOLVED_IMMUTABLE_FINAL",
+            "source_resolution.json",
+            "retention-days: 90",
         ):
             self.assertIn(needle, self.text)
 

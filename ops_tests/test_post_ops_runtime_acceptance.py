@@ -80,8 +80,11 @@ class PostOpsRuntimeAcceptanceTests(unittest.TestCase):
             "      - main",
             '      - ".github/workflows/apex-v2-prospective-tournament.yml"',
             '      - "scripts/apex_v2_tournament_ops.py"',
+            "source_resolution.json",
             "EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT",
             "NO_ELIGIBLE_SOURCE",
+            "MISSING_PUBLIC_ATTEMPT_ASSET",
+            "serving authority drift in immutable final",
             "seal-run",
             "needs: seal",
             "cancel-in-progress: false",
@@ -96,6 +99,18 @@ class PostOpsRuntimeAcceptanceTests(unittest.TestCase):
             "apex-v2 publish",
         ):
             self.assertNotIn(forbidden, text)
+
+    def test_tournament_legacy_final_skip_is_auditable(self) -> None:
+        text = _workflow("apex-v2-prospective-tournament.yml")
+        for required in (
+            'if "public_attempt.json" not in asset_names:',
+            "except FileNotFoundError:",
+            '"rejection_counts": rejection_counts',
+            '"rejections": rejections',
+            "Upload source-resolution proof",
+            "retention-days: 90",
+        ):
+            self.assertIn(required, text)
 
     def test_post_ops_acceptance_never_runs_production(self) -> None:
         production = _workflow("apex-v2-daily-production.yml")

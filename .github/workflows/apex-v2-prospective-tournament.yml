@@ -88,20 +88,28 @@ jobs:
           MANUAL_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
         run: |
           set -euo pipefail
+          mkdir -p artifacts/v2/tournament
           RUN_KEY=""
+          SOURCE_KIND=""
           if [ "$EVENT_NAME" = "workflow_run" ]; then
             RUN_KEY="${WORKFLOW_RUN_ID}-${WORKFLOW_RUN_ATTEMPT}"
+            SOURCE_KIND="EXACT_PRODUCTION_WORKFLOW_RUN"
           elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$MANUAL_SOURCE_RUN_ID" ]; then
             RUN_KEY="$MANUAL_SOURCE_RUN_ID"
+            SOURCE_KIND="EXACT_MANUAL_RUN_ID"
           else
-            python - <<'PY' > "$RUNNER_TEMP/latest_tournament_source.json"
+            python - <<'PY' > artifacts/v2/tournament/source_resolution.json
           import json
           import os
           import tempfile
+          from collections import Counter
           from datetime import datetime, timezone
           from pathlib import Path
 
           from apex.runtime.releases import GitHubReleaseStore, download_release_asset
+
+          SELECTION_POLICY = "EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT"
+          MISSING_PUBLIC_ATTEMPT_ASSET = "MISSING_PUBLIC_ATTEMPT_ASSET"
 
           def parse_utc(value):
               text = str(value or "").strip()
@@ -112,6 +120,9 @@ jobs:
                   parsed = parsed.replace(tzinfo=timezone.utc)
               return parsed.astimezone(timezone.utc)
 
+          def reject(rows, tag, reason):
+              rows.append({"tag": tag, "reason": reason})
+
           repo = os.environ["GITHUB_REPOSITORY"]
           season = os.environ["APEX_SEASON"]
           token = os.environ["GITHUB_TOKEN"]
@@ -119,6 +130,8 @@ jobs:
           prefix = f"apex-v2/final/{season}/"
           store = GitHubReleaseStore(repo, token)
           candidates = []
+          rejections = []
+          examined = 0
 
           with tempfile.TemporaryDirectory() as tmp:
               root = Path(tmp)
@@ -126,16 +139,39 @@ jobs:
                   tag = str(release.get("tag_name") or "")
                   if not tag.startswith(prefix):
                       continue
-                  if release.get("draft") or release.get("immutable") is not True:
+                  examined += 1
+                  if release.get("draft"):
+                      reject(rejections, tag, "DRAFT_RELEASE")
                       continue
+                  if release.get("immutable") is not True:
+                      reject(rejections, tag, "RELEASE_NOT_IMMUTABLE")
+                      continue
+
+                  asset_names = {
+                      str(asset.get("name") or "")
+                      for asset in release.get("assets") or []
+                      if isinstance(asset, dict)
+                  }
+                  if "public_attempt.json" not in asset_names:
+                      reject(rejections, tag, MISSING_PUBLIC_ATTEMPT_ASSET)
+                      continue
+
                   run_key = tag[len(prefix):]
-                  attempt_path = download_release_asset(
-                      store,
-                      release,
-                      "public_attempt.json",
-                      root / f"{release['id']}-public_attempt.json",
-                  )
+                  try:
+                      attempt_path = download_release_asset(
+                          store,
+                          release,
+                          "public_attempt.json",
+                          root / f"{release['id']}-public_attempt.json",
+                      )
+                  except FileNotFoundError:
+                      # Legacy releases and a release-list/asset-read race are ineligible,
+                      # but neither may abort discovery of a newer valid V2 final.
+                      reject(rejections, tag, MISSING_PUBLIC_ATTEMPT_ASSET)
+                      continue
                   payload = json.loads(attempt_path.read_text(encoding="utf-8"))
+                  if not isinstance(payload, dict):
+                      raise SystemExit(f"public attempt is not an object: {tag}")
                   if str(payload.get("run_id") or "") != run_key:
                       raise SystemExit(f"final release run identity mismatch: {tag}")
                   if str(payload.get("season") or "") != season:
@@ -147,12 +183,20 @@ jobs:
                   except Exception as exc:
                       raise SystemExit(f"invalid final authority fields for {tag}: {exc}") from exc
                   if target_gameweek < 3:
+                      reject(rejections, tag, "PRE_GW3_FINAL")
                       continue
                   if frozen_at >= deadline or now >= deadline:
+                      reject(
+                          rejections,
+                          tag,
+                          "SOURCE_NOT_PREDEADLINE" if frozen_at >= deadline else "DEADLINE_PASSED",
+                      )
                       continue
                   if (payload.get("certification") or {}).get("actionable") is not True:
+                      reject(rejections, tag, "PRODUCTION_NOT_ACTIONABLE")
                       continue
                   if (payload.get("manager_actionability") or {}).get("personalized_actionable") is not True:
+                      reject(rejections, tag, "MANAGER_NOT_ACTIONABLE")
                       continue
                   serving = payload.get("serving_provider_by_horizon") or {}
                   if any(str(serving.get(str(h), serving.get(h, ""))) != "airsenal" for h in range(1, 9)):
@@ -163,12 +207,31 @@ jobs:
                           "target_gameweek": target_gameweek,
                           "frozen_at": frozen_at,
                           "deadline": deadline,
-                          "tag": tag,
+                          "source_release_tag": tag,
                       }
                   )
 
+          rejection_counts = dict(sorted(Counter(row["reason"] for row in rejections).items()))
+          audit = {
+              "examined_final_release_count": examined,
+              "eligible_candidate_count": len(candidates),
+              "rejection_counts": rejection_counts,
+              "rejections": rejections,
+              "selection_policy": SELECTION_POLICY,
+          }
           if not candidates:
-              print(json.dumps({"status": "NO_ELIGIBLE_SOURCE", "run_id": None}, sort_keys=True))
+              print(
+                  json.dumps(
+                      {
+                          "schema_version": 1,
+                          "status": "NO_ELIGIBLE_SOURCE",
+                          "run_id": None,
+                          **audit,
+                      },
+                      sort_keys=True,
+                      indent=2,
+                  )
+              )
           else:
               current_deadline = min(row["deadline"] for row in candidates)
               current = [row for row in candidates if row["deadline"] == current_deadline]
@@ -176,23 +239,27 @@ jobs:
               print(
                   json.dumps(
                       {
+                          "schema_version": 1,
                           "status": "FOUND",
                           "run_id": selected["run_id"],
                           "target_gameweek": selected["target_gameweek"],
                           "frozen_at": selected["frozen_at"].isoformat(),
                           "deadline": selected["deadline"].isoformat(),
-                          "source_release_tag": selected["tag"],
-                          "selection_policy": "EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT",
+                          "source_release_tag": selected["source_release_tag"],
+                          **audit,
                       },
                       sort_keys=True,
+                      indent=2,
                   )
               )
           PY
-            cat "$RUNNER_TEMP/latest_tournament_source.json"
-            RUN_KEY="$(python -c 'import json,sys; print(json.load(open(sys.argv[1])).get("run_id") or "")' "$RUNNER_TEMP/latest_tournament_source.json")"
+            RUN_KEY="$(python -c 'import json,sys; print(json.load(open(sys.argv[1])).get("run_id") or "")' artifacts/v2/tournament/source_resolution.json)"
+            SOURCE_KIND="RESOLVED_IMMUTABLE_FINAL"
           fi
 
           if [ -z "$RUN_KEY" ]; then
+            test -s artifacts/v2/tournament/source_resolution.json
+            cat artifacts/v2/tournament/source_resolution.json
             echo "has_source=false" >> "$GITHUB_OUTPUT"
             echo "run_key=" >> "$GITHUB_OUTPUT"
             echo "No immutable actionable still-predeadline production final is eligible for bootstrap sealing."
@@ -202,8 +269,31 @@ jobs:
             *-*) ;;
             *) echo "source_run_id must be a production run key like 33469824474-1" >&2; exit 1 ;;
           esac
+          if [ ! -s artifacts/v2/tournament/source_resolution.json ]; then
+            python - "$RUN_KEY" "$SOURCE_KIND" > artifacts/v2/tournament/source_resolution.json <<'PY'
+          import json
+          import sys
+          print(json.dumps({
+              "schema_version": 1,
+              "status": "FOUND_EXACT",
+              "run_id": sys.argv[1],
+              "source_kind": sys.argv[2],
+              "selection_policy": "EXACT_EVENT_OR_USER_RUN_ID",
+          }, sort_keys=True, indent=2))
+          PY
+          fi
+          cat artifacts/v2/tournament/source_resolution.json
           echo "has_source=true" >> "$GITHUB_OUTPUT"
           echo "run_key=$RUN_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Upload source-resolution proof
+        if: always() && steps.source.conclusion == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v2-tournament-source-${{ github.run_id }}
+          path: artifacts/v2/tournament/source_resolution.json
+          retention-days: 90
+          if-no-files-found: error
 
       - name: Resolve governed OpenFPL readiness
         if: steps.source.outputs.has_source == 'true'

@@ -37,7 +37,7 @@ The long-term weakness was operational, not predictive: every live attempt clone
 
 The production qualification matrix reported an incomplete universe because the frozen production contract treated all Official identities as requiring a numerical forecast.
 
-A deeper inspection of the latest successful PITCHSIDE publication established the real shape of the data:
+A deeper inspection of the first September 1 PITCHSIDE publication established the real shape of that snapshot:
 
 - 626 current player identities in `players.json`;
 - 575 player forecast vectors in `xp.json`;
@@ -46,7 +46,7 @@ A deeper inspection of the latest successful PITCHSIDE publication established t
 - every forecastable active/injured/doubtful/suspended identity had a target-GW forecast;
 - the 575 forecast vectors covered GW3-GW19.
 
-Therefore the source was not missing 51 legitimate decision-universe forecasts. The blanket 626/626 rule was the defect.
+Therefore that source snapshot was not missing 51 legitimate decision-universe forecasts. The blanket 626/626 rule was the defect.
 
 The correct accounting is:
 
@@ -78,6 +78,20 @@ The health/readiness and tournament states deliberately answer different questio
 This distinction prevents the 10-GW threshold from being mistaken for a usable model.
 
 The pinned OpenFPL method repository exposes a notebook/sample-data method, not a validated reproducible current-rules production exporter. Apex therefore does not invent one. Until such a builder is separately validated, crossing the floor is visible as `TRAINING_READY_NO_MODEL`, never a synthetic forecast.
+
+## Live post-merge acceptance proof — 2026-09-01 22:13 UTC
+
+The read-only `Apex V2 External Shadow Health` workflow ran automatically from merged operations SHA `fc2d9af77bd0da9b94fdbc4fea3257a32668a72c` and completed successfully. It exercised the real upstreams without manager credentials, solving or production publication.
+
+The resulting states were:
+
+- **Dastan:** `HEALTHY / PIN_REACHABLE`; pinned and observed commit both `19376523afdec4836d0e6b5632c6773d0fe40c53`.
+- **OpenFPL:** `HEALTHY / TRAINING_NOT_READY`; 1 governed exact-rule Gameweek available of the required 10; observed history commit `9779cdbc0c07f6c900c2d0c181ddf6bb9c800f88`.
+- **PITCHSIDE:** `INCOMPLETE`; the Official universe had grown to 629 identities, 568 of which were forecastable under `status != u`, while the current PITCHSIDE publication had forecasts for 565 of those 568. Exact missing Official element IDs were `627`, `628`, and `629`, with player codes `155465`, `482616`, and `624777`.
+
+This later PITCHSIDE result does **not** contradict the earlier 575/575 forecastable snapshot. It demonstrates why the health contract must be dynamic: Official FPL added three forecastable identities after that earlier publication. The monitor correctly moved PITCHSIDE from complete to `INCOMPLETE` instead of freezing an obsolete universe or inventing forecasts. Until the external source publishes those identities, tournament treatment is explicit DNS/`INCOMPLETE_UNIVERSE`; no substitute values are permitted.
+
+The live artifact was retained as `apex-v2-external-shadow-health-33565153740` (artifact id `9822817588`).
 
 ## Permanent provider contracts
 
@@ -163,6 +177,10 @@ That push path remains strictly read-only:
 
 The prospective tournament follows the same principle for tournament/provider-ops changes. A relevant `main` push may bootstrap the newest eligible immutable current-GW production final into the non-serving tournament, but it cannot run production. Bootstrap source selection requires an immutable actionable still-predeadline final with personalized actionability and unchanged AIrsenal H1-H8 serving authority. `seal-run` then performs the full existing attestation/private-archive/common-snapshot verification. If no eligible source exists, bootstrap is a successful no-op rather than a retrospective reconstruction.
 
+Historical `apex-v2/final/...` tags predate the modern V2 `public_attempt.json` release contract. Bootstrap therefore records them as `MISSING_PUBLIC_ATTEMPT_ASSET` and continues scanning; they are historical ineligible evidence, not a reason to abort discovery of a newer valid V2 final. A release-list/asset-read race is handled the same way. By contrast, once an immutable final advertises the modern asset, run identity, season, authority-field and AIrsenal serving-map corruption still fail closed. The source-resolution record includes examined release count, every rejection and aggregated rejection counts, and is retained as an independent 90-day workflow artifact before sealing.
+
+This distinction was established by live acceptance: the first post-merge tournament run correctly stopped before writing a candidate when its initial scanner encountered legacy final `apex-v2/final/2026-2027/33207047220-1` without `public_attempt.json`. The hardened scanner preserves that event as explicit rejected evidence and proceeds to modern eligible finals instead of masking or treating the old tag as repository corruption.
+
 `Apex V2 Daily Production` intentionally retains no `push` trigger.
 
 ## Privacy and no-hindsight boundary
@@ -188,7 +206,8 @@ The reliability layer distinguishes at least:
 - post-cutoff submission;
 - training not ready;
 - training ready but no validated model;
-- upstream/readiness availability failure.
+- upstream/readiness availability failure;
+- legacy final missing the modern V2 public-attempt asset.
 
 None is silently converted into another provider's forecast.
 
@@ -214,6 +233,8 @@ Operations tests cover:
 - privacy/commitment verification;
 - post-ops read-only shadow-health trigger;
 - post-ops tournament bootstrap eligibility/no-source behavior;
+- legacy final missing-asset skip and source-resolution proof retention;
+- modern final identity/authority corruption remaining fail-closed;
 - proof that production itself still has no push trigger;
 - non-serving workflow boundaries.
 
