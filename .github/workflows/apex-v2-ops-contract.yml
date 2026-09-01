@@ -11,6 +11,7 @@ on:
       - ".github/workflows/apex-v2-owner-brief.yml"
       - ".github/workflows/apex-v2-decision-quality.yml"
       - ".github/workflows/apex-v2-shadow-health.yml"
+      - ".github/workflows/apex-v2-prospective-tournament.yml"
       - ".github/workflows/apex-v2-ops-contract.yml"
       - ".github/workflows/pinnacle.yml"
       - ".github/workflows/airsenal.yml"
@@ -21,10 +22,15 @@ on:
       - "scripts/apex_v2_owner_brief_ops.py"
       - "scripts/apex_v2_decision_quality_ops.py"
       - "scripts/apex_v2_shadow_provider_ops.py"
+      - "scripts/apex_v2_tournament_common.py"
+      - "scripts/apex_v2_tournament_contract.py"
+      - "scripts/apex_v2_tournament_ops.py"
+      - "scripts/apex_v2_tournament_scoring.py"
       - "scripts/check_governance_consistency.py"
       - "ops_tests/**"
       - "docs/APEX_V2_DAILY_OPERATIONS.md"
       - "docs/APEX_V2_SAFE_EXTENSIONS.md"
+      - "docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md"
       - "docs/operations/SHADOW_PROVIDER_RELIABILITY.md"
   workflow_dispatch:
 
@@ -63,6 +69,7 @@ jobs:
               ".github/workflows/apex-v2-owner-brief.yml",
               ".github/workflows/apex-v2-decision-quality.yml",
               ".github/workflows/apex-v2-shadow-health.yml",
+              ".github/workflows/apex-v2-prospective-tournament.yml",
               ".github/workflows/apex-v2-ops-contract.yml",
               ".github/workflows/pinnacle.yml",
               ".github/workflows/airsenal.yml",
@@ -73,22 +80,33 @@ jobs:
               "scripts/apex_v2_owner_brief_ops.py",
               "scripts/apex_v2_decision_quality_ops.py",
               "scripts/apex_v2_shadow_provider_ops.py",
+              "scripts/apex_v2_tournament_common.py",
+              "scripts/apex_v2_tournament_contract.py",
+              "scripts/apex_v2_tournament_ops.py",
+              "scripts/apex_v2_tournament_scoring.py",
               "scripts/check_governance_consistency.py",
               "docs/APEX_V2_DAILY_OPERATIONS.md",
               "docs/APEX_V2_SAFE_EXTENSIONS.md",
+              "docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md",
               "docs/operations/SHADOW_PROVIDER_RELIABILITY.md",
           }
-          changed = set(subprocess.check_output(
-              ["git", "diff", "--name-only", "origin/main...HEAD"], text=True
-          ).splitlines())
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "origin/main...HEAD"],
+                  text=True,
+              ).splitlines()
+          )
           unexpected = sorted(
-              path for path in changed
+              path
+              for path in changed
               if path not in allowed_exact and not path.startswith("ops_tests/")
           )
           if unexpected:
               raise SystemExit(f"ops PR touched non-operational paths: {unexpected}")
           forbidden = sorted(
-              path for path in changed if path.startswith(("src/", "config/", "tests/"))
+              path
+              for path in changed
+              if path.startswith(("src/", "config/", "tests/"))
           )
           if forbidden:
               raise SystemExit(f"ops PR touched frozen-engine paths: {forbidden}")
@@ -149,6 +167,7 @@ jobs:
               '"decision_universe_rule": "Official status != \'u\'"',
               '"excluded_unavailable_classification": "NO_FORECAST_EXPECTED"',
               '"TRAINING_NOT_READY"',
+              '"READY_FOR_SHADOW_BUILD"',
               '"PROVIDER_LOGIC_OR_INVARIANT_FAILURE"',
           ):
               if needle not in controller:
@@ -161,6 +180,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+
           text = Path(".github/workflows/apex-v2-shadow-health.yml").read_text(encoding="utf-8")
           for needle in (
               "permissions:\n  contents: read",
@@ -173,11 +193,83 @@ jobs:
               if needle not in text:
                   raise SystemExit(f"shadow-health contract missing: {needle}")
           for forbidden in (
-              "FPL_SESSION_COOKIE", "FPL_X_API_AUTHORIZATION", "FPL_REFRESH_TOKEN",
-              "APEX_PRIVATE_GITHUB_TOKEN", "contents: write", "apex-v2 solve", "apex-v2 publish",
+              "FPL_SESSION_COOKIE",
+              "FPL_X_API_AUTHORIZATION",
+              "FPL_REFRESH_TOKEN",
+              "APEX_PRIVATE_GITHUB_TOKEN",
+              "contents: write",
+              "apex-v2 solve",
+              "apex-v2 publish",
           ):
               if forbidden in text:
                   raise SystemExit(f"shadow-health crossed safety boundary: {forbidden}")
+          PY
+
+      - name: Assert prospective tournament is sealed, non-serving and no-hindsight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/apex-v2-prospective-tournament.yml").read_text(encoding="utf-8")
+          required = (
+              'workflows: ["Apex V2 Daily Production"]',
+              'cron: "23 * * * *"',
+              'FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"',
+              "ref: $" + "{{ env.FROZEN_APEX_SHA }}",
+              "apex_v2_tournament_common.py",
+              "apex_v2_tournament_contract.py",
+              "apex_v2_tournament_ops.py",
+              "apex_v2_tournament_scoring.py",
+              "openfpl-readiness",
+              "seal-run",
+              "retain-gw2",
+              "canonicalize",
+              "evaluate",
+              "status",
+              "APEX_V2_PRIVATE_REPO_TOKEN",
+          )
+          missing = [needle for needle in required if needle not in workflow]
+          if missing:
+              raise SystemExit(f"prospective tournament contract missing: {missing}")
+          for forbidden in (
+              "FPL_SESSION_COOKIE",
+              "FPL_X_API_AUTHORIZATION",
+              "FPL_REFRESH_TOKEN",
+              "apex-v2 intent",
+              "apex-v2 official-hash",
+              "apex-v2 acquire",
+              "apex-v2 solve",
+              "apex-v2 publish",
+              "scripts/acquire_dastan_shadow.py",
+              "run_airsenal_worker.py",
+          ):
+              if forbidden in workflow:
+                  raise SystemExit(f"prospective tournament crossed serving boundary: {forbidden}")
+
+          contract = Path("scripts/apex_v2_tournament_contract.py").read_text(encoding="utf-8")
+          for needle in (
+              "DIAGNOSTIC_REHEARSAL_NON_CANONICAL",
+              "PROSPECTIVE_READY_CANDIDATE",
+              "CANONICAL_PROSPECTIVE_OBSERVATION",
+              "TRAINING_READY_NO_MODEL",
+              "LAST_VALID_COMMON_PREDEADLINE_SEAL",
+              '"production_influence": "NONE"',
+              '"serving_authorized": False',
+          ):
+              if needle not in contract:
+                  raise SystemExit(f"tournament governance invariant missing: {needle}")
+
+          scoring = Path("scripts/apex_v2_tournament_scoring.py").read_text(encoding="utf-8")
+          for needle in (
+              "score_predictions",
+              "NOT_SCOREABLE",
+              "minutes_mae",
+              "appearance_probability_brier",
+          ):
+              if needle not in scoring:
+                  raise SystemExit(f"tournament scoring invariant missing: {needle}")
           PY
 
       - name: Assert auth, deadline, owner and decision diagnostics remain bounded
@@ -203,16 +295,16 @@ jobs:
               if forbidden in deadline:
                   raise SystemExit(f"deadline watcher crossed safety boundary: {forbidden}")
 
-          for workflow, script in (
+          for workflow_name, script in (
               (".github/workflows/apex-v2-owner-brief.yml", "apex_v2_owner_brief_ops.py"),
               (".github/workflows/apex-v2-decision-quality.yml", "apex_v2_decision_quality_ops.py"),
           ):
-              text = Path(workflow).read_text(encoding="utf-8")
+              text = Path(workflow_name).read_text(encoding="utf-8")
               if "contents: read" not in text or script not in text:
-                  raise SystemExit(f"read-only diagnostic contract missing: {workflow}")
+                  raise SystemExit(f"read-only diagnostic contract missing: {workflow_name}")
               for forbidden in ("contents: write", "apex-v2 acquire", "apex-v2 solve", "apex-v2 publish"):
                   if forbidden in text:
-                      raise SystemExit(f"diagnostic crossed serving boundary: {workflow}: {forbidden}")
+                      raise SystemExit(f"diagnostic crossed serving boundary: {workflow_name}: {forbidden}")
           PY
 
       - name: Assert evaluation and historical orphan policy remain frozen
@@ -221,6 +313,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+
           evaluation = Path(".github/workflows/apex-v2-daily-evaluation.yml").read_text(encoding="utf-8")
           for needle in (
               "99cc7b51b0cff45462b567084cb1844cfe0a456f",
@@ -232,8 +325,12 @@ jobs:
                   raise SystemExit(f"daily evaluation contract missing: {needle}")
           audit = Path("scripts/apex_v2_attempt_audit_ops.py").read_text(encoding="utf-8")
           for run in (
-              "33242604422-1", "33257608630-1", "33260512411-1",
-              "33265747805-1", "33272866621-1", "33312221205-1",
+              "33242604422-1",
+              "33257608630-1",
+              "33260512411-1",
+              "33265747805-1",
+              "33272866621-1",
+              "33312221205-1",
           ):
               if run not in audit:
                   raise SystemExit(f"historical orphan acknowledgement missing: {run}")
@@ -247,6 +344,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+
           for path in (
               Path(".github/workflows/pinnacle.yml"),
               Path(".github/workflows/airsenal.yml"),
@@ -283,6 +381,7 @@ jobs:
           fi
           python - <<'PY'
           import subprocess
+
           allowed_scripts = {
               "scripts/apex_v2_auth_ops.py",
               "scripts/apex_v2_attempt_audit_ops.py",
@@ -290,11 +389,18 @@ jobs:
               "scripts/apex_v2_owner_brief_ops.py",
               "scripts/apex_v2_decision_quality_ops.py",
               "scripts/apex_v2_shadow_provider_ops.py",
+              "scripts/apex_v2_tournament_common.py",
+              "scripts/apex_v2_tournament_contract.py",
+              "scripts/apex_v2_tournament_ops.py",
+              "scripts/apex_v2_tournament_scoring.py",
               "scripts/check_governance_consistency.py",
           }
-          scripts = set(subprocess.check_output(
-              ["git", "diff", "--name-only", "origin/main...HEAD", "--", "scripts"], text=True
-          ).splitlines())
+          scripts = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "origin/main...HEAD", "--", "scripts"],
+                  text=True,
+              ).splitlines()
+          )
           unexpected = sorted(scripts - allowed_scripts)
           if unexpected:
               raise SystemExit(f"Operations extension modified unexpected scripts: {unexpected}")
