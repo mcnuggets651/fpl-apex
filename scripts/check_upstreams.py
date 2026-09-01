@@ -3,7 +3,6 @@
 from __future__ import annotations
 import json
 import os
-from collections import defaultdict
 from pathlib import Path
 
 import requests
@@ -43,29 +42,64 @@ def emit_live_draft_trade_scout() -> None:
         return
     base = "https://draft.premierleague.com/api"
     league_id = 33160
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; ApexDraftScout/1.0)", "Accept": "application/json"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; ApexDraftScout/1.0)",
+        "Accept": "application/json",
+    }
+
     def fetch(path: str):
         response = requests.get(f"{base}{path}", timeout=30, headers=headers)
         response.raise_for_status()
         return response.json()
+
     details = fetch(f"/league/{league_id}/details")
     status = fetch(f"/league/{league_id}/element-status")
     bootstrap = fetch("/bootstrap-static")
     elements = bootstrap.get("elements") or []
     by_id = {int(e["id"]): e for e in elements if e.get("id") is not None}
-    teams = {int(t["id"]): t.get("short_name") or t.get("name") or str(t["id"]) for t in (bootstrap.get("teams") or []) if t.get("id") is not None}
-    positions = {int(t["id"]): t.get("singular_name_short") or t.get("singular_name") or str(t["id"]) for t in (bootstrap.get("element_types") or []) if t.get("id") is not None}
+    teams = {
+        int(t["id"]): t.get("short_name") or t.get("name") or str(t["id"])
+        for t in (bootstrap.get("teams") or [])
+        if t.get("id") is not None
+    }
+    positions = {
+        int(t["id"]): t.get("singular_name_short") or t.get("singular_name") or str(t["id"])
+        for t in (bootstrap.get("element_types") or [])
+        if t.get("id") is not None
+    }
     rows = status.get("element_status") if isinstance(status, dict) else status
     status_by_id = {int(r["element"]): r for r in (rows or [])}
     print("\n=== DEADLINE DAY TARGETS ===")
-    targets = ["barcola", "balogun", "allan", "grealish", "mudryk", "tosin", "ndiaye", "fernandez", "sou", "lewel"]
+    targets = [
+        "barcola",
+        "balogun",
+        "allan",
+        "grealish",
+        "mudryk",
+        "tosin",
+        "ndiaye",
+        "fernandez",
+        "sou",
+        "lewel",
+    ]
     matched = []
     for e in elements:
-        hay = " ".join(str(e.get(k, "")) for k in ("first_name", "second_name", "web_name")).lower()
+        hay = " ".join(
+            str(e.get(k, "")) for k in ("first_name", "second_name", "web_name")
+        ).lower()
         if any(t in hay for t in targets):
             pid = int(e["id"])
             row = status_by_id.get(pid, {})
-            matched.append((pid, e.get("web_name"), teams.get(int(e.get("team",0)), "?"), positions.get(int(e.get("element_type",0)), "?"), row.get("status"), row.get("owner")))
+            matched.append(
+                (
+                    pid,
+                    e.get("web_name"),
+                    teams.get(int(e.get("team", 0)), "?"),
+                    positions.get(int(e.get("element_type", 0)), "?"),
+                    row.get("status"),
+                    row.get("owner"),
+                )
+            )
     for item in matched:
         print("TARGET", item)
     print("ELEMENT_COUNT", len(elements), "MAX_ID", max(by_id) if by_id else None)
