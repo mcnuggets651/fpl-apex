@@ -1,0 +1,75 @@
+name: Apex V2 External Shadow Health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 7 * * *"
+    - cron: "15 13 * * *"
+    - cron: "15 19 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apex-v2-external-shadow-health
+  cancel-in-progress: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install diagnostic dependencies
+        run: python -m pip install 'requests>=2.31' 'PyYAML>=6.0'
+
+      - name: Check PITCHSIDE external diagnostic
+        if: always()
+        run: |
+          python scripts/apex_v2_shadow_provider_ops.py pitchside-health \
+            --report artifacts/v2/diagnostics/external-shadow/pitchside.json
+
+      - name: Check OpenFPL governed readiness
+        if: always()
+        run: |
+          python scripts/apex_v2_shadow_provider_ops.py openfpl-readiness \
+            --policy config/openfpl_training_policy.yaml \
+            --lock upstreams.lock.json \
+            --report artifacts/v2/diagnostics/external-shadow/openfpl.json
+
+      - name: Classify external diagnostic health
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("artifacts/v2/diagnostics/external-shadow")
+          pitchside = json.loads((root / "pitchside.json").read_text())
+          openfpl = json.loads((root / "openfpl.json").read_text())
+          print("### Apex V2 external shadow health")
+          print(f"PITCHSIDE: {pitchside.get('health')} — coverage={pitchside.get('coverage_ratio')} age_h={pitchside.get('age_hours')}")
+          print(f"OpenFPL: {openfpl.get('health')} / {openfpl.get('state')} — exact-rule GWs={openfpl.get('exact_rule_gameweek_count')}/{openfpl.get('minimum_exact_rule_gameweeks')}")
+          for provider in (pitchside, openfpl):
+              health = str(provider.get("health") or "ERROR")
+              if health in {"INCOMPLETE", "STALE"}:
+                  print(f"::warning::{provider.get('provider_id')} external diagnostic is {health}: {'; '.join(provider.get('reasons') or [])}")
+          if any(str(provider.get("health") or "ERROR") == "ERROR" for provider in (pitchside, openfpl)):
+              raise SystemExit("external diagnostic monitor encountered an ERROR state")
+          PY
+
+      - name: Upload health diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v2-external-shadow-health-${{ github.run_id }}
+          path: artifacts/v2/diagnostics/external-shadow/
+          if-no-files-found: error
+          retention-days: 30
