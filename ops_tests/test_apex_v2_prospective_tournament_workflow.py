@@ -18,7 +18,7 @@ class WorkflowTests(unittest.TestCase):
             'workflows: ["Apex V2 Daily Production"]',
             FROZEN,
             'ref: ${{ env.FROZEN_APEX_SHA }}',
-            'apex_v2_tournament_common.py apex_v2_tournament_contract.py apex_v2_tournament_scoring.py apex_v2_tournament_ops.py',
+            "apex_v2_tournament_source_resolver.py",
             'git show "$CONTROL_PLANE_SHA:scripts/$name"',
             'git show "$FROZEN_APEX_SHA:upstreams.lock.json"',
             'git show "$FROZEN_APEX_SHA:config/openfpl_training_policy.yaml"',
@@ -63,24 +63,24 @@ class WorkflowTests(unittest.TestCase):
             "      - main",
             '      - ".github/workflows/apex-v2-prospective-tournament.yml"',
             '      - "scripts/apex_v2_tournament_ops.py"',
+            '      - "scripts/apex_v2_tournament_source_resolver.py"',
             '      - "scripts/apex_v2_shadow_provider_ops.py"',
             "github.event_name == 'push'",
-            "EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT",
-            '"status": "NO_ELIGIBLE_SOURCE"',
+            'python "$RUNNER_TEMP/apex_v2_tournament_source_resolver.py"',
+            "source_resolution.json",
             'echo "has_source=false"',
             "steps.source.outputs.has_source == 'true'",
         ):
             self.assertIn(needle, self.text)
 
-    def test_bootstrap_selector_is_predeadline_actionable_immutable_and_champion_safe(self):
+    def test_source_resolution_is_persisted_before_sealing(self):
         for needle in (
-            'release.get("immutable") is not True',
-            'payload.get("certification") or {}',
-            'get("personalized_actionable") is not True',
-            "frozen_at >= deadline or now >= deadline",
-            '!= "airsenal" for h in range(1, 9)',
-            "current_deadline = min(row[\"deadline\"] for row in candidates)",
-            "selected = max(current, key=lambda row: row[\"frozen_at\"])",
+            "Upload source-resolution proof",
+            "apex-v2-tournament-source-${{ github.run_id }}",
+            "steps.source.conclusion == 'success'",
+            "EXACT_PRODUCTION_WORKFLOW_RUN",
+            "EXACT_MANUAL_RUN_ID",
+            "RESOLVED_IMMUTABLE_FINAL",
         ):
             self.assertIn(needle, self.text)
 
