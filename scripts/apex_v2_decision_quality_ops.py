@@ -97,7 +97,7 @@ def _hard_exclusions_from_public_evidence(public_files: dict[str, Path], *, game
     if evidence_path is None:
         return frozenset()
     payload = _load_json(evidence_path)
-    rows = payload if isinstance(payload, list) else payload.get('records') or payload.get('evidence') or []
+    rows = payload if isinstance(payload, list) else payload.get('rows') or payload.get('records') or payload.get('evidence') or []
     output: set[int] = set()
     for row in rows:
         if not isinstance(row, dict):
