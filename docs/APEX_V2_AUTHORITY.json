@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "season": "2026-2027",
+  "entry_id": 63984,
+  "frozen_engine_sha": "99cc7b51b0cff45462b567084cb1844cfe0a456f",
+  "frozen_engine_pr": 90,
+  "frozen_engine_pr_policy": "NEVER_MERGE_OR_ADVANCE",
+  "serving_provider": "airsenal",
+  "serving_horizons": [1, 2, 3, 4, 5, 6, 7, 8],
+  "canonical_production_workflow": ".github/workflows/apex-v2-daily-production.yml",
+  "canonical_release_prefix": "apex-v2",
+  "operations_control_plane_branch": "main",
+  "official_fpl_authority": [
+    "identity",
+    "club",
+    "position",
+    "price",
+    "status_availability",
+    "fixtures"
+  ],
+  "research": {
+    "production_influence": "NONE",
+    "serving_authorized": false,
+    "automatic_promotion": false,
+    "decision_quality_workflow": ".github/workflows/apex-v2-decision-quality.yml",
+    "prospective_tournament_workflow": ".github/workflows/apex-v2-prospective-tournament.yml"
+  },
+  "provider_constitution": {
+    "airsenal": {
+      "role": "CHAMPION",
+      "serve_authorized": true,
+      "horizons": [1, 2, 3, 4, 5, 6, 7, 8]
+    },
+    "apex_proprietary": {
+      "role": "SHADOW",
+      "serve_authorized": false,
+      "horizons": [1, 2, 3, 4, 5, 6, 7, 8]
+    },
+    "dastan": {
+      "role": "SHADOW",
+      "serve_authorized": false,
+      "horizons": [1]
+    },
+    "pitchside": {
+      "role": "SHADOW",
+      "serve_authorized": false,
+      "horizons": [1, 2, 3, 4, 5, 6, 7, 8]
+    },
+    "openfpl": {
+      "role": "SHADOW",
+      "serve_authorized": false,
+      "horizons": [1]
+    }
+  },
+  "legacy": {
+    "status": "HISTORICAL_NON_SERVING",
+    "runner": "scripts/run_apex.py",
+    "generated_repository_recommendations": "HISTORICAL_NON_SERVING",
+    "archived_workflows": [
+      "archive/workflows/pinnacle.yml",
+      "archive/workflows/airsenal.yml",
+      "archive/workflows/refresh-core-pin.yml",
+      "archive/workflows/gw1-final-2026.yml"
+    ]
+  }
+}
