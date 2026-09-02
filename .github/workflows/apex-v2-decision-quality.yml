@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/apex-v2-decision-quality.yml"
       - "scripts/apex_v2_decision_quality_ops.py"
+      - "scripts/apex_v2_decision_lab_parallel.py"
   workflow_run:
     workflows:
       - "Apex V2 Daily Evaluation"
@@ -26,10 +27,13 @@ env:
   FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
 
 jobs:
-  score:
+  prepare:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_tasks: ${{ steps.plan.outputs.has_tasks }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,7 +68,8 @@ jobs:
             apex_v2_tournament_contract.py \
             apex_v2_tournament_scoring.py \
             apex_v2_tournament_ops.py \
-            apex_v2_decision_quality_ops.py; do
+            apex_v2_decision_quality_ops.py \
+            apex_v2_decision_lab_parallel.py; do
             git show "$CONTROL_PLANE_SHA:scripts/$name" > "$RUNNER_TEMP/$name"
             test -s "$RUNNER_TEMP/$name"
           done
@@ -76,7 +81,8 @@ jobs:
           APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
         run: apex-v2 private-store-preflight
 
-      - name: Seal and score immutable prospective decision research
+      - name: Prepare public-safe parallel decision-lab matrix
+        id: plan
         env:
           GITHUB_TOKEN: ${{ github.token }}
           APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
@@ -86,7 +92,226 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python "$RUNNER_TEMP/apex_v2_decision_quality_ops.py" \
+          PLAN="$(python "$RUNNER_TEMP/apex_v2_decision_lab_parallel.py" \
+            --mode prepare \
+            --season 2026-2027 \
+            --control-plane-sha "$CONTROL_PLANE_SHA")"
+          printf '%s\n' "$PLAN" | jq -e '.private_manager_state_in_matrix == false' >/dev/null
+          echo "matrix=$(printf '%s' "$PLAN" | jq -c '.matrix')" >> "$GITHUB_OUTPUT"
+          echo "has_tasks=$(printf '%s' "$PLAN" | jq -r '.has_tasks')" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$PLAN" | jq '{mode, has_tasks, candidate_plans, production_influence, serving_authorized}'
+
+      - name: Prove frozen worktree stayed untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  solve:
+    needs: prepare
+    if: ${{ needs.prepare.result == 'success' && needs.prepare.outputs.has_tasks == 'true' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FROZEN_APEX_SHA }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install frozen Apex V2 release and optimiser tooling
+        run: pip install -e '.[dev]'
+
+      - name: Materialize exact non-serving decision-research controllers
+        env:
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CONTROL_PLANE_SHA"
+          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
+          for name in \
+            apex_v2_tournament_common.py \
+            apex_v2_tournament_contract.py \
+            apex_v2_tournament_scoring.py \
+            apex_v2_tournament_ops.py \
+            apex_v2_decision_quality_ops.py \
+            apex_v2_decision_lab_parallel.py; do
+            git show "$CONTROL_PLANE_SHA:scripts/$name" > "$RUNNER_TEMP/$name"
+            test -s "$RUNNER_TEMP/$name"
+          done
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
+      - name: Preflight private decision-research store
+        env:
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+        run: apex-v2 private-store-preflight
+
+      - name: Solve and immutably seal exactly one predeadline counterfactual task
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          PYTHONPATH: ${{ runner.temp }}:${{ github.workspace }}/src
+          CANDIDATE_TAG: ${{ matrix.candidate_tag }}
+          TASK_ID: ${{ matrix.task_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/apex_v2_decision_lab_parallel.py" \
+            --mode solve-task \
+            --season 2026-2027 \
+            --control-plane-sha "$CONTROL_PLANE_SHA" \
+            --candidate-tag "$CANDIDATE_TAG" \
+            --task-id "$TASK_ID"
+
+      - name: Prove frozen worktree stayed untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  assemble:
+    needs:
+      - prepare
+      - solve
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.solve.result == 'success' || needs.solve.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FROZEN_APEX_SHA }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install frozen Apex V2 release and optimiser tooling
+        run: pip install -e '.[dev]'
+
+      - name: Materialize exact non-serving decision-research controllers
+        env:
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CONTROL_PLANE_SHA"
+          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
+          for name in \
+            apex_v2_tournament_common.py \
+            apex_v2_tournament_contract.py \
+            apex_v2_tournament_scoring.py \
+            apex_v2_tournament_ops.py \
+            apex_v2_decision_quality_ops.py \
+            apex_v2_decision_lab_parallel.py; do
+            git show "$CONTROL_PLANE_SHA:scripts/$name" > "$RUNNER_TEMP/$name"
+            test -s "$RUNNER_TEMP/$name"
+          done
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
+      - name: Preflight private decision-research store
+        env:
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+        run: apex-v2 private-store-preflight
+
+      - name: Assemble canonical lab only from complete predeadline staging tasks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          PYTHONPATH: ${{ runner.temp }}:${{ github.workspace }}/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/apex_v2_decision_lab_parallel.py" \
+            --mode assemble \
+            --season 2026-2027 \
+            --control-plane-sha "$CONTROL_PLANE_SHA"
+
+      - name: Prove frozen worktree stayed untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  postoutcome:
+    needs: assemble
+    if: ${{ needs.assemble.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FROZEN_APEX_SHA }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install frozen Apex V2 release and optimiser tooling
+        run: pip install -e '.[dev]'
+
+      - name: Materialize exact non-serving decision-research controllers
+        env:
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CONTROL_PLANE_SHA"
+          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
+          for name in \
+            apex_v2_tournament_common.py \
+            apex_v2_tournament_contract.py \
+            apex_v2_tournament_scoring.py \
+            apex_v2_tournament_ops.py \
+            apex_v2_decision_quality_ops.py \
+            apex_v2_decision_lab_parallel.py; do
+            git show "$CONTROL_PLANE_SHA:scripts/$name" > "$RUNNER_TEMP/$name"
+            test -s "$RUNNER_TEMP/$name"
+          done
+          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+
+      - name: Preflight private decision-research store
+        env:
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+        run: apex-v2 private-store-preflight
+
+      - name: Score completed canonical outcomes and advance sequential learning
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+          CONTROL_PLANE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          PYTHONPATH: ${{ runner.temp }}:${{ github.workspace }}/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/apex_v2_decision_lab_parallel.py" \
+            --mode postoutcome \
             --season 2026-2027 \
             --control-plane-sha "$CONTROL_PLANE_SHA"
 
