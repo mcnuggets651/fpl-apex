@@ -73,6 +73,16 @@ jobs:
             tests/test_apex_v2_*.py \
             tests/test_v2_*.py \
             pyproject.toml
+          tar -czf artifacts/v2/audit-repo-graph.tgz \
+            src \
+            scripts \
+            apps \
+            config \
+            .github \
+            tests \
+            docs/architecture \
+            docs/APEX_V2_AUTHORITY.json \
+            pyproject.toml
 
       - name: Upload audit evidence
         if: always()
