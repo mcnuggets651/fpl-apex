@@ -53,11 +53,26 @@ jobs:
       - name: Lint complete V2 and audit harness
         run: ruff check src/apex tests/test_apex_v2_*.py tests/test_v2_*.py scripts/check_v2_architecture.py scripts/audit_v2_codebase.py
 
+      - name: Package exact audited source graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf artifacts/v2/audit-source.tgz \
+            src/apex \
+            config/apex_v2.yaml \
+            config/apex_v2_cutover_platform.yaml \
+            .github/workflows/apex-v2-*.yml \
+            scripts/check_v2_architecture.py \
+            scripts/audit_v2_codebase.py \
+            tests/test_apex_v2_*.py \
+            tests/test_v2_*.py \
+            pyproject.toml
+
       - name: Upload audit evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apex-v2-adversarial-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/v2/audit-*.json
+          path: artifacts/v2/audit-*
           if-no-files-found: ignore
           retention-days: 30
