@@ -1,68 +1,76 @@
 # Apex FPL — Roadmap
 
-Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
+Machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json). Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
 
-## Current release — closed decision governance
+Apex V2 frozen engine SHA is `99cc7b51b0cff45462b567084cb1844cfe0a456f`; the sole serving workflow is `.github/workflows/apex-v2-daily-production.yml`, and **AIrsenal** is the sole serving provider H1–H8.
 
-- Generate `apex_answer_context.json` from the canonical and Pinnacle surfaces.
-- Require freshness, source health, matched hashes, CVaR, regret, solver parity,
-  selected-player evidence and strategy state.
-- Route each question mode to an explicit artifact and refuse improvisation.
-- Publish only after PR CI and a production workflow artifact prove activation.
+## Current release — frozen V2 operations and prospective evidence
 
-## Completed / production foundations
-- Official FPL canonical universe and readiness gates
-- FPL Core Insights integration
-- genuine pinned AIrsenal projections
-- Apex transparent xP decomposition
-- projection ensemble with uncertainty
-- Pinnacle maximum-EV MILP
-- stochastic scenarios and CVaR cross-check
-- exact force/ban selection regret
-- captain/vice/autosub mechanics
-- independent solver parity
-- personal entry synchronisation for 63984
-- receding-horizon transfer strategy
-- no-hindsight forecast archive/calibration framework
-- Elite 10.0 ceiling-weighted decision utility (merged after successful CI)
+Production architecture is frozen. `main` may improve bounded operations/governance/research without changing frozen model semantics.
 
-## Current milestone — Validate Elite 10.0
-1. Run Elite against the latest live source surface.
-2. Publish/inspect `elite_latest.json` and `.md`.
-3. Compare unrestricted, Haaland and no-Haaland Elite candidates.
-4. Measure raw-xP regret against Pinnacle.
-5. Identify whether Elite removes low-ceiling value bias without introducing reputation/premium bias.
-6. Record benchmark before further weight changes.
+Current priorities:
 
-## Next milestone — Apex Meta (experimental)
-Candidate architecture:
-- Pinnacle EV
-- Elite ceiling
-- Safety/minutes robustness
-- Aggressive/differential
-- Value/team-value
-- Meta selector
+1. keep authenticated immutable V2 Daily Production healthy and fail-closed;
+2. complete prospective multi-provider evaluation without serving influence;
+3. complete the GW3 Decision Quality lab with every counterfactual sealed predeadline;
+4. keep Project Brain, generic governance and executable workflow inventory aligned with the V2 constitution;
+5. retire reproducibility/runner-maintenance debt only with full CI and live acceptance.
 
-Promotion requirement: Meta must improve decision robustness or out-of-sample performance without hiding material expected-points regret. Do not implement as a black-box vote.
+## Production foundations
 
-## High-value future upgrades
-- validated betting-market implied goal/clean-sheet/scorer probabilities
-- Bayesian minutes/start/60/90 model
-- richer penalty/set-piece share inference
-- DEFCON threshold probability model
-- bonus/BPS simulation
-- Monte Carlo match/fixture simulation
-- ownership/effective-ownership game-theory layer
-- price-change/value-growth prediction
-- improved chip opportunity-cost modelling
-- automated project-brain state updates after production runs
+- Official FPL factual authority and snapshot anchoring;
+- exact authenticated manager state for entry 63984;
+- frozen Apex V2 optimiser/mechanics at `99cc7b51b0cff45462b567084cb1844cfe0a456f`;
+- AIrsenal sole serving H1–H8 provider;
+- immutable private prerequisites and final production releases;
+- offline solve after one frozen input snapshot;
+- exact XI/captain/vice/bench/transfer mechanics;
+- fail-closed auth/data/provider/publication gates;
+- deadline-aware production dispatch and bounded auth keepalive.
 
-## Season-long learning
-As 2026/27 outcomes accumulate:
-- evaluate calibration and ranking accuracy by component/model;
-- tune covariance/uncertainty priors;
-- compare Elite versus Pinnacle decisions no-hindsight;
-- promote changes only after repeated evidence.
+## Prospective research foundations
+
+- Apex Proprietary shadow H1–H8;
+- Dastan shadow H1 only;
+- PITCHSIDE/OpenFPL diagnostic/shadow intake;
+- no-hindsight immutable provider tournament;
+- prospective online learning for forecast/minutes/start/appearance/role disagreement;
+- prospective Decision Quality counterfactuals with exact realized FPL scoring;
+- parallel/resumable immutable task staging;
+- no blending, voting, automatic promotion or serving influence.
+
+## Near-term work
+
+### GW3 live acceptance
+
+Complete the corrected 50-minute Decision Quality matrix, canonical assembly and private attestation before the Official GW3 deadline for every required decision task. Missing predeadline decisions remain permanently missing.
+
+### Reproducibility debt
+
+Replace mutable non-serving historical references such as `vaastav/Fantasy-Premier-League@master` with exact pins from `upstreams.lock.json` where the consumer supports it.
+
+### Actions runtime maintenance
+
+Move GitHub Actions off Node-20-targeted action releases only after current stable replacements are verified and full repository/V2 contracts pass.
+
+### External provider intake governance
+
+Do not automate permission-restricted/unverified providers until the required licence/automation permissions are confirmed and a governed non-serving intake contract exists.
+
+## Longer-horizon research
+
+Potential improvements must remain challengers until prospectively validated:
+
+- calibrated Bayesian minutes/start/appearance models;
+- fixture-model experts such as Dixon-Coles/Poisson;
+- richer penalty/set-piece share inference;
+- DEFCON/BPS probability models;
+- calibrated match/fixture simulations and covariance;
+- chip opportunity-cost modelling;
+- ownership/rank-game-theory research when the objective explicitly requires it.
+
+None of these belongs in serving production merely because it is theoretically attractive. A serving change requires explicit architecture review, no-hindsight evidence, re-certification and a deliberate frozen-engine migration.
 
 ## Definition of “Apex 10.0”
-Not perfect foresight. It means the strongest current, reproducible, auditable decision process: complete validated inputs, robust ensemble forecast, legal optimisation, explicit ceiling/risk/captaincy handling, independent checks and transparent reasons for the final action.
+
+Not perfect foresight. It means one coherent, reproducible and auditable production authority: exact state, current facts, qualified serving projections, legal maximum-EV optimisation, exact FPL mechanics, immutable publication, prospective learning and governance that fails when architecture descriptions drift.
