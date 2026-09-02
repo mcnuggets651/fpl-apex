@@ -80,8 +80,7 @@ jobs:
             config \
             .github \
             tests \
-            docs/architecture \
-            docs/APEX_V2_AUTHORITY.json \
+            docs \
             pyproject.toml
 
       - name: Upload audit evidence
