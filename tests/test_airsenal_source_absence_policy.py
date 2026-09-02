@@ -118,10 +118,14 @@ def test_truth_contract_rejects_unreconciled_airsenal_absence():
     assert any("lack explicit fixed-weight Apex fallback" in item for item in audit["blockers"])
 
 
-def test_adaptive_workflow_accepts_resolved_not_fabricated_airsenal_coverage():
-    workflow = Path(".github/workflows/joint-path-promotion-audit.yml").read_text(
-        encoding="utf-8"
-    )
+def test_retired_adaptive_workflow_preserves_source_absence_contract_for_forensics():
+    active = Path(".github/workflows/joint-path-promotion-audit.yml")
+    archived = Path("archive/workflows/joint-path-promotion-audit.yml")
+
+    assert not active.exists(), "pre-V2 Adaptive Strategy audit must stay non-executable"
+    assert archived.is_file(), "retired Adaptive Strategy source must remain available for forensics"
+
+    workflow = archived.read_text(encoding="utf-8")
     assert "airsenal_projection_pair_coverage'] == 1.0" not in workflow
     assert "present_pairs + absent_pairs == expected_pairs" in workflow
     assert "assert not truth['blockers']" in workflow

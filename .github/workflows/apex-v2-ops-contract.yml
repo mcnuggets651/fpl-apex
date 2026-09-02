@@ -9,6 +9,7 @@ on:
       - "scripts/apex_v2_*.py"
       - "scripts/check_governance_consistency.py"
       - "ops_tests/**"
+      - "tests/test_airsenal_source_absence_policy.py"
       - "tests/test_airsenal_workflow_contract.py"
       - "tests/test_core_candidate_publication.py"
       - "tests/test_production_publication_contract.py"
@@ -95,6 +96,7 @@ jobs:
               "scripts/apex_v2_tournament_ops.py",
               "scripts/apex_v2_tournament_scoring.py",
               "scripts/check_governance_consistency.py",
+              "tests/test_airsenal_source_absence_policy.py",
               "tests/test_airsenal_workflow_contract.py",
               "tests/test_core_candidate_publication.py",
               "tests/test_production_publication_contract.py",
@@ -192,6 +194,7 @@ jobs:
               raise SystemExit(f"ops/governance PR touched frozen engine source/config: {forbidden}")
           test_changes = sorted(path for path in changed if path.startswith("tests/"))
           allowed_tests = {
+              "tests/test_airsenal_source_absence_policy.py",
               "tests/test_airsenal_workflow_contract.py",
               "tests/test_core_candidate_publication.py",
               "tests/test_production_publication_contract.py",
