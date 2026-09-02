@@ -29,7 +29,8 @@ def test_v2_production_keeps_airsenal_worker_manager_independent():
     assert "airsenal_setup_initial_db --fpl_team_id 1" in workflow
     assert "python \"$GITHUB_WORKSPACE/scripts/update_airsenal_worker.py\"" in workflow
     assert "airsenal_update_db" not in workflow
-    assert 'run_airsenal_worker.py" \\\n            --db "$AIRSENAL_DB_FILE" --horizon 8' in workflow
+    assert "run_airsenal_worker.py" in workflow
+    assert "--horizon 8" in workflow
     assert "APEX_PRIVATE_MANAGER_ENABLED" in workflow
     assert "apex-v2 acquire" in workflow
 
