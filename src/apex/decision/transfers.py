@@ -496,11 +496,7 @@ def optimise_transfer_horizon(
             transfers_made = len(transfers_in)
             hits = max(0, transfers_made - free_transfer_state)
             bank = int(round(solution[bank_base + period]))
-            gameweek = (
-                min(official.deadlines) + horizon - 1
-                if official.deadlines
-                else horizon
-            )
+            gameweek = int(team.published_gw) + horizon
             mechanics = best_fixed_squad_mechanics(
                 official,
                 surface,
