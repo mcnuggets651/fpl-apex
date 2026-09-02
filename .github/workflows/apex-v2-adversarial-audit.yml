@@ -45,18 +45,24 @@ jobs:
             --cov-report=json:artifacts/v2/audit-coverage.json
 
       - name: Map uncovered functions
+        if: always()
         run: |
-          python scripts/audit_v2_codebase.py \
-            --coverage-json artifacts/v2/audit-coverage.json \
-            --output artifacts/v2/audit-inventory.json
+          if [ -f artifacts/v2/audit-coverage.json ]; then
+            python scripts/audit_v2_codebase.py \
+              --coverage-json artifacts/v2/audit-coverage.json \
+              --output artifacts/v2/audit-inventory.json
+          fi
 
       - name: Lint complete V2 and audit harness
+        if: always()
         run: ruff check src/apex tests/test_apex_v2_*.py tests/test_v2_*.py scripts/check_v2_architecture.py scripts/audit_v2_codebase.py
 
       - name: Package exact audited source graph
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p artifacts/v2
           tar -czf artifacts/v2/audit-source.tgz \
             src/apex \
             config/apex_v2.yaml \
