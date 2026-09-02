@@ -21,6 +21,7 @@ on:
       - "scripts/apex_v2_deadline_ops.py"
       - "scripts/apex_v2_owner_brief_ops.py"
       - "scripts/apex_v2_decision_quality_ops.py"
+      - "scripts/apex_v2_decision_lab_parallel.py"
       - "scripts/apex_v2_shadow_provider_ops.py"
       - "scripts/apex_v2_tournament_common.py"
       - "scripts/apex_v2_tournament_contract.py"
@@ -32,6 +33,7 @@ on:
       - "docs/APEX_V2_SAFE_EXTENSIONS.md"
       - "docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md"
       - "docs/operations/SHADOW_PROVIDER_RELIABILITY.md"
+      - "docs/operations/PARALLEL_DECISION_LAB.md"
   workflow_dispatch:
 
 permissions:
@@ -84,6 +86,7 @@ jobs:
               "scripts/apex_v2_deadline_ops.py",
               "scripts/apex_v2_owner_brief_ops.py",
               "scripts/apex_v2_decision_quality_ops.py",
+              "scripts/apex_v2_decision_lab_parallel.py",
               "scripts/apex_v2_shadow_provider_ops.py",
               "scripts/apex_v2_tournament_common.py",
               "scripts/apex_v2_tournament_contract.py",
@@ -94,6 +97,7 @@ jobs:
               "docs/APEX_V2_SAFE_EXTENSIONS.md",
               "docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md",
               "docs/operations/SHADOW_PROVIDER_RELIABILITY.md",
+              "docs/operations/PARALLEL_DECISION_LAB.md",
           }
           changed = set(
               subprocess.check_output(
@@ -343,6 +347,34 @@ jobs:
               for forbidden in ("contents: write", "apex-v2 acquire", "apex-v2 solve", "apex-v2 publish"):
                   if forbidden in text:
                       raise SystemExit(f"diagnostic crossed serving boundary: {workflow_name}: {forbidden}")
+
+          parallel_workflow = Path(".github/workflows/apex-v2-decision-quality.yml").read_text(encoding="utf-8")
+          parallel_controller = Path("scripts/apex_v2_decision_lab_parallel.py").read_text(encoding="utf-8")
+          for needle in (
+              "strategy:",
+              "max-parallel: 8",
+              "--mode prepare",
+              "--mode solve-task",
+              "--mode assemble",
+              "--mode postoutcome",
+              "apex_v2_decision_lab_parallel.py",
+          ):
+              if needle not in parallel_workflow:
+                  raise SystemExit(f"parallel decision workflow contract missing: {needle}")
+          for needle in (
+              'TASK_PREFIX = "apex-v2/private-decision-lab-task"',
+              '"private_manager_state_in_matrix": False',
+              '"production_influence": "NONE"',
+              '"serving_authorized": False',
+              "if _utc_now() >= deadline",
+              "canonical lab assembly missing required staging task",
+              "decision-lab task finished after deadline and will not be sealed",
+          ):
+              if needle not in parallel_controller:
+                  raise SystemExit(f"parallel decision controller invariant missing: {needle}")
+          for forbidden in ("contents: write", "apex-v2 acquire", "apex-v2 publish"):
+              if forbidden in parallel_workflow:
+                  raise SystemExit(f"parallel decision workflow crossed safety boundary: {forbidden}")
           PY
 
       - name: Assert evaluation and historical orphan policy remain frozen
@@ -426,6 +458,7 @@ jobs:
               "scripts/apex_v2_deadline_ops.py",
               "scripts/apex_v2_owner_brief_ops.py",
               "scripts/apex_v2_decision_quality_ops.py",
+              "scripts/apex_v2_decision_lab_parallel.py",
               "scripts/apex_v2_shadow_provider_ops.py",
               "scripts/apex_v2_tournament_common.py",
               "scripts/apex_v2_tournament_contract.py",
