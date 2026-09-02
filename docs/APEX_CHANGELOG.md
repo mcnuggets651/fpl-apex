@@ -2,6 +2,15 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-09-02 — Apex V2 runtime and authority reconciliation
+- Reverified live `main`, frozen PR #90 and the prospective Decision Quality failure before changing anything.
+- PR #114 corrected the independent Decision Quality solve-task timeout from 30 to 50 minutes without changing the frozen engine, horizon, candidate depth, MIP precision or exact mechanics.
+- Added a frozen-source regression that derives the 34-minute theoretical MILP allowance and requires explicit orchestration headroom.
+- Introduced `docs/APEX_V2_AUTHORITY.json` as the machine-readable production constitution and rebuilt generic governance around the frozen V2 config.
+- Rewrote the canonical Project Brain surfaces so immutable Apex V2 Daily Production and AIrsenal H1–H8 are the only serving authority.
+- Archived the retired `pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml` and `gw1-final-2026.yml` publishers outside `.github/workflows` while preserving their forensic YAML.
+- Extended the Apex V2 Ops Contract to guard the authority/docs/archive surface and reject restoration of obsolete executable publishers.
+
 ## 2026-08-11 — Decision-grade evidence ingestion candidate
 - Added structured official-article publication/body extraction and bounded same-host
   HTTPS hydration for official HTML news indexes.
