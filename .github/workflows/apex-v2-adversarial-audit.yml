@@ -37,8 +37,7 @@ jobs:
       - name: Run V2 suite with branch coverage
         run: |
           pytest -q \
-            tests/test_apex_v2_core.py \
-            tests/test_apex_v2_adapters.py \
+            tests/test_apex_v2_*.py \
             tests/test_v2_*.py \
             --cov=apex \
             --cov-branch \
@@ -52,7 +51,7 @@ jobs:
             --output artifacts/v2/audit-inventory.json
 
       - name: Lint complete V2 and audit harness
-        run: ruff check src/apex tests/test_apex_v2_core.py tests/test_apex_v2_adapters.py tests/test_v2_*.py scripts/check_v2_architecture.py scripts/audit_v2_codebase.py
+        run: ruff check src/apex tests/test_apex_v2_*.py tests/test_v2_*.py scripts/check_v2_architecture.py scripts/audit_v2_codebase.py
 
       - name: Upload audit evidence
         if: always()
