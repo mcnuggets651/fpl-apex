@@ -59,6 +59,19 @@ def _legal_decision(*, mode: str = "INITIAL_SQUAD") -> SystemDecision:
     )
 
 
+def _healthy_serving() -> ProviderStatus:
+    return ProviderStatus(
+        "champion",
+        ProviderRole.CHAMPION,
+        0,
+        ProviderHealth.HEALTHY,
+        {1: Qualification.QUALIFIED},
+        None,
+        (),
+        True,
+    )
+
+
 def test_initial_squad_over_100m_is_illegal_at_decision_boundary():
     official = OfficialSnapshot(
         1,
@@ -85,20 +98,10 @@ def test_certification_cannot_authorize_over_budget_initial_squad():
         (),
         {2: "2026-09-12T10:00:00Z"},
     )
-    serving = ProviderStatus(
-        "champion",
-        ProviderRole.CHAMPION,
-        0,
-        ProviderHealth.HEALTHY,
-        {1: Qualification.QUALIFIED},
-        None,
-        (),
-        True,
-    )
 
     result = certify(
         official=official,
-        serving=serving,
+        serving=_healthy_serving(),
         decision=_legal_decision(),
     )
 
@@ -199,3 +202,124 @@ def test_transfer_plan_week_labels_follow_team_state_not_season_minimum_deadline
 
     assert result.status == "OPTIMAL"
     assert tuple(week.gameweek for week in result.weeks) == (5, 6)
+
+
+def _transfer_certification_case(*, incoming_price: int = 50):
+    players = list(_legal_players())
+    players.append(
+        OfficialPlayer(
+            16,
+            "ALT_GK",
+            8,
+            Position.GK,
+            incoming_price,
+            "a",
+            True,
+        )
+    )
+    official = OfficialSnapshot(
+        1,
+        "2026-2027",
+        "2026-09-02T12:00:00Z",
+        "snap",
+        tuple(players),
+        (),
+        {5: "2026-09-12T10:00:00Z"},
+    )
+    current = tuple(range(1, 16))
+    team = TeamState(
+        1,
+        1,
+        4,
+        current,
+        0,
+        1,
+        {player: 50 for player in current},
+        {player: 50 for player in current},
+        None,
+        True,
+    )
+    decision = SystemDecision(
+        1,
+        tuple(range(2, 17)),
+        (16, 3, 4, 5, 8, 9, 10, 11, 13, 14, 15),
+        13,
+        14,
+        (2, 6, 7, 12),
+        transfers_in=(16,),
+        transfers_out=(1,),
+        horizon=2,
+        transfer_hits=0,
+        decision_mode="TRANSFER_HORIZON",
+    )
+    return official, team, decision
+
+
+def test_certification_rederives_transfer_cash_affordability():
+    official, team, decision = _transfer_certification_case(incoming_price=100)
+
+    result = certify(
+        official=official,
+        serving=_healthy_serving(),
+        decision=decision,
+        team_state=team,
+    )
+
+    assert result.state == CertificationState.BLOCKED
+    assert ReasonCode.DECISION_ILLEGAL in result.reasons
+    assert any("cash" in warning.casefold() for warning in result.warnings)
+
+
+def test_certification_rejects_transfer_out_not_owned_by_team_state():
+    official, team, decision = _transfer_certification_case()
+    decision = SystemDecision(
+        decision.schema_version,
+        decision.squad_ids,
+        decision.xi_ids,
+        decision.captain_id,
+        decision.vice_captain_id,
+        decision.bench_order,
+        transfers_in=(16,),
+        transfers_out=(15,),
+        horizon=decision.horizon,
+        transfer_hits=decision.transfer_hits,
+        decision_mode=decision.decision_mode,
+    )
+
+    result = certify(
+        official=official,
+        serving=_healthy_serving(),
+        decision=decision,
+        team_state=team,
+    )
+
+    assert result.state == CertificationState.BLOCKED
+    assert ReasonCode.DECISION_ILLEGAL in result.reasons
+    assert any("transition" in warning.casefold() or "owned" in warning.casefold() for warning in result.warnings)
+
+
+def test_certification_rederives_transfer_hits_from_frozen_team_state():
+    official, team, decision = _transfer_certification_case()
+    team = TeamState(
+        team.schema_version,
+        team.entry_id,
+        team.published_gw,
+        team.squad_ids,
+        team.bank_tenths,
+        0,
+        team.purchase_prices_tenths,
+        team.selling_prices_tenths,
+        team.active_chip,
+        team.state_complete_for_transfers,
+    )
+
+    result = certify(
+        official=official,
+        serving=_healthy_serving(),
+        decision=decision,
+        team_state=team,
+    )
+
+    assert result.state == CertificationState.BLOCKED
+    assert ReasonCode.DECISION_ILLEGAL in result.reasons
+    assert any("hit" in warning.casefold() for warning in result.warnings)
