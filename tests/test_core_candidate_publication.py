@@ -82,8 +82,11 @@ def test_valid_candidate_passes_without_mutating_canonical_identity() -> None:
     assert summary["bounded_registration_lag"] is False
 
 
-def test_refresh_workflow_validates_before_writing_pin() -> None:
-    workflow = Path(".github/workflows/refresh-core-pin.yml").read_text(encoding="utf-8")
+def test_archived_refresh_workflow_preserves_validation_before_write_forensics() -> None:
+    active = Path(".github/workflows/refresh-core-pin.yml")
+    archived = Path("archive/workflows/refresh-core-pin.yml")
+    assert not active.exists()
+    workflow = archived.read_text(encoding="utf-8")
     validate_at = workflow.index("Validate candidate FPL Core semantics before publication")
     publish_at = workflow.index("Update immutable data pin after validation")
     commit_at = workflow.index("Commit validated FPL Core revision")
