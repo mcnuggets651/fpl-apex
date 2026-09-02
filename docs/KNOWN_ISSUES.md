@@ -36,15 +36,15 @@ The frozen transfer optimiser permits up to 17 MILP calls at 120 seconds each, o
 
 ## K008 — Project Brain architecture drift
 
-**Repair in progress on the V2 authority-reconciliation branch.** Several canonical prose files dated from August V1/V1.5 and could route a new operator toward historical Pinnacle/generated-file surfaces. The permanent fix is `APEX_V2_AUTHORITY.json` plus machine checks requiring every canonical authority document to agree with the frozen V2 constitution.
+**Resolved by PR #115 subject to its final merge gates.** Several canonical prose files dated from August V1/V1.5 and could route a new operator toward historical Pinnacle/generated-file surfaces. PR #115 introduces `APEX_V2_AUTHORITY.json` plus machine checks requiring every canonical authority document to agree with the frozen V2 constitution.
 
 ## K009 — Generic governance preserved obsolete production
 
-**Repair in progress on the V2 authority-reconciliation branch.** `scripts/check_governance_consistency.py` previously treated legacy Pinnacle/V1 workflows as active production while also checking V2. The replacement checker uses the V2 authority manifest, compares it with frozen `config/apex_v2.yaml`, recognizes one serving production workflow and classifies all other live workflows as operations/research.
+**Resolved by PR #115 subject to its final merge gates.** `scripts/check_governance_consistency.py` previously treated legacy Pinnacle/V1 workflows as active production while also checking V2. PR #115 replaces that logic with a V2 authority-manifest checker that compares against frozen `config/apex_v2.yaml`, recognizes one serving production workflow and classifies all other live workflows as operations/research.
 
 ## K010 — Legacy publishers retained executable write paths
 
-**Repair in progress on the V2 authority-reconciliation branch.** Historical `pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml` and `gw1-final-2026.yml` retained manual executable paths (three with write-capable publication code). They are being preserved byte-for-byte under `archive/workflows/` and removed from `.github/workflows` so they are inert forensic history.
+**Resolved by PR #115 subject to its final merge gates.** Historical `pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml` and `gw1-final-2026.yml` retained executable legacy paths. PR #115 preserves them byte-for-byte under `archive/workflows/` and removes them from `.github/workflows`, making them inert forensic history. Governance and the V2 Ops Contract fail if they return to the executable workflow directory.
 
 ## K011 — Mutable historical evaluation reference
 
