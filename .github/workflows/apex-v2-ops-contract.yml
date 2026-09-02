@@ -65,6 +65,7 @@ jobs:
           git fetch --no-tags origin main
           python - <<'PY'
           import subprocess
+          from pathlib import Path
 
           allowed_exact = {
               ".github/dependabot.yml",
@@ -79,12 +80,9 @@ jobs:
               ".github/workflows/apex-v2-prospective-tournament.yml",
               ".github/workflows/apex-v2-shadow-health.yml",
               ".github/workflows/apex.yml",
-              ".github/workflows/joint-path-promotion-audit.yml",
               ".github/workflows/production-readiness.yml",
               ".github/workflows/projection-policy-audit.yml",
-              ".github/workflows/projection-shadow-audit.yml",
               ".github/workflows/team-strength-validation.yml",
-              ".github/workflows/understat-player-production-ab.yml",
               "scripts/apex_v2_auth_ops.py",
               "scripts/apex_v2_attempt_audit_ops.py",
               "scripts/apex_v2_deadline_ops.py",
@@ -120,23 +118,69 @@ jobs:
               "docs/operations/SHADOW_PROVIDER_RELIABILITY.md",
               "docs/operations/PARALLEL_DECISION_LAB.md",
           }
+          retirements = {
+              ".github/workflows/joint-path-promotion-audit.yml": "archive/workflows/joint-path-promotion-audit.yml",
+              ".github/workflows/projection-shadow-audit.yml": "archive/workflows/projection-shadow-audit.yml",
+              ".github/workflows/understat-player-production-ab.yml": "archive/workflows/understat-player-production-ab.yml",
+          }
+          archive_manifest = "archive/workflows/README.md"
+          retirement_paths = set(retirements) | set(retirements.values()) | {archive_manifest}
+
           changed = set(
               subprocess.check_output(
                   ["git", "diff", "--name-only", "origin/main...HEAD"], text=True
               ).splitlines()
           )
-          archive_changes = sorted(
-              path for path in changed if path.startswith("archive/workflows/")
-          )
-          if archive_changes:
-              raise SystemExit(
-                  "forensic workflow archive is immutable after V2 authority cutover: "
-                  + ", ".join(archive_changes)
+
+          touched_retirements = {
+              source
+              for source, target in retirements.items()
+              if source in changed or target in changed
+          }
+          if touched_retirements:
+              if touched_retirements != set(retirements):
+                  raise SystemExit(
+                      "legacy diagnostic retirement must be atomic across all three workflows"
+                  )
+              if archive_manifest not in changed:
+                  raise SystemExit("legacy diagnostic retirement must update archive/workflows/README.md")
+              for source, target in retirements.items():
+                  if source not in changed or target not in changed:
+                      raise SystemExit(f"incomplete retirement pair: {source} -> {target}")
+                  if Path(source).exists():
+                      raise SystemExit(f"retired workflow remains executable: {source}")
+                  if not Path(target).is_file():
+                      raise SystemExit(f"retired forensic source missing: {target}")
+                  existed = subprocess.run(
+                      ["git", "cat-file", "-e", f"origin/main:{target}"],
+                      capture_output=True,
+                      check=False,
+                  )
+                  if existed.returncode == 0:
+                      raise SystemExit(
+                          f"one-time retirement target already exists on main; archive is immutable: {target}"
+                      )
+                  base = subprocess.check_output(["git", "show", f"origin/main:{source}"])
+                  current = Path(target).read_bytes()
+                  if current != base:
+                      raise SystemExit(
+                          f"retired workflow was rewritten instead of moved byte-for-byte: {source} -> {target}"
+                      )
+          else:
+              archive_changes = sorted(
+                  path for path in changed if path.startswith("archive/workflows/")
               )
+              if archive_changes:
+                  raise SystemExit(
+                      "forensic workflow archive is immutable after V2 authority cutover: "
+                      + ", ".join(archive_changes)
+                  )
+
           unexpected = sorted(
               path
               for path in changed
               if path not in allowed_exact
+              and path not in retirement_paths
               and not path.startswith("ops_tests/")
           )
           if unexpected:
@@ -260,18 +304,27 @@ jobs:
               raise SystemExit("automatic challenger promotion was enabled")
           PY
 
-      - name: Assert retired legacy publishers are archived and inert
+      - name: Assert retired legacy workflows are archived and inert
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          for name in ("pinnacle.yml", "airsenal.yml", "refresh-core-pin.yml", "gw1-final-2026.yml"):
+          retired = (
+              "pinnacle.yml",
+              "airsenal.yml",
+              "refresh-core-pin.yml",
+              "gw1-final-2026.yml",
+              "joint-path-promotion-audit.yml",
+              "projection-shadow-audit.yml",
+              "understat-player-production-ab.yml",
+          )
+          for name in retired:
               active = Path(".github/workflows") / name
               archived = Path("archive/workflows") / name
               if active.exists():
-                  raise SystemExit(f"legacy publisher remains executable: {active}")
+                  raise SystemExit(f"legacy workflow remains executable: {active}")
               if not archived.is_file() or archived.stat().st_size == 0:
                   raise SystemExit(f"legacy forensic source missing: {archived}")
           archive_readme = Path("archive/workflows/README.md").read_text(encoding="utf-8")
