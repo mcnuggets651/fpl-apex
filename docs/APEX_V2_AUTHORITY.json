@@ -60,7 +60,11 @@
       "archive/workflows/pinnacle.yml",
       "archive/workflows/airsenal.yml",
       "archive/workflows/refresh-core-pin.yml",
-      "archive/workflows/gw1-final-2026.yml"
-    ]
+      "archive/workflows/gw1-final-2026.yml",
+      "archive/workflows/joint-path-promotion-audit.yml",
+      "archive/workflows/projection-shadow-audit.yml",
+      "archive/workflows/understat-player-production-ab.yml"
+    ],
+    "retired_diagnostic_reason": "Pre-V2 Unified/Pinnacle diagnostics depended on obsolete FPL Core readiness and/or treated non-serving research outcomes as CI health. Exact source is preserved for forensics; Apex V2 Decision Quality and the prospective tournament are the live research paths."
   }
 }

@@ -3,14 +3,13 @@ name: Apex V2 Ops Contract
 on:
   pull_request:
     paths:
-      - ".github/workflows/apex-v2-*.yml"
-      - ".github/workflows/pinnacle.yml"
-      - ".github/workflows/airsenal.yml"
-      - ".github/workflows/refresh-core-pin.yml"
-      - ".github/workflows/gw1-final-2026.yml"
+      - ".github/workflows/*.yml"
+      - ".github/workflows/*.yaml"
+      - ".github/dependabot.yml"
       - "scripts/apex_v2_*.py"
       - "scripts/check_governance_consistency.py"
       - "ops_tests/**"
+      - "tests/test_airsenal_source_absence_policy.py"
       - "tests/test_airsenal_workflow_contract.py"
       - "tests/test_core_candidate_publication.py"
       - "tests/test_production_publication_contract.py"
@@ -51,11 +50,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -67,22 +66,24 @@ jobs:
           git fetch --no-tags origin main
           python - <<'PY'
           import subprocess
+          from pathlib import Path
 
           allowed_exact = {
+              ".github/dependabot.yml",
               ".github/workflows/apex-v2-auth-keepalive.yml",
-              ".github/workflows/apex-v2-daily-production.yml",
               ".github/workflows/apex-v2-daily-evaluation.yml",
-              ".github/workflows/apex-v2-direct-auth-diagnostic.yml",
+              ".github/workflows/apex-v2-daily-production.yml",
               ".github/workflows/apex-v2-deadline-watch.yml",
-              ".github/workflows/apex-v2-owner-brief.yml",
               ".github/workflows/apex-v2-decision-quality.yml",
-              ".github/workflows/apex-v2-shadow-health.yml",
-              ".github/workflows/apex-v2-prospective-tournament.yml",
+              ".github/workflows/apex-v2-direct-auth-diagnostic.yml",
               ".github/workflows/apex-v2-ops-contract.yml",
-              ".github/workflows/pinnacle.yml",
-              ".github/workflows/airsenal.yml",
-              ".github/workflows/refresh-core-pin.yml",
-              ".github/workflows/gw1-final-2026.yml",
+              ".github/workflows/apex-v2-owner-brief.yml",
+              ".github/workflows/apex-v2-prospective-tournament.yml",
+              ".github/workflows/apex-v2-shadow-health.yml",
+              ".github/workflows/apex.yml",
+              ".github/workflows/production-readiness.yml",
+              ".github/workflows/projection-policy-audit.yml",
+              ".github/workflows/team-strength-validation.yml",
               "scripts/apex_v2_auth_ops.py",
               "scripts/apex_v2_attempt_audit_ops.py",
               "scripts/apex_v2_deadline_ops.py",
@@ -95,6 +96,7 @@ jobs:
               "scripts/apex_v2_tournament_ops.py",
               "scripts/apex_v2_tournament_scoring.py",
               "scripts/check_governance_consistency.py",
+              "tests/test_airsenal_source_absence_policy.py",
               "tests/test_airsenal_workflow_contract.py",
               "tests/test_core_candidate_publication.py",
               "tests/test_production_publication_contract.py",
@@ -118,17 +120,70 @@ jobs:
               "docs/operations/SHADOW_PROVIDER_RELIABILITY.md",
               "docs/operations/PARALLEL_DECISION_LAB.md",
           }
+          retirements = {
+              ".github/workflows/joint-path-promotion-audit.yml": "archive/workflows/joint-path-promotion-audit.yml",
+              ".github/workflows/projection-shadow-audit.yml": "archive/workflows/projection-shadow-audit.yml",
+              ".github/workflows/understat-player-production-ab.yml": "archive/workflows/understat-player-production-ab.yml",
+          }
+          archive_manifest = "archive/workflows/README.md"
+          retirement_paths = set(retirements) | set(retirements.values()) | {archive_manifest}
+
           changed = set(
               subprocess.check_output(
-                  ["git", "diff", "--name-only", "origin/main...HEAD"], text=True
+                  ["git", "diff", "--name-only", "--no-renames", "origin/main...HEAD"], text=True
               ).splitlines()
           )
+
+          touched_retirements = {
+              source
+              for source, target in retirements.items()
+              if source in changed or target in changed
+          }
+          if touched_retirements:
+              if touched_retirements != set(retirements):
+                  raise SystemExit(
+                      "legacy diagnostic retirement must be atomic across all three workflows"
+                  )
+              if archive_manifest not in changed:
+                  raise SystemExit("legacy diagnostic retirement must update archive/workflows/README.md")
+              for source, target in retirements.items():
+                  if source not in changed or target not in changed:
+                      raise SystemExit(f"incomplete retirement pair: {source} -> {target}")
+                  if Path(source).exists():
+                      raise SystemExit(f"retired workflow remains executable: {source}")
+                  if not Path(target).is_file():
+                      raise SystemExit(f"retired forensic source missing: {target}")
+                  existed = subprocess.run(
+                      ["git", "cat-file", "-e", f"origin/main:{target}"],
+                      capture_output=True,
+                      check=False,
+                  )
+                  if existed.returncode == 0:
+                      raise SystemExit(
+                          f"one-time retirement target already exists on main; archive is immutable: {target}"
+                      )
+                  base = subprocess.check_output(["git", "show", f"origin/main:{source}"])
+                  current = Path(target).read_bytes()
+                  if current != base:
+                      raise SystemExit(
+                          f"retired workflow was rewritten instead of moved byte-for-byte: {source} -> {target}"
+                      )
+          else:
+              archive_changes = sorted(
+                  path for path in changed if path.startswith("archive/workflows/")
+              )
+              if archive_changes:
+                  raise SystemExit(
+                      "forensic workflow archive is immutable after V2 authority cutover: "
+                      + ", ".join(archive_changes)
+                  )
+
           unexpected = sorted(
               path
               for path in changed
               if path not in allowed_exact
+              and path not in retirement_paths
               and not path.startswith("ops_tests/")
-              and not path.startswith("archive/workflows/")
           )
           if unexpected:
               raise SystemExit(f"ops/governance PR touched unexpected paths: {unexpected}")
@@ -139,6 +194,7 @@ jobs:
               raise SystemExit(f"ops/governance PR touched frozen engine source/config: {forbidden}")
           test_changes = sorted(path for path in changed if path.startswith("tests/"))
           allowed_tests = {
+              "tests/test_airsenal_source_absence_policy.py",
               "tests/test_airsenal_workflow_contract.py",
               "tests/test_core_candidate_publication.py",
               "tests/test_production_publication_contract.py",
@@ -251,18 +307,27 @@ jobs:
               raise SystemExit("automatic challenger promotion was enabled")
           PY
 
-      - name: Assert retired legacy publishers are archived and inert
+      - name: Assert retired legacy workflows are archived and inert
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          for name in ("pinnacle.yml", "airsenal.yml", "refresh-core-pin.yml", "gw1-final-2026.yml"):
+          retired = (
+              "pinnacle.yml",
+              "airsenal.yml",
+              "refresh-core-pin.yml",
+              "gw1-final-2026.yml",
+              "joint-path-promotion-audit.yml",
+              "projection-shadow-audit.yml",
+              "understat-player-production-ab.yml",
+          )
+          for name in retired:
               active = Path(".github/workflows") / name
               archived = Path("archive/workflows") / name
               if active.exists():
-                  raise SystemExit(f"legacy publisher remains executable: {active}")
+                  raise SystemExit(f"legacy workflow remains executable: {active}")
               if not archived.is_file() or archived.stat().st_size == 0:
                   raise SystemExit(f"legacy forensic source missing: {archived}")
           archive_readme = Path("archive/workflows/README.md").read_text(encoding="utf-8")
@@ -282,7 +347,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 

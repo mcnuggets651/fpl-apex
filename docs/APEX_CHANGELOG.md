@@ -2,6 +2,17 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-09-02 — Apex V2 acceptance and operations closure
+- Completed live GW3 Decision Quality acceptance on corrected run `33643925982`: all 8/8 deterministic fresh tasks sealed before the deadline, exact production-baseline reproduction passed, canonical assembly succeeded and immutable private lab `apex-v2/private-decision-lab/2026-2027/33590896695-1` was created.
+- Confirmed the decision lab remains strictly non-serving (`production_influence = NONE`, `serving_authorized = false`) and that postoutcome correctly made no learning/serving change before GW3 outcomes existed.
+- Closed the Project Brain/generic-governance drift through PR #115 and the post-merge documentation race through PR #116 while keeping frozen engine PR #90 open/draft/unmerged at `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
+- Audited the OpenFPL moving-history observer: it resolves the current-season ref to a full immutable commit SHA before reading rows, records that SHA/digest, and therefore does not require replacement with a stale fixed baseline.
+- Migrated every executable GitHub workflow from deprecated mutable Node-20-era action majors to exact commit pins for Node-24-native `actions/checkout` v7.0.1, `actions/setup-python` v7.0.0, `actions/cache` v6.1.0 and `actions/upload-artifact` v7.0.1.
+- Added `ops_tests/test_github_actions_runtime_contract.py` to reject stale/mutable GitHub-owned action references and pin drift.
+- Added weekly GitHub Actions Dependabot updates so future runtime changes arrive through the repository's protected PR/check path.
+- Tightened the V2 Ops Contract so the complete executable workflow set is an explicit operations surface while `archive/workflows/**` is immutable forensic history.
+- No frozen engine source/config, forecast model, provider authority, optimiser semantics or serving policy changed.
+
 ## 2026-08-11 — Decision-grade evidence ingestion candidate
 - Added structured official-article publication/body extraction and bounded same-host
   HTTPS hydration for official HTML news indexes.
@@ -35,11 +46,15 @@ This is a human project-level changelog. Git history remains the detailed code r
 - Added hashes for every material evidence and projection surface, upstream/code/config lineage, tamper checks and credential redaction.
 - Added offline lineage audit/replay commands and retained bundles as workflow artifacts.
 - Canonical and solver-parity gates now reject mismatched bundle identities.
-- Local validation: 174 tests, Ruff, governance, upstream pins and workflow YAML all pass. This remains an unmerged release candidate until PR/CI/production verification completes.
+- Local validation: 174 tests, Ruff, governance, upstream pins and all workflow YAML files pass. This remains an unmerged release candidate until PR/CI/production verification completes.
 
 ## 2026-08-08 — Project Brain v1
 - Added canonical project context, decisions, architecture, model spec, data-source map, operating manual, roadmap, charter, current-state record, benchmarks, known issues, vision and session log.
 - Established mandatory continuity/startup protocol for future Apex work.
+- Recorded current Pinnacle/Elite relationship.
+- Recorded Elite 10.0 weighting and safeguards.
+- Separated production, validation-needed and proposed states.
+- Added benchmark, known-issues and vision registers.
 
 ## 2026-08-07 — Elite 10.0
 - Added Elite decision utility above Pinnacle's canonical xP surface.

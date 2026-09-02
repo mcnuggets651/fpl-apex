@@ -28,14 +28,19 @@ NON_SERVING_ACTIVE = {
     "apex-v2-prospective-tournament.yml",
     "apex-v2-shadow-health.yml",
     "apex.yml",
-    "joint-path-promotion-audit.yml",
     "production-readiness.yml",
     "projection-policy-audit.yml",
-    "projection-shadow-audit.yml",
     "team-strength-validation.yml",
+}
+RETIRED = {
+    "pinnacle.yml",
+    "airsenal.yml",
+    "refresh-core-pin.yml",
+    "gw1-final-2026.yml",
+    "joint-path-promotion-audit.yml",
+    "projection-shadow-audit.yml",
     "understat-player-production-ab.yml",
 }
-RETIRED = {"pinnacle.yml", "airsenal.yml", "refresh-core-pin.yml", "gw1-final-2026.yml"}
 REQUIRED_ARCHIVE = {
     *RETIRED,
     "bootstrap-publish.yml",
@@ -129,6 +134,15 @@ def check_manifest(failures: list[str]) -> dict:
         failures.append("research is serving-authorized")
     if research.get("automatic_promotion") is not False:
         failures.append("automatic challenger promotion is enabled")
+    legacy = manifest.get("legacy") or {}
+    if legacy.get("status") != "HISTORICAL_NON_SERVING":
+        failures.append("legacy authority is not HISTORICAL_NON_SERVING")
+    declared_archive = set(legacy.get("archived_workflows") or [])
+    expected_archive = {f"archive/workflows/{name}" for name in RETIRED}
+    if declared_archive != expected_archive:
+        failures.append(
+            f"authority manifest archived workflows drifted: expected={sorted(expected_archive)} actual={sorted(declared_archive)}"
+        )
     return manifest
 
 
@@ -173,7 +187,7 @@ def check_workflows(manifest: dict, failures: list[str]) -> None:
         failures.append(f"active workflow surface drifted: expected={sorted(expected)} actual={sorted(active)}")
     lingering = sorted(active & RETIRED)
     if lingering:
-        failures.append(f"retired publishers remain executable: {lingering}")
+        failures.append(f"retired workflows remain executable: {lingering}")
 
     archived = {path.name for path in Path("archive/workflows").glob("*.yml")}
     missing = sorted(REQUIRED_ARCHIVE - archived)
