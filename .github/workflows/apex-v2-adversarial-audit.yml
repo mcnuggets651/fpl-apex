@@ -1,0 +1,64 @@
+name: Apex V2 Adversarial Audit
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  exhaustive-audit:
+    if: >-
+      github.event.pull_request.number == 120 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'audit/apex-v2-adversarial-stress-20260902'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install audit dependencies
+        run: pip install -e '.[dev]'
+
+      - name: Compile every Apex V2 module
+        run: python -m compileall -q src/apex
+
+      - name: Verify architecture boundaries
+        run: python scripts/check_v2_architecture.py
+
+      - name: Inventory every V2 function and class
+        run: python scripts/audit_v2_codebase.py --output artifacts/v2/audit-inventory-precoverage.json
+
+      - name: Run V2 suite with branch coverage
+        run: |
+          pytest -q \
+            tests/test_apex_v2_core.py \
+            tests/test_apex_v2_adapters.py \
+            tests/test_v2_*.py \
+            --cov=apex \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:artifacts/v2/audit-coverage.json
+
+      - name: Map uncovered functions
+        run: |
+          python scripts/audit_v2_codebase.py \
+            --coverage-json artifacts/v2/audit-coverage.json \
+            --output artifacts/v2/audit-inventory.json
+
+      - name: Lint complete V2 and audit harness
+        run: ruff check src/apex tests/test_apex_v2_core.py tests/test_apex_v2_adapters.py tests/test_v2_*.py scripts/check_v2_architecture.py scripts/audit_v2_codebase.py
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v2-adversarial-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/v2/audit-*.json
+          if-no-files-found: ignore
+          retention-days: 30
