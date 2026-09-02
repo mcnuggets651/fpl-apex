@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -56,6 +57,9 @@ CANONICAL_AUTHORITY_DOCS = (
     Path("docs/APEX_MASTER_CONTEXT.md"),
     Path("docs/APEX_OPERATING_MANUAL.md"),
     Path("docs/KNOWN_ISSUES.md"),
+    Path("docs/CHATGPT_USAGE.md"),
+    Path("docs/CHATGPT_APEX_QUERY_POLICY.md"),
+    Path("docs/APEX_ROADMAP.md"),
 )
 STALE_CURRENT_CLAIMS = {
     "pinnacle production claim": re.compile(
@@ -83,6 +87,41 @@ STALE_CURRENT_CLAIMS = {
 
 def _text(path: str | Path) -> str:
     return Path(path).read_text(encoding="utf-8")
+
+
+def _git_text(ref: str, path: str) -> str:
+    """Read a file from an exact Git object, fetching that SHA if a shallow clone lacks it."""
+    target = f"{ref}:{path}"
+    shown = subprocess.run(
+        ["git", "show", target],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if shown.returncode == 0:
+        return shown.stdout
+
+    fetched = subprocess.run(
+        ["git", "fetch", "--no-tags", "origin", ref],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if fetched.returncode != 0:
+        raise RuntimeError(
+            f"unable to fetch frozen authority ref {ref}: {fetched.stderr.strip()}"
+        )
+    shown = subprocess.run(
+        ["git", "show", target],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if shown.returncode != 0:
+        raise RuntimeError(
+            f"unable to read frozen authority file {target}: {shown.stderr.strip()}"
+        )
+    return shown.stdout
 
 
 def _load_manifest() -> dict:
@@ -122,7 +161,12 @@ def _check_manifest(failures: list[str]) -> dict:
 
 
 def _check_frozen_config(manifest: dict, failures: list[str]) -> None:
-    config = yaml.safe_load(_text("config/apex_v2.yaml"))
+    try:
+        config = yaml.safe_load(_git_text(FROZEN_SHA, "config/apex_v2.yaml"))
+    except (RuntimeError, yaml.YAMLError) as exc:
+        failures.append(f"unable to validate exact frozen V2 config: {exc}")
+        return
+
     if config.get("season") != manifest.get("season"):
         failures.append("authority manifest season disagrees with frozen config")
     if config.get("entry_id") != manifest.get("entry_id"):
@@ -202,7 +246,13 @@ def _check_workflow_surface(manifest: dict, failures: list[str]) -> None:
 
 def _check_research_boundaries(failures: list[str]) -> None:
     shadow = _text(".github/workflows/apex-v2-shadow-health.yml")
-    for needle in ("contents: read", FROZEN_SHA, "dastan-pin-health", "pitchside-health", "openfpl-readiness"):
+    for needle in (
+        "contents: read",
+        FROZEN_SHA,
+        "dastan-pin-health",
+        "pitchside-health",
+        "openfpl-readiness",
+    ):
         if needle not in shadow:
             failures.append(f"shadow-health safety contract missing: {needle}")
     for forbidden in (
@@ -221,11 +271,10 @@ def _check_research_boundaries(failures: list[str]) -> None:
     for needle in (
         FROZEN_SHA,
         'workflows: ["Apex V2 Daily Production"]',
-        "LAST_VALID_COMMON_PREDEADLINE_SEAL",
         "apex_v2_tournament_contract.py",
         "apex_v2_tournament_scoring.py",
     ):
-        if needle not in tournament and needle != "LAST_VALID_COMMON_PREDEADLINE_SEAL":
+        if needle not in tournament:
             failures.append(f"prospective tournament workflow missing safety contract: {needle}")
     for forbidden in (
         "FPL_SESSION_COOKIE",
