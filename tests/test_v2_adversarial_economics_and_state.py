@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from apex.decision.transfers import optimise_transfer_horizon
 from apex.decision.validate import validate_system_decision
 from apex.domain.models import (
@@ -202,6 +204,39 @@ def test_transfer_plan_week_labels_follow_team_state_not_season_minimum_deadline
 
     assert result.status == "OPTIMAL"
     assert tuple(week.gameweek for week in result.weeks) == (5, 6)
+
+
+def test_transfer_planner_uses_canonical_season_free_transfer_top_up():
+    official, team, surface = _transfer_case()
+    official = replace(
+        official,
+        season="2025-2026",
+        deadlines={
+            15: "2025-12-20T10:00:00Z",
+            16: "2025-12-27T10:00:00Z",
+        },
+    )
+    team = replace(team, published_gw=14)
+    surface = replace(
+        surface,
+        season=official.season,
+        scoring_rules_version=official.season,
+        rows=tuple(
+            replace(row, gameweek=14 + int(row.horizon))
+            for row in surface.rows
+        ),
+    )
+
+    result = optimise_transfer_horizon(
+        official,
+        surface,
+        team,
+        max_horizon=2,
+    )
+
+    assert result.status == "OPTIMAL"
+    assert result.weeks[1].gameweek == 16
+    assert result.weeks[1].free_transfers == 5
 
 
 def _transfer_certification_case(*, incoming_price: int = 50):
