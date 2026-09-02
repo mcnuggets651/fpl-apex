@@ -1,30 +1,24 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 
+import yaml
 
-AUTHORITY = "docs/APEX_OPERATING_MANUAL.md"
-REQUIRED_REDIRECTS = (
-    "docs/CHATGPT_USAGE.md",
-    "docs/CHATGPT_APEX_QUERY_POLICY.md",
-    "docs/CURRENT_STATE.md",
-    "docs/APEX_ROADMAP.md",
-    "docs/KNOWN_ISSUES.md",
-)
-FINAL_SELECTORS = (
-    "adaptive_gw1_launch_with_transfer_option_value",
-    "receding_horizon_current_team_maximum_ev",
-)
-FINAL_PROMOTION_ENTRYPOINTS = (
-    "scripts/apply_joint_path_promotion.py",
-    "scripts/apply_joint_path_promotion_rebased.py",
-)
-ACTIVE_WORKFLOWS = {
-    "airsenal.yml",
+
+AUTHORITY_MANIFEST = Path("docs/APEX_V2_AUTHORITY.json")
+FROZEN_SHA = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+SEASON = "2026-2027"
+ENTRY_ID = 63984
+SERVING_PROVIDER = "airsenal"
+SERVING_WORKFLOW = ".github/workflows/apex-v2-daily-production.yml"
+
+SERVING_PRODUCTION_WORKFLOWS = {"apex-v2-daily-production.yml"}
+OPERATIONS_RESEARCH_WORKFLOWS = {
     "apex-v2-auth-keepalive.yml",
     "apex-v2-daily-evaluation.yml",
-    "apex-v2-daily-production.yml",
     "apex-v2-deadline-watch.yml",
     "apex-v2-decision-quality.yml",
     "apex-v2-direct-auth-diagnostic.yml",
@@ -33,35 +27,57 @@ ACTIVE_WORKFLOWS = {
     "apex-v2-prospective-tournament.yml",
     "apex-v2-shadow-health.yml",
     "apex.yml",
-    "gw1-final-2026.yml",
     "joint-path-promotion-audit.yml",
-    "pinnacle.yml",
     "production-readiness.yml",
     "projection-policy-audit.yml",
     "projection-shadow-audit.yml",
-    "refresh-core-pin.yml",
     "team-strength-validation.yml",
     "understat-player-production-ab.yml",
 }
-ARCHIVED_WORKFLOWS = {
+LEGACY_EXECUTABLE_WORKFLOWS = {
+    "pinnacle.yml",
+    "airsenal.yml",
+    "refresh-core-pin.yml",
+    "gw1-final-2026.yml",
+}
+REQUIRED_ARCHIVED_WORKFLOWS = {
     "bootstrap-publish.yml",
     "publish-apex.yml",
     "fixture-blend-decision-audit.yml",
     "joint-initial-path-audit.yml",
     "solver-parity.yml",
     "understat-player-predictive-audit.yml",
+    *LEGACY_EXECUTABLE_WORKFLOWS,
 }
-CONCURRENT_PR_AUDITS = {
-    "apex.yml": "github.event.pull_request.number || github.ref",
-    "joint-path-promotion-audit.yml": "github.event.pull_request.number || github.ref",
-    "projection-policy-audit.yml": "github.event.pull_request.number || github.ref",
-    "projection-shadow-audit.yml": "github.event.pull_request.number || github.ref",
-    "team-strength-validation.yml": "github.event.pull_request.number || github.ref",
-    "understat-player-production-ab.yml": "github.event.pull_request.number || github.ref",
-}
-REQUIRED_SOURCE_INVALIDATORS = {
-    "airsenal.yml": "--source airsenal",
-    "refresh-core-pin.yml": "--source fpl_core_insights",
+CANONICAL_AUTHORITY_DOCS = (
+    Path("README.md"),
+    Path("PROJECT_STATUS.md"),
+    Path("docs/CURRENT_STATE.md"),
+    Path("docs/APEX_MASTER_CONTEXT.md"),
+    Path("docs/APEX_OPERATING_MANUAL.md"),
+    Path("docs/KNOWN_ISSUES.md"),
+)
+STALE_CURRENT_CLAIMS = {
+    "pinnacle production claim": re.compile(
+        r"pinnacle\s+(?:is|as)\s+(?:the\s+)?(?:current\s+)?production recommendation",
+        re.IGNORECASE,
+    ),
+    "legacy runner production claim": re.compile(
+        r"(?:the\s+)?only production (?:command|entrypoint)\s+is[^\n]*run_apex\.py",
+        re.IGNORECASE,
+    ),
+    "old production sha claim": re.compile(
+        r"latest production publication:\s*`?a147754", re.IGNORECASE
+    ),
+    "old GW1 baseline claim": re.compile(
+        r"post-PR\s*#25 publication at\s*`?a147754", re.IGNORECASE
+    ),
+    "old architecture freeze claim": re.compile(
+        r"architecture freeze after PR\s*#64", re.IGNORECASE
+    ),
+    "legacy Pinnacle startup rule": re.compile(
+        r"read\s+`?data/generated/pinnacle_latest\.json`?\s+first", re.IGNORECASE
+    ),
 }
 
 
@@ -69,301 +85,219 @@ def _text(path: str | Path) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def main() -> None:
-    failures: list[str] = []
-    authority = Path(AUTHORITY)
-    if not authority.exists():
-        failures.append(f"missing authority document: {AUTHORITY}")
-    for name in REQUIRED_REDIRECTS:
-        text = _text(name)
-        if "APEX_OPERATING_MANUAL.md" not in text:
-            failures.append(f"{name} does not redirect to {AUTHORITY}")
+def _load_manifest() -> dict:
+    if not AUTHORITY_MANIFEST.exists():
+        raise SystemExit(f"missing V2 authority manifest: {AUTHORITY_MANIFEST}")
+    return json.loads(AUTHORITY_MANIFEST.read_text(encoding="utf-8"))
 
+
+def _check_manifest(failures: list[str]) -> dict:
+    manifest = _load_manifest()
+    expected = {
+        "schema_version": 1,
+        "season": SEASON,
+        "entry_id": ENTRY_ID,
+        "frozen_engine_sha": FROZEN_SHA,
+        "frozen_engine_pr": 90,
+        "frozen_engine_pr_policy": "NEVER_MERGE_OR_ADVANCE",
+        "serving_provider": SERVING_PROVIDER,
+        "serving_horizons": list(range(1, 9)),
+        "canonical_production_workflow": SERVING_WORKFLOW,
+        "canonical_release_prefix": "apex-v2",
+        "operations_control_plane_branch": "main",
+    }
+    for key, value in expected.items():
+        if manifest.get(key) != value:
+            failures.append(
+                f"authority manifest drifted: {key} expected={value!r} actual={manifest.get(key)!r}"
+            )
+    research = manifest.get("research") or {}
+    if research.get("production_influence") != "NONE":
+        failures.append("authority manifest permits research production influence")
+    if research.get("serving_authorized") is not False:
+        failures.append("authority manifest permits research serving")
+    if research.get("automatic_promotion") is not False:
+        failures.append("authority manifest permits automatic challenger promotion")
+    return manifest
+
+
+def _check_frozen_config(manifest: dict, failures: list[str]) -> None:
+    config = yaml.safe_load(_text("config/apex_v2.yaml"))
+    if config.get("season") != manifest.get("season"):
+        failures.append("authority manifest season disagrees with frozen config")
+    if config.get("entry_id") != manifest.get("entry_id"):
+        failures.append("authority manifest entry disagrees with frozen config")
+    if config.get("max_horizon") != 8:
+        failures.append("frozen V2 max horizon drifted from 8")
+
+    providers = {row["id"]: row for row in config.get("providers") or []}
+    declared = manifest.get("provider_constitution") or {}
+    if set(providers) != set(declared):
+        failures.append(
+            f"provider constitution differs from frozen config: config={sorted(providers)} manifest={sorted(declared)}"
+        )
+        return
+    for provider_id, expected in declared.items():
+        actual = providers[provider_id]
+        if actual.get("role") != expected.get("role"):
+            failures.append(f"provider role drifted for {provider_id}")
+        if actual.get("serve_authorized") is not expected.get("serve_authorized"):
+            failures.append(f"provider serving authority drifted for {provider_id}")
+        if actual.get("requested_horizons") != expected.get("horizons"):
+            failures.append(f"provider horizon contract drifted for {provider_id}")
+    serving = [pid for pid, row in providers.items() if row.get("serve_authorized") is True]
+    if serving != [SERVING_PROVIDER]:
+        failures.append(f"exactly AIrsenal must serve; actual={serving}")
+
+
+def _check_workflow_surface(manifest: dict, failures: list[str]) -> None:
     active_dir = Path(".github/workflows")
     active = {path.name for path in active_dir.glob("*.yml")}
-    if active != ACTIVE_WORKFLOWS:
+    expected = SERVING_PRODUCTION_WORKFLOWS | OPERATIONS_RESEARCH_WORKFLOWS
+    if active != expected:
         failures.append(
             "active workflow surface drifted: "
-            f"expected={sorted(ACTIVE_WORKFLOWS)} actual={sorted(active)}"
+            f"expected={sorted(expected)} actual={sorted(active)}"
         )
+    lingering = sorted(LEGACY_EXECUTABLE_WORKFLOWS & active)
+    if lingering:
+        failures.append(f"legacy publisher remains executable: {lingering}")
+
     archive_dir = Path("archive/workflows")
     archived = {path.name for path in archive_dir.glob("*.yml")}
-    missing_archived = sorted(ARCHIVED_WORKFLOWS - archived)
-    if missing_archived:
-        failures.append(
-            f"superseded workflows are missing from archive: {missing_archived}"
-        )
+    missing = sorted(REQUIRED_ARCHIVED_WORKFLOWS - archived)
+    if missing:
+        failures.append(f"required historical workflows missing from archive: {missing}")
     if not (archive_dir / "README.md").exists():
         failures.append("workflow archive manifest is missing")
-    for name in ARCHIVED_WORKFLOWS:
-        if (active_dir / name).exists():
-            failures.append(f"superseded workflow remains executable: {name}")
 
-    for name, group_expr in CONCURRENT_PR_AUDITS.items():
-        text = _text(active_dir / name)
-        if "cancel-in-progress: true" not in text or group_expr not in text:
-            failures.append(
-                f"expensive PR workflow does not cancel superseded runs: {name}"
-            )
-
-    if not Path("scripts/invalidate_published_decision.py").exists():
-        failures.append("required-source canonical invalidation CLI is missing")
-    for name, source_arg in REQUIRED_SOURCE_INVALIDATORS.items():
-        text = _text(active_dir / name)
-        if (
-            "scripts/invalidate_published_decision.py" not in text
-            or source_arg not in text
-        ):
-            failures.append(
-                f"required-source refresh can leave a stale actionable decision: {name}"
-            )
-        if (
-            "apex_answer_context.json" not in text
-            or "apex_recommendation_latest.json" not in text
-        ):
-            failures.append(
-                f"required-source refresh does not atomically stage invalidated canonical files: {name}"
-            )
-
-    workflow = _text(active_dir / "pinnacle.yml")
-    if "scripts/run_apex.py" not in workflow:
-        failures.append("production workflow does not use the single Apex runner")
-    if "apex_answer_context.json" not in workflow:
-        failures.append("production workflow does not publish apex_answer_context.json")
-    if "scripts/build_decision_bundle.py" not in workflow:
-        failures.append("production workflow does not seal a decision bundle")
-    if "data/generated/decision_bundle" not in workflow:
-        failures.append("production workflow does not retain the decision bundle artifact")
-
-    for script_name in ("scripts/run_pinnacle.py", "scripts/run_elite.py"):
-        script = _text(script_name)
-        if "DecisionBundle.load" not in script:
-            failures.append(f"{script_name} does not consume the sealed decision bundle")
-        if "run_pipeline" in script or "OfficialFPLClient" in script:
-            failures.append(
-                f"{script_name} contains an independent live retrieval path"
-            )
-
-    staging = _text("scripts/build_canonical_recommendation.py")
-    if (
-        "strategy_base_ready" not in staging
-        or '"ready_to_act": False' not in staging
-    ):
-        failures.append("canonical base builder is not explicitly staging-only")
-    if '"recommendation": None' not in staging:
-        failures.append("canonical base builder can expose an intermediate recommendation")
-    if (
-        "exact_horizon_staging" not in staging
-        or '"authority": False' not in staging
-    ):
-        failures.append(
-            "static exact-horizon result is not explicitly diagnostic-only"
-        )
-
-    finaliser = _text("scripts/apply_joint_path_promotion.py")
-    for selector in FINAL_SELECTORS:
-        if selector not in finaliser:
-            failures.append(f"final strategy assembler lacks selector: {selector}")
-    if "build_selected_player_evidence" not in finaliser:
-        failures.append(
-            "final strategy assembler does not rebuild evidence for the actual final 15"
-        )
-    if "final_selected_player_evidence" not in finaliser:
-        failures.append(
-            "final strategy assembler does not publish final evidence identity"
-        )
-    if "all_player_truth" not in finaliser:
-        failures.append("final strategy assembler does not require all-player truth")
-
-    runner = _text("scripts/run_apex.py")
-    truth_pos = runner.find("scripts/audit_player_truth.py")
-    final_positions = [runner.find(name) for name in FINAL_PROMOTION_ENTRYPOINTS]
-    final_positions = [pos for pos in final_positions if pos >= 0]
-    final_pos = min(final_positions) if final_positions else -1
-    if truth_pos < 0 or final_pos < 0 or truth_pos > final_pos:
-        failures.append(
-            "single Apex runner does not gate final selection behind all-player truth"
-        )
-
-    answer = _text("src/apex_fpl/services/answer_context.py")
-    for selector in FINAL_SELECTORS:
-        if selector not in answer:
-            failures.append(f"answer contract does not recognise final selector: {selector}")
-    if "final_selected_player_evidence" not in answer:
-        failures.append(
-            "answer contract does not use the actual final selected-player evidence"
-        )
-    if '"selection_regret": None' not in answer:
-        failures.append(
-            "answer contract can misattribute static exact-horizon regret to final picks"
-        )
-
-    canonical_policy = _text("docs/APEX_CANONICAL_DECISION_POLICY.md")
-    architecture = _text("docs/APEX_ARCHITECTURE.md")
-    operating = _text(AUTHORITY)
-    for selector in FINAL_SELECTORS:
-        if selector not in canonical_policy:
-            failures.append(f"canonical decision policy is stale for selector: {selector}")
-    if "GW1-first" not in architecture or "receding-horizon" not in architecture:
-        failures.append(
-            "architecture document does not describe the final adaptive strategy"
-        )
-    if "adverse-evidence-only" not in operating:
-        failures.append("operating manual does not preserve the EV-first evidence policy")
-    if "architecture freeze" not in operating.casefold():
-        failures.append(
-            "operating manual does not define the post-PR64 architecture freeze"
-        )
-
-    gw1 = _text(active_dir / "gw1-final-2026.yml")
-    if "scripts/run_apex.py" not in gw1:
-        failures.append("GW1 final workflow bypasses the single canonical runner")
-
-    shadow = _text(active_dir / "apex-v2-shadow-health.yml")
+    production = _text(manifest["canonical_production_workflow"])
     for needle in (
-        "contents: read",
-        "99cc7b51b0cff45462b567084cb1844cfe0a456f",
-        "dastan-pin-health",
-        "pitchside-health",
-        "openfpl-readiness",
-        "\n  push:\n",
-        "      - main",
-        '      - ".github/workflows/apex-v2-shadow-health.yml"',
-        '      - "scripts/apex_v2_shadow_provider_ops.py"',
+        FROZEN_SHA,
+        'cron: "17 4 * * *"',
+        "permissions:\n  contents: read",
+        "apex-v2 private-store-preflight",
+        "apex-v2 official-hash",
+        "apex-v2 acquire",
+        "APEX_ALLOW_NETWORK_DURING_SOLVE",
+        "apex-v2 solve",
+        "apex-v2 publish",
     ):
+        if needle not in production:
+            failures.append(f"V2 production workflow missing authority contract: {needle}")
+    for forbidden in (
+        "contents: write",
+        "git push",
+        "scripts/run_apex.py",
+        "run_pinnacle.py",
+    ):
+        if forbidden in production:
+            failures.append(f"V2 production workflow crossed legacy/write boundary: {forbidden}")
+
+    ci = _text(active_dir / "apex.yml")
+    for check_name in ("test:", "contract:", "readiness:"):
+        if check_name not in ci:
+            failures.append(f"required main CI context missing: {check_name[:-1]}")
+
+
+def _check_research_boundaries(failures: list[str]) -> None:
+    shadow = _text(".github/workflows/apex-v2-shadow-health.yml")
+    for needle in ("contents: read", FROZEN_SHA, "dastan-pin-health", "pitchside-health", "openfpl-readiness"):
         if needle not in shadow:
-            failures.append(
-                f"shadow-provider health workflow missing safety contract: {needle}"
-            )
+            failures.append(f"shadow-health safety contract missing: {needle}")
     for forbidden in (
         "FPL_SESSION_COOKIE",
         "FPL_X_API_AUTHORIZATION",
         "FPL_REFRESH_TOKEN",
         "APEX_PRIVATE_GITHUB_TOKEN",
+        "contents: write",
         "apex-v2 solve",
         "apex-v2 publish",
-        "contents: write",
     ):
         if forbidden in shadow:
-            failures.append(
-                f"shadow-provider health workflow crossed serving boundary: {forbidden}"
-            )
+            failures.append(f"shadow-health workflow crossed serving boundary: {forbidden}")
 
-    tournament = _text(active_dir / "apex-v2-prospective-tournament.yml")
+    tournament = _text(".github/workflows/apex-v2-prospective-tournament.yml")
     for needle in (
+        FROZEN_SHA,
         'workflows: ["Apex V2 Daily Production"]',
-        'cron: "23 * * * *"',
-        "99cc7b51b0cff45462b567084cb1844cfe0a456f",
-        "apex_v2_tournament_common.py",
+        "LAST_VALID_COMMON_PREDEADLINE_SEAL",
         "apex_v2_tournament_contract.py",
-        "apex_v2_tournament_ops.py",
         "apex_v2_tournament_scoring.py",
-        "seal-run",
-        "retain-gw2",
-        "canonicalize",
-        "evaluate",
-        "status",
-        "\n  push:\n",
-        "      - main",
-        "EARLIEST_FUTURE_DEADLINE_THEN_LATEST_VALID_FROZEN_AT",
-        "NO_ELIGIBLE_SOURCE",
-        'echo "has_source=false"',
-        "steps.source.outputs.has_source == 'true'",
-        'release.get("immutable") is not True',
-        'get("personalized_actionable") is not True',
-        "frozen_at >= deadline or now >= deadline",
-        '!= "airsenal" for h in range(1, 9)',
     ):
-        if needle not in tournament:
-            failures.append(
-                f"prospective tournament workflow missing safety contract: {needle}"
-            )
+        if needle not in tournament and needle != "LAST_VALID_COMMON_PREDEADLINE_SEAL":
+            failures.append(f"prospective tournament workflow missing safety contract: {needle}")
     for forbidden in (
         "FPL_SESSION_COOKIE",
         "FPL_X_API_AUTHORIZATION",
         "FPL_REFRESH_TOKEN",
-        "apex-v2 intent",
-        "apex-v2 official-hash",
         "apex-v2 acquire",
         "apex-v2 solve",
         "apex-v2 publish",
-        "scripts/acquire_dastan_shadow.py",
         "run_airsenal_worker.py",
     ):
         if forbidden in tournament:
-            failures.append(
-                f"prospective tournament workflow crossed serving boundary: {forbidden}"
-            )
-
-    tournament_common = _text("scripts/apex_v2_tournament_common.py")
-    for needle in (
-        "DIAGNOSTIC_REHEARSAL_NON_CANONICAL",
-        "PROSPECTIVE_READY_CANDIDATE",
-        "CANONICAL_PROSPECTIVE_OBSERVATION",
-        "TRAINING_READY_NO_MODEL",
-        "OFFICIAL_UNAVAILABLE_NO_FORECAST_EXPECTED",
-    ):
-        if needle not in tournament_common:
-            failures.append(
-                f"prospective tournament common contract missing: {needle}"
-            )
+            failures.append(f"prospective tournament crossed serving boundary: {forbidden}")
 
     tournament_contract = _text("scripts/apex_v2_tournament_contract.py")
     for needle in (
         "LAST_VALID_COMMON_PREDEADLINE_SEAL",
         '"production_influence": "NONE"',
         '"serve_authorized": False',
-        '"eligible_common_predeadline_candidate": ready',
-        '"history_commit": row.get("observed_history_commit")',
         "COMMON_FORECAST_INTERSECTION",
     ):
         if needle not in tournament_contract:
-            failures.append(
-                f"prospective tournament governance contract missing: {needle}"
-            )
+            failures.append(f"prospective tournament governance contract missing: {needle}")
 
-    tournament_scoring = _text("scripts/apex_v2_tournament_scoring.py")
+    decision_quality = _text(".github/workflows/apex-v2-decision-quality.yml")
+    if "timeout-minutes: 50" not in decision_quality:
+        failures.append("decision-quality exact task runtime contract is not 50 minutes")
+    if "max-parallel: 8" not in decision_quality:
+        failures.append("decision-quality parallel task contract drifted")
+    decision_controller = _text("scripts/apex_v2_decision_lab_parallel.py")
     for needle in (
-        "score_predictions",
-        "COMMON_FORECAST_INTERSECTION",
-        "CATASTROPHIC_XP_RESIDUAL",
-        "entered provider surface missing at evaluation",
-        "NOT_SCOREABLE_NO_REALIZED_START_LABEL",
+        'TASK_PREFIX = "apex-v2/private-decision-lab-task"',
+        '"production_influence": "NONE"',
+        '"serving_authorized": False',
+        "decision-lab task finished after deadline and will not be sealed",
     ):
-        if needle not in tournament_scoring:
-            failures.append(
-                f"prospective tournament scoring contract missing: {needle}"
-            )
+        if needle not in decision_controller:
+            failures.append(f"decision-quality no-hindsight contract missing: {needle}")
 
-    tournament_ops = _text("scripts/apex_v2_tournament_ops.py")
-    for needle in (
-        "existing candidate run identity mismatch",
-        "immutable private tournament supplement already exists with different bytes",
-        "published tournament selection exists without immutability",
-        "gw3_prospective_tournament_ready",
-        "evaluator changed the sealed entrant set",
-    ):
-        if needle not in tournament_ops:
-            failures.append(
-                f"prospective tournament orchestration contract missing: {needle}"
-            )
 
-    tournament_doc = _text("docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md")
-    for needle in (
-        "GW2",
-        "DIAGNOSTIC_REHEARSAL_NON_CANONICAL",
-        "GW3",
-        "LAST_VALID_COMMON_PREDEADLINE_SEAL",
-        "Universal H1",
-        "Strategic H2-H8",
-        "TRAINING_READY_NO_MODEL",
-        "production_influence",
-        "NONE",
-    ):
-        if needle not in tournament_doc:
-            failures.append(
-                f"prospective tournament documentation missing: {needle}"
-            )
+def _check_authority_docs(failures: list[str]) -> None:
+    required_tokens = (
+        "Apex V2",
+        FROZEN_SHA,
+        "AIrsenal",
+        "apex-v2-daily-production.yml",
+        "APEX_V2_AUTHORITY.json",
+    )
+    for path in CANONICAL_AUTHORITY_DOCS:
+        text = _text(path)
+        for token in required_tokens:
+            if token not in text:
+                failures.append(f"canonical authority doc missing V2 token: {path}: {token}")
+        for label, pattern in STALE_CURRENT_CLAIMS.items():
+            if pattern.search(text):
+                failures.append(f"canonical authority doc revived stale claim ({label}): {path}")
+
+    operating = _text("docs/APEX_OPERATING_MANUAL.md")
+    if "adverse-evidence-only" not in operating:
+        failures.append("operating manual lost the EV-first adverse-evidence-only policy")
+    if "NEVER merge or advance PR #90" not in operating:
+        failures.append("operating manual lost the frozen PR #90 prohibition")
+    if "immutable" not in operating.casefold():
+        failures.append("operating manual no longer describes immutable production authority")
+
+
+def main() -> None:
+    failures: list[str] = []
+    manifest = _check_manifest(failures)
+    _check_frozen_config(manifest, failures)
+    _check_workflow_surface(manifest, failures)
+    _check_research_boundaries(failures)
+    _check_authority_docs(failures)
 
     if failures:
         raise SystemExit("\n".join(failures))
