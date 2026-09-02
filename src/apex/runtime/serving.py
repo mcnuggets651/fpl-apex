@@ -17,6 +17,12 @@ from apex.forecast.registry import (
 from .serde import projection_from_dict
 
 
+def _strict_bool(value, *, field: str) -> bool:
+    if type(value) is not bool:
+        raise ValueError(f"{field} must be an explicit boolean")
+    return value
+
+
 def status_from_row(row, surface):
     return ProviderStatus(
         row["provider_id"],
@@ -29,7 +35,10 @@ def status_from_row(row, surface):
         },
         surface,
         tuple(row.get("reasons", [])),
-        bool(row.get("serve_authorized", False)),
+        _strict_bool(
+            row.get("serve_authorized", False),
+            field=f"provider {row.get('provider_id', '<unknown>')} serve_authorized",
+        ),
         Qualification(row.get("predictive_status", "INSUFFICIENT_HISTORY")),
     )
 
