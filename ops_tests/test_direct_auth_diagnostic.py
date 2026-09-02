@@ -10,13 +10,12 @@ FROZEN = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
 
 
 class DirectAuthDiagnosticTests(unittest.TestCase):
-    def test_is_incident_only_frozen_and_non_serving(self) -> None:
+    def test_is_incident_only_frozen_manual_and_non_serving(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
         for required in (
             FROZEN,
             "workflow_dispatch:",
-            "\n  push:\n",
-            '      - ".github/workflows/apex-v2-direct-auth-diagnostic.yml"',
+            "if: github.ref == 'refs/heads/main'",
             "permissions:\n  contents: read",
             "FPL_X_API_AUTHORIZATION",
             "FPL_SESSION_COOKIE",
@@ -27,7 +26,9 @@ class DirectAuthDiagnosticTests(unittest.TestCase):
             self.assertIn(required, text)
 
         for forbidden in (
-            "schedule:",
+            "\n  push:\n",
+            "\n  schedule:\n",
+            "\n  workflow_run:\n",
             "cron:",
             "contents: write",
             "APEX_PRIVATE_GITHUB",
