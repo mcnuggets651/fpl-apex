@@ -130,9 +130,16 @@ def validate_system_decision(
         errors.append("vice-captain must be in XI")
     if decision.captain_id == decision.vice_captain_id:
         errors.append("captain and vice-captain must differ")
-    if set(decision.transfers_in) & set(decision.transfers_out):
+
+    transfer_in_ids = tuple(map(int, decision.transfers_in))
+    transfer_out_ids = tuple(map(int, decision.transfers_out))
+    if len(set(transfer_in_ids)) != len(transfer_in_ids):
+        errors.append("duplicate player in permanent transfers in")
+    if len(set(transfer_out_ids)) != len(transfer_out_ids):
+        errors.append("duplicate player in permanent transfers out")
+    if set(transfer_in_ids) & set(transfer_out_ids):
         errors.append("same player cannot be transferred in and out")
-    if len(decision.transfers_in) != len(decision.transfers_out):
+    if len(transfer_in_ids) != len(transfer_out_ids):
         errors.append("permanent transfers must balance in and out")
     if int(decision.horizon) < 1:
         errors.append("decision horizon must be positive")
