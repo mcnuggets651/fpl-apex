@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -23,6 +24,13 @@ ACKNOWLEDGED_FAILED_INTENTS = frozenset(
     }
 )
 
+# The frozen release store creates these records as mutable drafts before it
+# uploads/verifies assets and publishes them immutably. GitHub's authenticated
+# List Releases endpoint includes drafts. The frozen attempt-tag auditor does not
+# inspect draft/immutable metadata, so the operations controller must reject an
+# unfinished release before trusting the tag-only audit.
+AUDITED_RELEASE_KINDS = frozenset({"intent", "final", "outcome", "evaluation"})
+
 
 class AttemptAuditOpsError(RuntimeError):
     """The immutable attempt audit could not be safely classified."""
@@ -42,6 +50,67 @@ def _run_frozen_audit(prefix: str) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
     )
+
+
+def _load_public_releases() -> list[dict[str, Any]]:
+    repo = str(os.environ.get("GITHUB_REPOSITORY") or "").strip()
+    token = str(os.environ.get("GITHUB_TOKEN") or "").strip()
+    if not repo or not token:
+        raise AttemptAuditOpsError(
+            "GITHUB_REPOSITORY and GITHUB_TOKEN are required for release-integrity audit"
+        )
+    try:
+        from apex.runtime.releases import GitHubReleaseStore
+
+        rows = GitHubReleaseStore(repo, token).list_releases()
+    except Exception as exc:
+        raise AttemptAuditOpsError(
+            "Could not read authoritative GitHub release metadata"
+        ) from exc
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise AttemptAuditOpsError("GitHub release metadata has invalid shape")
+    return rows
+
+
+def validate_release_integrity(
+    releases: Iterable[dict[str, Any]],
+    *,
+    prefix: str = "apex-v2",
+) -> tuple[str, ...]:
+    """Reject mutable/incomplete releases that could poison tag-only logic.
+
+    Every V2 intent/final/outcome/evaluation record is created through the frozen
+    `GitHubReleaseStore.create_once(require_immutable=True)` contract. Therefore a
+    record in one of these namespaces is valid operational evidence only when it
+    is published (not draft), not a prerelease, and GitHub reports it immutable.
+    """
+
+    governed_prefixes = tuple(f"{prefix}/{kind}/" for kind in sorted(AUDITED_RELEASE_KINDS))
+    invalid: list[str] = []
+    seen: set[str] = set()
+    for release in releases:
+        if not isinstance(release, dict):
+            raise AttemptAuditOpsError("GitHub release metadata contains a non-object row")
+        tag = str(release.get("tag_name") or "")
+        if not tag.startswith(governed_prefixes):
+            continue
+        if not tag or tag in seen:
+            invalid.append(f"{tag or '<missing-tag>'}:duplicate-or-missing-tag")
+            continue
+        seen.add(tag)
+        if release.get("draft") is not False:
+            invalid.append(f"{tag}:draft")
+        if release.get("prerelease") is not False:
+            invalid.append(f"{tag}:prerelease")
+        if release.get("immutable") is not True:
+            invalid.append(f"{tag}:not-immutable")
+        if not release.get("published_at"):
+            invalid.append(f"{tag}:missing-published-at")
+    if invalid:
+        raise AttemptAuditOpsError(
+            "Unpublished/mutable Apex V2 release state detected: " + ", ".join(sorted(invalid))
+        )
+    return tuple(sorted(seen))
 
 
 def _parse_payload(stdout: str) -> dict[str, Any]:
@@ -114,6 +183,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--prefix", default="apex-v2")
     args = parser.parse_args()
+
+    try:
+        validate_release_integrity(_load_public_releases(), prefix=args.prefix)
+    except Exception as exc:
+        print(f"Apex V2 release-integrity operations failure: {exc}", file=sys.stderr)
+        return 1
 
     result = _run_frozen_audit(args.prefix)
     try:
