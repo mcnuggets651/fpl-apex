@@ -17,6 +17,7 @@ from apex.domain.rules import (
     SQUAD_COUNTS,
     XI_MAX,
     XI_MIN,
+    derive_next_free_transfers,
     season_rules,
 )
 
@@ -360,6 +361,7 @@ def optimise_transfer_horizon(
                 1,
             )
         else:
+            next_gameweek = int(team.published_gw) + period + 1
             for current_ft in range(max_free_transfers + 1):
                 coefficients = {
                     state_var(period, current_ft, transfers): 1
@@ -367,12 +369,11 @@ def optimise_transfer_horizon(
                 }
                 for previous_ft in range(max_free_transfers + 1):
                     for previous_transfers in range(max_transfers):
-                        next_ft = min(
-                            max_free_transfers,
-                            max(
-                                1,
-                                previous_ft - previous_transfers + 1,
-                            ),
+                        next_ft = derive_next_free_transfers(
+                            previous_ft,
+                            previous_transfers,
+                            next_gameweek=next_gameweek,
+                            rules=rules,
                         )
                         if next_ft == current_ft:
                             key = state_var(
@@ -525,12 +526,11 @@ def optimise_transfer_horizon(
                 mechanics.submitted_ev
                 - rules.transfer_hit_cost * hits
             )
-            free_transfer_state = min(
-                max_free_transfers,
-                max(
-                    1,
-                    free_transfer_state - transfers_made + 1,
-                ),
+            free_transfer_state = derive_next_free_transfers(
+                free_transfer_state,
+                transfers_made,
+                next_gameweek=gameweek + 1,
+                rules=rules,
             )
         return tuple(weeks), float(exact_objective)
 
