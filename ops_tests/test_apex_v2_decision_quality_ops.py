@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from scripts import apex_v2_decision_quality_ops as dq
 
@@ -323,6 +326,23 @@ class CounterfactualConstructionTests(unittest.TestCase):
                 required_ids=frozenset({1, 2}),
                 max_horizon=1,
             )
+
+    def test_public_evidence_rows_restore_hard_exclusions(self):
+        payload = {
+            "schema_version": 1,
+            "rows": [
+                {"element_id": 42, "gameweek": 3, "effect": "HARD_EXCLUDE"},
+                {"element_id": 43, "gameweek": 4, "effect": "HARD_EXCLUDE"},
+                {"element_id": 44, "gameweek": 3, "effect": "SOFT_DOWNWEIGHT"},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "evidence.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            exclusions = dq._hard_exclusions_from_public_evidence(
+                {"evidence.json": path}, gameweek=3
+            )
+        self.assertEqual(exclusions, frozenset({42}))
 
 
 class SequentialDecisionEdgeLearningTests(unittest.TestCase):
