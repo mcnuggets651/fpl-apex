@@ -193,6 +193,108 @@ PITCHSIDE tournament rows are stored only in a separate immutable private tourna
 
 Forecasts are never regenerated after outcomes are known.
 
+## Sequential online specialist learning
+
+The prospective tournament learns after **every completed canonical H1 observation**. Twelve Gameweeks are not a waiting period and are not a gate before Apex may learn from evidence. A longer sample remains useful for a final structural judgment, but live FPL decisions cannot ignore strong repeated evidence while the season is running.
+
+The online-learning layer is deliberately separate from serving authority:
+
+- `production_influence = NONE`;
+- `promotion_authority = false`;
+- `automatic_serving_change = false`;
+- AIrsenal remains the sole serving champion unless a later explicit governed change is separately approved and shipped;
+- provider names receive no prior advantage, including Dastan;
+- the current qualitative interest in Dastan is a hypothesis to test, not a scoring prior.
+
+### What is learned after every H1
+
+For every provider legitimately entered in the canonical prospective H1 league, the layer retains and compares scoreable sealed components including:
+
+- overall H1 xP MAE and RMSE;
+- top-10 and top-25 ranking NDCG;
+- catastrophic xP residual rate;
+- expected-minutes MAE;
+- catastrophic minutes residual rate;
+- appearance-probability Brier;
+- start-probability Brier when Official supplies an explicit realized start label;
+- 60-minute probability Brier;
+- position-specific xP and minutes performance;
+- pre-outcome minutes-risk cohorts;
+- pre-outcome high-disagreement minutes cohorts.
+
+A realized start is never inferred from minutes. If Official does not provide a valid start label, start probability remains `NOT_SCOREABLE_NO_REALIZED_START_LABEL`.
+
+### Specialist cohort construction
+
+Cohorts must be common and outcome-independent so a provider cannot receive a favorable retrospective slice.
+
+Position cohorts use Official season position identity only: `GK`, `DEF`, `MID`, `FWD`.
+
+Minutes-risk cohorts are assigned before looking at results using the median of sealed expected minutes across the entered providers:
+
+- `NAILED_75_PLUS`: consensus expected minutes at least 75;
+- `MANAGED_45_TO_74`: consensus expected minutes at least 45 and below 75;
+- `ROTATION_RISK_UNDER_45`: consensus expected minutes below 45;
+- `UNKNOWN_MINUTES`: fewer than two sealed minutes forecasts exist.
+
+Minutes-disagreement cohorts are also pre-outcome:
+
+- `HIGH_DISAGREEMENT_20_PLUS`: sealed provider expected-minutes range is at least 20 minutes;
+- `LOW_DISAGREEMENT_UNDER_20`: range is below 20 minutes;
+- `UNKNOWN_MINUTES`: insufficient sealed minutes forecasts.
+
+No player IDs are published in public online-learning summaries.
+
+### Evidence stages
+
+The layer escalates evidence progressively rather than waiting for an arbitrary season length:
+
+- **1 observation — `DIAGNOSTIC_SIGNAL`:** learn immediately, but do not treat the result as actionable proof.
+- **2+ observations — `EMERGING_EDGE`:** at least 67% positive-edge rate and at least 3% recency-weighted mean edge.
+- **2 observations — `FAST_TRACK_REVIEW_ELIGIBLE`:** both observations are positive wins and the recency-weighted mean edge is at least 10%. This exists specifically so a very large repeated live edge is not ignored for ten more weeks.
+- **3+ observations — `ACTIONABLE_SPECIALIST_REVIEW`:** at least 67% positive-edge rate, at least 4% weighted mean edge, and no severe reversal worse than -12%.
+- **5+ observations — `SPECIALIST_ROLE_CANDIDATE`:** at least 70% positive-edge rate, at least 5% weighted mean edge and worst edge at least -10%.
+- **8+ observations — `STRONG_EVIDENCE`:** at least 70% positive-edge rate and at least 4% weighted mean edge with the same reversal protection.
+- **12+ observations — `MATURE_EVIDENCE`:** at least 70% positive-edge rate and at least 3% weighted mean edge with the same reversal protection.
+
+The recent sample is weighted with a four-observation half-life. Older prospective evidence remains part of the record but recent role/minutes changes are allowed to matter more.
+
+`FAST_TRACK_REVIEW_ELIGIBLE` and higher review stages create an owner review item. They do **not** authorize a serving change. The purpose is to identify evidence strong enough to consider a separate governed specialist-role or challenger decision while still preserving the clean experiment.
+
+### Different models may win different jobs
+
+The learning target is not merely one universal winner. The evidence may legitimately establish different specialists, for example:
+
+- one provider for expected minutes and rotation risk;
+- another for defender xP;
+- another for forward attacking-return ordering;
+- another for captain/top-player ranking;
+- AIrsenal for strategic H2-H8 planning while a different provider proves stronger at H1 availability.
+
+Any future component-level selection, ensemble, specialist role or champion promotion must be separately designed, audited and approved. This layer only measures and surfaces the evidence required to justify that later decision.
+
+### Immutable sequential evidence chain
+
+After a canonical H1 evaluation exists, the maintenance workflow writes a public aggregate learning snapshot under:
+
+`apex-v2/tournament-learning/<season>/through-obs<N>`
+
+Each snapshot contains aggregate observation metrics and an attestation. Raw provider forecast rows and manager state remain private.
+
+When adding a new observation, the controller:
+
+1. loads the immutable canonical selection and H1 evaluation;
+2. reloads the exact sealed private provider surfaces and manager decision surface;
+3. fetches Official position identity;
+4. re-fetches the realized H1 payload only to enrich the already-scored observation;
+5. requires its canonical SHA-256 to exactly equal the immutable H1 evaluation's `official_live_sha256`;
+6. requires the recomputed core provider and pairwise metrics to exactly match the immutable evaluation;
+7. fails closed rather than reconstructing or backfilling evidence if those identities drift.
+
+Previous observations are carried forward from the prior immutable learning release, so old outcomes are not regenerated retrospectively on every run.
+
+Before the first completed canonical H1, the workflow reports `AWAITING_FIRST_PROSPECTIVE_H1` and publishes no fake observation.
+
 ## Failure semantics
 
 The reliability layer distinguishes at least:
@@ -236,6 +338,15 @@ Operations tests cover:
 - legacy final missing-asset skip and source-resolution proof retention;
 - modern final identity/authority corruption remaining fail-closed;
 - proof that production itself still has no push trigger;
-- non-serving workflow boundaries.
+- non-serving workflow boundaries;
+- common no-hindsight position/minutes-risk/minutes-disagreement specialist cohorts;
+- explicit start-label scoring without minutes-based start inference;
+- one-observation diagnostic learning;
+- two-observation fast-track review for exceptional repeated edges;
+- three-observation actionable specialist review;
+- simultaneous position-specific leaders from different models;
+- provider-name prior neutrality;
+- proof that twelve Gameweeks are not a gate to learning or review;
+- proof that all online-learning stages retain `NO_AUTOMATIC_CHANGE` serving authority.
 
 The repository operations contract additionally proves that the frozen engine SHA and serving architecture remain unchanged.

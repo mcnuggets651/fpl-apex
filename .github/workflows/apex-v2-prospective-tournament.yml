@@ -411,6 +411,26 @@ jobs:
             --season "$APEX_SEASON" \
             --control-plane-sha "$CONTROL_PLANE_SHA"
 
+      - name: Update rolling specialist reliability from completed H1 observations
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APEX_PRIVATE_GITHUB_REPOSITORY: ${{ vars.APEX_V2_PRIVATE_REPOSITORY }}
+          APEX_PRIVATE_GITHUB_TOKEN: ${{ secrets.APEX_V2_PRIVATE_REPO_TOKEN }}
+          CONTROL_PLANE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APEX_PRIVATE_GITHUB_REPOSITORY"
+          test -n "$APEX_PRIVATE_GITHUB_TOKEN"
+          mkdir -p artifacts/v2/tournament
+          python "$RUNNER_TEMP/apex_v2_tournament_scoring.py" \
+            --repo "$GITHUB_REPOSITORY" \
+            --private-repo "$APEX_PRIVATE_GITHUB_REPOSITORY" \
+            --season "$APEX_SEASON" \
+            --control-plane-sha "$CONTROL_PLANE_SHA" \
+            --output artifacts/v2/tournament/online_learning.json
+          test -s artifacts/v2/tournament/online_learning.json
+
       - name: Materialize public tournament status
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -420,10 +440,12 @@ jobs:
           --season "$APEX_SEASON"
           --output artifacts/v2/tournament/status.json
 
-      - name: Upload tournament status
+      - name: Upload tournament status and online learning
         uses: actions/upload-artifact@v4
         with:
           name: apex-v2-tournament-status-${{ github.run_id }}
-          path: artifacts/v2/tournament/status.json
+          path: |
+            artifacts/v2/tournament/status.json
+            artifacts/v2/tournament/online_learning.json
           retention-days: 90
           if-no-files-found: error
