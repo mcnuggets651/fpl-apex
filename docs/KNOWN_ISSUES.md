@@ -1,91 +1,71 @@
-# Apex FPL — Known Issues / Boundaries
+# FPL Apex — Known Issues / Boundaries
 
-Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
+Canonical machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json). Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
 
-## K000 — Governance gate
-`apex_answer_context.json` is the only permitted input for Apex-labelled answers.
-Missing/stale required evidence withholds the production result instead of being
-reported as a harmless warning.
+Apex V2 frozen engine SHA: `99cc7b51b0cff45462b567084cb1844cfe0a456f`. Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`. Sole serving provider: **AIrsenal** H1–H8.
 
-## K001 — Unpublished private FPL drafts are not public
-Before a deadline, public FPL endpoints may not expose the manager's current private draft/transfers. Use explicit manual overrides or a current screenshot when supplied.
+## K001 — Private manager state is not public
 
-## K002 — Preseason/new-season sample uncertainty
-Before competitive 2026/27 data accumulates, expected minutes, tactical roles and attacking rates rely more heavily on priors/preseason. Confidence must reflect this.
+Predeadline public FPL endpoints may not expose a manager's unpublished transfers/current private draft. Production therefore requires its authenticated private-manager state for entry 63984 and must fail closed rather than inventing a squad.
 
-## K003 — Market odds not assumed available
-Do not claim betting-market information is in production unless a validated feed is present and passes the production gate. It remains a planned high-value enhancement otherwise.
+## K002 — Early-season forecast uncertainty
 
-## K004 — Elite is not yet proven superior
-Elite 10.0 is a secondary selector and remains under live validation. Software CI success is not evidence that its squad selections outperform Pinnacle. The synchronized post-merge live benchmark and epsilon sensitivity frontier are required before Elite can override maximum-EV.
+2026/27 minutes, tactical roles and attacking rates are still partly prior-driven while current-season evidence accumulates. This is forecast uncertainty, not permission to introduce a second hidden conservative selector.
 
-## K005 — Value bias versus premium bias
-The old failure mode was excessive cheap/value selection. Elite intentionally corrects this, but the opposite failure mode—over-rewarding famous premiums—must be monitored through raw-xP regret and no-hindsight evaluation.
+## K003 — Market odds are not assumed serving inputs
 
-## K006 — Model confidence is not outcome probability
-A confidence score describes evidence/model stability, not a 99% chance that a squad outscores alternatives or wins FPL.
+Do not claim a betting-market feed is part of the frozen serving constitution unless a future certified engine explicitly says so. Optional research evidence cannot silently change production.
 
-## K007 — Web evidence can drift
-News/manager/transfer information changes quickly. Use freshness and authoritative sources; never let stale web claims overwrite canonical identity.
+## K004 — Challenger evidence is non-serving
 
-## K008 — Historical covariance/uncertainty priors
-Early-season stochastic coefficients may be priors before sufficient 2026/27 outcomes exist. Validate them as the no-hindsight archive grows.
+Apex Proprietary, Dastan, PITCHSIDE and OpenFPL remain shadow/diagnostic. Tournament and Decision Quality evidence can support review but cannot blend into AIrsenal, vote on the recommendation or trigger automatic promotion.
 
-## K009 — Player attacking rates need explicit sample-size shrinkage
-**Status: research implementation exists; production remains blocked.** The current
-transparent production projection still does not apply formal empirical-Bayes
-shrinkage. PR #18 merges a dormant candidate that combines previous/current
-competitive evidence and hierarchical leave-one-out priors. Its corrected
-attacking-rate shadow gate passes; the production-parity integration audit and
-separate activation review remain outstanding.
+## K005 — Dastan horizon boundary
 
-## K010 — Elite epsilon is provisional, not calibrated
-The 0.5% maximum raw-xP regret band is an engineering starting point, not a learned constant. Live Elite output must report a sensitivity frontier at 0%, 0.25%, 0.5% and 1.0%. If tiny epsilon changes materially alter the squad, maximum-EV remains canonical until no-hindsight calibration establishes a justified band.
+Dastan is H1-only. It may participate in H1 mechanics/availability research but cannot supply an invented pure-provider H2+ plan. Decision Quality must mark unsupported experiments absent rather than fabricate future forecasts.
 
-## K011 — Source health booleans must be native Python booleans
-**Resolved 2026-08-08 in PR #12.** The provenance boundary now normalises source-health fields to native Python booleans. The 70% prior-season evidence floor and strict readiness semantics were unchanged.
+## K006 — No-hindsight gaps are permanent gaps
 
-## K012 — PR #14 historical shrinkage validation used a future-selected cohort
-**Resolved in the research validator by PR #18; production remains blocked.** The
-first green validator filtered players by future minutes/outcome availability
-before calculating live-price tiers and empirical priors. PR #18 freezes priors
-on the complete point-in-time roster, applies outcome eligibility only after
-prediction and includes pre-GW1/GW1-5/GW6+ gates. The corrected xG90/xA90 shadow
-gate passes, but the seasons are not independent final holdouts and no production
-activation is connected.
+A forecast or decision variant that was not immutably sealed before the relevant Official FPL deadline may not be reconstructed later. GW2 remains non-canonical diagnostic rehearsal. Postdeadline assembly may only package decisions that were already sealed predeadline.
 
-## K013 — Captain scenario frequencies are not calibrated probabilities
-The correlated scenario coefficients are explicit priors. Fixed-XI captain frequencies are useful telemetry, but a 50% hard publication decision cannot be interpreted as calibrated probability evidence until historical coverage and discrimination are validated. The raw baseline also fails the proposed fixed-XI threshold, so this diagnostic must be separated from shrinkage promotion.
+## K007 — Decision Quality exact-task runtime
 
-## K014 — Full-season replay path is incomplete
-**Partially resolved in PR 7; historical inputs remain blocked.** The repository
-now has a deterministic 38-GW engine, outcome firewall, legal state transitions,
-purchase/sale ledger, chip semantics, formation-aware autosubs, realised scorer
-and state/decision hash chain. The 2025/26 source audit found zero immutable
-pre-deadline Apex bundles and only 11/38 Official-FPL xP files, so publishing an
-Apex total would require hindsight. The remaining work is historical bundle
-recovery or an explicitly weaker benchmark whose limitations are predeclared.
-See `FULL_SEASON_REPLAY_PROTOCOL.md` and the PR 7 evidence artifact.
+**Resolved operationally by PR #114; live GW3 acceptance remains the proof gate until the corrected run completes.**
+
+The frozen transfer optimiser permits up to 17 MILP calls at 120 seconds each, or 34 minutes of solver allowance before orchestration. The prior 30-minute matrix timeout could not guarantee exact completion. The workflow now grants 50 minutes per independent solve task and `ops_tests/test_apex_v2_decision_lab_runtime_bound.py` derives the theoretical bound plus 15 minutes of headroom from the frozen source. Candidate depth, horizon, MIP gap and exact mechanics were not changed.
+
+## K008 — Project Brain architecture drift
+
+**Repair in progress on the V2 authority-reconciliation branch.** Several canonical prose files dated from August V1/V1.5 and could route a new operator toward historical Pinnacle/generated-file surfaces. The permanent fix is `APEX_V2_AUTHORITY.json` plus machine checks requiring every canonical authority document to agree with the frozen V2 constitution.
+
+## K009 — Generic governance preserved obsolete production
+
+**Repair in progress on the V2 authority-reconciliation branch.** `scripts/check_governance_consistency.py` previously treated legacy Pinnacle/V1 workflows as active production while also checking V2. The replacement checker uses the V2 authority manifest, compares it with frozen `config/apex_v2.yaml`, recognizes one serving production workflow and classifies all other live workflows as operations/research.
+
+## K010 — Legacy publishers retained executable write paths
+
+**Repair in progress on the V2 authority-reconciliation branch.** Historical `pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml` and `gw1-final-2026.yml` retained manual executable paths (three with write-capable publication code). They are being preserved byte-for-byte under `archive/workflows/` and removed from `.github/workflows` so they are inert forensic history.
+
+## K011 — Mutable historical evaluation reference
+
+Some non-serving prospective evaluation paths have used `vaastav/Fantasy-Premier-League@master`. The branch existed at the last audit, so this is not a current serving fault, but deterministic evaluation should use the exact history commit pinned in `upstreams.lock.json` wherever the consumer supports it.
+
+## K012 — GitHub Actions Node runtime maintenance
+
+Current workflows can emit warnings for action versions targeting Node 20 while GitHub runners force a newer runtime. This has not been a functional failure. Upgrade only to verified stable action versions and rerun full generic/V2 contracts; do not combine runtime-maintenance risk with a deadline-critical model repair.
+
+## K013 — External provider automation permissions
+
+Fantasy Football Hub remains permission-required; FPL Review and FantaLens automation permission is not yet verified. Do not scrape or automate a provider without an acceptable permission/licence basis. This is research intake governance, not a serving blocker.
+
+## K014 — AIrsenal setup team ID is intentionally not the production entry
+
+AIrsenal's upstream database setup requires a positive FPL team ID, and the worker uses `1` only to satisfy that interface while skipping manager-specific transaction updates. It emits player forecasts. Apex separately authenticates production entry 63984. Changing the worker setup value to 63984 would conflate independent concerns and is not a fix.
+
+## K015 — Football randomness remains irreducible
+
+Apex can improve forecast calibration and decision quality; it cannot eliminate outcome variance. Diagnostic confidence, model agreement and realized decision edge must not be presented as certainty of a player return or rank outcome.
 
 ## Resolution discipline
-When an issue is fixed, retain the entry and mark it resolved with date, implementation and benchmark evidence rather than deleting it.
 
-## K009 — Preseason return-stat coverage and covariance calibration
-
-Preseason minutes/team-sheet evidence is available more broadly than xG/xA/return
-statistics. Missing return fields remain unknown rather than zero. Apex now caps a
-single substitute appearance at 12% role weight, but improved attacking-stat coverage
-still requires an authoritative provider or verified match-event capture. Covariance
-and captain-stability references cannot honestly be outcome-calibrated before archived
-pre-deadline forecasts have corresponding 2026/27 results; until then they are labelled
-provisional diagnostics and have no production-selection authority.
-
-## K015 — Diagnostic input surfaces were not fully sealed
-
-**Release candidate implemented; production verification pending.** Pinnacle and
-Elite previously reran the live pipeline and canonical publication compared only
-Official FPL hashes. News, tactical evidence, FPL Core, AIrsenal, configuration,
-code and projections could therefore differ without detection. The decision
-bundle work removes diagnostic refetches and requires a shared content-addressed
-identity, but this issue remains open until the PR is merged and a production
-artifact proves matched bundle IDs end to end.
+Do not delete resolved issues. Mark them resolved with implementation, CI and live acceptance evidence. Durable limitations should remain visible even when they are non-serving or nonblocking.
