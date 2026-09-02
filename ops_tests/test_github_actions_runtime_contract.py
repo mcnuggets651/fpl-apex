@@ -9,6 +9,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 DEPENDABOT = ROOT / ".github" / "dependabot.yml"
+DIRECT_AUTH = WORKFLOW_DIR / "apex-v2-direct-auth-diagnostic.yml"
 
 ACTION_PINS = {
     "actions/checkout": ("3d3c42e5aac5ba805825da76410c181273ba90b1", "v7.0.1"),
@@ -70,6 +71,29 @@ class GitHubActionsRuntimeContractTests(unittest.TestCase):
         self.assertEqual((config.get("schedule") or {}).get("interval"), "weekly")
         self.assertEqual((config.get("schedule") or {}).get("timezone"), "Europe/London")
         self.assertGreaterEqual(int(config.get("open-pull-requests-limit", 0)), 1)
+
+    def test_direct_auth_diagnostic_is_manual_only_and_non_serving(self) -> None:
+        body = DIRECT_AUTH.read_text(encoding="utf-8")
+        payload = yaml.load(body, Loader=yaml.BaseLoader)
+        triggers = payload.get("on")
+        self.assertIsInstance(triggers, dict)
+        self.assertEqual(set(triggers), {"workflow_dispatch"})
+
+        job = (payload.get("jobs") or {}).get("verify-direct-owner-auth") or {}
+        self.assertEqual(job.get("if"), "github.ref == 'refs/heads/main'")
+        self.assertIn("FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}", body)
+        self.assertIn('FPL_REFRESH_TOKEN: ""', body)
+        self.assertIn('FPL_REFRESH_WRAP_KEY: ""', body)
+        for forbidden in (
+            "\n  push:",
+            "\n  schedule:",
+            "\n  workflow_run:",
+            "contents: write",
+            "apex-v2 acquire",
+            "apex-v2 solve",
+            "apex-v2 publish",
+        ):
+            self.assertNotIn(forbidden, body)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ This is a human project-level changelog. Git history remains the detailed code r
 - Added `ops_tests/test_github_actions_runtime_contract.py` to reject stale/mutable GitHub-owned action references and pin drift.
 - Added weekly GitHub Actions Dependabot updates so future runtime changes arrive through the repository's protected PR/check path.
 - Tightened the V2 Ops Contract so the complete executable workflow set is an explicit operations surface while `archive/workflows/**` is immutable forensic history.
+- Post-merge smoke testing separated authentication health from direct-credential diagnostics: managed Auth Keepalive successfully rotated/persisted owner refresh state while the static direct-owner token was rejected as expired. The incident-only Direct Auth Diagnostic is therefore manual `workflow_dispatch` only, with an operations regression prohibiting automatic push/schedule/workflow-run triggers and any serving/write authority.
 - No frozen engine source/config, forecast model, provider authority, optimiser semantics or serving policy changed.
 
 ## 2026-08-11 — Decision-grade evidence ingestion candidate

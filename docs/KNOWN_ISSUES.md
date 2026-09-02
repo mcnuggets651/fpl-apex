@@ -81,6 +81,12 @@ AIrsenal's upstream database setup requires a positive FPL team ID, and the work
 
 Apex can improve forecast calibration and decision quality; it cannot eliminate outcome variance. Diagnostic confidence, model agreement and realized decision edge must not be presented as certainty of a player return or rank outcome.
 
+## K016 — Direct-owner credential diagnostic is not production auth health
+
+The repository may contain a directly supplied FPL bearer/cookie that expires independently of the managed encrypted refresh state. A failure of `.github/workflows/apex-v2-direct-auth-diagnostic.yml` therefore means exactly that the direct credential failed its frozen owner preflight; it does **not** by itself prove that the managed keepalive/production authentication chain is unhealthy.
+
+The direct-auth workflow is incident-only and manual `workflow_dispatch` only. Automatic `push`, `schedule` and `workflow_run` triggers are prohibited, refresh-token state is deliberately blanked, and it has no acquire/solve/publish/write authority. `ops_tests/test_github_actions_runtime_contract.py` locks this boundary. Managed auth health is established through the keepalive/production refresh path and exact manager-identity proof.
+
 ## Resolution discipline
 
 Do not delete resolved issues. Mark them resolved with implementation, CI and live acceptance evidence. Durable limitations should remain visible even when they are non-serving or nonblocking.

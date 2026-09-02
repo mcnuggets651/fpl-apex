@@ -22,6 +22,16 @@ Schedule: `22 */6 * * *` UTC.
 
 The keepalive validates/rotates durable FPL owner credentials, verifies exact manager identity and persists rotated private state. It cannot acquire providers, solve or publish a recommendation. It shares the non-cancelling `apex-v2-fpl-auth` concurrency boundary with production.
 
+### Direct owner-auth diagnostic
+
+Workflow: `.github/workflows/apex-v2-direct-auth-diagnostic.yml`
+
+Trigger: **manual `workflow_dispatch` only**, and the job is restricted to `main`.
+
+This is an incident-only diagnostic for the repository's directly supplied bearer/cookie credential. It deliberately disables refresh-token state and does not represent production authentication health. A rejected or expired direct token is a valid diagnostic failure; it must not cause every `main` push to go red while the managed refresh chain is healthy.
+
+Do not add `push`, `schedule` or `workflow_run` triggers to this workflow. Do not use it as a keepalive fallback. `ops_tests/test_github_actions_runtime_contract.py` enforces the manual-only trigger and its non-serving boundary.
+
 ### Production
 
 Workflow: `.github/workflows/apex-v2-daily-production.yml`
