@@ -461,9 +461,10 @@ def _external_records(
                 if strong and source.tier in HARD_SOURCE_TIERS
                 else EvidenceEffect.AUDIT_ONLY
             )
-            expires = min(deadline, published + timedelta(hours=72))
-            if expires <= published:
+            expires = min(deadline, published + timedelta(days=7))
+            if expires <= retrieved_at:
                 continue
+            excerpt = attributable
             records.append(
                 _record(
                     element_id=element_id,
@@ -473,17 +474,21 @@ def _external_records(
                     published_at=published,
                     retrieved_at=retrieved_at,
                     expires_at=expires,
-                    evidence_type="external_news",
+                    evidence_type=(
+                        "explicit_absence"
+                        if strong
+                        else "decision_relevant_news"
+                    ),
                     gameweek=target_gameweek,
                     effect=effect,
-                    excerpt=attributable,
+                    excerpt=excerpt,
                     content_payload={
-                        "source": source.name,
-                        "source_url": link,
                         "title": title,
-                        "summary": summary,
-                        "published_at": published.isoformat(),
-                        "attributable_text": attributable,
+                        "attributable_text": attributable[:500],
+                        "link": link,
+                        "published": published.isoformat(),
+                        "source_tier": source.tier,
+                        "element_id": element_id,
                     },
                 )
             )
@@ -492,64 +497,69 @@ def _external_records(
 
 def collect_v2_evidence(
     *,
-    config_path: str | Path,
-    output_records: str | Path,
-    output_manifest: str | Path,
+    sources_path: str | Path,
+    records_path: str | Path,
+    manifest_path: str | Path,
+    expected_official_hash: str | None = None,
     season: str = "2026-2027",
-    now: datetime | None = None,
     session: requests.Session | None = None,
-    official=None,
-    raw_official: dict | None = None,
+    now: datetime | None = None,
 ) -> EvidenceAcquisitionResult:
-    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    retrieved_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     http = session or requests.Session()
-    sources = load_evidence_sources(config_path)
-
-    if official is None or raw_official is None:
-        official, raw_official = fetch_official_snapshot(season=season, session=http)
-    target_gameweek, deadline = _target_gameweek(official, now)
-    aliases, alias_owners = _aliases(raw_official["bootstrap"])
+    official, raw = fetch_official_snapshot(
+        season=season,
+        session=http,
+    )
+    if expected_official_hash and official.source_hash != expected_official_hash:
+        raise RuntimeError(
+            "Official FPL authority changed before evidence acquisition: "
+            f"expected {expected_official_hash}, got {official.source_hash}"
+        )
+    target_gameweek, deadline = _target_gameweek(official, retrieved_at)
+    bootstrap = raw.get("bootstrap") or {}
+    aliases, alias_owners = _aliases(bootstrap)
+    sources = load_evidence_sources(sources_path)
 
     records: list[EvidenceRecord] = _official_fpl_records(
-        raw_official["bootstrap"],
+        bootstrap,
         official=official,
         target_gameweek=target_gameweek,
         deadline=deadline,
-        retrieved_at=now,
+        retrieved_at=retrieved_at,
     )
     outcomes: list[SourceOutcome] = []
-    required_failures: list[dict] = []
-
+    headers = {"User-Agent": "fpl-apex-v2/1"}
     for source in sources:
-        started = datetime.now(timezone.utc)
         try:
-            response = http.get(source.url, timeout=20)
+            response = http.get(source.url, timeout=20, headers=headers)
             response.raise_for_status()
             items = _parse_document(
                 response.content,
-                response.headers.get("Content-Type", ""),
+                response.headers.get("content-type", ""),
                 source.url,
             )
-            extracted = _external_records(
+            source_records = _external_records(
                 source=source,
                 items=items,
                 aliases=aliases,
                 alias_owners=alias_owners,
                 target_gameweek=target_gameweek,
                 deadline=deadline,
-                retrieved_at=now,
+                retrieved_at=retrieved_at,
             )
-            records.extend(extracted)
+            records.extend(source_records)
+            usable = bool(items)
             outcomes.append(
                 SourceOutcome(
                     source.name,
                     source.url,
                     source.tier,
                     source.required,
-                    "OK",
+                    "SUCCESS" if usable else "EMPTY",
                     len(items),
-                    len(extracted),
-                    None,
+                    len(source_records),
+                    None if usable else "no parseable evidence items returned",
                 )
             )
         except Exception as exc:
@@ -565,47 +575,56 @@ def collect_v2_evidence(
                     f"{type(exc).__name__}: {exc}",
                 )
             )
-            if source.required:
-                required_failures.append(
-                    {
-                        "name": source.name,
-                        "url": source.url,
-                        "error": f"{type(exc).__name__}: {exc}",
-                    }
-                )
-        finally:
-            _ = started
 
-    unique: dict[str, EvidenceRecord] = {}
-    for record in records:
-        unique[record.evidence_id] = record
-    ordered = tuple(
-        sorted(
-            unique.values(),
-            key=lambda row: (row.element_id, row.evidence_id),
-        )
-    )
-    records_payload = [dataclass_to_dict(record) for record in ordered]
-    config_hash = hashlib.sha256(Path(config_path).read_bytes()).hexdigest()
+    deduped = {record.evidence_id: record for record in records}
+    ordered = tuple(deduped[key] for key in sorted(deduped))
+    required_failures = [
+        outcome.name
+        for outcome in outcomes
+        if outcome.required and outcome.status != "SUCCESS"
+    ]
+    completed = not required_failures
+    source_config_sha = hashlib.sha256(Path(sources_path).read_bytes()).hexdigest()
     manifest = {
         "schema_version": 1,
-        "completed": True,
-        "acquired_at": now.isoformat(),
-        "season": official.season,
+        "completed": completed,
+        "season": season,
         "target_gameweek": target_gameweek,
         "deadline": deadline.isoformat(),
+        "retrieved_at": retrieved_at.isoformat(),
+        "expected_official_hash": expected_official_hash,
         "observed_official_hash": official.source_hash,
-        "source_config_sha256": config_hash,
-        "record_count": len(records_payload),
-        "records_sha256": _canonical_hash(records_payload),
-        "required_source_failures": required_failures,
+        "source_config_sha256": source_config_sha,
         "sources": [dataclass_to_dict(outcome) for outcome in outcomes],
+        "required_source_failures": required_failures,
+        "record_count": len(ordered),
+        "hard_exclude_count": sum(
+            record.effect == EvidenceEffect.HARD_EXCLUDE for record in ordered
+        ),
+        "audit_only_count": sum(
+            record.effect == EvidenceEffect.AUDIT_ONLY for record in ordered
+        ),
+        "official_fpl_record_count": sum(
+            record.evidence_type == "official_fpl_availability" for record in ordered
+        ),
     }
-    records_path = _write_json(Path(output_records), records_payload)
-    manifest_path = _write_json(Path(output_manifest), manifest)
+    records_file = _write_json(
+        Path(records_path),
+        {
+            "schema_version": 1,
+            "records": [dataclass_to_dict(record) for record in ordered],
+        },
+    )
+    manifest_file = _write_json(Path(manifest_path), manifest)
+
+    if not completed:
+        raise RuntimeError(
+            "required external evidence source failed: "
+            + ", ".join(required_failures)
+        )
     return EvidenceAcquisitionResult(
         ordered,
         manifest,
-        records_path,
-        manifest_path,
+        records_file,
+        manifest_file,
     )
