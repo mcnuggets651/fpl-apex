@@ -9,6 +9,7 @@ Apex V2 is the production FPL system for season **2026/27** and entry **63984**.
 - Frozen certified engine: `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
 - Frozen engine PR: **#90**, draft/open/unmerged. It is not an operations branch and must not be merged or advanced.
 - Operations/research control plane: `main`.
+- Verified V2 authority-reconciliation merge: `138a886815c5110c9a528f93f16811e99c6a7e48` (PR #115).
 - Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
 - Sole serving forecast provider: **AIrsenal**, H1–H8.
 - Apex Proprietary, Dastan, PITCHSIDE and OpenFPL are shadow/diagnostic only and have no serving authority.
@@ -43,13 +44,17 @@ Official GW3 deadline:
 
 PR #114 repaired the exact-task runtime contract without changing frozen decision semantics. The frozen transfer optimiser can legally consume 34 minutes of MILP allowance; Decision Quality now grants 50 minutes per independent matrix solve and CI derives/guards that bound against the frozen source.
 
+Corrected Decision Quality run #10 is run `33643925982`, bound to control-plane SHA `e123fb312015a620795f343f503f8c214699afb4`. PR #115 changed authority/governance/docs rather than the Decision Quality workflow/controllers and therefore does not alter that already-running experiment definition.
+
 GW3 runtime acceptance is complete only when all required predeadline task releases exist, canonical assembly succeeds, exact baseline reproduction is verified, every constituent decision is predeadline, the immutable canonical lab is validated and the overall workflow is green. Missing decisions may never be reconstructed after the deadline.
 
 ## Governance status
 
-The Project Brain and generic governance layer are being reconciled to the V2 constitution. Legacy executable publishers (`pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml`, `gw1-final-2026.yml`) are forensic history only and belong under `archive/workflows/`, outside GitHub's executable workflow directory.
+**GREEN after PR #115.** The Project Brain, ChatGPT/operator instructions, machine authority, generic governance checker, repository workflow-contract tests and active workflow inventory now describe the same frozen V2 constitution.
 
-The generic governance checker must treat exactly one workflow as serving production and must fail if canonical authority documents revive obsolete V1/Pinnacle production claims.
+Legacy executable publishers (`pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml`, `gw1-final-2026.yml`) are preserved under `archive/workflows/` and are absent from GitHub's executable workflow directory. The generic governance checker recognizes exactly one serving production workflow, while the V2 Ops Contract fails if legacy publishers or stale current-authority claims return.
+
+Main protection ruleset `21759706` remains active with pull request enforcement, strict required `test` / `contract` / `readiness` checks and no bypass actors.
 
 ## Startup rule
 
