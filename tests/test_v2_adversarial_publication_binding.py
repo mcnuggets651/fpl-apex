@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from apex.domain.models import ProductionProjectionSurface
+from apex.forecast.contract import projection_surface_hash
 from apex.runtime.publication import build_publication_materials
 from apex.runtime.snapshot import SnapshotBuilder
 
@@ -60,26 +62,51 @@ def _fixture(tmp_path: Path):
         },
     )
     builder.add_json("team_state.json", None)
-    builder.add_json("qualification_matrix.json", [])
-    builder.add_json("evidence.json", [])
     builder.add_json(
-        "providers/airsenal.json",
-        {
-            "schema_version": 1,
-            "provider_id": "airsenal",
-            "provider_version": "pinned",
-            "generated_at": "2026-09-02T12:00:00Z",
-            "season": "2026-2027",
-            "source_snapshot": official_hash,
-            "scoring_rules_version": "fpl-2026-27-v1",
-            "supported_horizons": [1],
-            "runtime_dependencies": [],
-            "rows": [],
-        },
+        "qualification_matrix.json",
+        [
+            {
+                "provider_id": "airsenal",
+                "role": "CHAMPION",
+                "priority": 0,
+                "health": "HEALTHY",
+                "qualification_by_horizon": {"1": "QUALIFIED"},
+                "reasons": [],
+                "serve_authorized": True,
+                "predictive_status": "INSUFFICIENT_HISTORY",
+            }
+        ],
     )
+    builder.add_json("evidence.json", [])
+    provider_payload = {
+        "schema_version": 1,
+        "provider_id": "airsenal",
+        "provider_version": "pinned",
+        "generated_at": "2026-09-02T12:00:00Z",
+        "season": "2026-2027",
+        "source_snapshot": official_hash,
+        "scoring_rules_version": "fpl-2026-27-v1",
+        "supported_horizons": [1],
+        "runtime_dependencies": [],
+        "rows": [],
+    }
+    builder.add_json("providers/airsenal.json", provider_payload)
     snapshot = builder.freeze(
         tmp_path / "snapshots",
         metadata={"frozen_at": "2026-09-02T12:01:00Z"},
+    )
+    canonical_hash = projection_surface_hash(
+        ProductionProjectionSurface(
+            1,
+            "airsenal",
+            "airsenal:pinned",
+            "2026-09-02T12:00:00Z",
+            "2026-2027",
+            official_hash,
+            "fpl-2026-27-v1",
+            (1,),
+            (),
+        )
     )
     decision = {
         "schema_version": 1,
@@ -98,9 +125,7 @@ def _fixture(tmp_path: Path):
             "frozen_at": "2026-09-02T12:01:00Z",
         },
         "official_snapshot_hash": official_hash,
-        # Deliberately only a syntactically valid digest; current publication must
-        # prove it actually matches the canonical surface reconstructed from snapshot.
-        "canonical_projection_hash": "b" * 64,
+        "canonical_projection_hash": canonical_hash,
         "system_decision": None,
         "certification": {
             "schema_version": 1,
@@ -137,6 +162,12 @@ def _publish(tmp_path: Path, snapshot, decision: dict):
     )
 
 
+def test_publication_accepts_internally_bound_decision(tmp_path: Path):
+    snapshot, decision, _ = _fixture(tmp_path)
+    material = _publish(tmp_path, snapshot, decision)
+    assert material.public_attempt_id
+
+
 def test_publication_rejects_decision_from_different_snapshot(tmp_path: Path):
     snapshot, decision, _ = _fixture(tmp_path)
     changed = deepcopy(decision)
@@ -170,5 +201,7 @@ def test_publication_rejects_official_hash_not_bound_to_snapshot(tmp_path: Path)
 
 def test_publication_rejects_fake_canonical_projection_hash(tmp_path: Path):
     snapshot, decision, _ = _fixture(tmp_path)
+    changed = deepcopy(decision)
+    changed["canonical_projection_hash"] = "b" * 64
     with pytest.raises(RuntimeError, match="canonical.*hash|hash.*canonical"):
-        _publish(tmp_path, snapshot, decision)
+        _publish(tmp_path, snapshot, changed)
