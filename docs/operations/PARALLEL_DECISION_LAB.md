@@ -65,9 +65,26 @@ Heavy tasks are:
 
 H1 mechanics on the already-owned production 15 uses the frozen fixed-squad mechanics path and does not run the transfer-horizon optimiser.
 
-GitHub Actions runs independent staging tasks concurrently with `fail-fast: false` and a bounded matrix. Therefore normal wall-clock cost is approximately the slowest individual task rather than the sum of every provider experiment. A failed task does not invalidate already sealed siblings; rerunning computes only missing tasks.
+GitHub Actions runs independent staging tasks concurrently with `fail-fast: false` and a bounded matrix. Therefore normal wall-clock cost is approximately the slowest individual task rather than the sum of every provider experiment. A failed task does not invalidate already sealed siblings; rerunning computes only missing tasks on the identical control-plane SHA.
 
-Increasing the monolithic workflow timeout is deliberately not the solution.
+Increasing the old **monolithic** workflow timeout is deliberately not the solution. Parallelisation removes serial accumulation, but each independent exact task must still receive enough time to complete the certified frozen optimiser it invokes.
+
+For the frozen engine the runtime contract is derived from source, not from an observed average:
+
+- `candidate_limit = 8`;
+- each SciPy MILP has `time_limit = 120` seconds;
+- there is one initial expected-value solve;
+- each of up to eight candidate generations can perform two further solves.
+
+Therefore the exact theoretical MILP allowance is:
+
+`(1 + 2 * 8) * 120 = 2040 seconds = 34 minutes`.
+
+That 34 minutes excludes environment setup, controller materialisation, private-store preflight, exact mechanics/rescoring, serialization, immutable release publication and verification, frozen-worktree proof and cleanup. The operations contract therefore requires an additional **15 minutes of orchestration headroom**, giving a minimum compatible matrix-job bound of **49 minutes**. The workflow is configured at **50 minutes**.
+
+`ops_tests/test_apex_v2_decision_lab_runtime_bound.py` reads the exact frozen evaluator materialised by the V2 Ops Contract, statically verifies the audited solve-call shape, derives `candidate_limit` and the per-MILP `time_limit`, and compares the resulting bound plus headroom with the workflow timeout. Optimiser/default drift or a future timeout reduction therefore fails CI and requires an explicit runtime re-audit.
+
+This timeout correction changes only orchestration capacity. It does not reduce candidate depth, shorten the planning horizon, weaken `mip_rel_gap`, skip exact mechanics or alter provider/decision semantics.
 
 ## 4. Canonical assembly
 
@@ -127,8 +144,9 @@ A parallel decision-lab change is acceptable only when all of the following are 
 8. tests proving control-plane-bound staging fingerprints;
 9. tests proving required-task assembly fails closed;
 10. structural test proving the full transfer optimiser has one centralized call site per task;
-11. post-merge live workflow completes the GW3 staging matrix and canonical assembly within the operational timeout;
-12. immutable canonical GW3 lab is inspected and bound to the expected tournament candidate before the deadline;
-13. main and frozen PR #90 identities are reverified afterward.
+11. static runtime-bound test proving the per-task timeout covers frozen theoretical MILP allowance plus explicit orchestration headroom;
+12. post-merge live workflow completes the GW3 staging matrix and canonical assembly within the operational timeout;
+13. immutable canonical GW3 lab is inspected and bound to the expected tournament candidate before the deadline;
+14. main and frozen PR #90 identities are reverified afterward.
 
 Only after the live immutable lab exists is the runtime repair considered complete.
