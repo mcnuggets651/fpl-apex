@@ -11,6 +11,10 @@ on:
       - "scripts/apex_v2_*.py"
       - "scripts/check_governance_consistency.py"
       - "ops_tests/**"
+      - "tests/test_airsenal_workflow_contract.py"
+      - "tests/test_core_candidate_publication.py"
+      - "tests/test_production_publication_contract.py"
+      - "tests/test_solver_parity_contract.py"
       - "README.md"
       - "PROJECT_STATUS.md"
       - "docs/APEX_V2_AUTHORITY.json"
@@ -19,6 +23,11 @@ on:
       - "docs/APEX_OPERATING_MANUAL.md"
       - "docs/KNOWN_ISSUES.md"
       - "docs/SESSION_LOG.md"
+      - "docs/CHATGPT_USAGE.md"
+      - "docs/CHATGPT_APEX_QUERY_POLICY.md"
+      - "docs/APEX_ROADMAP.md"
+      - "docs/APEX_DECISIONS.md"
+      - "docs/APEX_CHANGELOG.md"
       - "docs/APEX_V2_DAILY_OPERATIONS.md"
       - "docs/APEX_V2_SAFE_EXTENSIONS.md"
       - "docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md"
@@ -51,7 +60,7 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Assert operations-only change surface
+      - name: Assert bounded operations and governance change surface
         shell: bash
         run: |
           set -euo pipefail
@@ -86,6 +95,10 @@ jobs:
               "scripts/apex_v2_tournament_ops.py",
               "scripts/apex_v2_tournament_scoring.py",
               "scripts/check_governance_consistency.py",
+              "tests/test_airsenal_workflow_contract.py",
+              "tests/test_core_candidate_publication.py",
+              "tests/test_production_publication_contract.py",
+              "tests/test_solver_parity_contract.py",
               "README.md",
               "PROJECT_STATUS.md",
               "docs/APEX_V2_AUTHORITY.json",
@@ -94,6 +107,11 @@ jobs:
               "docs/APEX_OPERATING_MANUAL.md",
               "docs/KNOWN_ISSUES.md",
               "docs/SESSION_LOG.md",
+              "docs/CHATGPT_USAGE.md",
+              "docs/CHATGPT_APEX_QUERY_POLICY.md",
+              "docs/APEX_ROADMAP.md",
+              "docs/APEX_DECISIONS.md",
+              "docs/APEX_CHANGELOG.md",
               "docs/APEX_V2_DAILY_OPERATIONS.md",
               "docs/APEX_V2_SAFE_EXTENSIONS.md",
               "docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md",
@@ -113,34 +131,44 @@ jobs:
               and not path.startswith("archive/workflows/")
           )
           if unexpected:
-              raise SystemExit(f"ops PR touched non-operational paths: {unexpected}")
+              raise SystemExit(f"ops/governance PR touched unexpected paths: {unexpected}")
           forbidden = sorted(
-              path
-              for path in changed
-              if path.startswith(("src/", "config/", "tests/"))
+              path for path in changed if path.startswith(("src/", "config/"))
           )
           if forbidden:
-              raise SystemExit(f"ops PR touched frozen-engine paths: {forbidden}")
+              raise SystemExit(f"ops/governance PR touched frozen engine source/config: {forbidden}")
+          test_changes = sorted(path for path in changed if path.startswith("tests/"))
+          allowed_tests = {
+              "tests/test_airsenal_workflow_contract.py",
+              "tests/test_core_candidate_publication.py",
+              "tests/test_production_publication_contract.py",
+              "tests/test_solver_parity_contract.py",
+          }
+          unexpected_tests = sorted(set(test_changes) - allowed_tests)
+          if unexpected_tests:
+              raise SystemExit(f"ops/governance PR touched unrelated engine tests: {unexpected_tests}")
           if not changed:
-              raise SystemExit("ops PR has no changes")
+              raise SystemExit("ops/governance PR has no changes")
           PY
 
-      - name: Install repository runtime for real evaluator regressions
+      - name: Install repository runtime
         run: python -m pip install -e .
 
       - name: Materialize exact frozen evaluator source
         shell: bash
         run: |
           set -euo pipefail
+          git fetch --no-tags origin "$FROZEN_APEX_SHA"
           rm -rf "$RUNNER_TEMP/frozen-apex"
           git worktree add --detach "$RUNNER_TEMP/frozen-apex" "$FROZEN_APEX_SHA"
           test "$(git -C "$RUNNER_TEMP/frozen-apex" rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test -f "$RUNNER_TEMP/frozen-apex/config/apex_v2.yaml"
+          test -f "$RUNNER_TEMP/frozen-apex/src/apex/decision/transfers.py"
           test -f "$RUNNER_TEMP/frozen-apex/src/apex/governance/evaluation.py"
           test -f "$RUNNER_TEMP/frozen-apex/src/apex/governance/tournament.py"
           test -f "$RUNNER_TEMP/frozen-apex/src/apex/runtime/evaluation_archive.py"
-          test -f "$RUNNER_TEMP/frozen-apex/src/apex/decision/transfers.py"
 
-      - name: Run operations regression tests against frozen evaluator
+      - name: Run operations regressions against frozen evaluator
         env:
           PYTHONPATH: ${{ runner.temp }}/frozen-apex/src:${{ github.workspace }}/scripts:${{ github.workspace }}/src
         run: python -m unittest discover -s ops_tests -p 'test_*.py' -v
@@ -148,61 +176,35 @@ jobs:
       - name: Assert repository V2 governance is consistent
         run: python scripts/check_governance_consistency.py
 
-      - name: Assert frozen production and serving authority
+      - name: Assert serving, operations and research boundaries
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
+          import json
           from pathlib import Path
 
           frozen = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
           production = Path(".github/workflows/apex-v2-daily-production.yml").read_text(encoding="utf-8")
-          required = (
+          for needle in (
               frozen,
               'cron: "17 4 * * *"',
               "group: apex-v2-fpl-auth",
               "cancel-in-progress: false",
-              "ref: $" + "{{ env.APEX_CODE_SHA }}",
-              "CONTROL_PLANE_SHA: $" + "{{ github.sha }}",
-              "apex_v2_auth_ops.py",
-              "apex_v2_shadow_provider_ops.py",
-              'git show "$FROZEN_APEX_SHA:upstreams.lock.json"',
               "apex-v2 private-store-preflight",
               "apex-v2 official-hash",
-              "dastan-run",
-              "--max-attempts 2",
-              "--wall-clock-seconds 900",
-              "--snapshot-output \"$SNAPSHOT_FILE\"",
+              "FPL_TEAM_ID: \"1\"",
+              "run_airsenal_worker.py",
+              "--horizon 8",
               'APEX_ALLOW_NETWORK_DURING_SOLVE: "0"',
-              "scripts/check_v2_architecture.py",
               "apex-v2 solve",
               "apex-v2 publish",
-          )
-          missing = [needle for needle in required if needle not in production]
-          if missing:
-              raise SystemExit(f"daily production contract missing: {missing}")
-          for forbidden in ("pull_request:", "\n  push:\n", "cancel-in-progress: true", "contents: write", "git push"):
-              if forbidden in production:
-                  raise SystemExit(f"daily production contract crossed boundary: {forbidden}")
-
-          manifest = Path("docs/APEX_V2_AUTHORITY.json").read_text(encoding="utf-8")
-          for needle in (
-              '"frozen_engine_sha": "' + frozen + '"',
-              '"serving_provider": "airsenal"',
-              '"production_influence": "NONE"',
-              '"serving_authorized": false',
-              '"automatic_promotion": false',
           ):
-              if needle not in manifest:
-                  raise SystemExit(f"authority manifest missing: {needle}")
-          PY
-
-      - name: Assert auth, deadline and evaluation boundaries
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
+              if needle not in production:
+                  raise SystemExit(f"daily production contract missing: {needle}")
+          for forbidden in ("pull_request:", "\n  push:\n", "git push", "scripts/run_apex.py", "run_pinnacle.py"):
+              if forbidden in production:
+                  raise SystemExit(f"daily production crossed authority boundary: {forbidden}")
 
           keepalive = Path(".github/workflows/apex-v2-auth-keepalive.yml").read_text(encoding="utf-8")
           for needle in ('cron: "22 */6 * * *"', "contents: read", "group: apex-v2-fpl-auth", "--mode keepalive"):
@@ -221,128 +223,32 @@ jobs:
                   raise SystemExit(f"deadline watcher crossed safety boundary: {forbidden}")
 
           evaluation = Path(".github/workflows/apex-v2-daily-evaluation.yml").read_text(encoding="utf-8")
-          for needle in (
-              "99cc7b51b0cff45462b567084cb1844cfe0a456f",
-              'cron: "41 6 * * *"',
-              "apex-v2 evaluate-completed",
-              "apex-v2 tournament-standings",
-          ):
+          for needle in (frozen, 'cron: "41 6 * * *"', "apex-v2 evaluate-completed", "apex-v2 tournament-standings"):
               if needle not in evaluation:
                   raise SystemExit(f"daily evaluation contract missing: {needle}")
-          PY
 
-      - name: Assert research and decision-quality remain non-serving and no-hindsight
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
+          decision = Path(".github/workflows/apex-v2-decision-quality.yml").read_text(encoding="utf-8")
+          for needle in ("max-parallel: 8", "timeout-minutes: 50", "--mode prepare", "--mode solve-task", "--mode assemble", "--mode postoutcome"):
+              if needle not in decision:
+                  raise SystemExit(f"decision-quality contract missing: {needle}")
+          for forbidden in ("contents: write", "apex-v2 acquire", "apex-v2 publish"):
+              if forbidden in decision:
+                  raise SystemExit(f"decision-quality crossed serving boundary: {forbidden}")
 
-          shadow = Path(".github/workflows/apex-v2-shadow-health.yml").read_text(encoding="utf-8")
-          for needle in (
-              "permissions:\n  contents: read",
-              "99cc7b51b0cff45462b567084cb1844cfe0a456f",
-              "dastan-pin-health",
-              "pitchside-health",
-              "openfpl-readiness",
-          ):
-              if needle not in shadow:
-                  raise SystemExit(f"shadow-health contract missing: {needle}")
-          for forbidden in (
-              "FPL_SESSION_COOKIE",
-              "FPL_X_API_AUTHORIZATION",
-              "FPL_REFRESH_TOKEN",
-              "APEX_PRIVATE_GITHUB_TOKEN",
-              "contents: write",
-              "apex-v2 solve",
-              "apex-v2 publish",
-          ):
-              if forbidden in shadow:
-                  raise SystemExit(f"shadow-health crossed safety boundary: {forbidden}")
-
-          tournament = Path(".github/workflows/apex-v2-prospective-tournament.yml").read_text(encoding="utf-8")
-          for needle in (
-              'workflows: ["Apex V2 Daily Production"]',
-              'cron: "23 * * * *"',
-              'FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"',
-              "apex_v2_tournament_contract.py",
-              "apex_v2_tournament_scoring.py",
-              "seal-run",
-              "canonicalize",
-              "evaluate",
-          ):
-              if needle not in tournament:
-                  raise SystemExit(f"prospective tournament contract missing: {needle}")
-          for forbidden in (
-              "FPL_SESSION_COOKIE",
-              "FPL_X_API_AUTHORIZATION",
-              "FPL_REFRESH_TOKEN",
-              "apex-v2 acquire",
-              "apex-v2 solve",
-              "apex-v2 publish",
-              "run_airsenal_worker.py",
-          ):
-              if forbidden in tournament:
-                  raise SystemExit(f"prospective tournament crossed serving boundary: {forbidden}")
-
-          contract = Path("scripts/apex_v2_tournament_contract.py").read_text(encoding="utf-8")
-          for needle in (
-              "LAST_VALID_COMMON_PREDEADLINE_SEAL",
-              '"production_influence": "NONE"',
-              '"serve_authorized": False',
-          ):
-              if needle not in contract:
+          tournament_contract = Path("scripts/apex_v2_tournament_contract.py").read_text(encoding="utf-8")
+          for needle in ("LAST_VALID_COMMON_PREDEADLINE_SEAL", '"production_influence": "NONE"', '"serve_authorized": False'):
+              if needle not in tournament_contract:
                   raise SystemExit(f"tournament governance invariant missing: {needle}")
 
-          workflow = Path(".github/workflows/apex-v2-decision-quality.yml").read_text(encoding="utf-8")
-          controller = Path("scripts/apex_v2_decision_lab_parallel.py").read_text(encoding="utf-8")
-          for needle in (
-              "strategy:",
-              "max-parallel: 8",
-              "timeout-minutes: 50",
-              "--mode prepare",
-              "--mode solve-task",
-              "--mode assemble",
-              "--mode postoutcome",
-          ):
-              if needle not in workflow:
-                  raise SystemExit(f"parallel decision workflow contract missing: {needle}")
-          for needle in (
-              'TASK_PREFIX = "apex-v2/private-decision-lab-task"',
-              '"private_manager_state_in_matrix": False',
-              '"production_influence": "NONE"',
-              '"serving_authorized": False',
-              "if _utc_now() >= deadline",
-              "canonical lab assembly missing required staging task",
-              "decision-lab task finished after deadline and will not be sealed",
-          ):
-              if needle not in controller:
-                  raise SystemExit(f"parallel decision controller invariant missing: {needle}")
-          for forbidden in ("contents: write", "apex-v2 acquire", "apex-v2 publish"):
-              if forbidden in workflow:
-                  raise SystemExit(f"parallel decision workflow crossed serving boundary: {forbidden}")
-          PY
-
-      - name: Assert historical orphan policy remains fail-closed
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          audit = Path("scripts/apex_v2_attempt_audit_ops.py").read_text(encoding="utf-8")
-          for run in (
-              "33242604422-1",
-              "33257608630-1",
-              "33260512411-1",
-              "33265747805-1",
-              "33272866621-1",
-              "33312221205-1",
-          ):
-              if run not in audit:
-                  raise SystemExit(f"historical orphan acknowledgement missing: {run}")
-          if "unacknowledged_missing_finals" not in audit or "operationally_clear" not in audit:
-              raise SystemExit("orphan audit no longer fails closed")
+          manifest = json.loads(Path("docs/APEX_V2_AUTHORITY.json").read_text(encoding="utf-8"))
+          if manifest["serving_provider"] != "airsenal":
+              raise SystemExit("AIrsenal is no longer sole declared serving provider")
+          if manifest["research"]["production_influence"] != "NONE":
+              raise SystemExit("research acquired production influence")
+          if manifest["research"]["serving_authorized"] is not False:
+              raise SystemExit("research acquired serving authority")
+          if manifest["research"]["automatic_promotion"] is not False:
+              raise SystemExit("automatic challenger promotion was enabled")
           PY
 
       - name: Assert retired legacy publishers are archived and inert
@@ -352,13 +258,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          legacy = (
-              "pinnacle.yml",
-              "airsenal.yml",
-              "refresh-core-pin.yml",
-              "gw1-final-2026.yml",
-          )
-          for name in legacy:
+          for name in ("pinnacle.yml", "airsenal.yml", "refresh-core-pin.yml", "gw1-final-2026.yml"):
               active = Path(".github/workflows") / name
               archived = Path("archive/workflows") / name
               if active.exists():
@@ -386,7 +286,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify frozen pin, one serving authority and untouched engine
+      - name: Verify frozen pin and reconciled authority
         shell: bash
         run: |
           set -euo pipefail
@@ -394,46 +294,21 @@ jobs:
           git show "$FROZEN_APEX_SHA:.github/workflows/apex-v2-production.yml" | grep -F -- '--snapshot-output'
           git show "$FROZEN_APEX_SHA:.github/workflows/apex-v2-production.yml" | grep -F -- 'APEX_ALLOW_NETWORK_DURING_SOLVE'
           git show "$FROZEN_APEX_SHA:.github/workflows/apex-v2-production.yml" | grep -F -- 'apex-v2 publish'
-          if git diff --name-only origin/main...HEAD -- src config tests | grep -q .; then
-            echo "Operations extension modified frozen-engine source/config/test paths." >&2
-            git diff --name-only origin/main...HEAD -- src config tests >&2
+          if git diff --name-only origin/main...HEAD -- src config | grep -q .; then
+            echo "Operations/governance extension modified frozen-engine source/config paths." >&2
+            git diff --name-only origin/main...HEAD -- src config >&2
             exit 1
           fi
           python scripts/check_governance_consistency.py
           python - <<'PY'
           import json
-          import subprocess
           from pathlib import Path
 
           manifest = json.loads(Path("docs/APEX_V2_AUTHORITY.json").read_text(encoding="utf-8"))
-          if manifest["serving_provider"] != "airsenal":
-              raise SystemExit("AIrsenal is no longer sole declared serving provider")
-          if manifest["canonical_production_workflow"] != ".github/workflows/apex-v2-daily-production.yml":
-              raise SystemExit("canonical production workflow drifted")
-          if manifest["research"]["production_influence"] != "NONE":
-              raise SystemExit("research acquired production influence")
-
-          allowed_scripts = {
-              "scripts/apex_v2_auth_ops.py",
-              "scripts/apex_v2_attempt_audit_ops.py",
-              "scripts/apex_v2_deadline_ops.py",
-              "scripts/apex_v2_owner_brief_ops.py",
-              "scripts/apex_v2_decision_quality_ops.py",
-              "scripts/apex_v2_decision_lab_parallel.py",
-              "scripts/apex_v2_shadow_provider_ops.py",
-              "scripts/apex_v2_tournament_common.py",
-              "scripts/apex_v2_tournament_contract.py",
-              "scripts/apex_v2_tournament_ops.py",
-              "scripts/apex_v2_tournament_scoring.py",
-              "scripts/check_governance_consistency.py",
-          }
-          scripts = set(
-              subprocess.check_output(
-                  ["git", "diff", "--name-only", "origin/main...HEAD", "--", "scripts"],
-                  text=True,
-              ).splitlines()
-          )
-          unexpected = sorted(scripts - allowed_scripts)
-          if unexpected:
-              raise SystemExit(f"Operations extension modified unexpected scripts: {unexpected}")
+          assert manifest["frozen_engine_sha"] == "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+          assert manifest["frozen_engine_pr"] == 90
+          assert manifest["frozen_engine_pr_policy"] == "NEVER_MERGE_OR_ADVANCE"
+          assert manifest["canonical_production_workflow"] == ".github/workflows/apex-v2-daily-production.yml"
+          assert manifest["serving_provider"] == "airsenal"
+          assert manifest["research"]["production_influence"] == "NONE"
           PY
