@@ -27,7 +27,6 @@ from apex_v2_decision_quality_ops import (
     _load_candidate_context,
     _load_private_payload,
     _production_surface,
-    _surface_hash,
     _utc_now,
     _variant,
     _write_private_release,
