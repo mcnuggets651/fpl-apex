@@ -30,9 +30,11 @@ A forecast or decision variant that was not immutably sealed before the relevant
 
 ## K007 — Decision Quality exact-task runtime
 
-**Resolved operationally by PR #114; live GW3 acceptance remains the proof gate until the corrected run completes.**
+**Resolved operationally by PR #114 and accepted live on 2 September 2026.**
 
 The frozen transfer optimiser permits up to 17 MILP calls at 120 seconds each, or 34 minutes of solver allowance before orchestration. The prior 30-minute matrix timeout could not guarantee exact completion. The workflow now grants 50 minutes per independent solve task and `ops_tests/test_apex_v2_decision_lab_runtime_bound.py` derives the theoretical bound plus 15 minutes of headroom from the frozen source. Candidate depth, horizon, MIP gap and exact mechanics were not changed.
+
+Corrected Decision Quality run #10 (`33643925982`) completed successfully with all 8/8 fresh GW3 tasks sealed, including exact baseline reproduction and the previously timing-out Apex Proprietary availability overlay. Canonical assembly produced immutable private lab `apex-v2/private-decision-lab/2026-2027/33590896695-1`; all constituent decisions were already sealed before the GW3 deadline. This is the runtime acceptance proof. Keep the bound regression, but do not carry K007 as an open blocker.
 
 ## K008 — Project Brain architecture drift
 
@@ -44,15 +46,28 @@ The frozen transfer optimiser permits up to 17 MILP calls at 120 seconds each, o
 
 ## K010 — Legacy publishers retained executable write paths
 
-**Resolved and merged by PR #115 on 2 September 2026.** Historical `pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml` and `gw1-final-2026.yml` are preserved byte-for-byte under `archive/workflows/` and are absent from `.github/workflows`, making them inert forensic history. Governance and the V2 Ops Contract fail if they return to the executable workflow directory.
+**Resolved and merged by PR #115 on 2 September 2026.** Historical `pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml` and `gw1-final-2026.yml` are preserved byte-for-byte under `archive/workflows/` and are absent from `.github/workflows`, making them inert forensic history. Governance and the V2 Ops Contract fail if they return to the executable workflow directory. The operations change-surface contract also rejects future modification of `archive/workflows/**`, preserving that evidence after cutover.
 
 ## K011 — Mutable historical evaluation reference
 
-Some non-serving prospective evaluation paths have used `vaastav/Fantasy-Premier-League@master`. The branch existed at the last audit, so this is not a current serving fault, but deterministic evaluation should use the exact history commit pinned in `upstreams.lock.json` wherever the consumer supports it. Current OpenFPL readiness is a special case: it resolves the moving current-season history ref to a full immutable commit before reading rows and records that resolved commit, because freezing that monitor to an old baseline would prevent new completed Gameweeks from becoming observable.
+**Audited; current OpenFPL usage is intentional and safe within its non-serving boundary.**
+
+Some prospective evaluation paths observe `vaastav/Fantasy-Premier-League@master` because current-season completed Gameweeks must continue becoming visible. `openfpl_readiness()` does not consume that mutable ref directly: it resolves the supplied ref to a full 40-character commit SHA, then reads the current-season history directory at that exact immutable SHA and records `observed_history_commit`, commit time and a manifest digest. Freezing this monitor to the older baseline in `upstreams.lock.json` would prevent later completed Gameweeks from becoming observable.
+
+Any different historical consumer that does not first resolve and record an immutable commit remains subject to the normal pinning rule. This exception grants no serving influence or model promotion authority.
 
 ## K012 — GitHub Actions Node runtime maintenance
 
-Current workflows can emit warnings for action versions targeting Node 20 while GitHub runners force a newer runtime. This has not been a functional failure. Current upstream action releases provide Node 24-compatible generations; migrate them in a separate CI-proven maintenance PR rather than coupling runner maintenance to the GW3 decision-lab acceptance.
+**Resolved in the final 2 September 2026 operations closure.**
+
+All executable workflows now use exact commit pins for the current certified Node-24-native GitHub-owned action generations:
+
+- `actions/checkout` v7.0.1 — `3d3c42e5aac5ba805825da76410c181273ba90b1`;
+- `actions/setup-python` v7.0.0 — `5fda3b95a4ea91299a34e894583c3862153e4b97`;
+- `actions/cache` v6.1.0 — `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`;
+- `actions/upload-artifact` v7.0.1 — `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`.
+
+`ops_tests/test_github_actions_runtime_contract.py` rejects stale mutable major references, unknown GitHub-owned actions and drift from the certified exact pins. `.github/dependabot.yml` checks GitHub Actions weekly and routes future updates through protected PR review instead of silently moving runtime dependencies. Archived forensic workflows are deliberately excluded from migration and are immutable under the V2 Ops Contract.
 
 ## K013 — External provider automation permissions
 

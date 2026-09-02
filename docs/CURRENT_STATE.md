@@ -12,9 +12,7 @@ Apex V2 is frozen at engine SHA:
 
 PR #90 is the frozen clean-room engine PR. It remains open, draft and unmerged; operations must not merge, advance or modify it.
 
-The default branch `main` is the live operations/research control plane. After the V2 authority reconciliation, the verified main merge commit is:
-
-`138a886815c5110c9a528f93f16811e99c6a7e48`
+The default branch `main` is the live operations/research control plane. Do not copy a historical `main` SHA into future reasoning as if it were permanent: verify the current signed head directly on GitHub. PR #115 reconciled V2 authority/governance and PR #116 closed the post-merge documentation race.
 
 The only serving production workflow is:
 
@@ -32,9 +30,9 @@ If authentication, factual authority, provider qualification, snapshot identity 
 
 Legacy `scripts/run_apex.py`, Pinnacle/Elite flows and repository-generated recommendation files are historical/test compatibility surfaces, not current production authority.
 
-## GW3 prospective research
+## GW3 prospective research — ACCEPTED
 
-Current canonical tournament candidate:
+Canonical tournament candidate:
 
 `apex-v2/tournament-candidate/2026-2027/33590896695-1`
 
@@ -44,9 +42,15 @@ Official GW3 deadline:
 
 PR #112 added the prospective decision-edge lab. PR #113 made it parallel/resumable using immutable per-task staging. PR #114 corrected the individual heavy-task runtime contract from 30 to 50 minutes without changing the frozen optimiser. A regression derives the 34-minute theoretical MILP allowance from frozen source and requires explicit orchestration headroom.
 
-Corrected Decision Quality run #10 (`33643925982`) is sealing a fresh task set under control-plane SHA `e123fb312015a620795f343f503f8c214699afb4`. The authority/documentation merge in PR #115 did not modify the Decision Quality workflow or research controllers, so it does not invalidate that predeadline task set.
+Corrected Decision Quality run #10 (`33643925982`) ran under control-plane SHA `e123fb312015a620795f343f503f8c214699afb4` and completed successfully on 2 September 2026. All eight deterministic fresh tasks sealed before the deadline. The exact production baseline reproduced successfully; the formerly timing-out Apex Proprietary availability experiment also completed; every task preserved its frozen-worktree proof.
 
-GW3 acceptance requires all required counterfactual decisions to be immutably sealed before the deadline, exact production-baseline reproduction, complete canonical assembly, no invented Dastan H2+ plan, non-serving research flags, clean frozen-worktree proofs and an overall green Decision Quality run. Assembly may package already sealed predeadline decisions later; it may never create a missing decision after the deadline.
+Canonical assembly succeeded and published the immutable private lab:
+
+`apex-v2/private-decision-lab/2026-2027/33590896695-1`
+
+The canonical lab contains eight variants and remains explicitly non-serving: `production_influence = NONE`, `serving_authorized = false`, no promotion authority and no automatic serving change. The assembler validates immutable task fingerprints/attestations, requires every constituent decision to have been sealed predeadline and forbids postdeadline decision backfill. Dastan remains H1-only and no invented Dastan H2+ pure-provider plan exists.
+
+The `postoutcome` stage completed successfully. With GW3 outcomes not yet available it correctly published no realized decision-quality result and made no learning or serving change. GW3 runtime/decision-lab acceptance is therefore complete; later outcome scoring is normal prospective operation, not an unfinished acceptance gate.
 
 ## Operations health
 
@@ -57,9 +61,15 @@ Structurally healthy:
 - deadline watcher;
 - daily prospective evaluation;
 - prospective tournament;
-- immutable private release store boundaries.
+- immutable private release store boundaries;
+- Decision Quality parallel/resumable exact-task runtime;
+- Node-24-native GitHub Actions execution surface.
 
-PR #115 completed the Project Brain/generic-governance reconciliation. The machine authority, canonical documents, generic checker, tests and active workflow inventory now agree on the frozen V2 production constitution. Legacy publishers are archived outside `.github/workflows`, and the V2 Ops Contract fails if they return or if canonical authority documents revive obsolete V1/Pinnacle production claims.
+Executable workflows use exact commit pins for the certified Node-24-native generations of `actions/checkout`, `actions/setup-python`, `actions/cache` and `actions/upload-artifact`. A dedicated operations regression rejects stale/mutable action references, and Dependabot proposes future GitHub Actions updates weekly through the normal protected pull-request path.
+
+The historical `archive/workflows/` directory is forensic evidence. The V2 Ops Contract now rejects any change to that archive while separately rejecting any resurrection of retired publishers into `.github/workflows`.
+
+The OpenFPL current-history observer deliberately resolves its moving upstream history ref to a full immutable commit before reading rows and records that resolved SHA. This is an audited non-serving exception to static pinning: freezing the observer to an old history baseline would prevent new completed Gameweeks from becoming observable.
 
 ## Source of truth for continuation
 
@@ -69,6 +79,6 @@ For substantive work:
 2. read this file;
 3. read `APEX_MASTER_CONTEXT.md` and `APEX_OPERATING_MANUAL.md`;
 4. use `APEX_V2_DAILY_OPERATIONS.md`, `APEX_V2_SAFE_EXTENSIONS.md`, `APEX_V2_PROSPECTIVE_TOURNAMENT.md` and `operations/PARALLEL_DECISION_LAB.md` for implementation details;
-5. verify live `main`, PR #90 and relevant workflow/release state before changing anything.
+5. verify live `main`, PR #90, main ruleset `21759706` and relevant workflow/release state before changing anything.
 
 Do not use an old GW1 squad or historical generated recommendation as current manager state. Do not invent a squad from memory.
