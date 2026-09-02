@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from apex.forecast.contract import projection_surface_hash
+from apex.runtime.serde import official_from_dict, team_from_dict
+from apex.runtime.serving import reconstruct_frozen_serving
 from apex.runtime.snapshot import open_frozen_snapshot
 
 PUBLIC_RELEASE_ASSETS_V1 = frozenset(
@@ -289,6 +292,118 @@ def _required_sha256(decision: dict, key: str) -> str:
     if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
         raise RuntimeError(f"DecisionBundle {key} is not a valid SHA-256 digest")
     return value
+
+
+def _normalise_serving_map(value) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise RuntimeError("DecisionBundle serving provider map must be a mapping")
+    try:
+        return {str(int(key)): str(provider_id) for key, provider_id in value.items()}
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("DecisionBundle serving provider map is invalid") from exc
+
+
+def _assert_decision_bound_to_snapshot(snapshot, decision: dict, run: dict) -> None:
+    """Independently bind a DecisionBundle to the exact frozen production input.
+
+    Publication is a separate trust boundary from solve. It must not attest a
+    detached or tampered DecisionBundle merely because the file is syntactically
+    valid. Reconstruct the frozen serving policy from the content-addressed
+    snapshot and compare every identity that can change the published decision.
+    """
+    manifest = decision.get("manifest")
+    if not isinstance(manifest, dict):
+        raise RuntimeError("DecisionBundle manifest is missing or invalid")
+
+    expected_identity = {
+        "run_id": str(run["run_id"]),
+        "season": str(run["season"]),
+        "target_gameweek": int(run["target_gameweek"]),
+        "code_sha": str(run["code_sha"]),
+        "config_sha": str(run["config_sha"]),
+        "acquired_at": str(run["acquired_at"]),
+        "started_at": str(run["run_started_at"]),
+    }
+    for field, expected in expected_identity.items():
+        observed = manifest.get(field)
+        if field == "target_gameweek":
+            try:
+                observed = int(observed)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "DecisionBundle target_gameweek does not match frozen run"
+                ) from exc
+        else:
+            observed = str(observed) if observed is not None else None
+        if observed != expected:
+            raise RuntimeError(
+                f"DecisionBundle {field} does not match frozen run identity"
+            )
+
+    if str(manifest.get("snapshot_id") or "") != snapshot.snapshot_id:
+        raise RuntimeError("DecisionBundle snapshot identity does not match frozen snapshot")
+
+    official = official_from_dict(snapshot.read_json("official.json"))
+    team_raw = snapshot.read_json("team_state.json")
+    team = team_from_dict(team_raw) if team_raw else None
+    matrix = snapshot.read_json("qualification_matrix.json")
+    _, _, policy, max_horizon, canonical = reconstruct_frozen_serving(
+        snapshot, official, team, run, matrix
+    )
+    expected_serving = {
+        str(horizon): provider.provider_id
+        for horizon, provider in policy.items()
+    }
+
+    manifest_serving = _normalise_serving_map(
+        manifest.get("serving_provider_by_horizon") or {}
+    )
+    if manifest_serving != expected_serving:
+        raise RuntimeError(
+            "DecisionBundle manifest serving provider map does not match frozen snapshot"
+        )
+
+    diagnostics = decision.get("provider_diagnostics")
+    if not isinstance(diagnostics, dict):
+        raise RuntimeError("DecisionBundle provider diagnostics are missing or invalid")
+    diagnostics_serving = _normalise_serving_map(
+        diagnostics.get("serving_provider_by_horizon") or {}
+    )
+    if diagnostics_serving != expected_serving:
+        raise RuntimeError(
+            "DecisionBundle diagnostics serving provider map does not match frozen snapshot"
+        )
+    try:
+        diagnostic_horizon = int(diagnostics.get("max_contiguous_horizon"))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "DecisionBundle max contiguous horizon is invalid"
+        ) from exc
+    if diagnostic_horizon != int(max_horizon):
+        raise RuntimeError(
+            "DecisionBundle max contiguous horizon does not match frozen snapshot"
+        )
+
+    official_hash = _required_sha256(decision, "official_snapshot_hash")
+    if official_hash != str(official.source_hash).lower():
+        raise RuntimeError(
+            "DecisionBundle official snapshot hash does not match frozen Official FPL truth"
+        )
+
+    if canonical is None:
+        if str(decision.get("canonical_projection_hash") or ""):
+            raise RuntimeError(
+                "DecisionBundle canonical projection hash exists without a frozen serving surface"
+            )
+    else:
+        expected_canonical_hash = projection_surface_hash(canonical)
+        observed_canonical_hash = _required_sha256(
+            decision, "canonical_projection_hash"
+        )
+        if observed_canonical_hash != expected_canonical_hash:
+            raise RuntimeError(
+                "DecisionBundle canonical projection hash does not match frozen serving surface"
+            )
 
 
 def _manager_actionability(acquisition: dict, decision: dict) -> dict:
@@ -719,6 +834,7 @@ def build_publication_materials(
     snapshot = open_frozen_snapshot(snapshot_path)
     decision = json.loads(Path(decision_path).read_text(encoding="utf-8"))
     run = snapshot.read_json("run.json")
+    _assert_decision_bound_to_snapshot(snapshot, decision, run)
     acquisition = _acquisition(snapshot)
     mode, credential_present = _manager_state_mode(acquisition)
     _assert_public_transfer_ledger(acquisition)
