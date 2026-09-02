@@ -64,8 +64,8 @@ class ApexConfig:
             raise ValueError("max_horizon must be positive")
 
         raw_providers = payload.get("providers")
-        if not isinstance(raw_providers, list) or not raw_providers:
-            raise ValueError("providers must be a non-empty list")
+        if not isinstance(raw_providers, list):
+            raise ValueError("providers must be a list")
 
         providers = []
         provider_ids: set[str] = set()
