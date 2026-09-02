@@ -2,6 +2,29 @@
 
 Append concise records after meaningful project sessions. This is continuity context, not a replacement for Git history.
 
+## 2026-09-02 — Apex V2 runtime and authority reconciliation
+
+### Live state verified
+- `main` was verified at signed PR #113 merge `a051a69ac54d406486ab5d76f802efadc0c935d6` before changes.
+- Frozen engine PR #90 was verified open/draft/unmerged at `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
+- Decision Quality live retries proved the 30-minute matrix timeout was a deterministic operations defect.
+
+### Runtime repair
+- PR #114 raised only the independent Decision Quality solve-task timeout to 50 minutes.
+- Added a frozen-source AST regression deriving `candidate_limit = 8`, per-MILP `time_limit = 120s` and the audited `1 + 2*N` solve-call shape.
+- The frozen theoretical allowance is 2040 seconds / 34 minutes; the operations contract requires 15 additional minutes of orchestration headroom.
+- Full pytest, Ruff, upstream consistency, generic governance, required `test`/`contract`/`readiness` checks and the Apex V2 Ops Contract passed on the exact PR head.
+- PR #114 merged as signed commit `e123fb312015a620795f343f503f8c214699afb4` without modifying frozen engine semantics.
+
+### Authority reconciliation
+- Added `APEX_V2_AUTHORITY.json` as the machine-readable constitution.
+- Rebuilt generic governance around the frozen Apex V2 provider/workflow authority instead of the obsolete Pinnacle/V1 publisher.
+- Began rewriting Project Brain documents so startup instructions, production authority and research boundaries match the live V2 runtime.
+- Preserved legacy `pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml` and `gw1-final-2026.yml` byte-for-byte under `archive/workflows/` while removing them from the executable GitHub Actions directory.
+
+### Boundary
+The canonical production workflow remains `.github/workflows/apex-v2-daily-production.yml`; AIrsenal remains sole serving H1–H8; research has `production_influence = NONE`. GW3 Decision Quality acceptance still requires a complete immutable predeadline lab on the corrected control-plane SHA.
+
 ## 2026-08-11 — Decision-surface architecture repair, PR 1
 
 ### Finding
