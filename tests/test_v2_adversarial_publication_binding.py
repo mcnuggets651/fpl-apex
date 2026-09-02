@@ -9,6 +9,7 @@ import pytest
 from apex.domain.models import ProductionProjectionSurface
 from apex.forecast.contract import projection_surface_hash
 from apex.runtime.publication import build_publication_materials
+from apex.runtime.serving import status_from_row
 from apex.runtime.snapshot import SnapshotBuilder
 
 
@@ -205,3 +206,28 @@ def test_publication_rejects_fake_canonical_projection_hash(tmp_path: Path):
     changed["canonical_projection_hash"] = "b" * 64
     with pytest.raises(RuntimeError, match="canonical.*hash|hash.*canonical"):
         _publish(tmp_path, snapshot, changed)
+
+
+def test_publication_rejects_tampered_certification_with_same_snapshot(tmp_path: Path):
+    snapshot, decision, _ = _fixture(tmp_path)
+    changed = deepcopy(decision)
+    changed["certification"]["state"] = "CERTIFIED"
+    changed["certification"]["actionable"] = True
+    changed["certification"]["reasons"] = []
+    with pytest.raises(RuntimeError, match="decision|certification|bundle"):
+        _publish(tmp_path, snapshot, changed)
+
+
+def test_serving_matrix_rejects_string_authorization_boolean():
+    row = {
+        "provider_id": "airsenal",
+        "role": "CHAMPION",
+        "priority": 0,
+        "health": "HEALTHY",
+        "qualification_by_horizon": {"1": "QUALIFIED"},
+        "reasons": [],
+        "serve_authorized": "false",
+        "predictive_status": "INSUFFICIENT_HISTORY",
+    }
+    with pytest.raises(ValueError, match="serve_authorized|boolean"):
+        status_from_row(row, None)
