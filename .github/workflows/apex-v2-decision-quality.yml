@@ -116,7 +116,9 @@ jobs:
       max-parallel: 8
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Frozen optimise_transfer_horizon permits 17 MILPs x 120s = 34m solver-only.
+    # The ops contract adds 15m for setup, mechanics, sealing/proof and cleanup.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:
