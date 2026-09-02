@@ -2,22 +2,23 @@
 
 ## Status and immutable boundary
 
-These extensions are an **operations/presentation/evaluation layer around** the certified Apex V2 engine. They do not alter the engine.
+These extensions are an operations, presentation and evaluation layer around the certified Apex V2 engine. They do not alter the production engine.
 
 Frozen engine SHA:
 
 `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-The following remain unchanged by this work:
+The following remain invariant:
 
-- AIrsenal is the sole serving H1-H8 champion.
-- Dastan, PITCHSIDE and Apex Proprietary remain nonserving challengers/shadows.
-- OpenFPL remains diagnostic-only.
-- xP construction, solver objective, transfer mechanics, captain mechanics, provider qualification and immutable publication are untouched.
-- Price Risk remains outside the serving engine.
-- PR #90 does not need to merge for these extensions to operate.
+- AIrsenal is the sole serving champion for H1-H8.
+- Dastan, Apex Proprietary and PITCHSIDE remain non-serving challengers/shadows.
+- OpenFPL remains governed diagnostic/research only until its independent readiness contract is satisfied and a legitimate model is separately built.
+- no blending, voting or automatic promotion is permitted;
+- canonical xP construction, provider qualification, optimizer objective, transfer mechanics, captain mechanics and immutable production publication are untouched;
+- Price Risk remains outside the serving engine;
+- PR #90 remains frozen and does not need to merge.
 
-The extensions are intentionally one-way. They may **schedule**, **render** or **score** a sealed Apex decision; they may not write information back into canonical xP or the optimizer.
+Every extension is one-way. It may schedule, render, seal or score evidence around a canonical decision, but it may not write information back into production xP, the optimizer, serving-provider authority or an already published recommendation.
 
 ---
 
@@ -27,44 +28,11 @@ Workflow: `.github/workflows/apex-v2-deadline-watch.yml`
 
 Controller: `scripts/apex_v2_deadline_ops.py`
 
-### Objective
+The 04:17 UTC daily production run remains the baseline. The deadline watcher may dispatch at most one additional production refresh when the current Official FPL deadline is between 90 and 150 minutes away. It runs at minute 11 and 41 of each hour and resolves the deadline from current Official FPL data rather than assuming a weekday or kickoff pattern.
 
-The 04:17 UTC daily production run remains the baseline. The deadline watcher adds at most one additional automatic production refresh when the current Official FPL deadline is between **90 and 150 minutes away**.
+Before dispatch it verifies whether any workflow-dispatch production run already exists inside the current Official deadline window. Queued, running, successful and failed runs all satisfy deduplication. The watcher has no manager credentials, private repository token or model dependencies. It cannot acquire, solve or publish; it can only dispatch the already-governed production workflow on `main`.
 
-The watcher runs at minute `11` and `41` of every hour. The 60-minute eligibility window plus 30-minute polling cadence gives more than one opportunity to observe the window without repeatedly running the expensive production engine.
-
-### Authority
-
-The watcher reads the current `bootstrap-static` response every time. It does not assume Friday, Saturday, a fixed kickoff pattern or a locally configured Gameweek date.
-
-The next target is the earliest strictly future valid Official FPL event deadline. Any unfinished positive-ID Official event with an invalid/missing deadline makes the watcher fail closed rather than silently skipping that event.
-
-If Official FPL moves a deadline, the next watcher evaluation uses the moved deadline automatically.
-
-### Deduplication and retries
-
-Before dispatch, the watcher lists `Apex V2 Daily Production` workflow-dispatch runs and asks whether **any manual/automatic workflow-dispatch production run was created inside the current Official deadline window**.
-
-If one exists, the window is already satisfied. This includes a successful, failed, queued or in-progress production run. Therefore:
-
-- a failed near-deadline production does not trigger automatic reassurance retries;
-- an extraordinary manually requested production inside the same window also satisfies the refresh requirement;
-- the normal 04:17 scheduled production does not count as the deadline-window refresh because its event is `schedule`, not `workflow_dispatch`.
-
-The watcher has a non-cancelling concurrency group, so two watcher instances cannot race each other into duplicate dispatches.
-
-### Failure behavior
-
-The watcher fails closed if:
-
-- Official FPL does not return a parseable future deadline;
-- the GitHub workflow-run history cannot be verified;
-- the watcher is not running on `main`;
-- the dispatch request is rejected.
-
-It has **no manager credentials, no private repository token and no model/provider dependencies**. It cannot create an Apex intent, acquire data, solve or publish. The only privileged action it can perform is dispatch the already-existing production workflow on `main`.
-
-The production workflow itself is unchanged. It still checks out the frozen SHA, shares auth concurrency, re-authenticates the exact manager, re-anchors Official truth, freezes once, solves offline and publishes immutably.
+The production workflow itself remains unchanged: frozen engine checkout, shared auth concurrency, exact manager reauthentication, Official re-anchor, one frozen snapshot, offline solve and immutable publication.
 
 ---
 
@@ -78,166 +46,175 @@ Private release namespace:
 
 `apex-v2/private-presentation/<season>/<production-run-id>`
 
-### Objective
+After a successful production run, the owner brief renders the already sealed recommendation into structured JSON, compact Markdown and an attestation bound to the immutable private manager attempt. It does not recompute a recommendation.
 
-Apex's machinery is deliberately complex, but the owner-facing decision should be simple. After a successful production workflow, the owner-brief workflow renders the already sealed decision into:
+It surfaces actionability, transfer/roll, XI, captain/vice, bench order, bank, free transfers, active chip, H2-H3 plan, Official deadline, source identities and sealed warnings. Player identity comes only from the immutable Official catalog contained in the private canonical forecast. Missing identity fails closed.
 
-- `owner_brief.json` — structured machine/read-only presentation contract;
-- `owner_brief.md` — compact human-readable decision surface;
-- `owner_brief_attestation.json` — hashes tying the brief to the immutable private manager attempt.
-
-### Inputs
-
-The renderer requires a matching pair of immutable releases:
-
-- public final `apex-v2/final/...`;
-- private manager attempt `apex-v2/private/...`.
-
-It verifies the public attestation, private attestation, public/private attempt identity, target Gameweek and private source SHA-256 before rendering.
-
-### Content
-
-The brief surfaces, without recomputation:
-
-- `ACTIONABLE` / `NOT_ACTIONABLE` from the sealed certification + manager-actionability contract;
-- transfer/roll decision;
-- XI;
-- captain and vice-captain;
-- bench order;
-- bank, free transfers and active chip when available;
-- H2-H3 plan filtered by the sealed `TransferWeek.horizon` values 2 and 3 (never by list position), with Official player labels;
-- target GW, Official deadline, frozen timestamp and source hashes;
-- serving-provider map as diagnostic metadata;
-- warnings/reasons from the sealed certification.
-
-Player names, positions and prices are resolved only from the immutable Official catalog inside the private canonical forecast. No live lookup is used. Missing/incomplete Official identity for any sealed player is fatal rather than replaced by a synthetic label.
-
-### Privacy and authority
-
-The brief is stored only in the existing private immutable repository. Nothing from the private manager payload is uploaded as a public Actions artifact or public release.
-
-Its contract explicitly records:
-
-- `production_influence = NONE`;
-- `serving_authorized = false`;
-- no xP recomputation;
-- no player reranking;
-- no transfer alteration;
-- no challenger blending.
-
-If certification or manager actionability is absent/false, the display fails closed to `NOT_ACTIONABLE`.
-
-A presentation failure occurs after production has already succeeded and cannot invalidate or replace the canonical production release.
+The contract records `production_influence = NONE` and `serving_authorized = false`. No public manager-state artifact is created.
 
 ---
 
-## 3. Retrospective decision-quality diagnostics
+## 3. Retrospective canonical decision-quality diagnostics
 
 Workflow: `.github/workflows/apex-v2-decision-quality.yml`
 
 Controller: `scripts/apex_v2_decision_quality_ops.py`
 
-Private release namespace:
+Legacy/private release namespace:
 
 `apex-v2/private-decision-quality/<season>/<production-run-id>`
 
-### Lifecycle ordering
+The existing V1 diagnostics are retained for backward compatibility and continue to score only an immutable production decision after the frozen evaluator has published immutable `outcomes.json`.
 
-Decision quality never fetches a match result itself. It waits for the frozen evaluator to publish immutable:
+They measure captain/vice fallback, captain regret within the sealed XI, pre-autosub lineup regret within the final owned 15, bench points, transfer in/out same-GW delta, zero-minute starters, expected-minutes coverage and final-squad minutes MAE. These remain observational diagnostics and do not infer total-team transfer regret or long-horizon counterfactual value.
 
-`apex-v2/outcome/<season>/<run-id>/outcomes.json`
-
-Only then does the separate decision-quality workflow combine that immutable post-GW outcome with the matching immutable pre-deadline private manager attempt.
-
-This ordering makes the no-hindsight boundary explicit:
-
-`sealed decision -> Official GW completes -> frozen evaluator seals outcome -> retrospective diagnostic`
-
-The workflow is triggered only after successful `Apex V2 Daily Evaluation`, plus manual/post-change acceptance triggers. It has no schedule of its own.
-
-### Metrics
-
-V1 records decision-facing diagnostics that can be calculated exactly from the sealed state without speculative counterfactuals:
-
-#### Captaincy
-
-- sealed captain and vice;
-- effective captain after the ordinary captain-no-appearance/vice-appearance fallback;
-- realized captain bonus;
-- best realized captain bonus among the **sealed XI**;
-- captain-bonus realized regret.
-
-Captain regret is deliberately conditional on the chosen XI. It does not pretend a benched player's score was an available captain choice without also changing the lineup.
-
-#### Starting XI / bench
-
-- selected XI realized points before autosubs;
-- best hindsight legal FPL XI within the owned final 15;
-- pre-autosub XI realized regret;
-- bench realized points;
-- zero-minute selected starters;
-- bench players who appeared.
-
-The best-XI calculation enforces the actual legal formation bounds: one goalkeeper, 3-5 defenders, 2-5 midfielders and 1-3 forwards.
-
-#### Transfers
-
-- free transfers before the decision;
-- whether Apex rolled/held;
-- sealed transfers in/out;
-- same-GW incoming realized points;
-- same-GW outgoing realized points;
-- same-GW transferred-player incoming-minus-outgoing points delta when the transfer counts match;
-- recorded transfer-hit field.
-
-The transferred-player delta is **not total team regret**: it does not pretend the incoming and outgoing players would necessarily occupy identical XI/bench roles. The diagnostic deliberately **does not infer hit cost or long-horizon transfer value** from the same-GW result. Those require a different longitudinal counterfactual study.
-
-#### Minutes
-
-- H1 expected-minutes coverage over the final 15;
-- H1 expected-minutes MAE over covered final-squad players.
-
-This helps distinguish a poor FPL decision from a minutes/availability forecasting miss.
-
-### Governance
-
-Decision-quality outputs are owner-private and immutable. The contract declares:
-
-- `production_influence = NONE`;
-- `serving_authorized = false`;
-- `promotion_authority = false`.
-
-These metrics can identify research questions at formal reviews. They do not themselves promote a challenger, alter AIrsenal authority, modify xP or rewrite a historical recommendation.
+The V1 release remains owner-private, immutable and explicitly non-serving.
 
 ---
 
-## 4. What remains intentionally unchanged
+## 4. Prospective decision-edge lab
 
-This work does **not**:
+The decision-edge lab answers a different and more important question than forecast MAE:
 
-- add another challenger;
-- blend existing challengers;
-- move Price Risk into serving optimization;
-- alter the daily 04:17 UTC baseline production;
-- add a second publisher;
-- add repeated near-deadline production retries;
-- alter authenticated manager acquisition;
-- change any file under `src/`, `config/` or the frozen `tests/` tree;
+> When models disagreed before the deadline, would acting on that disagreement actually have produced a better FPL decision?
+
+Forecast accuracy and decision quality remain separate evidence streams. A provider can have better expected-minutes MAE without changing any transfer, XI, captain or bench choice; conversely, a small forecast difference can matter greatly if it changes a marginal decision. The lab therefore measures both.
+
+### Lifecycle
+
+The no-hindsight sequence is:
+
+`immutable production final -> tournament-ready predeadline candidate -> private decision lab -> deadline -> canonical tournament selection -> immutable Official outcome -> private decision edge -> sequential learning`
+
+Private release namespaces:
+
+- predeadline lab: `apex-v2/private-decision-lab/<season>/<production-run-id>`;
+- realized edge: `apex-v2/private-decision-edge/<season>/obs<N>`;
+- rolling learning: `apex-v2/private-decision-edge-learning/<season>/through-obs<N>`.
+
+A lab is created only from a tournament-ready immutable candidate while its Official deadline is still in the future. If no lab was sealed before the deadline, that candidate can never be retrospectively backfilled. Missing predeadline evidence stays missing.
+
+### Exact production baseline reproduction
+
+Before any challenger counterfactual is accepted, the controller reconstructs the same Official snapshot, exact team state, hard exclusions, AIrsenal surface and planning horizon used by production, then reruns the frozen transfer optimizer.
+
+The resulting squad, transfers, XI, captain, vice, bench order and hit count must exactly match the immutable production decision signature. Any mismatch fails the lab. This prevents a shadow experiment from comparing against an approximate or differently configured baseline.
+
+The production optimizer source itself is never modified: the workflow checks out the frozen engine SHA and materializes only non-serving operations controllers from the current control-plane SHA.
+
+### Provider-neutral experiment classes
+
+For every legitimate sealed H1 challenger, Apex attempts the same pre-registered experiments. Provider names receive no prior advantage, including Dastan.
+
+#### 1. H1 mechanics on the production squad
+
+The production transfers/final 15 are held fixed. The challenger H1 surface chooses XI, captain, vice and bench using the frozen mechanics code.
+
+This isolates lineup/captain/bench value from transfer planning.
+
+#### 2. Challenger H1 + AIrsenal H2-H8 planning
+
+The challenger supplies the complete H1 forecast surface while AIrsenal supplies future planning horizons. The frozen transfer optimizer is rerun.
+
+This is the principal experiment for an H1-only provider such as Dastan: it can prove that its short-term signal improves today's transfer and mechanics decision without inventing Dastan forecasts for future Gameweeks.
+
+#### 3. Challenger availability on unchanged AIrsenal xP
+
+AIrsenal expected points remain byte-for-byte conceptually authoritative for the experiment. Only a challenger availability field is substituted when that exact field has 100% coverage across the predeadline decision universe.
+
+Eligible fields are expected minutes, appearance probability, start probability and 60-minute probability. Missing values are never filled from another provider and expected points are never rescaled or reverse-engineered from expected minutes.
+
+This matters because the frozen optimizer does not directly optimize expected minutes. A minutes model should only receive decision credit when its actual scoreable availability fields cause a better submitted FPL decision.
+
+#### 4. Pure-provider contiguous plan
+
+A pure challenger transfer plan is attempted only when the challenger genuinely owns a complete contiguous H1-HN surface with N >= 2. H1-only providers are recorded as `NOT_SUPPORTED_H1_ONLY_OR_INCOMPLETE_H2`; no future rows are fabricated.
+
+### Explicit experiment accounting
+
+Every challenger receives an experiment matrix. A missing variant is not silently omitted. It is recorded as one of the explicit states such as sealed, no complete availability field, H1 incomplete, optimizer produced no decision, or H2 unsupported/incomplete.
+
+### Exact realized FPL scoring
+
+After the canonical tournament selection and immutable Official outcome exist, each prospectively sealed variant is scored with FPL mechanics rather than raw selected-player sums:
+
+- legal submitted formation is verified;
+- goalkeeper autosub is handled separately;
+- outfield substitutions respect submitted bench priority and legal formation minima/maxima;
+- captain falls back to vice only on captain non-appearance;
+- transfer hits use the frozen season rule cost;
+- Triple Captain applies the correct two additional captain copies;
+- Bench Boost scores the exact submitted full 15, including zero-minute players with their realized zero;
+- unknown future chip semantics fail closed instead of being guessed.
+
+The output stores `realized_points_after_hits` and the direct point edge versus the immutable production baseline. It also records whether the counterfactual actually changed the decision signature.
+
+### Sequential decision-edge learning
+
+Decision-edge evidence updates after every completed canonical H1. Twelve Gameweeks are not a waiting period.
+
+The recent evidence has a four-observation half-life. Stages are deliberately progressive:
+
+- one observation: `DIAGNOSTIC_SIGNAL`;
+- repeated positive evidence: `EMERGING_EDGE`;
+- two unanimous large wins of at least four recency-weighted FPL points: `FAST_TRACK_REVIEW_ELIGIBLE`;
+- three or more consistent material wins: `ACTIONABLE_SPECIALIST_REVIEW`;
+- five or more stronger consistent wins: `SPECIALIST_ROLE_CANDIDATE`;
+- later samples may progress to `STRONG_EVIDENCE` and `MATURE_EVIDENCE`.
+
+A review-eligible edge creates an owner review item. It still does not alter production. Every report records:
+
+- `production_influence = NONE`;
+- `serving_authorized = false`;
+- `promotion_authority = false`;
+- `automatic_serving_change = false`;
+- `serving_action = NO_AUTOMATIC_CHANGE`.
+
+Any future specialist role, blend or champion change must be a separate explicit governed/versioned production change.
+
+### Workflow ordering
+
+`Apex V2 Decision Quality` now runs after either:
+
+- successful `Apex V2 Prospective Tournament`, so a newly available predeadline candidate can be sealed into the private lab immediately; or
+- successful `Apex V2 Daily Evaluation`, so completed outcomes can be scored and rolling edge evidence advanced.
+
+It retains `contents: read` only in the public repository and writes research material only to the already governed private immutable release store.
+
+---
+
+## 5. What remains intentionally unchanged
+
+This work does not:
+
+- change a single file under the frozen `src/`, `config/` or engine `tests/` trees;
 - alter the frozen engine SHA;
-- require PR #90 to merge.
+- merge or depend on PR #90;
+- change AIrsenal H1-H8 serving authority;
+- auto-promote Dastan or any other challenger;
+- blend challenger xP into production;
+- create postdeadline counterfactual forecasts;
+- regenerate a missing predeadline lab after outcomes are known;
+- move Price Risk into serving optimization;
+- alter the 04:17 UTC baseline production run;
+- add a second production publisher;
+- grant the decision-quality workflow public `contents: write` permission.
 
-## 5. Acceptance criteria
+---
 
-The safe extensions are complete only when all of the following are true:
+## 6. Acceptance criteria
 
-1. new pure-controller unit tests pass;
-2. the entire existing `ops_tests` suite passes;
-3. repository governance recognizes all three workflows;
-4. the ops contract proves no frozen-engine path changed;
-5. deadline watcher is statically unable to call serving/solve/publish commands;
-6. owner brief and decision quality have public-repo `contents: read` only and private release storage only;
-7. the unchanged production workflow retains the certified frozen SHA and 04:17 schedule;
-8. broad repository pytest/ruff/upstream/governance/readiness CI is green;
-9. merge-time push acceptance runs the deadline watcher safely outside the current window, creates/verifies the latest private owner brief, and runs decision-quality backfill/no-op from immutable completed outcomes without invoking production.
+This extension is complete only when all of the following hold:
 
-A future near-deadline production run is then ordinary operation of the already-certified publisher, not a new rehearsal or engine certification event.
+1. targeted realized-scoring tests cover formation-aware autosubs, goalkeeper fallback, captain-to-vice fallback, transfer hits, Triple Captain, Bench Boost and unknown-chip fail-closed behavior;
+2. availability-overlay tests prove AIrsenal xP is never changed and incomplete fields are not silently used;
+3. sequential edge tests prove one-GW diagnostic learning, early fast-track review and zero automatic serving authority;
+4. existing V1 decision-quality tests continue to pass;
+5. the entire `ops_tests` suite passes against the exact frozen evaluator/engine source;
+6. the ops contract proves no frozen-engine path changed;
+7. the decision-quality workflow remains read-only in the public repository and has no acquire/solve/production-publish/provider-generation command;
+8. broad repository pytest, Ruff, upstream and governance checks are green;
+9. after merge, the push-triggered decision-quality run successfully seals or verifies the current still-predeadline GW3 lab without invoking production;
+10. production and PR #90 identities are reverified after merge.
+
+Once these criteria pass, future observations are ordinary operation of the prospective learning system rather than a new architecture exercise.

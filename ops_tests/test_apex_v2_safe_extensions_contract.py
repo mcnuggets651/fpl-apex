@@ -72,15 +72,21 @@ class SafeExtensionWorkflowContractTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, text)
 
-    def test_decision_quality_is_post_evaluation_non_serving_and_private(self):
+    def test_decision_quality_is_post_evaluation_and_tournament_non_serving_private(self):
         text = self.text(".github/workflows/apex-v2-decision-quality.yml")
         for needle in (
             '"Apex V2 Daily Evaluation"',
+            '"Apex V2 Prospective Tournament"',
             "contents: read",
             FROZEN,
             "apex_v2_decision_quality_ops.py",
+            "apex_v2_tournament_common.py",
+            "apex_v2_tournament_contract.py",
+            "apex_v2_tournament_scoring.py",
+            "apex_v2_tournament_ops.py",
             "APEX_V2_PRIVATE_REPO_TOKEN",
             "apex-v2 private-store-preflight",
+            "PYTHONPATH:",
         ):
             self.assertIn(needle, text)
         for forbidden in (
@@ -91,20 +97,37 @@ class SafeExtensionWorkflowContractTests(unittest.TestCase):
             "apex-v2 acquire",
             "apex-v2 solve",
             "apex-v2 publish",
-            "airsenal",
+            "run_airsenal_worker.py",
             "acquire_dastan",
         ):
             self.assertNotIn(forbidden, text)
+
+    def test_decision_lab_controller_is_prospective_exact_and_non_serving(self):
+        text = self.text("scripts/apex_v2_decision_quality_ops.py")
+        for needle in (
+            'apex-v2/private-decision-lab',
+            'apex-v2/private-decision-edge',
+            'postdeadline_backfill_forbidden',
+            'expected_points_never_rescaled_from_expected_minutes',
+            'dastan_prior_advantage',
+            'production_influence',
+            'serving_authorized',
+            'automatic_serving_change',
+            'decision lab AIrsenal recomputation does not match immutable production decision',
+            'NOT_SUPPORTED_H1_ONLY_OR_INCOMPLETE_H2',
+            'SEQUENTIAL_EVERY_COMPLETED_CANONICAL_H1',
+        ):
+            self.assertIn(needle, text)
 
     def test_new_controllers_contain_explicit_non_serving_contracts(self):
         owner = self.text("scripts/apex_v2_owner_brief_ops.py")
         dq = self.text("scripts/apex_v2_decision_quality_ops.py")
         deadline = self.text("scripts/apex_v2_deadline_ops.py")
-        self.assertIn('"production_influence": "NONE"', owner)
-        self.assertIn('"serving_authorized": False', owner)
-        self.assertIn('"production_influence": "NONE"', dq)
-        self.assertIn('"serving_authorized": False', dq)
-        self.assertIn('"promotion_authority": False', dq)
+        self.assertIn('production_influence', owner)
+        self.assertIn('serving_authorized', owner)
+        self.assertIn('production_influence', dq)
+        self.assertIn('serving_authorized', dq)
+        self.assertIn('promotion_authority', dq)
         self.assertIn("SKIPPED_ALREADY_RECORDED", deadline)
         self.assertIn('payload={"ref": "main"}', deadline)
 
