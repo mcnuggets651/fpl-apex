@@ -36,23 +36,23 @@ The frozen transfer optimiser permits up to 17 MILP calls at 120 seconds each, o
 
 ## K008 — Project Brain architecture drift
 
-**Resolved by PR #115 subject to its final merge gates.** Several canonical prose files dated from August V1/V1.5 and could route a new operator toward historical Pinnacle/generated-file surfaces. PR #115 introduces `APEX_V2_AUTHORITY.json` plus machine checks requiring every canonical authority document to agree with the frozen V2 constitution.
+**Resolved and merged by PR #115 on 2 September 2026.** Canonical Project Brain, ChatGPT/operator and status documents now anchor to `APEX_V2_AUTHORITY.json`, the frozen engine SHA and the immutable V2 production path. Generic governance and the V2 Ops Contract fail if canonical authority documents revive obsolete V1/Pinnacle current-production claims.
 
 ## K009 — Generic governance preserved obsolete production
 
-**Resolved by PR #115 subject to its final merge gates.** `scripts/check_governance_consistency.py` previously treated legacy Pinnacle/V1 workflows as active production while also checking V2. PR #115 replaces that logic with a V2 authority-manifest checker that compares against frozen `config/apex_v2.yaml`, recognizes one serving production workflow and classifies all other live workflows as operations/research.
+**Resolved and merged by PR #115 on 2 September 2026.** `scripts/check_governance_consistency.py` now validates the V2 authority manifest against the exact frozen `config/apex_v2.yaml`, recognizes exactly one serving production workflow and classifies the remaining active workflows as operations/research. The exact final PR head passed full pytest, Ruff, upstream consistency, generic governance and the V2 frozen-evaluator contract before merge.
 
 ## K010 — Legacy publishers retained executable write paths
 
-**Resolved by PR #115 subject to its final merge gates.** Historical `pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml` and `gw1-final-2026.yml` retained executable legacy paths. PR #115 preserves them byte-for-byte under `archive/workflows/` and removes them from `.github/workflows`, making them inert forensic history. Governance and the V2 Ops Contract fail if they return to the executable workflow directory.
+**Resolved and merged by PR #115 on 2 September 2026.** Historical `pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml` and `gw1-final-2026.yml` are preserved byte-for-byte under `archive/workflows/` and are absent from `.github/workflows`, making them inert forensic history. Governance and the V2 Ops Contract fail if they return to the executable workflow directory.
 
 ## K011 — Mutable historical evaluation reference
 
-Some non-serving prospective evaluation paths have used `vaastav/Fantasy-Premier-League@master`. The branch existed at the last audit, so this is not a current serving fault, but deterministic evaluation should use the exact history commit pinned in `upstreams.lock.json` wherever the consumer supports it.
+Some non-serving prospective evaluation paths have used `vaastav/Fantasy-Premier-League@master`. The branch existed at the last audit, so this is not a current serving fault, but deterministic evaluation should use the exact history commit pinned in `upstreams.lock.json` wherever the consumer supports it. Current OpenFPL readiness is a special case: it resolves the moving current-season history ref to a full immutable commit before reading rows and records that resolved commit, because freezing that monitor to an old baseline would prevent new completed Gameweeks from becoming observable.
 
 ## K012 — GitHub Actions Node runtime maintenance
 
-Current workflows can emit warnings for action versions targeting Node 20 while GitHub runners force a newer runtime. This has not been a functional failure. Upgrade only to verified stable action versions and rerun full generic/V2 contracts; do not combine runtime-maintenance risk with a deadline-critical model repair.
+Current workflows can emit warnings for action versions targeting Node 20 while GitHub runners force a newer runtime. This has not been a functional failure. Current upstream action releases provide Node 24-compatible generations; migrate them in a separate CI-proven maintenance PR rather than coupling runner maintenance to the GW3 decision-lab acceptance.
 
 ## K013 — External provider automation permissions
 
