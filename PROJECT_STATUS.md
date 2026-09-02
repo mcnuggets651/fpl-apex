@@ -1,100 +1,62 @@
-# Apex FPL project status
+# FPL Apex — production status
 
-**Status date:** 7 August 2026
+**Status date:** 2 September 2026
 
-## Current state
+Apex V2 is the production FPL system for season **2026/27** and entry **63984**. The machine-readable authority is [`docs/APEX_V2_AUTHORITY.json`](docs/APEX_V2_AUTHORITY.json); canonical documentation and governance checks must agree with it.
 
-The repository has a production-green Apex core and an enhanced **Apex Pinnacle** decision layer now being bootstrapped and stress-tested.
+## Production authority
 
-Validated core capabilities:
+- Frozen certified engine: `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
+- Frozen engine PR: **#90**, draft/open/unmerged. It is not an operations branch and must not be merged or advanced.
+- Operations/research control plane: `main`.
+- Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
+- Sole serving forecast provider: **AIrsenal**, H1–H8.
+- Apex Proprietary, Dastan, PITCHSIDE and OpenFPL are shadow/diagnostic only and have no serving authority.
+- Research/tournament output has `production_influence = NONE`; there is no blending, voting or automatic challenger promotion.
+- Official FPL remains factual authority for identity, club, position, price, status/availability and fixtures.
 
-- Official FPL API is canonical for player ID, club, FPL position, price, availability and fixtures.
-- Immutable Official FPL snapshot manifests and SHA256 checksums are recorded.
-- FPL Core Insights enriches current player statistics, preseason data, Elo fixture context and defensive-contribution features.
-- FPL Core data is resolved to an immutable current commit and refreshed automatically.
-- Genuine pinned AIrsenal GW1–GW8 forecasts are exported through official `player.fpl_api_id`, provenance checked and freshness gated.
-- Expected-minutes modelling produces start, appearance, 60+, 80+, expected-minutes and confidence estimates.
-- Tactical roles, penalties, corners and free-kick shares support statistical inference plus verified overrides.
-- Fixture difficulty combines Official FPL team strength, home/away context and reconciled FPL Core Elo.
-- Transparent xP covers appearance, xG/xA attack, clean sheets, defensive contributions, saves, 2026/27 bonus/BPS potential and set pieces.
-- The ensemble exposes model disagreement, uncertainty, floors/ceilings and risk-adjusted xP.
-- Personal FPL entry **63984** is configured for post-deadline squad, bank, transfer/chip history and free-transfer synchronisation.
-- Manager-specific selling prices are reconstructed from transfer history plus a pre-GW1 official price baseline.
-- Multi-GW transfer optimisation supports 1–5 free transfers, hits, bank, XI, captain/vice and fixed Wildcard/Bench Boost/Triple Captain planning.
-- Trusted news evidence is classified for injury/availability, transfers and manager/line-up risk without changing official identity.
-- Independent pinned `open-fpl-solver` parity validates mathematical constraint consistency on identical projections.
+The serving recommendation is the immutable Apex V2 final release produced by the frozen engine. Repository V1/V1.5 generated recommendation files and `scripts/run_apex.py` remain historical/test surfaces; they are not the live production authority.
 
-## Stress-test findings and upgrades
+## Current operations
 
-The 7 August pinnacle audit found material weaknesses in the previous decision layer and they have been addressed in new code:
+Apex V2 Daily Production checks out the frozen SHA, authenticates the exact configured manager, captures Official FPL authority before provider work, acquires/freeze-checks provider surfaces, re-anchors Official FPL, solves with network access disabled and publishes private prerequisites before the immutable public final.
 
-1. **Initial-squad horizon heuristic:** the legacy initial MILP used GW1 XI/captain plus a fixed fraction of aggregate horizon xP. An adversarial case can make this prefer a GW1 spike over a clearly superior multi-GW rotation asset. `optimise_initial_horizon` now fixes the 15-player squad while optimising a legal XI and captain separately for every Gameweek.
-2. **Independent-player risk assumption:** the original risk adjustment did not model shared team/opponent uncertainty. The Pinnacle scenario generator now creates correlated forecast surfaces and a new MILP maximises a blend of mean value and lower-tail **CVaR**.
-3. **Pre-GW1 selling-price baseline:** the original public-entry flow could return before persisting the initial price universe when no public GW1 picks existed. The price universe is now captured before the first deadline even while entry 63984 remains in initial-squad mode.
-4. **Near-tie visibility:** exact force/ban objective-regret analysis now quantifies how much value is lost when selected players are removed or alternatives are forced.
+Supporting workflows are separated by role:
 
-The stochastic layer models common Gameweek shocks, shared team attack/defence uncertainty and negative attacker-vs-opposing-clean-sheet linkage. Its covariance coefficients are transparent priors and are not yet claimed to be walk-forward calibrated 2026/27 parameters. It is therefore used as robustness evidence alongside the deterministic expected-value optimum, not as a magic replacement for it.
+- auth keepalive — authentication state only;
+- deadline watch — dispatches the canonical production workflow near a real deadline;
+- daily evaluation — prospective scoring of previously sealed surfaces;
+- prospective tournament — non-serving provider evaluation;
+- Decision Quality — non-serving prospective counterfactual decision-edge research.
 
-Adversarial regression tests cover the full-horizon and CVaR failure modes.
+See [`docs/APEX_V2_DAILY_OPERATIONS.md`](docs/APEX_V2_DAILY_OPERATIONS.md), [`docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md`](docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md), and [`docs/operations/PARALLEL_DECISION_LAB.md`](docs/operations/PARALLEL_DECISION_LAB.md).
 
-## Pinnacle interface
+## GW3 decision-quality acceptance
 
-Once the bootstrap workflow completes successfully, ChatGPT should prefer:
+Canonical prospective candidate:
 
-- `data/generated/pinnacle_latest.json`
-- `data/generated/pinnacle_latest.md`
+`apex-v2/tournament-candidate/2026-2027/33590896695-1`
 
-The Pinnacle snapshot contains:
+Official GW3 deadline:
 
-- deterministic full-horizon unrestricted / Haaland / no-Haaland solutions;
-- covariance-aware CVaR versions of the same scenarios;
-- deterministic-vs-robust overlap;
-- exact selection-regret sensitivity;
-- scenario downside/median/upside summaries;
-- current personalised transfer plan when the public team is available;
-- source and official-snapshot provenance.
+`2026-09-04T17:30:00Z`
 
-The existing validated core interface remains:
+PR #114 repaired the exact-task runtime contract without changing frozen decision semantics. The frozen transfer optimiser can legally consume 34 minutes of MILP allowance; Decision Quality now grants 50 minutes per independent matrix solve and CI derives/guards that bound against the frozen source.
 
-- `data/generated/apex_latest.json`
-- `data/generated/apex_latest.md`
-- `data/generated/solver_parity.json`
-- `data/generated/airsenal.csv`
-- `upstreams.lock.json`
+GW3 runtime acceptance is complete only when all required predeadline task releases exist, canonical assembly succeeds, exact baseline reproduction is verified, every constituent decision is predeadline, the immutable canonical lab is validated and the overall workflow is green. Missing decisions may never be reconstructed after the deadline.
 
-Do not claim a current Pinnacle recommendation if `pinnacle_latest.json` is absent or stale. Fall back to the latest green Apex snapshot and state the limitation.
+## Governance status
 
-## Automation
+The Project Brain and generic governance layer are being reconciled to the V2 constitution. Legacy executable publishers (`pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml`, `gw1-final-2026.yml`) are forensic history only and belong under `archive/workflows/`, outside GitHub's executable workflow directory.
 
-Current workers include:
+The generic governance checker must treat exactly one workflow as serving production and must fail if canonical authority documents revive obsolete V1/Pinnacle production claims.
 
-- FPL Core pin refresh — every six hours;
-- normal full Apex publish — every six hours;
-- **Apex Pinnacle** full-horizon + correlated 256-scenario CVaR stress run — every six hours and manually dispatchable;
-- genuine AIrsenal refresh inside production runs;
-- independent solver parity on its validation cadence;
-- dedicated final pre-GW1 recommendation on 21 August 2026 morning.
+## Startup rule
 
-## Remaining mathematical upgrades before the theoretical ceiling
+For a new operator or ChatGPT session:
 
-The strongest remaining improvements are now narrower:
-
-1. walk-forward calibration of the scenario covariance coefficients and stochastic risk weight;
-2. explicit captain-no-show -> vice-captain fallback value inside the objective;
-3. stochastic bench/autosub ordering and formation-safe substitutions;
-4. two-stage/receding-horizon transfer recourse for future information;
-5. a calibrated future price-change timing model;
-6. configured market-implied goal / clean-sheet / scorer priors from a reliable odds feed;
-7. empirical selection/captain frequency across calibrated projection perturbations.
-
-These should be added only with transparent calibration and backtesting rather than arbitrary complexity.
-
-## Resume rule
-
-For a future recommendation:
-
-1. read `data/generated/pinnacle_latest.json` first;
-2. require `safe_to_act=true` and `full_apex_ready=true`;
-3. inspect deterministic-vs-CVaR agreement and selection regret before calling a pick high confidence;
-4. if Pinnacle is unavailable, inspect the latest green `apex_latest.json` and disclose that the enhanced layer is not yet published;
-5. never reconstruct a team from conversation memory when repository decision files are available.
+1. read `docs/APEX_V2_AUTHORITY.json`;
+2. read `docs/CURRENT_STATE.md`;
+3. read `docs/APEX_MASTER_CONTEXT.md` and `docs/APEX_OPERATING_MANUAL.md`;
+4. verify live `main`, PR #90 and the relevant immutable Apex V2 release/workflow state;
+5. never reconstruct the manager squad from conversation memory.

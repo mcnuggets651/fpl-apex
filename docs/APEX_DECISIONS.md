@@ -104,3 +104,9 @@ must preserve missing return values; only an explicitly observed zero may pull a
 historical rate down. Solver and diagnostic artifacts must also publish their
 actual producer contracts: captain records, constrained-squad additions/removals,
 and MILP incumbent/bound/gap/termination metadata.
+
+## D031 — Apex V2 supersedes the V1/V1.5 production authority chain
+
+Effective for the certified 2026/27 V2 runtime, the frozen engine is `99cc7b51b0cff45462b567084cb1844cfe0a456f`; PR #90 must never be merged or advanced; `.github/workflows/apex-v2-daily-production.yml` is the sole production execution path; AIrsenal is the sole serving provider H1–H8; and immutable `apex-v2` final releases are the serving authority. Prospective tournament and Decision Quality evidence remain non-serving with `production_influence = NONE`, `serving_authorized = false`, and no automatic challenger promotion.
+
+Earlier decisions are retained as historical design records. Where D002, D004, D006–D007, D017–D018, D021–D024, D029 or any other pre-V2 decision describes Pinnacle, Elite, `scripts/run_apex.py`, generated repository files, or a blended projection layer as current production authority, that production-authority statement is superseded by this decision and `docs/APEX_V2_AUTHORITY.json`. Their still-applicable modelling, audit and no-hindsight principles remain historical context unless the frozen V2 constitution says otherwise.

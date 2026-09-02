@@ -1,102 +1,86 @@
-# Apex FPL — Master Context
+# FPL Apex — Master Context
 
-**Canonical project brain. Read this before making any Apex recommendation or architectural change.**
+**Canonical Project Brain for Apex V2.** Read the machine authority first: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
 
 ## Mission
-Build the strongest auditable Fantasy Premier League decision engine possible: maximise expected FPL points and elite scoring ceiling while explicitly measuring uncertainty, minutes risk, downside and model disagreement.
 
-## Repository
-- Production repository: `mcnuggets651/fpl-apex`
-- Production branch: `main`
-- Personal FPL entry: `63984`
-- Season focus: 2026/27
+Produce one canonical production FPL recommendation for entry **63984** that maximises expected points under exact FPL rules while using exact authenticated manager state and failing closed when data, authentication, snapshot identity or provider qualification is unsafe.
 
-## Non-negotiable principles
-1. Official FPL is canonical for identity, club, position, price, status and fixtures.
-2. Never select a squad from memory or generic FPL opinion when current generated outputs exist.
-3. Raw ensemble expected points (`xp`) are the canonical forecast.
-4. Expected minutes/start/appearance probability is a first-class model input.
-5. The legal maximum-xP optimiser generates the near-optimal candidate frontier.
-6. Elite is a diagnostic frontier inside an epsilon-audited near-optimal xP set.
-7. Exact full-horizon mechanics rescoring produces the only canonical `Decision`, regardless of Elite convergence.
-8. CVaR, regret, captain stability and independent solvers are robustness diagnostics, not separate user-facing teams.
-9. Ownership is excluded from the pure maximum-points objective.
-10. Every recommendation must be reproducible, explainable and traceable to a current run.
-11. A red data/readiness/snapshot-consistency gate blocks an Apex-labelled recommendation.
-12. Football randomness cannot be eliminated; confidence must never be presented as certainty.
-13. Never claim a unique optimum when solver bounds or the disclosed equivalence band contain alternatives.
+Separately, run rigorous prospective/no-hindsight research to measure forecast quality and decision edge. Research may challenge production but cannot silently influence serving output.
+
+## Frozen constitution
+
+- Season: 2026/27.
+- Certified engine SHA: `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
+- Frozen engine PR: #90; keep it open/draft/unmerged and do not advance it for operations changes.
+- Operations/research control plane: `main`.
+- Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
+- Sole serving champion: **AIrsenal**, H1–H8.
+- Apex Proprietary: shadow H1–H8.
+- Dastan: shadow H1 only.
+- PITCHSIDE: external shadow/diagnostic.
+- OpenFPL: diagnostic/shadow.
+- Tournament/research production influence: `NONE`.
+- Automatic serving promotion: forbidden.
+
+Official FPL is factual authority for identity, club, FPL position, price, status/availability and fixtures.
 
 ## One production recommendation
-Apex has **one** user-facing decision contract:
 
-- `data/generated/apex_recommendation_latest.json`
-- `data/generated/apex_recommendation_latest.md`
+The serving result is the immutable Apex V2 final produced by the frozen authenticated production workflow. It contains the legal action from exact current state: transfers/roll, XI, captain, vice, bench order and exact mechanics, with horizon planning/contingencies where supported by the frozen contract.
 
-The canonical production command is:
+There is no second user-facing Pinnacle, Elite, CVaR, value or challenger team. Those names survive only in historical V1 code/research or as diagnostics where explicitly labelled. Legacy `scripts/run_apex.py` and `data/generated/apex_recommendation_latest.*` are not current serving authority.
 
-```bash
-python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
-```
+## Production lifecycle
 
-When the user asks for “the Apex team”, this contract is the answer. Internal Pinnacle, Elite, CVaR, regret and solver outputs exist to construct/challenge that answer, not to create several competing Apex teams.
+Apex V2 Daily Production:
 
-## Unified decision flow
-Official FPL → validated enrichment → first-class minutes model → canonical player xP ensemble → near-optimal legal squad shortlist → exact full-horizon XI/captain/vice/bench/autosub rescoring → **one canonical Decision**, with equivalence, correlated robustness and Elite epsilon audits attached as diagnostics.
+1. checks out/proves the frozen engine SHA;
+2. preflights the immutable private manager store;
+3. validates/recovers authentication for the configured entry;
+4. creates the immutable attempt intent;
+5. captures Official FPL authority before provider work;
+6. obtains fresh pinned AIrsenal H1–H8 and governed shadow surfaces;
+7. re-anchors Official FPL and freezes inputs once;
+8. solves with network access disabled;
+9. checks exact architecture/mechanics and qualification;
+10. publishes private prerequisites then the immutable public final.
 
-### Elite convergence diagnostic
-Elite reports whether the 0.25%, 0.50% and 1.00% epsilon solutions each:
-- retain at least 13/15 of the maximum-EV squad; and
-- keep the same captain as maximum-EV.
+No research workflow may acquire/solve/publish a serving recommendation.
 
-This evidence never changes the canonical maximum-EV selection.
+## Prospective tournament and decision edge
 
-## Internal diagnostic layers
-### Maximum-EV / Pinnacle
-The auditable search baseline: maximise ensemble-mean xP under FPL legality and horizon constraints, enumerate distinct near-optimal squads, then select only after exact-mechanics horizon rescoring.
+The prospective tournament scores provider forecasts only from surfaces sealed before outcomes. GW2 remains diagnostic/non-canonical. GW3 and later canonical observations use immutable predeadline selection rules.
 
-### Elite
-Secondary evidence lens only. Weight profile remains:
-- 35% attacking returns
-- 20% expected minutes/start probability
-- 15% captaincy value
-- 10% set pieces and penalties
-- 10% fixture quality
-- 5% bonus and DEFCON
-- 5% price efficiency
+Decision Quality adds predeadline counterfactual FPL decisions. It reproduces the exact production baseline and can test provider H1 mechanics, challenger H1 plus AIrsenal future, availability-only overlays and pure provider plans only where genuine contiguous horizons exist. Dastan H1-only never receives an invented H2+ pure-provider plan.
 
-Elite never creates or modifies expected points.
+Realized decision scoring includes formation-aware autosubs, goalkeeper substitution, captain-to-vice fallback, transfer hits, Triple Captain and Bench Boost. Sequential learning can create diagnostic/review evidence but cannot change serving authority automatically.
 
-### Robustness
-Correlated scenarios, CVaR, exact force/ban regret, captain stability, exact mechanics and independent solver parity expose fragility. They do not silently substitute another objective.
+## No-hindsight law
 
-## Projection-model next priority
-The main known projection gap is formal empirical-Bayes/partial-pooling shrinkage of small-sample player attacking rates toward role/position priors. This is the next modelling upgrade after the unified recommendation is validated. Dixon-Coles/Poisson is a later fixture-expert benchmark, not a new selection philosophy.
+A forecast or decision variant must be immutably committed before the relevant Official FPL deadline. A missing predeadline task stays missing forever for that candidate. Postdeadline assembly may package already committed decisions but cannot calculate a new counterfactual.
 
-## Expected decision output
-The canonical recommendation should contain the legal 15-man squad, GW XI, captain, vice, bench order, horizon objective, exact GW mechanics, readiness status, epsilon convergence evidence, Haaland/no-Haaland scenarios when relevant and robustness diagnostics.
+## Manager-state law
+
+Never reconstruct the current squad from conversation history, an old screenshot, a historical generated file or a shadow provider. Use the authenticated production manager state for entry 63984. A current user-supplied private state may be evidence only where the frozen/current control plane explicitly supports it; do not bypass production governance manually.
+
+AIrsenal worker setup team ID `1` is deliberately an upstream database-initialisation placeholder. The worker produces player forecasts and skips manager-specific transaction updates; it is not the production manager identity and must not be changed to 63984 as an operations fix.
+
+## Change boundaries
+
+Normal operations may change scheduling, bounded auth recovery, evaluation orchestration, non-serving research controllers and documentation/governance without modifying frozen engine semantics. `src/`, `config/` and frozen tests require an explicit freeze-break/re-certification path, not an operations repair.
+
+Never alter candidate depth, horizon, MILP precision or exact mechanics merely to make research faster. Runtime/orchestration must accommodate the frozen semantics instead.
 
 ## Continuity protocol
-Before substantive Apex work read, in order:
-1. `docs/CURRENT_STATE.md`
-2. this file
-3. `docs/APEX_DECISIONS.md`
-4. `docs/APEX_CANONICAL_DECISION_POLICY.md`
-5. `docs/APEX_OPERATING_MANUAL.md`
-6. `data/generated/apex_recommendation_latest.json`
 
-Only then inspect internal diagnostics if needed. Continue from the latest state rather than reconstructing the project from chat history.
+Before substantive Apex work:
 
-## Related canonical documents
-- [Canonical decision policy](APEX_CANONICAL_DECISION_POLICY.md)
-- [Current state](CURRENT_STATE.md)
-- [Decisions](APEX_DECISIONS.md)
-- [Architecture](APEX_ARCHITECTURE.md)
-- [Model specification](APEX_MODEL_SPEC.md)
-- [Data sources](APEX_DATA_SOURCES.md)
-- [Operating manual](APEX_OPERATING_MANUAL.md)
-- [Roadmap](APEX_ROADMAP.md)
-- [Benchmarks](BENCHMARKS.md)
-- [Known issues](KNOWN_ISSUES.md)
-- [Charter](APEX_CHARTER.md)
-- [Vision](VISION.md)
-- [Session log](SESSION_LOG.md)
+1. read `APEX_V2_AUTHORITY.json`;
+2. read `CURRENT_STATE.md`;
+3. read this file and `APEX_OPERATING_MANUAL.md`;
+4. read `APEX_V2_DAILY_OPERATIONS.md` plus the relevant V2 research/operations runbook;
+5. verify live GitHub `main`, PR #90, workflow runs and immutable release state;
+6. only then implement or answer.
+
+Repository history remains useful evidence, but it may not overrule the current V2 authority chain.

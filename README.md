@@ -1,137 +1,74 @@
-# Apex FPL — Unified Decision Engine
+# FPL Apex — Apex V2
 
-Apex is a reproducible 2026/27 Fantasy Premier League decision system built to answer one question:
+Apex is a reproducible 2026/27 Fantasy Premier League decision system for entry **63984**. Its production goal is one canonical legal maximum-EV recommendation with exact current manager state, transfers/roll, XI, captain, vice, bench order, near-horizon tactics and longer conditional scenarios, while failing closed when data/auth/state is unsafe.
 
-> Given everything we can defensibly know before the deadline, what is the single legal FPL decision that best maximises expected points, and how robust is it?
+The machine-readable repository authority is [`docs/APEX_V2_AUTHORITY.json`](docs/APEX_V2_AUTHORITY.json).
 
-Production personal entry: **63984**.
+## Production constitution
 
-## One team, one contract
+- Frozen certified engine: `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
+- Frozen engine PR #90 remains draft/open/unmerged and is not an operations branch.
+- `main` is the operations/research control plane; it does not redefine frozen model semantics.
+- Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
+- **AIrsenal** is the sole serving champion H1–H8.
+- Apex Proprietary, Dastan, PITCHSIDE and OpenFPL are shadow/diagnostic only.
+- Research has no serving authority and `production_influence = NONE`.
+- Official FPL is factual authority for player identity, club, position, price, status/availability and fixtures.
+- No blending, voting, silent fallback or automatic challenger promotion is permitted.
 
-Apex no longer exposes Pinnacle, Elite, CVaR, value or other models as competing user-facing teams.
+## Serving interface
 
-The **only** user-facing recommendation is:
+Production authority is the immutable Apex V2 final release created by the frozen engine and its authenticated V2 workflow. The workflow freezes inputs once, verifies Official FPL authority around provider acquisition, solves offline, checks exact FPL mechanics and publishes immutably.
 
-- `data/generated/apex_recommendation_latest.json`
-- `data/generated/apex_recommendation_latest.md`
+Legacy repository-generated files such as `data/generated/apex_recommendation_latest.*`, Pinnacle/Elite outputs and `scripts/run_apex.py` are retained for history, compatibility and tests. They are **not** the current serving interface.
 
-The **only** production command is:
+## Operations and research separation
 
-```bash
-python scripts/run_apex.py \
-  --horizon 8 \
-  --stochastic-scenarios 256 \
-  --cvar-alpha 0.10 \
-  --cvar-weight 0.20 \
-  --force
-```
+Apex V2 deliberately separates production from evidence generation:
 
-The runner fetches and projects once into a content-addressed sealed decision
-bundle. Pinnacle, Elite and the canonical builder must all carry the same
-`bundle_id`; see `docs/DECISION_BUNDLE.md` for lineage audit and offline replay.
+- `.github/workflows/apex-v2-daily-production.yml` — sole serving production path.
+- `.github/workflows/apex-v2-auth-keepalive.yml` — authentication maintenance only.
+- `.github/workflows/apex-v2-deadline-watch.yml` — deadline-aware production dispatch only.
+- `.github/workflows/apex-v2-daily-evaluation.yml` — realized prospective evaluation only.
+- `.github/workflows/apex-v2-prospective-tournament.yml` — sealed non-serving model tournament.
+- `.github/workflows/apex-v2-decision-quality.yml` — sealed non-serving counterfactual decision-edge lab.
 
-If `ready_to_act` is false, Apex withholds a team and reports the blockers instead of choosing manually among diagnostic outputs.
+Retired V1/Pinnacle publishers are stored under `archive/workflows/` and cannot execute as GitHub Actions.
 
-## Canonical decision policy
+## Prospective learning
 
-The production hierarchy is:
+Apex evaluates challengers without hindsight. Forecast and decision variants must be committed before the relevant Official FPL deadline. Missing predeadline decisions remain missing; they are never reconstructed after outcomes are known.
 
-1. Official FPL canonical identity/price/status/fixtures.
-2. Validated FPL Core, AIrsenal, historical, preseason, tactical, news and fixture evidence.
-3. First-class expected-minutes/start/appearance model.
-4. Canonical ensemble expected points (`xp`).
-5. Legal maximum-xP MILP shortlist inside a disclosed near-optimal band.
-6. Correlated scenario/CVaR, exact regret, captain stability and independent-solver diagnostics.
-7. Elite 35/20/15/10/10/5/5 as a diagnostic frontier inside a near-optimal xP set.
-8. Epsilon frontier at 0%, 0.25%, 0.5% and 1.0%.
-9. Exact XI/captain/vice/bench/autosub rescoring across every horizon Gameweek produces the sole canonical `Decision`.
-10. Elite convergence cannot substitute a different production 15.
-11. Near-equivalent candidates are disclosed and Apex does not claim an unproven unique optimum.
-12. Publish one recommendation only when readiness and snapshot-consistency gates are green.
+The tournament evaluates forecast quality separately from the Decision Quality lab, which asks whether a challenger disagreement would have changed the actual FPL decision and whether that precommitted counterfactual later scored better. Neither layer can change serving authority automatically.
 
-Full policy: [`docs/APEX_CANONICAL_DECISION_POLICY.md`](docs/APEX_CANONICAL_DECISION_POLICY.md).
+## Repository checks
 
-## Internal diagnostics — not separate recommendations
+Required generic CI contexts remain:
 
-The following remain important, but are internal evidence layers:
+- `test`
+- `contract`
+- `readiness`
 
-- `pinnacle_latest.*` — maximum-EV and production-readiness diagnostics.
-- `elite_latest.*` — epsilon/lexicographic secondary-selector diagnostics.
-- correlated CVaR solution — lower-tail sensitivity.
-- exact force/ban regret — selection fragility.
-- captain/vice/autosub mechanics — deadline execution.
-- independent solver parity — same-surface optimisation check.
-- Haaland/no-Haaland scenarios — explicit counterfactuals.
+The Apex V2 Ops Contract additionally executes operations regressions against the exact frozen evaluator and rejects operations changes that cross into frozen `src/`, `config/` or `tests/` semantics.
 
-Historical standalone selection philosophies are documented under `archive/selection_approaches/` and must not be presented as alternative Apex teams.
+## Project Brain startup
 
-## What Apex uses
+Read in this order:
 
-- **Official FPL** — player identity, club, position, price, status, fixtures.
-- **FPL Core Insights** — underlying stats, preseason, Elo/strength, defensive-contribution context.
-- **Pinned AIrsenal** — independent expected-points expert mapped through Official FPL IDs.
-- **Apex xP decomposition** — minutes, attack, clean sheets, saves, DEFCON, penalties/set pieces, tactical role, bonus/BPS.
-- **News/manager/transfer evidence** — availability and role verification.
-- **Projection ensemble** — mean xP, disagreement, confidence, variance, floor/ceiling.
-- **Correlated stochastic scenarios** — team/player/minutes outcome dependence.
-- **Receding-horizon transfer planning** — execute the current action, then refresh and re-solve.
-- **No-hindsight archive** — pre-deadline forecasts stored before outcomes are known.
+1. [`docs/APEX_V2_AUTHORITY.json`](docs/APEX_V2_AUTHORITY.json)
+2. [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md)
+3. [`docs/APEX_MASTER_CONTEXT.md`](docs/APEX_MASTER_CONTEXT.md)
+4. [`docs/APEX_OPERATING_MANUAL.md`](docs/APEX_OPERATING_MANUAL.md)
+5. [`docs/APEX_V2_DAILY_OPERATIONS.md`](docs/APEX_V2_DAILY_OPERATIONS.md)
+6. [`docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md`](docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md)
+7. [`docs/operations/PARALLEL_DECISION_LAB.md`](docs/operations/PARALLEL_DECISION_LAB.md)
 
-Exact external revisions are pinned in `upstreams.lock.json`.
+Then verify live GitHub state and the relevant immutable release before answering an actionable FPL question. Never reconstruct a squad from conversation memory when authenticated production state is required.
 
-## Quick start
+## Legacy development surfaces
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev,airsenal]'
-export FPL_ENTRY_ID=63984
-python scripts/run_apex.py --horizon 8 --stochastic-scenarios 256 --cvar-alpha 0.10 --cvar-weight 0.20 --force
-```
-
-Then read:
-
-```text
-data/generated/apex_recommendation_latest.json
-```
-
-## ChatGPT operating rule
-
-When the user asks:
-
-> “Give me the Apex team.”
-
-ChatGPT must:
-
-1. load the Project Brain;
-2. read `apex_recommendation_latest.json` first;
-3. present that recommendation if `ready_to_act=true`;
-4. otherwise report blockers;
-5. use Pinnacle/Elite/CVaR only to explain the canonical decision;
-6. never produce several competing Apex teams unless the user explicitly asks for a labelled scenario.
-
-## Project Brain
-
-Start with:
-
-1. [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md)
-2. [`docs/APEX_MASTER_CONTEXT.md`](docs/APEX_MASTER_CONTEXT.md)
-3. [`docs/APEX_DECISIONS.md`](docs/APEX_DECISIONS.md)
-4. [`docs/APEX_CANONICAL_DECISION_POLICY.md`](docs/APEX_CANONICAL_DECISION_POLICY.md)
-5. [`docs/APEX_OPERATING_MANUAL.md`](docs/APEX_OPERATING_MANUAL.md)
-
-## Current modelling priority
-
-The next forecast-model upgrade is **empirical-Bayes / partial-pooling shrinkage of small-sample player xG90/xA90 and related rates toward role/position priors**. This improves the canonical xP forecast; it does not create another selection philosophy.
-
-Dixon-Coles/Poisson is a later fixture-expert benchmark and must earn ensemble weight through historical validation.
-
-## Known boundary
-
-Apex improves decision quality; it cannot remove football randomness. Before enough 2026/27 outcomes exist, some covariance/minutes/rate assumptions remain priors and are explicitly tracked for calibration.
-
-The standard is not certainty. The standard is **one consistent, auditable decision from the strongest validated process available**.
+The repository contains extensive V1/V1.5 implementation, diagnostics and historical research. They remain useful for tests and forensic comparison but cannot be presented as alternate current Apex teams or production entrypoints. Historical workflow YAML is preserved under `archive/workflows/` specifically so it cannot execute.
 
 ## Licence
 
-Apex itself is MIT. External workers keep their own licences and are not vendored into this repository.
+Apex is MIT licensed. External providers/workers retain their own licences and terms.

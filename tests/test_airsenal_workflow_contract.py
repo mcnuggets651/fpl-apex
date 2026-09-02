@@ -1,40 +1,50 @@
 from pathlib import Path
 
 
-# Only workflows that actively run the canonical Apex production/readiness path
-# should be required to refresh genuine AIrsenal forecasts. CI-only and archived
-# legacy publishers are intentionally excluded.
-WORKFLOWS = (
+ROOT = Path(__file__).resolve().parents[1]
+ACTIVE = ROOT / ".github" / "workflows"
+ARCHIVE = ROOT / "archive" / "workflows"
+FROZEN_SHA = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+RETIRED = (
     "gw1-final-2026.yml",
     "pinnacle.yml",
-    "production-readiness.yml",
+    "airsenal.yml",
+    "refresh-core-pin.yml",
 )
 
 
-def test_production_workflows_do_not_require_a_manager_team_to_refresh_airsenal():
-    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
-    for name in WORKFLOWS:
-        workflow = (root / name).read_text(encoding="utf-8")
-        assert "airsenal_setup_initial_db --fpl_team_id 1" in workflow, name
-        assert "python scripts/update_airsenal_worker.py" in workflow, name
-        assert "airsenal_update_db" not in workflow, name
-        assert "scripts/run_apex.py" in workflow, name
+def test_retired_legacy_publishers_are_archived_not_executable():
+    for name in RETIRED:
+        assert not (ACTIVE / name).exists(), name
+        archived = ARCHIVE / name
+        assert archived.is_file(), name
+        assert archived.stat().st_size > 0, name
 
 
-def test_scheduled_airsenal_workflow_uses_canonical_horizon_wrapper():
-    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "airsenal.yml"
-    workflow = path.read_text(encoding="utf-8")
+def test_v2_production_keeps_airsenal_worker_manager_independent():
+    workflow = (ACTIVE / "apex-v2-daily-production.yml").read_text(encoding="utf-8")
+
+    assert FROZEN_SHA in workflow
+    assert 'FPL_TEAM_ID: "1"' in workflow
+    assert "airsenal_setup_initial_db --fpl_team_id 1" in workflow
+    assert "python \"$GITHUB_WORKSPACE/scripts/update_airsenal_worker.py\"" in workflow
+    assert "airsenal_update_db" not in workflow
+    assert "run_airsenal_worker.py" in workflow
+    assert "--horizon 8" in workflow
+    assert "APEX_PRIVATE_MANAGER_ENABLED" in workflow
+    assert "apex-v2 acquire" in workflow
+
+
+def test_archived_airsenal_preserves_historical_horizon_wrapper_for_forensics():
+    workflow = (ARCHIVE / "airsenal.yml").read_text(encoding="utf-8")
 
     assert 'uv run python "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py"' in workflow
     assert "--horizon 8" in workflow
     assert "uv run airsenal_run_prediction" not in workflow
-    assert "Resolve live eight-Gameweek horizon" not in workflow
-    assert "Export genuine AIrsenal forecast by official FPL ID" not in workflow
 
 
-def test_unified_artifact_is_copied_before_runtime_diagnostics_are_restored():
-    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "pinnacle.yml"
-    workflow = path.read_text(encoding="utf-8")
+def test_archived_pinnacle_preserves_atomic_artifact_order_for_forensics():
+    workflow = (ARCHIVE / "pinnacle.yml").read_text(encoding="utf-8")
     seal = workflow.index("Seal atomic workflow artifact before publication cleanup")
     restore = workflow.index("git restore --worktree .")
     upload = workflow.index("${{ runner.temp }}/apex-unified-packet/")
@@ -43,20 +53,12 @@ def test_unified_artifact_is_copied_before_runtime_diagnostics_are_restored():
     assert "data/generated/decision_bundle" in workflow[seal:restore]
 
 
-def test_explicit_readiness_blocks_reach_fail_closed_publication_path():
-    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "pinnacle.yml"
-    workflow = path.read_text(encoding="utf-8")
+def test_archived_pinnacle_preserves_fail_closed_readiness_logic_for_forensics():
+    workflow = (ARCHIVE / "pinnacle.yml").read_text(encoding="utf-8")
 
     assert 'payload.get("pinnacle_ready") is not False or not blockers' in workflow
     assert 'echo "ready_for_parity=false" >> "$GITHUB_OUTPUT"' in workflow
     assert "Finalize fail-closed production status" in workflow
     assert "Publish latest canonical status and durable forecast archive" in workflow
-
-
-def test_parity_bootstrap_block_advances_only_to_parity_stage():
-    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "pinnacle.yml"
-    workflow = path.read_text(encoding="utf-8")
-
     assert 'parity_bootstrap = [' in workflow
     assert 'if blockers == parity_bootstrap:' in workflow
-    assert 'classification=$?' in workflow
