@@ -7,7 +7,8 @@ on:
       - 'src/apex/**'
       - 'tests/test_apex_v2_*.py'
       - 'tests/test_v2_*.py'
-      - 'scripts/check_v2_architecture.py'
+      - 'scripts/check_v2_*.py'
+      - 'scripts/run_v2_mutation_sentinels.py'
       - 'config/apex_v2.yaml'
       - '.github/workflows/apex-v2-*.yml'
       - 'pyproject.toml'
@@ -23,12 +24,30 @@ jobs:
   contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
       - run: pip install -e '.[dev]'
-      - run: pytest -q tests/test_apex_v2_*.py tests/test_v2_*.py
-      - run: python scripts/check_v2_architecture.py
-      - run: ruff check src/apex tests/test_apex_v2_*.py tests/test_v2_*.py scripts/check_v2_architecture.py
+      - name: Compile Apex V2
+        run: python -m compileall -q src/apex
+      - name: Run V2 suite with branch coverage
+        run: |
+          mkdir -p artifacts/v2
+          pytest -q tests/test_apex_v2_*.py tests/test_v2_*.py \
+            --cov=apex \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:artifacts/v2/coverage.json
+      - name: Enforce critical coverage floors
+        run: python scripts/check_v2_critical_coverage.py artifacts/v2/coverage.json
+      - name: Kill critical semantic mutants
+        run: python scripts/run_v2_mutation_sentinels.py
+      - name: Enforce architecture boundaries
+        run: python scripts/check_v2_architecture.py
+      - name: Lint V2 assurance surface
+        run: >-
+          ruff check src/apex tests/test_apex_v2_*.py tests/test_v2_*.py
+          scripts/check_v2_architecture.py scripts/check_v2_critical_coverage.py
+          scripts/run_v2_mutation_sentinels.py
