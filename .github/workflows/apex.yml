@@ -13,52 +13,84 @@ concurrency:
   group: apex-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  AUTHORITY_FILE: docs/APEX_V2_AUTHORITY.json
+
 jobs:
+  # `test`, `contract`, and `readiness` are the repository-wide required check
+  # contexts on main. They validate the declared immutable V2 architecture only.
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e '.[dev]'
-      - run: pytest -q
-      - run: ruff check src tests scripts
-      - run: python scripts/check_upstreams.py
+      - name: Resolve declared immutable core
+        id: core
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE_SHA="$(python - <<'PY'
+          import json
+          print(json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))["frozen_engine_sha"])
+          PY
+          )"
+          [[ "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "$CORE_SHA"
+          echo "sha=$CORE_SHA" >> "$GITHUB_OUTPUT"
+      - name: Materialize exact immutable core
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$RUNNER_TEMP/apex-v2-core"
+          rm -rf "$CORE"
+          git worktree add --detach "$CORE" '${{ steps.core.outputs.sha }}'
+          test "$(git -C "$CORE" rev-parse HEAD)" = '${{ steps.core.outputs.sha }}'
+          test -f "$CORE/src/apex/runtime/solve.py"
+          test -f "$CORE/scripts/check_v2_architecture.py"
+          python -m pip install -e "$CORE[dev]"
+      - name: Run live V2 operations regressions
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - run: python scripts/check_governance_consistency.py
+          PYTHONPATH: ${{ runner.temp }}/apex-v2-core/src:${{ github.workspace }}/scripts
+        run: python -m unittest discover -s ops_tests -p 'test_*.py' -v
 
-  # `test`, `contract`, and `readiness` are the repository-wide required check
-  # contexts on main. Keep these deterministic and available for every PR.
-  # Product/runtime workflows may add stricter domain-specific gates, but an
-  # unrelated path filter must never make a normal source PR unmergeable.
   contract:
     needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-          cache: pip
-      - run: pip install -e .
-      - name: Verify repository contract
+      - name: Verify V2 authority and upstream contracts
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          python scripts/check_upstreams.py
+          set -euo pipefail
           python scripts/check_governance_consistency.py
+          python scripts/check_upstreams.py
           python - <<'PY'
-          from apex_fpl.config import load_settings
+          import json
+          from pathlib import Path
 
-          settings = load_settings()
-          assert settings.season
-          assert settings.horizon > 0
-          assert settings.budget > 0
-          assert settings.required_sources
-          print("repository contract OK")
+          authority = json.loads(Path("docs/APEX_V2_AUTHORITY.json").read_text(encoding="utf-8"))
+          frozen = authority["frozen_engine_sha"]
+          assert len(frozen) == 40 and all(c in "0123456789abcdef" for c in frozen)
+          assert authority["legacy"]["status"] == "HISTORICAL_NON_SERVING"
+          assert authority["production"]["serving_workflow"] == ".github/workflows/apex-v2-daily-production.yml"
+          assert authority["production"]["serving_provider"] == "airsenal"
+          production = Path(authority["production"]["serving_workflow"]).read_text(encoding="utf-8")
+          assert frozen in production
+          for forbidden in ("scripts/run_apex.py", "run_pinnacle.py", "git push"):
+              assert forbidden not in production
+          print(f"V2 authority contract OK: {frozen}")
           PY
 
   readiness:
@@ -66,27 +98,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e .
-      - name: Verify installed package and CLI readiness
+      - name: Resolve and materialize declared immutable core
+        id: core
+        shell: bash
         run: |
-          apex-fpl --help >/dev/null
-          python - <<'PY'
-          from apex_fpl.config import load_settings
-          from apex_fpl.services.pipeline import run_pipeline
-
-          settings = load_settings()
-          assert callable(run_pipeline)
-          assert settings.cache_dir.exists()
-          assert settings.snapshot_dir.exists()
-          assert settings.report_dir.exists()
-          print("repository readiness OK")
+          set -euo pipefail
+          CORE_SHA="$(python - <<'PY'
+          import json
+          print(json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))["frozen_engine_sha"])
           PY
+          )"
+          [[ "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "$CORE_SHA"
+          CORE="$RUNNER_TEMP/apex-v2-core"
+          rm -rf "$CORE"
+          git worktree add --detach "$CORE" "$CORE_SHA"
+          test "$(git -C "$CORE" rev-parse HEAD)" = "$CORE_SHA"
+          python -m pip install -e "$CORE[dev]"
+          echo "path=$CORE" >> "$GITHUB_OUTPUT"
+      - name: Verify immutable core readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE='${{ steps.core.outputs.path }}'
+          python "$CORE/scripts/check_v2_architecture.py"
+          apex-v2 --help >/dev/null
+          pytest -q "$CORE"/tests/test_apex_v2_*.py "$CORE"/tests/test_v2_*.py
+          ruff check "$CORE/src/apex" "$CORE"/tests/test_apex_v2_*.py "$CORE"/tests/test_v2_*.py "$CORE/scripts/check_v2_architecture.py"
 
-# Production team generation is intentionally excluded from this workflow.
-# Live decision publication belongs to the dedicated production workflows; this
-# workflow provides deterministic repository CI and the universal main-ruleset
-# `test`, `contract`, and `readiness` contexts.
+# Production acquisition, solve and publication remain exclusively in the
+# authority-declared V2 production workflow. This workflow has no publish path.
