@@ -23,6 +23,8 @@ POSITION_MAP = {row["element_id"]: row["position"] for row in PLAYERS}
 SQUAD = list(range(1, 16))
 XI = [1, 3, 4, 5, 8, 9, 10, 11, 13, 14, 15]
 BENCH = [2, 6, 7, 12]
+CONTROL_PLANE_SHA_A = "a" * 40
+CONTROL_PLANE_SHA_B = "b" * 40
 
 
 def private_attempt():
@@ -92,11 +94,57 @@ def decision(*, bench_order=None, hits=0):
     }
 
 
-def edge(observation_number: int, edge_points: float, *, provider="dastan"):
+def decision_lab(*, control_plane_sha=CONTROL_PLANE_SHA_A):
+    baseline = decision()
+    challenger = decision()
+    challenger["captain_id"] = 14
+    return {
+        "schema_version": 1,
+        "contract": dq.LAB_CONTRACT,
+        "exposure_class": "PRIVATE_MANAGER",
+        "production_influence": "NONE",
+        "serving_authorized": False,
+        "control_plane_sha": control_plane_sha,
+        "source": {
+            "season": "2026-2027",
+            "target_gameweek": 3,
+            "run_id": "run-1",
+            "public_attempt_id": "public-id",
+            "candidate_release_tag": "candidate-tag",
+            "candidate_readiness_sha256": "d" * 64,
+        },
+        "private_position_map": {str(key): value for key, value in POSITION_MAP.items()},
+        "team_context": {"active_chip": None},
+        "baseline_variant_id": "production_baseline",
+        "variants": {
+            "production_baseline": {
+                "provider_id": "airsenal",
+                "variant_kind": "PRODUCTION_BASELINE",
+                "decision": baseline,
+                "decision_signature_sha256": "e" * 64,
+            },
+            "h1_plus_airsenal_future::dastan": {
+                "provider_id": "dastan",
+                "variant_kind": "CHALLENGER_H1_AIRSENAL_H2_PLUS",
+                "decision": challenger,
+                "decision_signature_sha256": "f" * 64,
+            },
+        },
+    }
+
+
+def edge(
+    observation_number: int,
+    edge_points: float,
+    *,
+    provider="dastan",
+    control_plane_sha=CONTROL_PLANE_SHA_A,
+):
     return {
         "source": {
             "prospective_observation_number": observation_number,
             "target_gameweek": observation_number + 2,
+            "decision_lab_control_plane_sha": control_plane_sha,
         },
         "baseline_variant_id": "production_baseline",
         "variants": {
@@ -236,6 +284,31 @@ class RealizedDecisionEdgeTests(unittest.TestCase):
     def test_unknown_future_chip_fails_closed(self):
         with self.assertRaises(RuntimeError):
             self.score(chip="mystery-chip")
+
+    def test_decision_edge_preserves_lab_control_plane_identity(self):
+        result = dq.build_decision_edge(
+            lab=decision_lab(),
+            outcome=outcome(),
+            observation_number=1,
+            selected_candidate_tag="candidate-tag",
+            outcome_sha256="c" * 64,
+        )
+        self.assertEqual(
+            result["source"]["decision_lab_control_plane_sha"],
+            CONTROL_PLANE_SHA_A,
+        )
+
+    def test_decision_edge_rejects_missing_lab_control_plane_identity(self):
+        lab = decision_lab()
+        lab.pop("control_plane_sha")
+        with self.assertRaises(dq.TournamentContractError):
+            dq.build_decision_edge(
+                lab=lab,
+                outcome=outcome(),
+                observation_number=1,
+                selected_candidate_tag="candidate-tag",
+                outcome_sha256="c" * 64,
+            )
 
 
 class CounterfactualConstructionTests(unittest.TestCase):
@@ -379,6 +452,37 @@ class SequentialDecisionEdgeLearningTests(unittest.TestCase):
         )
         self.assertFalse(report["twelve_gameweeks_required_before_learning"])
         self.assertFalse(report["twelve_gameweeks_required_before_review"])
+
+    def test_learning_uses_frozen_private_manager_exposure_class(self):
+        report = dq.build_decision_edge_learning(
+            [edge(1, 5.0)], season="2026-2027"
+        )
+        self.assertEqual(report["exposure_class"], "PRIVATE_MANAGER")
+
+    def test_learning_rejects_missing_control_plane_identity(self):
+        row = edge(1, 5.0)
+        row["source"].pop("decision_lab_control_plane_sha")
+        with self.assertRaises(dq.TournamentContractError):
+            dq.build_decision_edge_learning([row], season="2026-2027")
+
+    def test_different_control_planes_do_not_count_as_replication(self):
+        report = dq.build_decision_edge_learning(
+            [
+                edge(1, 5.0, control_plane_sha=CONTROL_PLANE_SHA_A),
+                edge(2, 5.0, control_plane_sha=CONTROL_PLANE_SHA_B),
+            ],
+            season="2026-2027",
+        )
+        rows = list(report["variant_evidence"].values())
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({row["observation_count"] for row in rows}, {1})
+        self.assertEqual({row["stage"] for row in rows}, {"DIAGNOSTIC_SIGNAL"})
+        self.assertEqual(
+            {row["decision_lab_control_plane_sha"] for row in rows},
+            {CONTROL_PLANE_SHA_A, CONTROL_PLANE_SHA_B},
+        )
+        self.assertEqual(report["owner_review_queue"], [])
+        self.assertFalse(report["cross_control_plane_pooling"])
 
 
 if __name__ == "__main__":

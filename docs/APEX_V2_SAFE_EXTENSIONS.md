@@ -88,9 +88,16 @@ The no-hindsight sequence is:
 
 Private release namespaces:
 
-- predeadline lab: `apex-v2/private-decision-lab/<season>/<production-run-id>`;
+- per-task predeadline staging: `apex-v2/private-decision-lab-task/<season>/<production-run-id>/<control-plane-fingerprint>/<task-name>`;
+- canonical predeadline lab: `apex-v2/private-decision-lab/<season>/<production-run-id>`;
 - realized edge: `apex-v2/private-decision-edge/<season>/obs<N>`;
 - rolling learning: `apex-v2/private-decision-edge-learning/<season>/through-obs<N>`.
+
+All four namespaces are owner-private research derived from exact manager state and therefore use the existing frozen `PRIVATE_MANAGER` exposure class. They do not introduce a new exposure class. Each release is immutable, uses an exact asset allowlist plus attestation, records no serving authority, and remains in the private repository.
+
+The `fpl` query bridge does not consume any of these decision-lab namespaces. Its serving/read bridge uses exact reviewed namespace matching rather than a generic `apex-v2/private*` prefix, so the lab, task, edge and learning releases cannot become current manager decisions by namespace collision.
+
+The task namespace exists only to make the predeadline matrix bounded, resumable and control-plane-versioned. A task release is an implementation staging artifact, not a serving or query-bridge surface. The canonical lab remains the immutable historical record of the controller version that actually sealed that production run.
 
 A lab is created only from a tournament-ready immutable candidate while its Official deadline is still in the future. If no lab was sealed before the deadline, that candidate can never be retrospectively backfilled. Missing predeadline evidence stays missing.
 
@@ -149,9 +156,13 @@ After the canonical tournament selection and immutable Official outcome exist, e
 
 The output stores `realized_points_after_hits` and the direct point edge versus the immutable production baseline. It also records whether the counterfactual actually changed the decision signature.
 
+Every realized edge additionally carries the full `decision_lab_control_plane_sha` from the prospectively sealed lab. Missing or malformed control-plane identity fails closed; it is not inferred from publication time, provider name or a later controller revision.
+
 ### Sequential decision-edge learning
 
 Decision-edge evidence updates after every completed canonical H1. Twelve Gameweeks are not a waiting period.
+
+Evidence is cohort-isolated by the prospectively sealed decision lab's full control-plane SHA. The same stable `variant_id` under two different controller implementations is not counted as replication. Each implementation cohort must earn its own observation count and review stage. This preserves immutable historical evidence while preventing a controller rewrite or bugfix from silently pooling semantically different experiments.
 
 The recent evidence has a four-observation half-life. Stages are deliberately progressive:
 
@@ -164,10 +175,12 @@ The recent evidence has a four-observation half-life. Stages are deliberately pr
 
 A review-eligible edge creates an owner review item. It still does not alter production. Every report records:
 
+- `exposure_class = PRIVATE_MANAGER`;
 - `production_influence = NONE`;
 - `serving_authorized = false`;
 - `promotion_authority = false`;
 - `automatic_serving_change = false`;
+- `cross_control_plane_pooling = false`;
 - `serving_action = NO_AUTOMATIC_CHANGE`.
 
 Any future specialist role, blend or champion change must be a separate explicit governed/versioned production change.
@@ -209,12 +222,14 @@ This extension is complete only when all of the following hold:
 1. targeted realized-scoring tests cover formation-aware autosubs, goalkeeper fallback, captain-to-vice fallback, transfer hits, Triple Captain, Bench Boost and unknown-chip fail-closed behavior;
 2. availability-overlay tests prove AIrsenal xP is never changed and incomplete fields are not silently used;
 3. sequential edge tests prove one-GW diagnostic learning, early fast-track review and zero automatic serving authority;
-4. existing V1 decision-quality tests continue to pass;
-5. the entire `ops_tests` suite passes against the exact frozen evaluator/engine source;
-6. the ops contract proves no frozen-engine path changed;
-7. the decision-quality workflow remains read-only in the public repository and has no acquire/solve/production-publish/provider-generation command;
-8. broad repository pytest, Ruff, upstream and governance checks are green;
-9. after merge, the push-triggered decision-quality run successfully seals or verifies the current still-predeadline GW3 lab without invoking production;
-10. production and PR #90 identities are reverified after merge.
+4. provenance regressions prove every realized edge carries a valid decision-lab control-plane SHA, missing identity fails closed, and identical `variant_id` evidence from different controller SHAs is never pooled as replication;
+5. exposure regressions prove private lab/edge/learning artifacts remain inside the frozen `PRIVATE_MANAGER` class rather than inventing a new classification token;
+6. existing V1 decision-quality tests continue to pass;
+7. the entire `ops_tests` suite passes against the exact frozen evaluator/engine source;
+8. the ops contract proves no frozen-engine path changed;
+9. the decision-quality workflow remains read-only in the public repository and has no acquire/solve/production-publish/provider-generation command;
+10. broad repository pytest, Ruff, upstream and governance checks are green;
+11. after merge, the push-triggered decision-quality run successfully seals or verifies the current still-predeadline GW3 lab without invoking production;
+12. production and PR #90 identities are reverified after merge.
 
 Once these criteria pass, future observations are ordinary operation of the prospective learning system rather than a new architecture exercise.
