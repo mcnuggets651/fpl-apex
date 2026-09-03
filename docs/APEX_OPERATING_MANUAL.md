@@ -2,7 +2,11 @@
 
 **Authoritative human operating document for Apex V2.** Machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json). If prose and the manifest disagree, stop and repair governance before acting.
 
-## 1. Frozen operating constitution
+Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
+
+Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+
+## 1. Production operating constitution
 
 - Season: 2026/27.
 - Production FPL entry: 63984.
@@ -11,7 +15,7 @@
 - **NEVER merge or advance PR #90** as part of normal operations, research, documentation, incident repair or successor promotion.
 - Serving-code pointer: `production_core_sha` in `APEX_V2_AUTHORITY.json`.
 - `production_core_sha` must be an exact 40-character commit descended from the immutable PR #90 base and may move only through the certified successor/readiness/canary process.
-- During the authority-split migration, `production_core_sha` intentionally remains `99cc7b51b0cff45462b567084cb1844cfe0a456f`; separating the fields itself changes no serving semantics.
+- The authority split is complete: `frozen_engine_sha` remains the permanent forensic base while `production_core_sha` independently identifies current serving code.
 - Control plane: `main`.
 - Sole production workflow: `.github/workflows/apex-v2-daily-production.yml`.
 - Sole serving provider: **AIrsenal**, H1–H8.
@@ -81,10 +85,10 @@ Do not substitute a research counterfactual, a shadow-provider team, an old gene
 8. create immutable attempt intent carrying the exact production-core SHA;
 9. hash Official FPL authority before provider work;
 10. produce/acquire governed provider surfaces;
-11. re-anchor Official FPL and freeze inputs exactly once;
+11. re-anchor Official FPL and freeze inputs exactly once, carrying the same production-core SHA;
 12. solve with network access disabled;
 13. run production-core architecture/mechanics checks;
-14. publish private prerequisites first and the immutable final last.
+14. publish private prerequisites first and the immutable final last, carrying the same production-core SHA.
 
 Operations controllers may come from exact `main` only where they are explicitly non-model orchestration. They must not replace production-core config/model/decision code. A workflow that cannot satisfy these invariants must fail closed rather than silently fall back.
 
@@ -178,14 +182,14 @@ Every non-trivial change should have:
 
 ## 12. Governance/anti-drift rules
 
-The generic governance checker must read `APEX_V2_AUTHORITY.json` and independently enforce both identities:
+The generic governance checker and operations contracts must read `APEX_V2_AUTHORITY.json` and independently enforce both identities:
 
 - `frozen_engine_sha` is exactly the immutable PR #90 base `99cc7b51b0cff45462b567084cb1844cfe0a456f`;
 - `production_core_sha` is a valid descendant commit used for serving production.
 
-It must compare provider constitution/season/entry/horizon semantics with the **production-core** `config/apex_v2.yaml`, enforce exactly one serving production workflow, prove the production workflow resolves the production pointer and rejects a non-descendant core, and reject legacy executable publishers in `.github/workflows`.
+They must compare provider constitution/season/entry/horizon semantics with the **production-core** `config/apex_v2.yaml`, enforce exactly one serving production workflow, prove the production workflow resolves the production pointer and rejects a non-descendant core, require lock-aware serving-core installation, bind intent/acquisition/publication provenance to the same serving-core SHA, and reject legacy executable publishers in `.github/workflows`.
 
-Canonical authority docs must not revive obsolete claims that Pinnacle/V1 is current production, that `scripts/run_apex.py` is the current serving command, that an August GW1 squad is current, or that old direct-main publishers are live.
+Canonical authority docs must carry both the exact immutable-base marker and the exact current serving-core marker. A production-core promotion that leaves Project Brain prose on the prior core is a CI failure, not a documentation follow-up.
 
 Retired executable workflows are preserved under `archive/workflows/` for forensics. Moving them there is a safety boundary: GitHub Actions does not execute workflow YAML outside `.github/workflows`.
 
