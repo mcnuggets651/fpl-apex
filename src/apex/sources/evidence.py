@@ -585,6 +585,8 @@ def collect_v2_evidence(
     ]
     completed = not required_failures
     source_config_sha = hashlib.sha256(Path(sources_path).read_bytes()).hexdigest()
+    records_payload = [dataclass_to_dict(record) for record in ordered]
+    records_sha = _canonical_hash(records_payload)
     manifest = {
         "schema_version": 1,
         "completed": completed,
@@ -595,6 +597,7 @@ def collect_v2_evidence(
         "expected_official_hash": expected_official_hash,
         "observed_official_hash": official.source_hash,
         "source_config_sha256": source_config_sha,
+        "records_sha256": records_sha,
         "sources": [dataclass_to_dict(outcome) for outcome in outcomes],
         "required_source_failures": required_failures,
         "record_count": len(ordered),
@@ -612,7 +615,7 @@ def collect_v2_evidence(
         Path(records_path),
         {
             "schema_version": 1,
-            "records": [dataclass_to_dict(record) for record in ordered],
+            "records": records_payload,
         },
     )
     manifest_file = _write_json(Path(manifest_path), manifest)
