@@ -6,14 +6,14 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+FROZEN_SHA = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 
 class V2ControlPlaneAuthorityTests(unittest.TestCase):
     def test_required_ci_has_no_legacy_runtime_authority(self):
         text = (ROOT / ".github/workflows/apex.yml").read_text(encoding="utf-8")
 
-        # Guard executable legacy entry points rather than banning their names from
-        # fail-closed assertions/documentation inside the workflow itself.
         forbidden_exec_patterns = (
             r"(?m)^\s*(?:python\s+)?scripts/run_apex\.py(?:\s|$)",
             r"(?m)^\s*(?:python\s+)?scripts/run_pinnacle\.py(?:\s|$)",
@@ -33,6 +33,7 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
 
         for required in (
             "docs/APEX_V2_AUTHORITY.json",
+            'authority["production_core_sha"]',
             "git worktree add --detach",
             "ops_tests",
             "check_v2_architecture.py",
@@ -52,9 +53,17 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
             "PYTHONPATH: ${{ runner.temp }}/frozen-apex/src:${{ github.workspace }}/scripts",
             text,
         )
+        for required in (
+            "production_core_sha",
+            "frozen_engine_sha",
+            "git merge-base --is-ancestor",
+        ):
+            self.assertIn(required, text)
 
     def test_manual_readiness_is_read_only_reproducible_candidate_rehearsal(self):
-        text = (ROOT / ".github/workflows/production-readiness.yml").read_text(encoding="utf-8")
+        text = (ROOT / ".github/workflows/production-readiness.yml").read_text(
+            encoding="utf-8"
+        )
         for forbidden in (
             "run_apex.py",
             "run_pinnacle.py",
@@ -72,6 +81,9 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
             "workflow_dispatch:",
             "candidate_sha:",
             "docs/APEX_V2_AUTHORITY.json",
+            'authority["production_core_sha"]',
+            'authority["frozen_engine_sha"]',
+            "git merge-base --is-ancestor",
             "git worktree add --detach",
             'python-version: "3.12.14"',
             "requirements-v2.lock",
@@ -90,6 +102,38 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
             self.assertIn(required, text)
         self.assertNotIn("schedule:", text)
         self.assertNotIn("push:\n", text)
+
+    def test_authority_separates_immutable_base_from_serving_pointer(self):
+        authority = json.loads(
+            (ROOT / "docs/APEX_V2_AUTHORITY.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(authority["frozen_engine_sha"], FROZEN_SHA)
+        self.assertEqual(authority["frozen_engine_pr"], 90)
+        self.assertEqual(
+            authority["frozen_engine_pr_policy"],
+            "NEVER_MERGE_OR_ADVANCE",
+        )
+        self.assertRegex(authority["production_core_sha"], SHA40)
+
+        production = (
+            ROOT / ".github/workflows/apex-v2-daily-production.yml"
+        ).read_text(encoding="utf-8")
+        for required in (
+            'authority["production_core_sha"]',
+            'authority["frozen_engine_sha"]',
+            "git merge-base --is-ancestor",
+            "APEX_CORE_PATH",
+            'echo "APEX_CODE_SHA=$PRODUCTION_CORE_SHA"',
+            '--source "$APEX_CORE_PATH/config/apex_v2.yaml"',
+            '"$APEX_CORE_PATH/scripts/run_airsenal_worker.py"',
+            'python "$APEX_CORE_PATH/scripts/check_v2_architecture.py"',
+        ):
+            self.assertIn(required, production)
+        self.assertNotIn(
+            f'APEX_CODE_SHA: "{FROZEN_SHA}"',
+            production,
+        )
+        self.assertNotIn("ref: ${{ env.APEX_CODE_SHA }}", production)
 
     def test_authority_keeps_legacy_nonserving_and_one_v2_publisher(self):
         authority = json.loads(
