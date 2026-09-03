@@ -55,6 +55,52 @@ def _provider_max_ages(snapshot) -> dict[str, float]:
     return values
 
 
+def _utc_datetime(value, *, label: str) -> datetime:
+    """Parse one sealed ISO-8601 instant and normalize it to UTC."""
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"{label} is not a valid ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def snapshot_evaluation_time(snapshot, run: dict, now: datetime | None = None) -> datetime:
+    """Return the deterministic clock used to evaluate a frozen snapshot.
+
+    A frozen solve is a pure function of sealed input. Re-sampling wall clock during
+    publication replay makes provider freshness and deadline certification change even
+    when every football input is byte-identical. Production snapshots therefore bind
+    evaluation to their sealed freeze instant. Explicit ``now`` remains available for
+    adversarial tests and deliberate point-in-time re-evaluation, while older synthetic
+    snapshots deterministically fall back to their sealed acquisition/start instant.
+    """
+    if now is not None:
+        if now.tzinfo is None:
+            return now.replace(tzinfo=timezone.utc)
+        return now.astimezone(timezone.utc)
+
+    run_frozen = run.get("frozen_at")
+    manifest_frozen = snapshot.manifest.get("metadata", {}).get("frozen_at")
+    if run_frozen and manifest_frozen:
+        run_time = _utc_datetime(run_frozen, label="run frozen_at")
+        manifest_time = _utc_datetime(manifest_frozen, label="snapshot metadata frozen_at")
+        if run_time != manifest_time:
+            raise RuntimeError("frozen snapshot clock mismatch between run and manifest")
+        return run_time
+
+    for label, value in (
+        ("run frozen_at", run_frozen),
+        ("snapshot metadata frozen_at", manifest_frozen),
+        ("run acquired_at", run.get("acquired_at")),
+        ("run run_started_at", run.get("run_started_at")),
+    ):
+        if value:
+            return _utc_datetime(value, label=label)
+    raise RuntimeError("frozen snapshot has no sealed evaluation timestamp")
+
+
 def _runtime_freshness(status, snapshot, now: datetime | None):
     if status is None or status.surface is None:
         return status
@@ -161,12 +207,13 @@ def solve_snapshot(
     team = team_from_dict(team_raw) if team_raw else None
     run = snapshot.read_json("run.json")
     matrix = snapshot.read_json("qualification_matrix.json")
+    evaluation_now = snapshot_evaluation_time(snapshot, run, now)
 
     statuses, universe, policy, max_horizon, canonical = reconstruct_frozen_serving(
         snapshot, official, team, run, matrix
     )
     serving_h1 = policy.get(1)
-    runtime_serving_h1 = _runtime_freshness(serving_h1, snapshot, now)
+    runtime_serving_h1 = _runtime_freshness(serving_h1, snapshot, evaluation_now)
     decision = None
     warnings = []
     contingency_horizon = 0
@@ -309,7 +356,7 @@ def solve_snapshot(
         contingency_model_complete=(contingency_horizon >= 1),
         degraded_warnings=tuple(warnings),
         valid_until=run["deadline"],
-        now=now,
+        now=evaluation_now,
     )
     manifest = RunManifest(
         1,
