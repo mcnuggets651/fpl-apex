@@ -18,8 +18,15 @@ for _name in dir(_impl):
         globals()[_name] = getattr(_impl, _name)
 
 
-def _replay_security_payload(decision: dict) -> dict:
-    """Return decision fields that must reproduce from sealed production inputs."""
+def replay_security_payload(decision: dict) -> dict:
+    """Return the immutable semantic DecisionBundle surface used for replay proof.
+
+    Runtime execution metadata such as ``workflow_run_id`` is intentionally excluded:
+    it identifies the execution that produced an otherwise identical sealed decision,
+    not the recommendation itself. Recommendation, certification, optimiser result,
+    serving policy, contingency state, evidence interpretation, and serving health are
+    all retained and therefore must reproduce exactly.
+    """
     diagnostics = decision.get("provider_diagnostics")
     if not isinstance(diagnostics, dict):
         raise RuntimeError("DecisionBundle provider diagnostics are missing or invalid")
@@ -47,20 +54,20 @@ def _replay_security_payload(decision: dict) -> dict:
     }
 
 
-def _assert_decision_matches_frozen_replay(snapshot, decision: dict) -> None:
-    """Fail closed unless an offline re-solve reproduces the published decision.
+# Backward-compatible private name for focused tests/evaluator code that already used
+# the pre-hardening helper. New code should use the public semantic contract above.
+_replay_security_payload = replay_security_payload
 
-    `workflow_run_id` and human-readable runtime reason strings are intentionally not
-    replay inputs. Recommendation, certification, optimiser result, serving policy,
-    contingency state, evidence interpretation, and runtime serving health are.
-    """
+
+def _assert_decision_matches_frozen_replay(snapshot, decision: dict) -> None:
+    """Fail closed unless an offline re-solve reproduces the published decision."""
     with tempfile.TemporaryDirectory(prefix="apex-v2-publication-replay-") as tmp:
         replay_bundle = solve_snapshot(
             snapshot.root,
             Path(tmp) / "decision_bundle.json",
         )
-    expected = _replay_security_payload(dataclass_to_dict(replay_bundle))
-    observed = _replay_security_payload(decision)
+    expected = replay_security_payload(dataclass_to_dict(replay_bundle))
+    observed = replay_security_payload(decision)
     if _impl.canonical_json_bytes(observed) != _impl.canonical_json_bytes(expected):
         raise RuntimeError(
             "DecisionBundle recommendation/certification does not match "
