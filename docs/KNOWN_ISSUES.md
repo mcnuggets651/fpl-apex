@@ -2,7 +2,11 @@
 
 Canonical machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json). Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
 
-Apex V2 frozen engine SHA: `99cc7b51b0cff45462b567084cb1844cfe0a456f`. Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`. Sole serving provider: **AIrsenal** H1–H8.
+Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
+
+Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+
+Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`. Sole serving provider: **AIrsenal** H1–H8. The immutable base anchors PR #90 and evaluator lineage; current serving semantics come from `production_core_sha`.
 
 ## K001 — Private manager state is not public
 
@@ -14,7 +18,7 @@ Predeadline public FPL endpoints may not expose a manager's unpublished transfer
 
 ## K003 — Market odds are not assumed serving inputs
 
-Do not claim a betting-market feed is part of the frozen serving constitution unless a future certified engine explicitly says so. Optional research evidence cannot silently change production.
+Do not claim a betting-market feed is part of the serving constitution unless a future certified production core explicitly says so. Optional research evidence cannot silently change production.
 
 ## K004 — Challenger evidence is non-serving
 
@@ -32,17 +36,17 @@ A forecast or decision variant that was not immutably sealed before the relevant
 
 **Resolved operationally by PR #114 and accepted live on 2 September 2026.**
 
-The frozen transfer optimiser permits up to 17 MILP calls at 120 seconds each, or 34 minutes of solver allowance before orchestration. The prior 30-minute matrix timeout could not guarantee exact completion. The workflow now grants 50 minutes per independent solve task and `ops_tests/test_apex_v2_decision_lab_runtime_bound.py` derives the theoretical bound plus 15 minutes of headroom from the frozen source. Candidate depth, horizon, MIP gap and exact mechanics were not changed.
+The immutable evaluator's transfer optimiser permits up to 17 MILP calls at 120 seconds each, or 34 minutes of solver allowance before orchestration. The prior 30-minute matrix timeout could not guarantee exact completion. The workflow now grants 50 minutes per independent solve task and `ops_tests/test_apex_v2_decision_lab_runtime_bound.py` derives the theoretical bound plus 15 minutes of headroom from the evaluator source. Candidate depth, horizon, MIP gap and exact mechanics were not changed.
 
 Corrected Decision Quality run #10 (`33643925982`) completed successfully with all 8/8 fresh GW3 tasks sealed, including exact baseline reproduction and the previously timing-out Apex Proprietary availability overlay. Canonical assembly produced immutable private lab `apex-v2/private-decision-lab/2026-2027/33590896695-1`; all constituent decisions were already sealed before the GW3 deadline. This is the runtime acceptance proof. Keep the bound regression, but do not carry K007 as an open blocker.
 
 ## K008 — Project Brain architecture drift
 
-**Resolved and merged by PR #115 on 2 September 2026.** Canonical Project Brain, ChatGPT/operator and status documents now anchor to `APEX_V2_AUTHORITY.json`, the frozen engine SHA and the immutable V2 production path. Generic governance and the V2 Ops Contract fail if canonical authority documents revive obsolete V1/Pinnacle current-production claims.
+**Re-closed after the 3 September 2026 serving-core promotion.** Canonical Project Brain, ChatGPT/operator and status documents explicitly distinguish immutable `frozen_engine_sha` from current `production_core_sha`. Operations regressions read the machine authority and fail if canonical documents name a different serving core or conflate the PR #90 base with production.
 
 ## K009 — Generic governance preserved obsolete production
 
-**Resolved and merged by PR #115 on 2 September 2026.** `scripts/check_governance_consistency.py` now validates the V2 authority manifest against the exact frozen `config/apex_v2.yaml`, recognizes exactly one serving production workflow and classifies the remaining active workflows as operations/research. The exact final PR head passed full pytest, Ruff, upstream consistency, generic governance and the V2 frozen-evaluator contract before merge.
+**Resolved.** `scripts/check_governance_consistency.py` validates the V2 authority manifest and active workflow constitution. Dedicated operations regressions additionally bind current authority documents, lock-aware core installation and serving-core provenance. The required CI surface recognizes one serving production workflow and keeps research/legacy paths non-serving.
 
 ## K010 — Legacy publishers retained executable write paths
 
@@ -83,9 +87,15 @@ Apex can improve forecast calibration and decision quality; it cannot eliminate 
 
 ## K016 — Direct-owner credential diagnostic is not production auth health
 
-The repository may contain a directly supplied FPL bearer/cookie that expires independently of the managed encrypted refresh state. A failure of `.github/workflows/apex-v2-direct-auth-diagnostic.yml` therefore means exactly that the direct credential failed its frozen owner preflight; it does **not** by itself prove that the managed keepalive/production authentication chain is unhealthy.
+The repository may contain a directly supplied FPL bearer/cookie that expires independently of the managed encrypted refresh state. A failure of `.github/workflows/apex-v2-direct-auth-diagnostic.yml` therefore means exactly that the direct credential failed its owner preflight; it does **not** by itself prove that the managed keepalive/production authentication chain is unhealthy.
 
 The direct-auth workflow is incident-only and manual `workflow_dispatch` only. Automatic `push`, `schedule` and `workflow_run` triggers are prohibited, refresh-token state is deliberately blanked, and it has no acquire/solve/publish/write authority. `ops_tests/test_github_actions_runtime_contract.py` locks this boundary. Managed auth health is established through the keepalive/production refresh path and exact manager-identity proof.
+
+## K017 — Cross-runner solver telemetry is not semantic decision identity
+
+**Defect reproduced on 3 September 2026 and repair under certification.** The exact same promoted core and commit produced one red and one green deterministic-replay readiness result on different GitHub runners with the same resolved Python/package versions. The in-run DecisionBundle was deterministic, but the semantic golden included backend solver status strings and MIP-gap telemetry that can vary by runner/CPU without changing the integral incumbent or FPL decision.
+
+The portable-replay successor keeps recommendation, certification, serving map, evidence, optimiser policy, candidate structure and objective values in the replay trust boundary while excluding backend-only status text and MIP-gap presentation noise. Focused tests prove decision-driving changes still alter replay identity. Generic readiness is also being made lock-aware so certified and operational installs share the core's exact dependency contract. Do not close K017 until the successor passes sealed CI on multiple runners and is promoted through `production_core_sha`.
 
 ## Resolution discipline
 
