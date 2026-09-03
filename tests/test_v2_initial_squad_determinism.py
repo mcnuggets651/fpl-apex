@@ -121,9 +121,12 @@ def test_primary_optimum_tie_break_is_independent_of_catalogue_order():
     assert forward.decision.squad_ids == tuple(range(1, 16))
     assert reverse.decision.squad_ids == tuple(range(1, 16))
     assert forward.decision == reverse.decision
-    assert forward.raw_solver["primary_tiebreak"] == (
-        "LEXICOGRAPHIC_SQUAD_BLOCKS_UNDER_EXACT_PRIMARY_LOCK"
+    expected_policy = (
+        "HIERARCHICAL_PRIMARY_XP_THEN_SQUAD_XP_THEN_LEXICOGRAPHIC_SQUAD_BLOCKS"
     )
-    assert reverse.raw_solver["primary_tiebreak"] == (
-        "LEXICOGRAPHIC_SQUAD_BLOCKS_UNDER_EXACT_PRIMARY_LOCK"
-    )
+    assert forward.raw_solver["primary_tiebreak"] == expected_policy
+    assert reverse.raw_solver["primary_tiebreak"] == expected_policy
+    assert forward.raw_solver["primary_objective"] == 60.0
+    assert reverse.raw_solver["primary_objective"] == 60.0
+    assert forward.raw_solver["secondary_squad_objective"] == 75.0
+    assert reverse.raw_solver["secondary_squad_objective"] == 75.0
