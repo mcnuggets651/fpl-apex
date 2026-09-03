@@ -12,11 +12,6 @@ from urllib.request import Request, urlopen
 OFFICIAL_BOOTSTRAP = "https://fantasy.premierleague.com/api/bootstrap-static/"
 API_ROOT = "https://api.github.com"
 WORKFLOW_FILE = "apex-v2-daily-production.yml"
-# Operational closure switch. This forces exactly the push-triggered watcher run
-# created by merging this change to dispatch canonical production immediately.
-# Scheduled watcher runs remain deadline-gated because they are not push events.
-# Revert this to False immediately after the canonical production run starts.
-FORCE_PUSH_DISPATCH_ONCE = True
 
 
 def parse_utc(value: str) -> datetime:
@@ -179,17 +174,16 @@ def run_watch(
         min_minutes=min_minutes,
         max_minutes=max_minutes,
     )
-    forced_push = FORCE_PUSH_DISPATCH_ONCE and os.getenv("GITHUB_EVENT_NAME", "") == "push"
     result: dict[str, Any] = {
         "schema_version": 1,
         "gameweek": decision.gameweek,
         "deadline_time": decision.deadline_time,
         "seconds_until_deadline": decision.seconds_until_deadline,
-        "eligible": decision.eligible or forced_push,
-        "reason": "FORCED_PUSH_OPERATIONAL_CLOSURE" if forced_push else decision.reason,
+        "eligible": decision.eligible,
+        "reason": decision.reason,
         "dispatch": "NOT_ATTEMPTED",
     }
-    if not decision.eligible and not forced_push:
+    if not decision.eligible:
         return result
 
     runs_url = (
@@ -200,7 +194,7 @@ def run_watch(
     if status != 200 or not isinstance(runs, dict):
         raise RuntimeError("GitHub workflow run history could not be verified")
     deadline_dt = parse_utc(decision.deadline_time)
-    if not forced_push and has_existing_deadline_run(
+    if has_existing_deadline_run(
         runs, deadline=deadline_dt, min_minutes=min_minutes, max_minutes=max_minutes
     ):
         result["dispatch"] = "SKIPPED_ALREADY_RECORDED"
@@ -213,7 +207,10 @@ def run_watch(
         token=token,
         payload={"ref": "main"},
     )
-    if status not in {204, 201}:
+    # GitHub has returned 204 historically and currently may return 202 for
+    # accepted asynchronous workflow dispatches. Treat all documented/observed
+    # successful acceptance statuses as success.
+    if status not in {201, 202, 204}:
         raise RuntimeError("GitHub did not accept deadline production dispatch")
     result["dispatch"] = "DISPATCHED"
     return result
