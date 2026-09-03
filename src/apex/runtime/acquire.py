@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, TypeVar
@@ -28,7 +30,7 @@ from apex.sources.official import fetch_official_snapshot
 from apex.sources.pitchside import acquire_pitchside_shadow
 from apex.sources.team import acquire_team_state
 
-from .config import ApexConfig, config_sha
+from .config import ApexConfig
 from .snapshot import SnapshotBuilder
 
 T = TypeVar("T")
@@ -60,10 +62,23 @@ def _stage(stage: str, fn: Callable[[], T]) -> T:
         raise AcquisitionStageError(stage, exc) from exc
 
 
-def _parse_evidence(path: Path) -> tuple[EvidenceRecord, ...]:
-    if not path.exists():
-        return ()
-    raw = json.loads(path.read_text())
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _canonical_records_hash(records: tuple[EvidenceRecord, ...]) -> str:
+    payload = [dataclass_to_dict(record) for record in records]
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return _sha256(encoded)
+
+
+def _parse_evidence_payload(raw) -> tuple[EvidenceRecord, ...]:
     rows = raw if isinstance(raw, list) else raw.get("records", [])
     return tuple(
         EvidenceRecord(
@@ -85,28 +100,20 @@ def _parse_evidence(path: Path) -> tuple[EvidenceRecord, ...]:
     )
 
 
-def _validate_evidence_acquisition(
-    manifest_path: Path,
+def _parse_evidence(path: Path) -> tuple[EvidenceRecord, ...]:
+    if not path.exists():
+        return ()
+    return _parse_evidence_payload(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _validate_evidence_manifest(
+    payload: dict,
     records: tuple[EvidenceRecord, ...],
     *,
     required: bool,
     official_hash: str,
     target_gameweek: int,
 ) -> dict:
-    if not manifest_path.exists():
-        if required:
-            raise RuntimeError(
-                "required external evidence acquisition manifest is missing"
-            )
-        return {
-            "schema_version": 1,
-            "completed": False,
-            "required": False,
-            "mode": "NOT_REQUIRED",
-            "record_count": len(records),
-        }
-
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict) or int(payload.get("schema_version", 0)) != 1:
         raise RuntimeError("external evidence acquisition manifest schema invalid")
     if required and payload.get("completed") is not True:
@@ -123,6 +130,13 @@ def _validate_evidence_acquisition(
         raise RuntimeError(
             "external evidence manifest record count does not match evidence payload"
         )
+    expected_records_hash = str(payload.get("records_sha256") or "").lower()
+    if required and not expected_records_hash:
+        raise RuntimeError(
+            "required external evidence acquisition manifest does not bind evidence payload hash"
+        )
+    if expected_records_hash and expected_records_hash != _canonical_records_hash(records):
+        raise RuntimeError("external evidence payload hash does not match acquisition manifest")
     failures = payload.get("required_source_failures") or []
     if required and failures:
         raise RuntimeError(
@@ -130,6 +144,34 @@ def _validate_evidence_acquisition(
             + ", ".join(map(str, failures))
         )
     return payload
+
+
+def _validate_evidence_acquisition(
+    manifest_path: Path,
+    records: tuple[EvidenceRecord, ...],
+    *,
+    required: bool,
+    official_hash: str,
+    target_gameweek: int,
+) -> dict:
+    if not manifest_path.exists():
+        if required:
+            raise RuntimeError("required external evidence acquisition manifest is missing")
+        return {
+            "schema_version": 1,
+            "completed": False,
+            "required": False,
+            "mode": "NOT_REQUIRED",
+            "record_count": len(records),
+        }
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return _validate_evidence_manifest(
+        payload,
+        records,
+        required=required,
+        official_hash=official_hash,
+        target_gameweek=target_gameweek,
+    )
 
 
 def _target_gameweek(official, now):
@@ -159,20 +201,10 @@ def assert_official_acquisition_stable(
 
 
 def assert_private_manager_credential_opt_in() -> None:
-    """Fail closed if owner credentials are present without an explicit opt-in.
-
-    This is deliberately enforced inside the production acquisition runtime as
-    well as in GitHub Actions. A developer running ``apex-v2 acquire`` manually
-    cannot accidentally turn a public/deadline-snapshot attempt into an owner-
-    private attempt merely because FPL credentials happen to be present in the
-    shell environment.
-    """
-
+    """Fail closed if owner credentials are present without an explicit opt-in."""
     flag = os.getenv("APEX_ENABLE_PRIVATE_MANAGER_STATE", "0").strip()
     if flag not in {"0", "1"}:
-        raise RuntimeError(
-            "APEX_ENABLE_PRIVATE_MANAGER_STATE must be exactly '0' or '1'"
-        )
+        raise RuntimeError("APEX_ENABLE_PRIVATE_MANAGER_STATE must be exactly '0' or '1'")
     credentials_present = bool(
         os.getenv("FPL_SESSION_COOKIE", "").strip()
         or os.getenv("FPL_X_API_AUTHORIZATION", "").strip()
@@ -189,6 +221,22 @@ def assert_private_manager_credential_opt_in() -> None:
         )
 
 
+def _assert_file_unchanged(path: Path, expected: bytes, label: str) -> None:
+    try:
+        observed = path.read_bytes()
+    except OSError as exc:
+        raise RuntimeError(f"{label} disappeared during acquisition") from exc
+    if observed != expected:
+        raise RuntimeError(f"{label} changed during acquisition")
+
+
+def _load_captured_config(config_bytes: bytes) -> ApexConfig:
+    with tempfile.TemporaryDirectory(prefix="apex-v2-config-") as directory:
+        captured = Path(directory) / "apex_v2.yaml"
+        captured.write_bytes(config_bytes)
+        return ApexConfig.load(captured)
+
+
 def acquire_and_freeze(
     config_path: Path,
     *,
@@ -198,21 +246,76 @@ def acquire_and_freeze(
     workdir: Path = Path("."),
     expected_official_hash: str | None = None,
 ):
-    config = _stage("config", lambda: ApexConfig.load(config_path))
+    config_path = Path(config_path)
+    workdir = Path(workdir)
+    config_bytes = _stage("config_integrity", config_path.read_bytes)
+    config = _stage("config", lambda: _load_captured_config(config_bytes))
+    _stage(
+        "config_integrity",
+        lambda: _assert_file_unchanged(config_path, config_bytes, "Apex config"),
+    )
+    config_digest = _sha256(config_bytes)
     now = datetime.now(timezone.utc)
 
+    evidence_seed: tuple[tuple[EvidenceRecord, ...], dict] | None = None
+    evidence_sources_bytes: bytes | None = None
+    evidence_sources_path = workdir / config.evidence.sources_path
+
     if config.evidence.required:
+        evidence_sources_bytes = _stage(
+            "evidence_integrity",
+            evidence_sources_path.read_bytes,
+        )
+        with tempfile.TemporaryDirectory(prefix="apex-v2-evidence-sources-") as directory:
+            staged_sources = Path(directory) / evidence_sources_path.name
+            staged_sources.write_bytes(evidence_sources_bytes)
+            collection = _stage(
+                "external_evidence",
+                lambda: collect_v2_evidence(
+                    sources_path=staged_sources,
+                    records_path=workdir / config.evidence.records_path,
+                    manifest_path=workdir / config.evidence.manifest_path,
+                    expected_official_hash=expected_official_hash,
+                    season=config.season,
+                    now=now,
+                ),
+            )
         _stage(
-            "external_evidence",
-            lambda: collect_v2_evidence(
-                sources_path=workdir / config.evidence.sources_path,
-                records_path=workdir / config.evidence.records_path,
-                manifest_path=workdir / config.evidence.manifest_path,
-                expected_official_hash=expected_official_hash,
-                season=config.season,
-                now=now,
+            "evidence_integrity",
+            lambda: _assert_file_unchanged(
+                evidence_sources_path,
+                evidence_sources_bytes,
+                "evidence source configuration",
             ),
         )
+        records_path = workdir / config.evidence.records_path
+        manifest_path = workdir / config.evidence.manifest_path
+        records = tuple(getattr(collection, "records", _parse_evidence(records_path)))
+        disk_records = _stage("evidence_integrity", lambda: _parse_evidence(records_path))
+        if disk_records != records:
+            raise AcquisitionStageError(
+                "evidence_integrity",
+                RuntimeError("evidence record payload changed during acquisition"),
+            )
+        manifest = dict(
+            getattr(
+                collection,
+                "manifest",
+                json.loads(manifest_path.read_text(encoding="utf-8")),
+            )
+        )
+        manifest["records_sha256"] = _canonical_records_hash(records)
+        source_hash = _sha256(evidence_sources_bytes)
+        observed_source_hash = str(manifest.get("source_config_sha256") or "").lower()
+        if observed_source_hash and observed_source_hash != source_hash:
+            raise AcquisitionStageError(
+                "evidence_integrity",
+                RuntimeError(
+                    "evidence source configuration hash does not match collector provenance"
+                ),
+            )
+        manifest["source_config_sha256"] = source_hash
+        evidence_seed = (records, manifest)
 
     optional_provider_errors: dict[str, str] = {}
     for provider_config in config.providers:
@@ -261,10 +364,7 @@ def acquire_and_freeze(
 
     def _reanchor():
         official, raw_official = fetch_official_snapshot(season=config.season)
-        assert_official_acquisition_stable(
-            expected_official_hash,
-            official.source_hash,
-        )
+        assert_official_acquisition_stable(expected_official_hash, official.source_hash)
         return official, raw_official
 
     official, raw_official = _stage("official_reanchor", _reanchor)
@@ -276,6 +376,7 @@ def acquire_and_freeze(
     )
     team = team_acquisition.state
     statuses = []
+    provider_raw: dict[str, tuple[bytes, str]] = {}
 
     def _parse_start():
         value = datetime.fromisoformat(run_started_at.replace("Z", "+00:00"))
@@ -298,44 +399,50 @@ def acquire_and_freeze(
             for horizon in provider_config.requested_horizons
         }
         if path.exists():
+            raw_bytes = _stage("provider_integrity", path.read_bytes)
             try:
-                if provider_config.provider_id == "airsenal":
-                    surface = load_airsenal(
-                        path,
-                        official=official,
-                        target_gameweek=target,
-                        trusted_source_snapshot=official.source_hash,
-                    )
-                elif provider_config.provider_id == "dastan":
-                    surface = load_dastan(
-                        path,
-                        official=official,
-                        target_gameweek=target,
-                    )
-                elif provider_config.provider_id == "pitchside":
-                    surface = load_pitchside(
-                        path,
-                        official=official,
-                        target_gameweek=target,
-                        scoring_rules_version=config.scoring_rules_version,
-                        max_horizon=max(provider_config.requested_horizons),
-                    )
-                elif provider_config.provider_id == "apex_proprietary":
-                    surface = load_apex_proprietary(
-                        path,
-                        official=official,
-                        target_gameweek=target,
-                    )
-                elif provider_config.provider_id == "openfpl":
-                    surface = load_openfpl(
-                        path,
-                        official=official,
-                        target_gameweek=target,
-                    )
-                else:
-                    raise ValueError(
-                        f"unknown provider adapter {provider_config.provider_id}"
-                    )
+                with tempfile.TemporaryDirectory(
+                    prefix=f"apex-v2-provider-{provider_config.provider_id}-"
+                ) as directory:
+                    staged_path = Path(directory) / path.name
+                    staged_path.write_bytes(raw_bytes)
+                    if provider_config.provider_id == "airsenal":
+                        surface = load_airsenal(
+                            staged_path,
+                            official=official,
+                            target_gameweek=target,
+                            trusted_source_snapshot=official.source_hash,
+                        )
+                    elif provider_config.provider_id == "dastan":
+                        surface = load_dastan(
+                            staged_path,
+                            official=official,
+                            target_gameweek=target,
+                        )
+                    elif provider_config.provider_id == "pitchside":
+                        surface = load_pitchside(
+                            staged_path,
+                            official=official,
+                            target_gameweek=target,
+                            scoring_rules_version=config.scoring_rules_version,
+                            max_horizon=max(provider_config.requested_horizons),
+                        )
+                    elif provider_config.provider_id == "apex_proprietary":
+                        surface = load_apex_proprietary(
+                            staged_path,
+                            official=official,
+                            target_gameweek=target,
+                        )
+                    elif provider_config.provider_id == "openfpl":
+                        surface = load_openfpl(
+                            staged_path,
+                            official=official,
+                            target_gameweek=target,
+                        )
+                    else:
+                        raise ValueError(
+                            f"unknown provider adapter {provider_config.provider_id}"
+                        )
 
                 generated = datetime.fromisoformat(
                     surface.generated_at.replace("Z", "+00:00")
@@ -368,6 +475,21 @@ def acquire_and_freeze(
             except Exception as exc:
                 reasons.append(f"{type(exc).__name__}: {exc}")
                 health = ProviderHealth.ERROR
+
+            _stage(
+                "provider_integrity",
+                lambda path=path, raw_bytes=raw_bytes, provider_id=provider_config.provider_id: (
+                    _assert_file_unchanged(
+                        path,
+                        raw_bytes,
+                        f"provider export {provider_id}",
+                    )
+                ),
+            )
+            provider_raw[provider_config.provider_id] = (
+                raw_bytes,
+                path.suffix or ".bin",
+            )
         else:
             reasons.append(f"provider export missing: {provider_config.path}")
 
@@ -386,38 +508,71 @@ def acquire_and_freeze(
         )
 
     def _evidence_stage():
-        records_path = workdir / config.evidence.records_path
-        manifest_path = workdir / config.evidence.manifest_path
-        if config.evidence.required and not records_path.exists():
-            raise RuntimeError("required external evidence record payload is missing")
-        evidence = _parse_evidence(records_path)
-        acquisition = _validate_evidence_acquisition(
-            manifest_path,
+        nonlocal evidence_sources_bytes
+        if evidence_seed is not None:
+            evidence, acquisition = evidence_seed
+        else:
+            records_path = workdir / config.evidence.records_path
+            manifest_path = workdir / config.evidence.manifest_path
+            if config.evidence.required and not records_path.exists():
+                raise RuntimeError("required external evidence record payload is missing")
+            evidence = _parse_evidence(records_path)
+            acquisition = _validate_evidence_acquisition(
+                manifest_path,
+                evidence,
+                required=config.evidence.required,
+                official_hash=official.source_hash,
+                target_gameweek=target,
+            )
+            if evidence_sources_path.exists():
+                evidence_sources_bytes = evidence_sources_path.read_bytes()
+
+        acquisition = _validate_evidence_manifest(
+            acquisition,
             evidence,
             required=config.evidence.required,
             official_hash=official.source_hash,
             target_gameweek=target,
         )
+        if evidence_sources_bytes is not None:
+            expected_source_hash = str(
+                acquisition.get("source_config_sha256") or ""
+            ).lower()
+            if config.evidence.required and not expected_source_hash:
+                raise RuntimeError(
+                    "required evidence manifest does not bind source configuration"
+                )
+            if expected_source_hash and expected_source_hash != _sha256(
+                evidence_sources_bytes
+            ):
+                raise RuntimeError(
+                    "evidence source configuration hash does not match acquisition manifest"
+                )
         errors = validate_evidence(evidence, official, now=now)
         return evidence, errors, acquisition
 
-    evidence, evidence_errors, evidence_acquisition = _stage(
-        "evidence",
-        _evidence_stage,
+    evidence, evidence_errors, evidence_acquisition = _stage("evidence", _evidence_stage)
+
+    _stage(
+        "config_integrity",
+        lambda: _assert_file_unchanged(config_path, config_bytes, "Apex config"),
     )
+    if config.evidence.required and evidence_sources_bytes is not None:
+        _stage(
+            "evidence_integrity",
+            lambda: _assert_file_unchanged(
+                evidence_sources_path,
+                evidence_sources_bytes,
+                "evidence source configuration",
+            ),
+        )
 
     def _freeze():
         builder = SnapshotBuilder()
         builder.add_json("official.json", dataclass_to_dict(official))
         builder.add_json("official_raw.json", raw_official)
-        builder.add_json(
-            "team_state.json",
-            dataclass_to_dict(team) if team else None,
-        )
-        builder.add_json(
-            "team_state_acquisition.json",
-            team_acquisition.provenance(),
-        )
+        builder.add_json("team_state.json", dataclass_to_dict(team) if team else None)
+        builder.add_json("team_state_acquisition.json", team_acquisition.provenance())
         builder.add_json(
             "team_transfers_public.json",
             list(team_acquisition.public_transfers),
@@ -430,10 +585,16 @@ def acquire_and_freeze(
             "evidence_validation.json",
             {"errors": list(evidence_errors)},
         )
+        builder.add_json("evidence_acquisition.json", evidence_acquisition)
         builder.add_json(
-            "evidence_acquisition.json",
-            evidence_acquisition,
+            "evidence_records_raw.json",
+            {
+                "schema_version": 1,
+                "records": [dataclass_to_dict(record) for record in evidence],
+            },
         )
+        if evidence_sources_bytes is not None:
+            builder.add_bytes("evidence_sources.yaml", evidence_sources_bytes)
 
         qualification_matrix = []
         for status in statuses:
@@ -451,9 +612,7 @@ def acquire_and_freeze(
                     "serve_authorized": status.serve_authorized,
                     "predictive_status": status.predictive_status.value,
                     "scoring_rules_version": (
-                        status.surface.scoring_rules_version
-                        if status.surface
-                        else None
+                        status.surface.scoring_rules_version if status.surface else None
                     ),
                 }
             )
@@ -462,28 +621,30 @@ def acquire_and_freeze(
                     f"providers/{status.provider_id}.json",
                     dataclass_to_dict(status.surface),
                 )
-            provider_config = next(
-                provider
-                for provider in config.providers
-                if provider.provider_id == status.provider_id
-            )
-            path = workdir / provider_config.path
-            if path.exists():
+            captured = provider_raw.get(status.provider_id)
+            if captured is not None:
+                raw_bytes, suffix = captured
                 builder.add_bytes(
-                    f"provider_raw/{status.provider_id}{path.suffix or '.bin'}",
-                    path.read_bytes(),
+                    f"provider_raw/{status.provider_id}{suffix}",
+                    raw_bytes,
                 )
 
         builder.add_json("qualification_matrix.json", qualification_matrix)
         frozen_at = datetime.now(timezone.utc).isoformat()
         evidence_complete = bool(evidence_acquisition.get("completed", False))
+        evidence_records_hash = _canonical_records_hash(evidence)
+        evidence_source_hash = (
+            _sha256(evidence_sources_bytes)
+            if evidence_sources_bytes is not None
+            else None
+        )
         builder.add_json(
             "run.json",
             {
                 "schema_version": 1,
                 "run_id": run_id,
                 "code_sha": code_sha,
-                "config_sha": config_sha(config_path),
+                "config_sha": config_digest,
                 "run_started_at": run_started_at,
                 "acquired_at": now.isoformat(),
                 "frozen_at": frozen_at,
@@ -506,15 +667,18 @@ def acquire_and_freeze(
                 "evidence_required": config.evidence.required,
                 "evidence_acquisition_complete": evidence_complete,
                 "evidence_record_count": len(evidence),
+                "evidence_records_sha256": evidence_records_hash,
+                "evidence_source_config_sha256": evidence_source_hash,
             },
         )
-        builder.add_bytes("config.yaml", Path(config_path).read_bytes())
+        builder.add_bytes("config.yaml", config_bytes)
         return builder.freeze(
             workdir / Path(config.snapshot_dir),
             metadata={
                 "run_id": run_id,
                 "target_gameweek": target,
                 "code_sha": code_sha,
+                "config_sha": config_digest,
                 "frozen_at": frozen_at,
                 "official_pre_provider_hash": expected_official_hash,
                 "official_final_hash": official.source_hash,
@@ -522,6 +686,8 @@ def acquire_and_freeze(
                 "team_state_mode": team_acquisition.mode,
                 "evidence_required": config.evidence.required,
                 "evidence_acquisition_complete": evidence_complete,
+                "evidence_records_sha256": evidence_records_hash,
+                "evidence_source_config_sha256": evidence_source_hash,
             },
         )
 
