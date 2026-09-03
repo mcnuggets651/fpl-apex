@@ -28,23 +28,30 @@ jobs:
           python-version: "3.12.14"
           cache: pip
 
-      - name: Resolve exact core SHA
+      - name: Resolve exact core SHA and immutable lineage
         id: core
         env:
           REQUESTED_SHA: ${{ inputs.candidate_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          DEFAULT_SHA="$(python - <<'PY'
+          readarray -t AUTHORITY < <(python - <<'PY'
           import json
-          print(json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))["frozen_engine_sha"])
+          authority = json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))
+          print(authority["production_core_sha"])
+          print(authority["frozen_engine_sha"])
           PY
-          )"
+          )
+          DEFAULT_SHA="${AUTHORITY[0]}"
+          FROZEN_SHA="${AUTHORITY[1]}"
           CORE_SHA="${REQUESTED_SHA:-$DEFAULT_SHA}"
           [[ "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          git fetch --no-tags origin "$CORE_SHA"
+          [[ "$FROZEN_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "$FROZEN_SHA" "$CORE_SHA"
           git cat-file -e "$CORE_SHA^{commit}"
+          git merge-base --is-ancestor "$FROZEN_SHA" "$CORE_SHA"
           echo "sha=$CORE_SHA" >> "$GITHUB_OUTPUT"
+          echo "frozen_sha=$FROZEN_SHA" >> "$GITHUB_OUTPUT"
           if [ "$CORE_SHA" = "$DEFAULT_SHA" ]; then
             echo "mode=production-core" >> "$GITHUB_OUTPUT"
           else
@@ -163,8 +170,10 @@ jobs:
       - name: Report read-only readiness result
         shell: bash
         run: |
-          printf 'Apex V2 readiness passed\ncore_sha=%s\nmode=%s\n' \
-            '${{ steps.core.outputs.sha }}' '${{ steps.core.outputs.mode }}'
+          printf 'Apex V2 readiness passed\ncore_sha=%s\nfrozen_base_sha=%s\nmode=%s\n' \
+            '${{ steps.core.outputs.sha }}' \
+            '${{ steps.core.outputs.frozen_sha }}' \
+            '${{ steps.core.outputs.mode }}'
 
       - name: Retain read-only readiness evidence
         if: always()
