@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -80,7 +81,7 @@ class ApexConfig:
             provider_ids.add(provider_id)
 
             max_age_hours = float(item.get("max_age_hours", 18))
-            if max_age_hours <= 0:
+            if not math.isfinite(max_age_hours) or max_age_hours <= 0:
                 raise ValueError(
                     f"provider {provider_id} max_age_hours must be positive"
                 )

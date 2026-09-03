@@ -97,3 +97,11 @@ def test_config_rejects_nonpositive_provider_max_age(tmp_path: Path):
     payload["providers"][0]["max_age_hours"] = 0
     with pytest.raises(ValueError, match="max_age_hours"):
         _load(tmp_path, payload)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_config_rejects_nonfinite_provider_max_age(tmp_path: Path, value: float):
+    payload = _payload()
+    payload["providers"][0]["max_age_hours"] = value
+    with pytest.raises(ValueError, match="max_age_hours"):
+        _load(tmp_path, payload)

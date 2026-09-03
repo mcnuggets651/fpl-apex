@@ -58,17 +58,22 @@ def certify(
         reasons.append(ReasonCode.TEAM_STATE_INCOMPLETE)
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     if valid_until:
-        expiry = datetime.fromisoformat(valid_until.replace("Z", "+00:00"))
-        expiry = expiry if expiry.tzinfo else expiry.replace(tzinfo=timezone.utc)
-        if now >= expiry.astimezone(timezone.utc):
-            return CertificationResult(
-                1,
-                CertificationState.EXPIRED,
-                False,
-                tuple(dict.fromkeys(reasons)),
-                tuple(dict.fromkeys(warnings)),
-                valid_until,
-            )
+        try:
+            expiry = datetime.fromisoformat(valid_until.replace("Z", "+00:00"))
+            expiry = expiry if expiry.tzinfo else expiry.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            reasons.append(ReasonCode.SNAPSHOT_INCOHERENT)
+            warnings.append("certification valid_until is not a valid ISO-8601 deadline")
+        else:
+            if now >= expiry.astimezone(timezone.utc):
+                return CertificationResult(
+                    1,
+                    CertificationState.EXPIRED,
+                    False,
+                    tuple(dict.fromkeys(reasons)),
+                    tuple(dict.fromkeys(warnings)),
+                    valid_until,
+                )
     if reasons:
         return CertificationResult(
             1,
