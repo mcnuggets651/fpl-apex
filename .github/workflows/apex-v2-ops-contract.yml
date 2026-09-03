@@ -207,10 +207,7 @@ jobs:
               raise SystemExit("ops/governance PR has no changes")
           PY
 
-      - name: Install repository runtime
-        run: python -m pip install -e .
-
-      - name: Materialize exact frozen evaluator source
+      - name: Materialize and install exact frozen evaluator source
         shell: bash
         run: |
           set -euo pipefail
@@ -223,10 +220,11 @@ jobs:
           test -f "$RUNNER_TEMP/frozen-apex/src/apex/governance/evaluation.py"
           test -f "$RUNNER_TEMP/frozen-apex/src/apex/governance/tournament.py"
           test -f "$RUNNER_TEMP/frozen-apex/src/apex/runtime/evaluation_archive.py"
+          python -m pip install -e "$RUNNER_TEMP/frozen-apex[dev]"
 
       - name: Run operations regressions against frozen evaluator
         env:
-          PYTHONPATH: ${{ runner.temp }}/frozen-apex/src:${{ github.workspace }}/scripts:${{ github.workspace }}/src
+          PYTHONPATH: ${{ runner.temp }}/frozen-apex/src:${{ github.workspace }}/scripts
         run: python -m unittest discover -s ops_tests -p 'test_*.py' -v
 
       - name: Assert repository V2 governance is consistent
@@ -350,6 +348,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install explicit governance checker dependency
+        run: python -m pip install 'PyYAML==6.0.3'
 
       - name: Verify frozen pin and reconciled authority
         shell: bash

@@ -41,6 +41,18 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
         ):
             self.assertIn(required, text)
 
+    def test_ops_contract_never_installs_or_imports_main_legacy_runtime(self):
+        text = (ROOT / ".github/workflows/apex-v2-ops-contract.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("python -m pip install -e .", text)
+        self.assertNotIn("${{ github.workspace }}/src", text)
+        self.assertIn('python -m pip install -e "$RUNNER_TEMP/frozen-apex[dev]"', text)
+        self.assertIn(
+            "PYTHONPATH: ${{ runner.temp }}/frozen-apex/src:${{ github.workspace }}/scripts",
+            text,
+        )
+
     def test_manual_readiness_is_read_only_v2_candidate_rehearsal(self):
         text = (ROOT / ".github/workflows/production-readiness.yml").read_text(encoding="utf-8")
         for forbidden in (
