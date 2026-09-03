@@ -18,6 +18,23 @@ for _name in dir(_impl):
         globals()[_name] = getattr(_impl, _name)
 
 
+# The authority-aware private query bridge needs the governing production identity,
+# not merely the commit/config-file identity. The current production core split the
+# publication implementation behind this facade after the original production-core
+# identity fix was written, so adapt the established implementation at this boundary
+# rather than replacing newer publication/replay hardening with the older module.
+_original_public_identity = _impl._public_identity
+
+
+def _public_identity(snapshot, decision: dict, run: dict, canonical: dict) -> dict:
+    identity = _original_public_identity(snapshot, decision, run, canonical)
+    identity["production_core_sha"] = run["production_core_sha"]
+    return identity
+
+
+_impl._public_identity = _public_identity
+
+
 # Solver backend telemetry is useful diagnostics, but it is not part of the FPL
 # decision identity. HiGHS/SciPy may emit different status text or a numerically tiny
 # MIP-gap value on different CPU/runner images even when the integral incumbent,
