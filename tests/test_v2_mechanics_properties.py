@@ -14,8 +14,8 @@ from apex.domain.models import (
     ProjectionRow,
 )
 
-PROB = st.floats(min_value=-2.0, max_value=3.0, allow_nan=False, allow_infinity=False, width=32)
-XP = st.floats(min_value=0.0, max_value=30.0, allow_nan=False, allow_infinity=False, width=32)
+PROB = st.floats(min_value=-2.0, max_value=3.0, allow_nan=False, allow_infinity=False)
+XP = st.floats(min_value=0.0, max_value=30.0, allow_nan=False, allow_infinity=False)
 
 
 def _standard_positions():
@@ -50,47 +50,23 @@ def test_autosub_conditional_use_weights_are_probabilities(probabilities):
 def _mechanics_fixture(xp_values, appearance_values):
     positions = [Position.GK] * 2 + [Position.DEF] * 5 + [Position.MID] * 5 + [Position.FWD] * 3
     players = tuple(
-        OfficialPlayer(
-            index + 1,
-            f"P{index + 1}",
-            (index % 8) + 1,
-            position,
-            50,
-            "a",
-            True,
-        )
+        OfficialPlayer(index + 1, f"P{index + 1}", (index % 8) + 1, position, 50, "a", True)
         for index, position in enumerate(positions)
     )
     official = OfficialSnapshot(
-        1,
-        "2026-2027",
-        "2026-09-03T06:00:00Z",
-        "official",
-        players,
-        (),
-        {3: "2026-09-12T10:00:00Z"},
+        1, "2026-2027", "2026-09-03T06:00:00Z", "official", players, (), {3: "2026-09-12T10:00:00Z"}
     )
     rows = tuple(
         ProjectionRow(
-            player.element_id,
-            3,
-            1,
-            xp_values[player.element_id - 1],
+            player.element_id, 3, 1, xp_values[player.element_id - 1],
             p_appearance=appearance_values[player.element_id - 1],
             coverage_status=CoverageStatus.FORECAST,
         )
         for player in players
     )
     surface = ProductionProjectionSurface(
-        1,
-        "airsenal",
-        "property-v1",
-        "2026-09-03T06:00:00Z",
-        official.season,
-        official.source_hash,
-        "fpl-2026-27-v1",
-        (1,),
-        rows,
+        1, "airsenal", "property-v1", "2026-09-03T06:00:00Z", official.season,
+        official.source_hash, "fpl-2026-27-v1", (1,), rows,
     )
     return official, surface, tuple(range(1, 16))
 
@@ -98,9 +74,8 @@ def _mechanics_fixture(xp_values, appearance_values):
 @given(
     xp_values=st.lists(XP, min_size=15, max_size=15),
     appearances=st.lists(
-        st.floats(min_value=0.05, max_value=1.0, allow_nan=False, allow_infinity=False, width=32),
-        min_size=15,
-        max_size=15,
+        st.floats(min_value=0.05, max_value=1.0, allow_nan=False, allow_infinity=False),
+        min_size=15, max_size=15,
     ),
 )
 @settings(max_examples=10, deadline=None)

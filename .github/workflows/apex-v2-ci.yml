@@ -12,6 +12,7 @@ on:
       - 'config/apex_v2.yaml'
       - '.github/workflows/apex-v2-*.yml'
       - 'pyproject.toml'
+      - 'requirements-v2.lock'
 
 concurrency:
   group: apex-v2-ci-${{ github.event.pull_request.number || github.ref }}
@@ -30,11 +31,15 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e '.[dev]'
+      - name: Record complete resolved environment
+        run: |
+          mkdir -p artifacts/v2
+          python -m pip check
+          python -m pip freeze --all | tee artifacts/v2/pip-freeze.txt
       - name: Compile Apex V2
         run: python -m compileall -q src/apex
       - name: Run V2 suite with branch coverage
         run: |
-          mkdir -p artifacts/v2
           pytest -q tests/test_apex_v2_*.py tests/test_v2_*.py \
             --cov=apex \
             --cov-branch \

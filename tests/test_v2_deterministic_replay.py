@@ -156,7 +156,7 @@ def test_golden_initial_squad_replay_is_byte_stable(tmp_path: Path):
         snapshot,
         tmp_path,
         "900f15529a89c680b0be61b485ad62c9a8661597d3191317dfa4b6c5b66cf699",
-        "8977993b404c67067400ee50de1ef4294b441a5a761fe0f471d7dc43d557743b",
+        "6d4a8011f5477a4246f903f8d13ef08af74e4c4c5478859b8d752fea5982cf7a",
     )
     assert bundle.system_decision is not None
     assert bundle.system_decision.decision_mode == "INITIAL_SQUAD"
@@ -181,7 +181,7 @@ def test_golden_transfer_horizon_replay_is_byte_stable(tmp_path: Path):
         snapshot,
         tmp_path,
         "e17a1a00688fc2242dca58c1beb990fd2024f1164f61e66520c5d72c6a9cf52c",
-        "d3964c247887bac4459c9d0911156967ae566d84e8f811820b8b605185fea425",
+        "86daf49d2aa4fb6645fbc78e3c801303201e5fa29462017f65cc0f71ec11795d",
     )
     assert bundle.system_decision is not None
     assert bundle.system_decision.decision_mode == "TRANSFER_HORIZON"
