@@ -180,35 +180,39 @@ class GitHubReleaseStore:
     ) -> ReleaseRef:
         """Create, upload and publish an immutable release exactly once.
 
-        ``resume_draft=True`` allows a prior attempt's own draft at this same
-        tag to be resumed (asset set re-verified, then published) instead of
-        raising "already exists". This is the recovery path for a process
-        that died after uploading assets but before the publish PATCH
-        completed — the draft already holds the durable payload. It is
-        intentionally not the default: ordinary immutable publication must
-        still refuse to silently touch a pre-existing release at its tag.
+        ``resume_draft=True`` is narrowly for recovery of the caller's own
+        durable unpublished release. Ordinary callers retain the historical
+        fail-closed behavior for pre-existing tags. Fresh attempts also retain
+        best-effort cleanup on ordinary handled failures; process termination
+        after upload still leaves the durable draft that the refresh-rotation
+        recovery path can discover on the next run.
         """
         existing = self._get_by_tag(tag)
-        if existing is not None:
+        resumed = existing is not None
+        if resumed:
             if not resume_draft or not bool(existing.get("draft", False)):
                 raise RuntimeError(f"immutable release tag already exists: {tag}")
-            release = existing
-            release_id = int(release["id"])
+            release_id = int(existing["id"])
             uploaded = self._verify_uploaded_assets(release_id, files)
         else:
-            release, release_id, uploaded = self._create_draft_and_upload(
+            release_id, uploaded = self._create_draft_and_upload(
                 tag,
                 files,
                 target_commitish=target_commitish,
                 name=name,
                 body=body,
             )
-        return self._publish_draft(
-            tag,
-            release_id,
-            uploaded,
-            require_immutable=require_immutable,
-        )
+        try:
+            return self._publish_draft(
+                tag,
+                release_id,
+                uploaded,
+                require_immutable=require_immutable,
+            )
+        except Exception:
+            if not resumed:
+                self._cleanup_mutable_release(release_id, tag)
+            raise
 
     def _create_draft_and_upload(
         self,
@@ -218,7 +222,7 @@ class GitHubReleaseStore:
         target_commitish: str | None,
         name: str,
         body: str,
-    ) -> tuple[dict, int, dict[str, str]]:
+    ) -> tuple[int, dict[str, str]]:
         create_payload = {
             "tag_name": tag,
             "name": name,
@@ -237,36 +241,39 @@ class GitHubReleaseStore:
         create.raise_for_status()
         release = create.json()
         release_id = int(release["id"])
-        upload_url = release["upload_url"].split("{", 1)[0]
         uploaded: dict[str, str] = {}
-        for asset_name, path in files.items():
-            path = Path(path)
-            expected = _sha(path)
-            response = self.http.post(
-                upload_url,
-                headers={**self.headers, "Content-Type": "application/octet-stream"},
-                params={"name": asset_name},
-                data=path.read_bytes(),
-                timeout=120,
-            )
-            response.raise_for_status()
-            asset = response.json()
-            github_digest = str(asset.get("digest") or "")
-            if github_digest and github_digest != f"sha256:{expected}":
-                raise RuntimeError(
-                    f"GitHub asset digest mismatch for {asset_name}: {github_digest}"
+        try:
+            upload_url = release["upload_url"].split("{", 1)[0]
+            for asset_name, path in files.items():
+                path = Path(path)
+                expected = _sha(path)
+                response = self.http.post(
+                    upload_url,
+                    headers={**self.headers, "Content-Type": "application/octet-stream"},
+                    params={"name": asset_name},
+                    data=path.read_bytes(),
+                    timeout=120,
                 )
-            uploaded[asset_name] = expected
-        return release, release_id, uploaded
+                response.raise_for_status()
+                asset = response.json()
+                github_digest = str(asset.get("digest") or "")
+                if github_digest and github_digest != f"sha256:{expected}":
+                    raise RuntimeError(
+                        f"GitHub asset digest mismatch for {asset_name}: {github_digest}"
+                    )
+                uploaded[asset_name] = expected
+        except Exception:
+            self._cleanup_mutable_release(release_id, tag)
+            raise
+        return release_id, uploaded
 
     def _verify_uploaded_assets(
         self, release_id: int, files: dict[str, Path]
     ) -> dict[str, str]:
         """Recompute expected digests for a resumed draft's own prior upload.
 
-        Does not re-upload. A resumed draft must already carry the exact
-        asset set the caller is asking to publish; anything else fails
-        closed rather than guessing which bytes are the "real" rotation.
+        No bytes are re-uploaded. The existing draft must contain exactly the
+        assets the caller expects; verification occurs in ``_publish_draft``.
         """
         return {name: _sha(Path(path)) for name, path in files.items()}
 
@@ -321,12 +328,7 @@ class GitHubReleaseStore:
         )
 
     def get_draft_by_tag(self, tag: str) -> dict | None:
-        """Return the release at ``tag`` only if it still exists as a draft.
-
-        Used by recovery paths that need to find a durable-but-unpublished
-        prior attempt without accidentally treating an already-published
-        release as resumable.
-        """
+        """Return the release at ``tag`` only if it still exists as a draft."""
         release = self._get_by_tag(tag)
         if release is None or not bool(release.get("draft", False)):
             return None
