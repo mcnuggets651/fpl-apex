@@ -4,7 +4,7 @@
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 ## Mission
 
@@ -16,7 +16,7 @@ Separately, run rigorous prospective/no-hindsight research to measure forecast q
 
 - Season: 2026/27.
 - Immutable PR #90 forensic/base SHA: `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
-- Current serving code is the authority-declared `production_core_sha` above and must descend from the immutable base.
+- Current serving code is the authority-declared `production_core_sha` and must descend from the immutable base.
 - Frozen engine PR: #90; keep it open/draft/unmerged and do not advance it for operations changes or successor promotion.
 - Operations/research control plane: `main`.
 - Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
