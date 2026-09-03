@@ -7,7 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from apex.runtime.publication import build_publication_materials
+from apex.runtime.publication import (
+    assert_publication_safe_now,
+    build_publication_materials,
+)
 from apex.runtime.serving import status_from_row
 from apex.runtime.solve import solve_snapshot
 from apex.runtime.snapshot import SnapshotBuilder
@@ -25,7 +28,7 @@ def _fixture(tmp_path: Path):
             "source_hash": official_hash,
             "players": [],
             "fixtures": [],
-            "deadlines": {"3": "2026-09-12T10:00:00Z"},
+            "deadlines": {"3": "2026-09-02T12:03:00Z"},
         },
     )
     builder.add_json("official_raw.json", {"teams": []})
@@ -45,7 +48,7 @@ def _fixture(tmp_path: Path):
             "entry_id": 63984,
             "max_horizon": 1,
             "scoring_rules_version": "fpl-2026-27-v1",
-            "deadline": "2026-09-12T10:00:00Z",
+            "deadline": "2026-09-02T12:03:00Z",
             "evidence_required": False,
         },
     )
@@ -120,8 +123,25 @@ def _publish(tmp_path: Path, snapshot, decision: dict):
 
 def test_publication_accepts_internally_bound_decision(tmp_path: Path):
     snapshot, decision, _ = _fixture(tmp_path)
+    # The wall clock is now after this fixture's deadline. Publication replay must
+    # still reproduce the sealed pre-deadline decision at the snapshot freeze instant.
     material = _publish(tmp_path, snapshot, decision)
     assert material.public_attempt_id
+
+
+def test_publication_live_safety_rejects_expired_actionable_decision(tmp_path: Path):
+    snapshot, decision, _ = _fixture(tmp_path)
+    actionable = deepcopy(decision)
+    actionable["certification"]["actionable"] = True
+    decision_path = tmp_path / "actionable-expired.json"
+    decision_path.write_text(json.dumps(actionable), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="deadline"):
+        assert_publication_safe_now(
+            snapshot.root,
+            decision_path,
+            now=datetime(2026, 9, 2, 12, 3, tzinfo=timezone.utc),
+        )
 
 
 def test_publication_rejects_decision_from_different_snapshot(tmp_path: Path):
