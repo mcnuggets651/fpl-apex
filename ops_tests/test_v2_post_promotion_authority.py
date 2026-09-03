@@ -18,6 +18,10 @@ AUTHORITY_DOCS = (
     ROOT / "docs/CHATGPT_APEX_QUERY_POLICY.md",
     ROOT / "docs/APEX_ROADMAP.md",
 )
+SERVING_POINTER_MARKER = (
+    "Current serving core: read `production_core_sha` from "
+    "`APEX_V2_AUTHORITY.json`."
+)
 
 
 class V2PostPromotionAuthorityTests(unittest.TestCase):
@@ -29,20 +33,27 @@ class V2PostPromotionAuthorityTests(unittest.TestCase):
         cls.frozen = cls.authority["frozen_engine_sha"]
         cls.production = cls.authority["production_core_sha"]
 
-    def test_every_canonical_doc_names_both_authorities_exactly(self):
+    def test_every_canonical_doc_names_immutable_base_and_dynamic_serving_authority(self):
         frozen_marker = (
             f"Immutable forensic base (`frozen_engine_sha`): `{self.frozen}`"
-        )
-        production_marker = (
-            f"Current serving core (`production_core_sha`): `{self.production}`"
         )
         for path in AUTHORITY_DOCS:
             body = path.read_text(encoding="utf-8")
             with self.subTest(path=path):
                 self.assertIn(frozen_marker, body)
-                self.assertIn(production_marker, body)
+                self.assertIn(SERVING_POINTER_MARKER, body)
                 self.assertIn("APEX_V2_AUTHORITY.json", body)
                 self.assertIn("AIrsenal", body)
+
+    def test_canonical_docs_do_not_copy_the_movable_serving_pointer(self):
+        copied_pointer = re.compile(
+            r"Current serving core[^\n]*`[0-9a-f]{40}`",
+            flags=re.IGNORECASE,
+        )
+        for path in AUTHORITY_DOCS:
+            body = path.read_text(encoding="utf-8")
+            with self.subTest(path=path):
+                self.assertIsNone(copied_pointer.search(body))
 
     def test_canonical_docs_do_not_conflate_frozen_base_with_serving_core(self):
         stale_patterns = (
@@ -63,6 +74,13 @@ class V2PostPromotionAuthorityTests(unittest.TestCase):
             for pattern in stale_patterns:
                 with self.subTest(path=path, pattern=pattern):
                     self.assertIsNone(re.search(pattern, body, flags=re.IGNORECASE))
+
+    def test_machine_authority_is_the_only_movable_serving_sha_source(self):
+        self.assertRegex(self.production, r"^[0-9a-f]{40}$")
+        authority_text = (ROOT / "docs/APEX_V2_AUTHORITY.json").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(f'"production_core_sha": "{self.production}"', authority_text)
 
     def test_production_workflow_binds_intent_snapshot_and_publish_to_serving_core(self):
         workflow = (
