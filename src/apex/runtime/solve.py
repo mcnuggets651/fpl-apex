@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 from apex.decision.optimiser import optimise_initial_squad
 from apex.decision.transfers import optimise_transfer_horizon
@@ -14,73 +17,72 @@ from apex.domain.models import (
     ProductionProjectionSurface,
     ProviderHealth,
     ProviderRole,
-    ProviderStatus,
-    Qualification,
     RunManifest,
     dataclass_to_dict,
 )
 from apex.forecast.contract import projection_surface_hash
-from apex.forecast.registry import (
-    max_contiguous_qualified_horizon,
-    serving_policy,
-)
 from apex.governance.certification import certify
 from apex.governance.evidence import hard_exclusions
 
-from .serde import official_from_dict, projection_from_dict, team_from_dict
+from .serde import official_from_dict, team_from_dict
+from .serving import reconstruct_frozen_serving
 from .snapshot import open_frozen_snapshot
 
 
-def _status_from_row(row, surface):
-    return ProviderStatus(
-        row["provider_id"],
-        ProviderRole(row["role"]),
-        int(row["priority"]),
-        ProviderHealth(row["health"]),
-        {
-            int(key): Qualification(value)
-            for key, value in row["qualification_by_horizon"].items()
-        },
-        surface,
-        tuple(row.get("reasons", [])),
-        bool(row.get("serve_authorized", False)),
-        Qualification(
-            row.get("predictive_status", "INSUFFICIENT_HISTORY")
-        ),
-    )
+def _provider_max_ages(snapshot) -> dict[str, float]:
+    """Read provider freshness SLAs from the sealed acquisition config.
+
+    Old/synthetic replay snapshots may not contain a complete V2 config. In that
+    case no new freshness assertion is invented; production snapshots created by
+    V2 acquisition always seal the config that qualified their providers.
+    """
+    try:
+        payload = yaml.safe_load(snapshot.read_bytes("config.yaml").decode("utf-8"))
+    except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError):
+        return {}
+    if not isinstance(payload, dict) or not isinstance(payload.get("providers"), list):
+        return {}
+    values: dict[str, float] = {}
+    for row in payload["providers"]:
+        if not isinstance(row, dict) or not row.get("id"):
+            continue
+        try:
+            max_age = float(row["max_age_hours"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if max_age > 0:
+            values[str(row["id"])] = max_age
+    return values
 
 
-def _canonical(policy, max_horizon):
-    rows = []
-    provider_ids = []
-    versions = []
-    first_surface = None
-    for horizon in range(1, max_horizon + 1):
-        provider = policy[horizon]
-        first_surface = first_surface or provider.surface
-        provider_ids.append(provider.provider_id)
-        versions.append(
-            f"{provider.provider_id}:{provider.surface.provider_version}"
+def _runtime_freshness(status, snapshot, now: datetime | None):
+    if status is None or status.surface is None:
+        return status
+    max_age = _provider_max_ages(snapshot).get(status.provider_id)
+    if max_age is None:
+        return status
+    effective_now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    try:
+        generated = datetime.fromisoformat(
+            status.surface.generated_at.replace("Z", "+00:00")
         )
-        rows.extend(
-            row
-            for row in provider.surface.rows
-            if row.horizon == horizon
+        if generated.tzinfo is None:
+            generated = generated.replace(tzinfo=timezone.utc)
+        age = (effective_now - generated.astimezone(timezone.utc)).total_seconds() / 3600
+    except (TypeError, ValueError):
+        return replace(
+            status,
+            health=ProviderHealth.ERROR,
+            reasons=status.reasons + ("provider generated_at invalid at solve time",),
         )
-    return ProductionProjectionSurface(
-        1,
-        "|".join(provider_ids),
-        "|".join(versions),
-        max(
-            provider.surface.generated_at
-            for provider in policy.values()
-        ),
-        first_surface.season,
-        first_surface.source_snapshot,
-        first_surface.scoring_rules_version,
-        tuple(range(1, max_horizon + 1)),
-        tuple(rows),
-    )
+    if age > max_age:
+        return replace(
+            status,
+            health=ProviderHealth.STALE,
+            reasons=status.reasons
+            + (f"provider stale at solve time: {age:.2f}h > {max_age:.2f}h",),
+        )
+    return status
 
 
 def _contingency_qualified_horizon(
@@ -160,26 +162,11 @@ def solve_snapshot(
     run = snapshot.read_json("run.json")
     matrix = snapshot.read_json("qualification_matrix.json")
 
-    statuses = []
-    for row in matrix:
-        try:
-            surface = projection_from_dict(
-                snapshot.read_json(f"providers/{row['provider_id']}.json")
-            )
-        except (KeyError, FileNotFoundError):
-            surface = None
-        statuses.append(_status_from_row(row, surface))
-
-    universe = official.decision_universe(
-        set(team.squad_ids) if team else frozenset()
+    statuses, universe, policy, max_horizon, canonical = reconstruct_frozen_serving(
+        snapshot, official, team, run, matrix
     )
-    policy = serving_policy(
-        statuses,
-        max_horizon=int(run["max_horizon"]),
-        decision_universe=universe,
-    )
-    max_horizon = max_contiguous_qualified_horizon(policy)
     serving_h1 = policy.get(1)
+    runtime_serving_h1 = _runtime_freshness(serving_h1, snapshot, now)
     decision = None
     warnings = []
     contingency_horizon = 0
@@ -231,7 +218,8 @@ def solve_snapshot(
             )
 
     if max_horizon >= 1:
-        canonical = _canonical(policy, max_horizon)
+        if canonical is None:
+            raise RuntimeError("serving policy has no canonical projection surface")
         contingency_horizon, contingency_missing = _contingency_qualified_horizon(
             canonical,
             universe,
@@ -313,7 +301,7 @@ def solve_snapshot(
     ).get("errors", [])
     certification = certify(
         official=official,
-        serving=serving_h1,
+        serving=runtime_serving_h1,
         decision=decision,
         team_state=team,
         hard_evidence_conflict=bool(evidence_errors),
@@ -357,6 +345,12 @@ def solve_snapshot(
                 for horizon, provider in policy.items()
             },
             "decision_optimisation": decision_optimisation,
+            "runtime_serving_h1_health": (
+                runtime_serving_h1.health.value if runtime_serving_h1 else None
+            ),
+            "runtime_serving_h1_reasons": (
+                list(runtime_serving_h1.reasons) if runtime_serving_h1 else []
+            ),
         },
         {
             "hard_evidence_count": len(records),

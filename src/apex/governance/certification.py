@@ -46,17 +46,14 @@ def certify(
     if not contingency_model_complete:
         reasons.append(ReasonCode.CONTINGENCY_MODEL_INCOMPLETE)
     if official is not None and decision is not None:
-        errs = validate_system_decision(official, decision)
+        errs = validate_system_decision(official, decision, team_state)
         if errs:
             reasons.append(ReasonCode.DECISION_ILLEGAL)
             warnings.extend(errs)
     else:
         reasons.append(ReasonCode.DECISION_ILLEGAL)
-    if (
-        decision
-        and decision.decision_mode == "TRANSFER_HORIZON"
-        and team_state is not None
-        and not team_state.state_complete_for_transfers
+    if decision and decision.decision_mode == "TRANSFER_HORIZON" and (
+        team_state is None or not team_state.state_complete_for_transfers
     ):
         reasons.append(ReasonCode.TEAM_STATE_INCOMPLETE)
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)

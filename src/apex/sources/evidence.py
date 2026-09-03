@@ -106,12 +106,21 @@ def load_evidence_sources(path: str | Path) -> tuple[EvidenceSource, ...]:
     source_path = Path(path)
     payload = yaml.safe_load(source_path.read_text(encoding="utf-8")) or {}
     raw = payload.get("feeds") or []
+
+    def required_flag(row: dict) -> bool:
+        value = row.get("required", False)
+        if type(value) is not bool:
+            raise RuntimeError(
+                f"evidence source {row.get('name', '<unnamed>')} required must be an explicit boolean"
+            )
+        return value
+
     sources = tuple(
         EvidenceSource(
             name=str(row["name"]),
             url=str(row["url"]),
             tier=str(row["tier"]),
-            required=bool(row.get("required", False)),
+            required=required_flag(row),
         )
         for row in raw
     )

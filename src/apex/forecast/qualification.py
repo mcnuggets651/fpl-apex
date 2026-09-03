@@ -20,6 +20,24 @@ class QualificationResult:
     reasons: tuple[str, ...]
 
 
+def _utc(value: str) -> datetime:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _target_gameweek(official: OfficialSnapshot, now: datetime) -> int | None:
+    future = [
+        (deadline, int(gameweek))
+        for gameweek, raw_deadline in official.deadlines.items()
+        if (deadline := _utc(raw_deadline)) > now
+    ]
+    if not future:
+        return None
+    return min(future)[1]
+
+
 def qualify_surface(
     surface: ProjectionSurface,
     official: OfficialSnapshot,
@@ -41,26 +59,38 @@ def qualify_surface(
         )
 
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    target_gameweek = None
     try:
-        generated = datetime.fromisoformat(surface.generated_at.replace("Z", "+00:00"))
-        generated = (
-            generated
-            if generated.tzinfo
-            else generated.replace(tzinfo=timezone.utc)
-        )
-        age = (
-            now - generated.astimezone(timezone.utc)
-        ).total_seconds() / 3600
+        target_gameweek = _target_gameweek(official, now)
+    except (TypeError, ValueError):
+        reasons.append("Official deadline clock invalid for forecast horizon binding")
+
+    try:
+        generated = _utc(surface.generated_at)
+        age = (now - generated).total_seconds() / 3600
         if age < -0.1:
             reasons.append(f"provider timestamp is in the future by {-age:.2f}h")
         if age > max_age_hours:
             reasons.append(f"provider stale: {age:.2f}h > {max_age_hours:.2f}h")
-    except Exception as exc:
+    except (TypeError, ValueError) as exc:
         reasons.append(f"provider generated_at invalid: {exc}")
 
     qualified = []
     for horizon in requested_horizons:
-        errors = coverage_errors(surface, decision_universe, horizon=horizon)
+        errors = list(coverage_errors(surface, decision_universe, horizon=horizon))
+        if target_gameweek is not None:
+            expected_gameweek = target_gameweek + int(horizon) - 1
+            observed_gameweeks = {
+                int(row.gameweek)
+                for row in surface.rows
+                if int(row.horizon) == int(horizon)
+            }
+            if observed_gameweeks and observed_gameweeks != {expected_gameweek}:
+                errors.append(
+                    "forecast horizon/gameweek clock mismatch: "
+                    f"H{horizon} must map to Official GW{expected_gameweek}, "
+                    f"observed {sorted(observed_gameweeks)}"
+                )
         if not errors and horizon in surface.supported_horizons:
             qualified.append(horizon)
         else:
