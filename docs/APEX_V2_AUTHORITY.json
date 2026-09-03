@@ -5,6 +5,7 @@
   "frozen_engine_sha": "99cc7b51b0cff45462b567084cb1844cfe0a456f",
   "frozen_engine_pr": 90,
   "frozen_engine_pr_policy": "NEVER_MERGE_OR_ADVANCE",
+  "production_core_sha": "99cc7b51b0cff45462b567084cb1844cfe0a456f",
   "serving_provider": "airsenal",
   "serving_horizons": [1, 2, 3, 4, 5, 6, 7, 8],
   "canonical_production_workflow": ".github/workflows/apex-v2-daily-production.yml",
