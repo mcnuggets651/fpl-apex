@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
-from apex.domain.models import dataclass_to_dict
+from apex.domain.models import ProviderHealth, dataclass_to_dict
+from apex.runtime.serde import official_from_dict, team_from_dict
+from apex.runtime.serving import reconstruct_frozen_serving
 from apex.runtime.snapshot import open_frozen_snapshot
-from apex.runtime.solve import solve_snapshot
+from apex.runtime.solve import _runtime_freshness, solve_snapshot
 
 from . import publication_impl as _impl
 
@@ -124,6 +127,65 @@ def _assert_decision_matches_frozen_replay(snapshot, decision: dict) -> None:
             "DecisionBundle recommendation/certification does not match "
             "deterministic replay of the frozen snapshot"
         )
+
+
+def _publication_utc_now(now: datetime | None) -> datetime:
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current.astimezone(timezone.utc)
+
+
+def _parse_deadline(value) -> datetime:
+    try:
+        deadline = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("publication refused: frozen deadline is invalid") from exc
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    return deadline.astimezone(timezone.utc)
+
+
+def assert_publication_safe_now(
+    snapshot_path: Path,
+    decision_path: Path,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Fail closed if an actionable sealed decision is no longer safe to release.
+
+    Replay is evaluated at the immutable snapshot clock so it can prove determinism.
+    Release safety is a different question and is evaluated against real wall clock:
+    an actionable decision may not escape after its FPL deadline or after the serving
+    champion has crossed the freshness SLA sealed into the snapshot.
+    """
+    snapshot = open_frozen_snapshot(snapshot_path)
+    decision = json.loads(Path(decision_path).read_text(encoding="utf-8"))
+    certification = decision.get("certification")
+    if not isinstance(certification, dict):
+        raise RuntimeError("publication refused: DecisionBundle certification is invalid")
+    if certification.get("actionable") is not True:
+        return
+
+    current = _publication_utc_now(now)
+    run = snapshot.read_json("run.json")
+    if current >= _parse_deadline(run.get("deadline")):
+        raise RuntimeError("publication refused: actionable decision deadline has passed")
+
+    official = official_from_dict(snapshot.read_json("official.json"))
+    team_raw = snapshot.read_json("team_state.json")
+    team = team_from_dict(team_raw) if team_raw else None
+    matrix = snapshot.read_json("qualification_matrix.json")
+    _, _, policy, _, _ = reconstruct_frozen_serving(
+        snapshot, official, team, run, matrix
+    )
+    serving_h1 = _runtime_freshness(policy.get(1), snapshot, current)
+    if serving_h1 is None:
+        raise RuntimeError("publication refused: serving champion is unavailable")
+    if serving_h1.health == ProviderHealth.STALE:
+        raise RuntimeError("publication refused: serving champion is stale")
+    if serving_h1.health in {ProviderHealth.INCOMPLETE, ProviderHealth.ERROR}:
+        raise RuntimeError("publication refused: serving champion is incomplete")
 
 
 def build_publication_materials(
