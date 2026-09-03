@@ -21,6 +21,8 @@ from apex.domain.rules import (
 
 from .mechanics import decision_from_fixed_squad, xp_map
 
+LEXICOGRAPHIC_BLOCK_SIZE = 40
+
 
 @dataclass(frozen=True)
 class OptimisationResult:
@@ -39,7 +41,13 @@ def optimise_initial_squad(
     candidate_limit: int = 16,
     candidate_regret_fraction: float = 0.005,
 ) -> OptimisationResult:
-    """Generate max-xP squads and exact-rescore a bounded near-optimal shortlist."""
+    """Generate max-xP squads and exact-rescore a bounded near-optimal shortlist.
+
+    The primary MILP objective is authoritative. If multiple squads share that
+    exact primary optimum, a hierarchical lexicographic solve canonicalises the
+    15-player squad before shortlist generation. The tie-break is performed only
+    under an equality lock on the primary optimum, so it cannot trade away xP.
+    """
     if candidate_limit < 1:
         raise ValueError("candidate_limit must be positive")
     if not 0.0 <= float(candidate_regret_fraction) <= 0.05:
@@ -66,9 +74,7 @@ def optimise_initial_squad(
     def captain_var(index):
         return 2 * count + index
 
-    values = np.array(
-        [max(xp[player.element_id], 0.0) for player in candidates]
-    )
+    values = np.array([max(xp[player.element_id], 0.0) for player in candidates])
     objective = np.zeros(3 * count)
     objective[:count] = 1e-09 * values
     objective[count : 2 * count] = values
@@ -87,18 +93,13 @@ def optimise_initial_squad(
     add({xi_var(i): 1 for i in range(count)}, 11, 11)
     add({captain_var(i): 1 for i in range(count)}, 1, 1)
     add(
-        {
-            squad_var(i): candidates[i].price_tenths
-            for i in range(count)
-        },
+        {squad_var(i): candidates[i].price_tenths for i in range(count)},
         -np.inf,
         budget_tenths,
     )
     for position, required in SQUAD_COUNTS.items():
         indices = [
-            i
-            for i, player in enumerate(candidates)
-            if player.position == position
+            i for i, player in enumerate(candidates) if player.position == position
         ]
         add({squad_var(i): 1 for i in indices}, required, required)
         add(
@@ -122,7 +123,7 @@ def optimise_initial_squad(
 
     variable_count = 3 * count
 
-    def solve(extras=()):
+    def solve(extras=(), *, cost=None):
         solve_rows = list(rows)
         solve_lower = list(lower_bounds)
         solve_upper = list(upper_bounds)
@@ -137,12 +138,9 @@ def optimise_initial_squad(
                 matrix[row_index, column] = value
 
         return milp(
-            c=-objective,
+            c=(-objective if cost is None else cost),
             integrality=np.ones(variable_count),
-            bounds=Bounds(
-                np.zeros(variable_count),
-                np.ones(variable_count),
-            ),
+            bounds=Bounds(np.zeros(variable_count), np.ones(variable_count)),
             constraints=LinearConstraint(
                 matrix.tocsr(),
                 np.asarray(solve_lower),
@@ -159,7 +157,57 @@ def optimise_initial_squad(
             {"message": str(first.message)},
         )
 
-    primary_optimum = float(objective @ first.x)
+    # Re-evaluate the primary optimum on the integral incumbent. This avoids
+    # baking solver feasibility noise into the equality constraint below.
+    primary_solution = np.rint(first.x)
+    primary_optimum = float(objective @ primary_solution)
+    primary_coefficients = {
+        index: float(value)
+        for index, value in enumerate(objective)
+        if value != 0.0
+    }
+    primary_lock = (primary_coefficients, primary_optimum, primary_optimum)
+
+    # Canonicalise equal-primary squads without adding a synthetic EV term.
+    # Each block encodes <=40 squad bits as an exact integer (<2^40 < 2^53),
+    # fixes the best value, then advances to the next block. Earlier/lower FPL
+    # element IDs dominate later IDs, yielding a stable lexicographically-small
+    # squad independent of candidate ordering or HiGHS incumbent ordering.
+    ordered_indices = sorted(
+        range(count),
+        key=lambda index: candidates[index].element_id,
+    )
+    tie_locks = [primary_lock]
+    canonical = first
+    for offset in range(0, count, LEXICOGRAPHIC_BLOCK_SIZE):
+        block = ordered_indices[offset : offset + LEXICOGRAPHIC_BLOCK_SIZE]
+        block_cost = np.zeros(variable_count)
+        block_weights: dict[int, float] = {}
+        width = len(block)
+        for rank, candidate_index in enumerate(block):
+            weight = float(1 << (width - rank - 1))
+            variable = squad_var(candidate_index)
+            block_weights[variable] = weight
+            block_cost[variable] = -weight
+        candidate = solve(tuple(tie_locks), cost=block_cost)
+        if not candidate.success or candidate.x is None:
+            return OptimisationResult(
+                None,
+                "ERROR",
+                {
+                    "message": "primary-optimum deterministic tie-break failed",
+                    "primary_message": str(first.message),
+                },
+            )
+        canonical = candidate
+        achieved = float(
+            sum(
+                weight * int(candidate.x[variable] > 0.5)
+                for variable, weight in block_weights.items()
+            )
+        )
+        tie_locks.append((block_weights, achieved, achieved))
+
     regret_points = max(
         0.10,
         abs(primary_optimum) * float(candidate_regret_fraction),
@@ -168,14 +216,14 @@ def optimise_initial_squad(
 
     exclusions = []
     generated = []
-    current = first
+    current = canonical
     shortlist_complete = False
 
     for generation_rank in range(1, int(candidate_limit) + 1):
         if current.x is None:
             shortlist_complete = True
             break
-        approximate = float(objective @ current.x)
+        approximate = float(objective @ np.rint(current.x))
         if approximate < shortlist_floor - 1e-7:
             shortlist_complete = True
             break
@@ -215,7 +263,7 @@ def optimise_initial_squad(
         if current.x is None:
             shortlist_complete = True
             break
-        if float(objective @ current.x) < shortlist_floor - 1e-7:
+        if float(objective @ np.rint(current.x)) < shortlist_floor - 1e-7:
             shortlist_complete = True
             break
 
@@ -242,12 +290,14 @@ def optimise_initial_squad(
         reason = (
             "exact contingency shortlist reached its candidate limit before "
             "the configured primary-objective regret band was exhausted; "
-            "primary max-EV squad retained"
+            "deterministic primary max-EV squad retained"
         )
 
     raw_solver = {
         "message": selected["message"],
         "mip_gap": float(getattr(first, "mip_gap", 0) or 0),
+        "primary_tiebreak": "LEXICOGRAPHIC_SQUAD_BLOCKS_UNDER_EXACT_PRIMARY_LOCK",
+        "primary_tiebreak_block_size": LEXICOGRAPHIC_BLOCK_SIZE,
         "selection_policy": selection_policy,
         "shortlist_complete": shortlist_complete,
         "candidate_count": len(generated),
@@ -257,16 +307,12 @@ def optimise_initial_squad(
         "shortlist_floor": float(shortlist_floor),
         "primary_objective": float(primary_optimum),
         "selected_generation_rank": int(selected["generation_rank"]),
-        "selected_approximate_objective": float(
-            selected["approximate_objective"]
-        ),
+        "selected_approximate_objective": float(selected["approximate_objective"]),
         "selected_exact_objective": float(selected["exact_objective"]),
         "candidate_objectives": [
             {
                 "generation_rank": int(candidate["generation_rank"]),
-                "approximate_objective": float(
-                    candidate["approximate_objective"]
-                ),
+                "approximate_objective": float(candidate["approximate_objective"]),
                 "exact_objective": float(candidate["exact_objective"]),
             }
             for candidate in generated
