@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import json
+import platform
 import re
 import tomllib
 from pathlib import Path
 
 import pytest
 
+from apex.runtime import provenance as provenance_module
 from apex.runtime.provenance import (
     build_cyclonedx_sbom,
     build_provenance,
     canonical_package_name,
     read_exact_lock,
+    verify_installed_against_lock,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,7 +59,36 @@ def test_v2_ci_uses_exact_python_and_sealed_install_path():
     assert "sbom.cdx.json" in workflow
 
 
-def test_provenance_and_sbom_bind_candidate_environment():
+def test_environment_verifier_rejects_missing_and_mismatched_locked_packages(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        provenance_module,
+        "installed_distributions",
+        lambda: {
+            "numpy": "2.5.1",
+            "apex-fpl": "0.2.0.dev0",
+        },
+    )
+    errors = verify_installed_against_lock(
+        {
+            "numpy": "2.5.2",
+            "setuptools": "80.9.0",
+        }
+    )
+    assert "version mismatch: numpy expected 2.5.2, installed 2.5.1" in errors
+    assert "missing locked distribution: setuptools==80.9.0" in errors
+
+
+def test_provenance_and_sbom_bind_candidate_environment(monkeypatch):
+    # Structure generation is independent of the runner's package inventory.
+    # Exact installed-vs-lock enforcement has its own negative test above and is
+    # exercised for real by the pinned Apex V2 CI workflow before provenance is built.
+    monkeypatch.setattr(
+        provenance_module,
+        "verify_installed_against_lock",
+        lambda lock: (),
+    )
     engine_sha = "a" * 40
     provenance = build_provenance(
         ROOT,
@@ -66,7 +98,7 @@ def test_provenance_and_sbom_bind_candidate_environment():
         upstreams_path=ROOT / "upstreams.lock.json",
     )
     assert provenance["engine_sha"] == engine_sha
-    assert provenance["python"]["version"] == "3.12.14"
+    assert provenance["python"]["version"] == platform.python_version()
     paths = {entry["path"] for entry in provenance["files"]}
     assert {
         "pyproject.toml",
@@ -75,7 +107,10 @@ def test_provenance_and_sbom_bind_candidate_environment():
         "upstreams.lock.json",
     } <= paths
     assert provenance["github_actions"]
-    assert all(re.fullmatch(r"[0-9a-f]{40}", item["sha"]) for item in provenance["github_actions"])
+    assert all(
+        re.fullmatch(r"[0-9a-f]{40}", item["sha"])
+        for item in provenance["github_actions"]
+    )
 
     sbom = build_cyclonedx_sbom(provenance)
     assert sbom["bomFormat"] == "CycloneDX"
@@ -103,7 +138,12 @@ def test_exact_lock_parser_rejects_inexact_and_duplicate_entries(tmp_path: Path)
         read_exact_lock(duplicate)
 
 
-def test_written_provenance_json_contains_no_nan(tmp_path: Path):
+def test_written_provenance_json_contains_no_nan(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        provenance_module,
+        "verify_installed_against_lock",
+        lambda lock: (),
+    )
     provenance = build_provenance(
         ROOT,
         engine_sha="b" * 40,
