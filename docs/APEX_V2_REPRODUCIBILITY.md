@@ -70,6 +70,14 @@ The following remain inside the semantic replay commitment and must reproduce ex
 - runtime serving health;
 - evidence manifest.
 
+### Clock contract
+
+A frozen solve must not sample wall clock implicitly. Production snapshots seal `frozen_at` in both `run.json` and snapshot metadata; the two values must agree. `solve_snapshot(..., now=None)` evaluates provider freshness and deadline certification at that sealed instant, with deterministic fallbacks to sealed acquisition/start timestamps only for older synthetic fixtures. An explicit `now` remains available for adversarial and point-in-time tests.
+
+Publication has a separate responsibility. Deterministic replay answers “does this exact snapshot reproduce this exact decision?” and therefore uses the sealed snapshot clock. Immediately before any immutable private or public release is created, the production CLI evaluates real wall clock and refuses an actionable decision if its FPL deadline has passed or the sealed serving champion has crossed its configured freshness SLA. This separation prevents elapsed CI/runtime duration from becoming false replay nondeterminism without weakening deadline or freshness safety.
+
+Regression coverage must include a deadline between snapshot freeze and replay execution: sealed replay must remain identical, while the independent live publication gate must reject release once the deadline is actually reached.
+
 ## Promotion rule
 
 A successor engine SHA is not eligible for the production pin until:
