@@ -53,7 +53,7 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
             text,
         )
 
-    def test_manual_readiness_is_read_only_v2_candidate_rehearsal(self):
+    def test_manual_readiness_is_read_only_reproducible_candidate_rehearsal(self):
         text = (ROOT / ".github/workflows/production-readiness.yml").read_text(encoding="utf-8")
         for forbidden in (
             "run_apex.py",
@@ -73,10 +73,18 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
             "candidate_sha:",
             "docs/APEX_V2_AUTHORITY.json",
             "git worktree add --detach",
+            'python-version: "3.12.14"',
+            "requirements-v2.lock",
+            "--no-build-isolation",
+            "check_v2_dependency_lock.py",
+            "build_v2_provenance.py",
             "check_v2_architecture.py",
             "check_v2_critical_coverage.py",
             "run_v2_mutation_sentinels.py",
             "mode=non-serving-candidate",
+            "provenance.json",
+            "sbom.cdx.json",
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
             "contents: read",
         ):
             self.assertIn(required, text)

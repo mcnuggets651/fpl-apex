@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.14"
           cache: pip
 
       - name: Resolve exact core SHA
@@ -70,18 +70,43 @@ jobs:
           set -euo pipefail
           CORE='${{ steps.materialize.outputs.path }}'
           if [ -f "$CORE/requirements-v2.lock" ]; then
-            python -m pip install -c "$CORE/requirements-v2.lock" -e "$CORE[dev]"
+            PIP_PIN="$(grep -E '^pip==' "$CORE/requirements-v2.lock")"
+            SETUPTOOLS_PIN="$(grep -E '^setuptools==' "$CORE/requirements-v2.lock")"
+            WHEEL_PIN="$(grep -E '^wheel==' "$CORE/requirements-v2.lock")"
+            test -n "$PIP_PIN"
+            test -n "$SETUPTOOLS_PIN"
+            test -n "$WHEEL_PIN"
+            python -m pip install "$PIP_PIN" "$SETUPTOOLS_PIN" "$WHEEL_PIN"
+            python -m pip install --no-build-isolation \
+              -c "$CORE/requirements-v2.lock" -e "$CORE[dev]"
+            (cd "$CORE" && python scripts/check_v2_dependency_lock.py requirements-v2.lock)
           else
             python -m pip install -e "$CORE[dev]"
           fi
           python -m pip check
+
+      - name: Build candidate provenance and SBOM when supported
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE='${{ steps.materialize.outputs.path }}'
+          mkdir -p "$GITHUB_WORKSPACE/artifacts/v2-readiness"
+          if [ -f "$CORE/scripts/build_v2_provenance.py" ]; then
+            cd "$CORE"
+            python scripts/build_v2_provenance.py \
+              --engine-sha '${{ steps.core.outputs.sha }}' \
+              --output-dir "$GITHUB_WORKSPACE/artifacts/v2-readiness"
+          else
+            echo "Selected production core predates provenance/SBOM support."
+          fi
 
       - name: Verify architecture and CLI
         shell: bash
         run: |
           set -euo pipefail
           CORE='${{ steps.materialize.outputs.path }}'
-          python "$CORE/scripts/check_v2_architecture.py"
+          cd "$CORE"
+          python scripts/check_v2_architecture.py
           apex-v2 --help >/dev/null
 
       - name: Run complete V2 contract
@@ -89,15 +114,17 @@ jobs:
         run: |
           set -euo pipefail
           CORE='${{ steps.materialize.outputs.path }}'
-          mkdir -p artifacts/v2-readiness
-          if [ -f "$CORE/scripts/check_v2_critical_coverage.py" ]; then
-            pytest -q "$CORE"/tests/test_apex_v2_*.py "$CORE"/tests/test_v2_*.py \
+          COVERAGE="$GITHUB_WORKSPACE/artifacts/v2-readiness/coverage.json"
+          mkdir -p "$GITHUB_WORKSPACE/artifacts/v2-readiness"
+          cd "$CORE"
+          if [ -f "scripts/check_v2_critical_coverage.py" ]; then
+            pytest -q tests/test_apex_v2_*.py tests/test_v2_*.py \
               --cov=apex --cov-branch \
               --cov-report=term-missing \
-              --cov-report=json:artifacts/v2-readiness/coverage.json
-            python "$CORE/scripts/check_v2_critical_coverage.py" artifacts/v2-readiness/coverage.json
+              --cov-report=json:"$COVERAGE"
+            python scripts/check_v2_critical_coverage.py "$COVERAGE"
           else
-            pytest -q "$CORE"/tests/test_apex_v2_*.py "$CORE"/tests/test_v2_*.py
+            pytest -q tests/test_apex_v2_*.py tests/test_v2_*.py
           fi
 
       - name: Run mutation sentinels when supported
@@ -116,12 +143,16 @@ jobs:
         run: |
           set -euo pipefail
           CORE='${{ steps.materialize.outputs.path }}'
-          ruff check "$CORE/src/apex" "$CORE"/tests/test_apex_v2_*.py "$CORE"/tests/test_v2_*.py "$CORE/scripts/check_v2_architecture.py"
-          if [ -f "$CORE/scripts/check_v2_critical_coverage.py" ]; then
-            ruff check "$CORE/scripts/check_v2_critical_coverage.py"
+          cd "$CORE"
+          ruff check src/apex tests/test_apex_v2_*.py tests/test_v2_*.py scripts/check_v2_architecture.py
+          if [ -f "scripts/check_v2_critical_coverage.py" ]; then
+            ruff check scripts/check_v2_critical_coverage.py
           fi
-          if [ -f "$CORE/scripts/run_v2_mutation_sentinels.py" ]; then
-            ruff check "$CORE/scripts/run_v2_mutation_sentinels.py"
+          if [ -f "scripts/check_v2_dependency_lock.py" ]; then
+            ruff check scripts/check_v2_dependency_lock.py scripts/build_v2_provenance.py
+          fi
+          if [ -f "scripts/run_v2_mutation_sentinels.py" ]; then
+            ruff check scripts/run_v2_mutation_sentinels.py
           fi
 
       - name: Report read-only readiness result
@@ -129,6 +160,15 @@ jobs:
         run: |
           printf 'Apex V2 readiness passed\ncore_sha=%s\nmode=%s\n' \
             '${{ steps.core.outputs.sha }}' '${{ steps.core.outputs.mode }}'
+
+      - name: Retain read-only readiness evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: apex-v2-readiness-${{ steps.core.outputs.sha }}
+          path: artifacts/v2-readiness/
+          if-no-files-found: warn
+          retention-days: 30
 
 # This workflow is diagnostic only: no secrets, no network-backed model acquisition,
 # no release creation, no recommendation publication and no repository write permission.
