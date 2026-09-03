@@ -42,6 +42,24 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
         ):
             self.assertIn(required, text)
 
+    def test_required_ci_uses_core_lock_when_available(self):
+        text = (ROOT / ".github/workflows/apex.yml").read_text(encoding="utf-8")
+        for required in (
+            'if [ -f "$CORE/requirements-v2.lock" ]; then',
+            'PIP_PIN="$(grep -E \'^pip==\' "$CORE/requirements-v2.lock")"',
+            'SETUPTOOLS_PIN="$(grep -E \'^setuptools==\' "$CORE/requirements-v2.lock")"',
+            'WHEEL_PIN="$(grep -E \'^wheel==\' "$CORE/requirements-v2.lock")"',
+            '--no-build-isolation',
+            '-c "$CORE/requirements-v2.lock" -e "$CORE[dev]"',
+            'python scripts/check_v2_dependency_lock.py requirements-v2.lock',
+            "python -m pip check",
+        ):
+            self.assertIn(required, text)
+        # Both the fast operations job and the full readiness job must install the
+        # exact core using the same lock-aware contract.
+        self.assertGreaterEqual(text.count('if [ -f "$CORE/requirements-v2.lock" ]; then'), 2)
+        self.assertGreaterEqual(text.count("--no-build-isolation"), 2)
+
     def test_ops_contract_never_installs_or_imports_main_legacy_runtime(self):
         text = (ROOT / ".github/workflows/apex-v2-ops-contract.yml").read_text(
             encoding="utf-8"
@@ -134,6 +152,20 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
             production,
         )
         self.assertNotIn("ref: ${{ env.APEX_CODE_SHA }}", production)
+
+    def test_production_intent_snapshot_and_final_bind_exact_serving_core(self):
+        production = (
+            ROOT / ".github/workflows/apex-v2-daily-production.yml"
+        ).read_text(encoding="utf-8")
+        for required in (
+            'echo "APEX_CODE_SHA=$PRODUCTION_CORE_SHA" >> "$GITHUB_ENV"',
+            '--code-sha "$APEX_CODE_SHA")',
+            '--code-sha "$APEX_CODE_SHA" \\\n            --run-started-at',
+            '--code-sha "$APEX_CODE_SHA"',
+            'test "$(git -C "$APEX_CORE_PATH" rev-parse HEAD)" = "$APEX_CODE_SHA"',
+        ):
+            self.assertIn(required, production)
+        self.assertGreaterEqual(production.count('--code-sha "$APEX_CODE_SHA"'), 3)
 
     def test_authority_keeps_legacy_nonserving_and_one_v2_publisher(self):
         authority = json.loads(

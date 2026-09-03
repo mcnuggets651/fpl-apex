@@ -4,11 +4,16 @@ Apex is a reproducible 2026/27 Fantasy Premier League decision system for entry 
 
 The machine-readable repository authority is [`docs/APEX_V2_AUTHORITY.json`](docs/APEX_V2_AUTHORITY.json).
 
+Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
+
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
+
 ## Production constitution
 
-- Frozen certified engine: `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
+- The immutable forensic/base SHA above anchors PR #90 and clean-room lineage; it is not the serving-code promotion pointer.
+- The current serving core is the exact `production_core_sha` declared by machine authority and must descend from the immutable base.
 - Frozen engine PR #90 remains draft/open/unmerged and is not an operations branch.
-- `main` is the operations/research control plane; it does not redefine frozen model semantics.
+- `main` is the operations/research control plane; it does not redefine serving-core model semantics.
 - Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
 - **AIrsenal** is the sole serving champion H1–H8.
 - Apex Proprietary, Dastan, PITCHSIDE and OpenFPL are shadow/diagnostic only.
@@ -18,7 +23,7 @@ The machine-readable repository authority is [`docs/APEX_V2_AUTHORITY.json`](doc
 
 ## Serving interface
 
-Production authority is the immutable Apex V2 final release created by the frozen engine and its authenticated V2 workflow. The workflow freezes inputs once, verifies Official FPL authority around provider acquisition, solves offline, checks exact FPL mechanics and publishes immutably.
+Production authority is the immutable Apex V2 final release created by the exact authority-declared `production_core_sha` and its authenticated V2 workflow. The workflow freezes inputs once, verifies Official FPL authority around provider acquisition, solves offline, checks exact FPL mechanics and publishes immutably.
 
 Legacy repository-generated files such as `data/generated/apex_recommendation_latest.*`, Pinnacle/Elite outputs and `scripts/run_apex.py` are retained for history, compatibility and tests. They are **not** the current serving interface.
 
@@ -49,7 +54,7 @@ Required generic CI contexts remain:
 - `contract`
 - `readiness`
 
-The Apex V2 Ops Contract additionally executes operations regressions against the exact frozen evaluator and rejects operations changes that cross into frozen `src/`, `config/` or `tests/` semantics.
+The Apex V2 Ops Contract additionally executes operations regressions against the immutable evaluator/base lineage and rejects operations changes that cross into serving-core `src/`, `config/` or `tests/` semantics outside the certified-successor path.
 
 ## Project Brain startup
 

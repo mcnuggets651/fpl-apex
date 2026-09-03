@@ -2,17 +2,22 @@
 
 **Canonical Project Brain for Apex V2.** Read the machine authority first: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
 
+Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
+
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
+
 ## Mission
 
 Produce one canonical production FPL recommendation for entry **63984** that maximises expected points under exact FPL rules while using exact authenticated manager state and failing closed when data, authentication, snapshot identity or provider qualification is unsafe.
 
 Separately, run rigorous prospective/no-hindsight research to measure forecast quality and decision edge. Research may challenge production but cannot silently influence serving output.
 
-## Frozen constitution
+## Production constitution
 
 - Season: 2026/27.
-- Certified engine SHA: `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
-- Frozen engine PR: #90; keep it open/draft/unmerged and do not advance it for operations changes.
+- Immutable PR #90 forensic/base SHA: `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
+- Current serving code is the authority-declared `production_core_sha` and must descend from the immutable base.
+- Frozen engine PR: #90; keep it open/draft/unmerged and do not advance it for operations changes or successor promotion.
 - Operations/research control plane: `main`.
 - Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
 - Sole serving champion: **AIrsenal**, H1–H8.
@@ -27,7 +32,7 @@ Official FPL is factual authority for identity, club, FPL position, price, statu
 
 ## One production recommendation
 
-The serving result is the immutable Apex V2 final produced by the frozen authenticated production workflow. It contains the legal action from exact current state: transfers/roll, XI, captain, vice, bench order and exact mechanics, with horizon planning/contingencies where supported by the frozen contract.
+The serving result is the immutable Apex V2 final produced by the authenticated production workflow using the exact authority-declared `production_core_sha`. It contains the legal action from exact current state: transfers/roll, XI, captain, vice, bench order and exact mechanics, with horizon planning/contingencies where supported by the serving-core contract.
 
 There is no second user-facing Pinnacle, Elite, CVaR, value or challenger team. Those names survive only in historical V1 code/research or as diagnostics where explicitly labelled. Legacy `scripts/run_apex.py` and `data/generated/apex_recommendation_latest.*` are not current serving authority.
 
@@ -35,16 +40,18 @@ There is no second user-facing Pinnacle, Elite, CVaR, value or challenger team. 
 
 Apex V2 Daily Production:
 
-1. checks out/proves the frozen engine SHA;
-2. preflights the immutable private manager store;
-3. validates/recovers authentication for the configured entry;
-4. creates the immutable attempt intent;
-5. captures Official FPL authority before provider work;
-6. obtains fresh pinned AIrsenal H1–H8 and governed shadow surfaces;
-7. re-anchors Official FPL and freezes inputs once;
-8. solves with network access disabled;
-9. checks exact architecture/mechanics and qualification;
-10. publishes private prerequisites then the immutable public final.
+1. checks out exact `main` as the bounded control plane;
+2. resolves `production_core_sha` and immutable `frozen_engine_sha` from machine authority;
+3. proves the serving core descends from the immutable base and materializes the exact serving core in a detached worktree;
+4. installs that core using its exact dependency lock when available;
+5. preflights the immutable private manager store;
+6. validates/recovers authentication for the configured entry;
+7. creates the immutable attempt intent bound to the exact serving-core SHA;
+8. captures Official FPL authority before provider work;
+9. obtains fresh pinned AIrsenal H1–H8 and governed shadow surfaces;
+10. re-anchors Official FPL and freezes inputs once, bound to the same serving-core SHA;
+11. solves with network access disabled and checks exact architecture/mechanics and qualification;
+12. publishes private prerequisites then the immutable public final, again bound to the same serving-core SHA.
 
 No research workflow may acquire/solve/publish a serving recommendation.
 
@@ -62,15 +69,15 @@ A forecast or decision variant must be immutably committed before the relevant O
 
 ## Manager-state law
 
-Never reconstruct the current squad from conversation history, an old screenshot, a historical generated file or a shadow provider. Use the authenticated production manager state for entry 63984. A current user-supplied private state may be evidence only where the frozen/current control plane explicitly supports it; do not bypass production governance manually.
+Never reconstruct the current squad from conversation history, an old screenshot, a historical generated file or a shadow provider. Use the authenticated production manager state for entry 63984. A current user-supplied private state may be evidence only where the current control plane explicitly supports it; do not bypass production governance manually.
 
 AIrsenal worker setup team ID `1` is deliberately an upstream database-initialisation placeholder. The worker produces player forecasts and skips manager-specific transaction updates; it is not the production manager identity and must not be changed to 63984 as an operations fix.
 
 ## Change boundaries
 
-Normal operations may change scheduling, bounded auth recovery, evaluation orchestration, non-serving research controllers and documentation/governance without modifying frozen engine semantics. `src/`, `config/` and frozen tests require an explicit freeze-break/re-certification path, not an operations repair.
+Normal operations may change scheduling, bounded auth recovery, evaluation orchestration, non-serving research controllers and documentation/governance without modifying serving-core semantics. Changes to serving `src/`, `config/` or tests require an explicit certified-successor path, sealed assurance and deliberate `production_core_sha` promotion; they must never advance PR #90.
 
-Never alter candidate depth, horizon, MILP precision or exact mechanics merely to make research faster. Runtime/orchestration must accommodate the frozen semantics instead.
+Never alter candidate depth, horizon, MILP precision or exact mechanics merely to make research faster. Runtime/orchestration must accommodate certified semantics instead.
 
 ## Continuity protocol
 
@@ -80,7 +87,7 @@ Before substantive Apex work:
 2. read `CURRENT_STATE.md`;
 3. read this file and `APEX_OPERATING_MANUAL.md`;
 4. read `APEX_V2_DAILY_OPERATIONS.md` plus the relevant V2 research/operations runbook;
-5. verify live GitHub `main`, PR #90, workflow runs and immutable release state;
+5. verify live GitHub `main`, PR #90, `production_core_sha`, workflow runs and immutable release state;
 6. only then implement or answer.
 
 Repository history remains useful evidence, but it may not overrule the current V2 authority chain.
