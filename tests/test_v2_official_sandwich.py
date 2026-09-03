@@ -7,6 +7,7 @@ import pytest
 
 from apex.domain.models import OfficialPlayer, OfficialSnapshot, Position
 from apex.runtime import acquire as acquire_module
+from apex.runtime.config import ApexConfig, production_core_sha
 from apex.sources.team import TeamStateAcquisition
 
 
@@ -133,3 +134,13 @@ def test_matching_official_hash_is_frozen_as_provenance(
     assert snapshot.manifest["metadata"]["team_state_mode"] == "NO_PUBLIC_DEADLINE"
     assert team_provenance["mode"] == "NO_PUBLIC_DEADLINE"
     assert team_provenance["credential_present"] is False
+
+    # Finding 2: run.json must carry production_core_sha, computed from the
+    # ACTUAL loaded config's governing provider state -- not merely present
+    # as a placeholder. Recomputing it independently here and comparing
+    # proves acquire_and_freeze wires the real function through end-to-end,
+    # not a stub or a copy of code_sha/config_sha.
+    expected_core_sha = production_core_sha(ApexConfig.load(_config(tmp_path)))
+    assert run["production_core_sha"] == expected_core_sha
+    assert run["production_core_sha"] != run["code_sha"]
+    assert run["production_core_sha"] != run["config_sha"]
