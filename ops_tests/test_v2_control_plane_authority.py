@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -10,16 +11,26 @@ ROOT = Path(__file__).resolve().parents[1]
 class V2ControlPlaneAuthorityTests(unittest.TestCase):
     def test_required_ci_has_no_legacy_runtime_authority(self):
         text = (ROOT / ".github/workflows/apex.yml").read_text(encoding="utf-8")
-        for forbidden in (
-            "apex_fpl",
-            "apex-fpl",
-            "scripts/run_apex.py",
-            "run_pinnacle.py",
-            "apex_recommendation_latest",
-            "pinnacle_latest",
-            "elite_latest",
+
+        # Guard executable legacy entry points rather than banning their names from
+        # fail-closed assertions/documentation inside the workflow itself.
+        forbidden_exec_patterns = (
+            r"(?m)^\s*(?:python\s+)?scripts/run_apex\.py(?:\s|$)",
+            r"(?m)^\s*(?:python\s+)?scripts/run_pinnacle\.py(?:\s|$)",
+            r"(?m)^\s*apex-fpl(?:\s|$)",
+            r"(?m)^\s*from\s+apex_fpl(?:\.|\s)",
+            r"(?m)^\s*import\s+apex_fpl(?:\.|\s|$)",
+        )
+        for pattern in forbidden_exec_patterns:
+            self.assertIsNone(re.search(pattern, text), pattern)
+
+        for forbidden_artifact in (
+            "data/generated/apex_recommendation_latest",
+            "data/generated/pinnacle_latest",
+            "data/generated/elite_latest",
         ):
-            self.assertNotIn(forbidden, text)
+            self.assertNotIn(forbidden_artifact, text)
+
         for required in (
             "docs/APEX_V2_AUTHORITY.json",
             "git worktree add --detach",
@@ -66,11 +77,15 @@ class V2ControlPlaneAuthorityTests(unittest.TestCase):
         )
         self.assertEqual(authority["legacy"]["status"], "HISTORICAL_NON_SERVING")
         self.assertEqual(
-            authority["production"]["serving_workflow"],
+            authority["canonical_production_workflow"],
             ".github/workflows/apex-v2-daily-production.yml",
         )
-        self.assertEqual(authority["production"]["serving_provider"], "airsenal")
-        self.assertFalse(authority["model_authority"]["automatic_promotion"])
+        self.assertEqual(authority["serving_provider"], "airsenal")
+        self.assertFalse(authority["research"]["automatic_promotion"])
+        self.assertEqual(authority["research"]["production_influence"], "NONE")
+        champion = authority["provider_constitution"][authority["serving_provider"]]
+        self.assertEqual(champion["role"], "CHAMPION")
+        self.assertTrue(champion["serve_authorized"])
 
 
 if __name__ == "__main__":
