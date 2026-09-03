@@ -36,6 +36,7 @@ def _fixture(tmp_path: Path):
             "run_id": "run-123",
             "code_sha": "code-abc",
             "config_sha": "config-abc",
+            "production_core_sha": "c" * 64,
             "run_started_at": "2026-09-02T11:59:00Z",
             "acquired_at": "2026-09-02T12:00:00Z",
             "frozen_at": "2026-09-02T12:01:00Z",
@@ -105,7 +106,6 @@ def _fixture(tmp_path: Path):
     )
     decision = json.loads(decision_path.read_text(encoding="utf-8"))
     return snapshot, decision, decision_path
-
 
 
 def _publish(tmp_path: Path, snapshot, decision: dict):
