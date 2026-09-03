@@ -13,37 +13,87 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+  FROZEN_APEX_BASE_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
 
 jobs:
   produce:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      APEX_CODE_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
       APEX_PRIVATE_MANAGER_ENABLED: ${{ vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.APEX_CODE_SHA }}
           fetch-depth: 0
 
-      - name: Verify frozen production identity
+      - name: Resolve authority-declared production core
+        id: core
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$APEX_CODE_SHA" = "$FROZEN_APEX_SHA"
-          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
-          echo "Apex V2 daily production pinned to $FROZEN_APEX_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          readarray -t AUTHORITY < <(python - <<'PY'
+          import json
+          authority = json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))
+          print(authority["production_core_sha"])
+          print(authority["frozen_engine_sha"])
+          PY
+          )
+          PRODUCTION_CORE_SHA="${AUTHORITY[0]}"
+          FROZEN_ENGINE_SHA="${AUTHORITY[1]}"
+          [[ "$PRODUCTION_CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$FROZEN_ENGINE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$FROZEN_ENGINE_SHA" = "$FROZEN_APEX_BASE_SHA"
+          git fetch --no-tags origin "$FROZEN_ENGINE_SHA" "$PRODUCTION_CORE_SHA"
+          git merge-base --is-ancestor "$FROZEN_ENGINE_SHA" "$PRODUCTION_CORE_SHA"
+          CORE="$RUNNER_TEMP/apex-v2-production-core"
+          rm -rf "$CORE"
+          git worktree add --detach "$CORE" "$PRODUCTION_CORE_SHA"
+          test "$(git -C "$CORE" rev-parse HEAD)" = "$PRODUCTION_CORE_SHA"
+          test -f "$CORE/src/apex/runtime/solve.py"
+          test -f "$CORE/config/apex_v2.yaml"
+          test -f "$CORE/upstreams.lock.json"
+          echo "sha=$PRODUCTION_CORE_SHA" >> "$GITHUB_OUTPUT"
+          echo "path=$CORE" >> "$GITHUB_OUTPUT"
+          echo "frozen_sha=$FROZEN_ENGINE_SHA" >> "$GITHUB_OUTPUT"
+          echo "APEX_CODE_SHA=$PRODUCTION_CORE_SHA" >> "$GITHUB_ENV"
+          echo "APEX_CORE_PATH=$CORE" >> "$GITHUB_ENV"
+          echo "Apex V2 production core: $PRODUCTION_CORE_SHA (immutable base $FROZEN_ENGINE_SHA)"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
 
-      - name: Install Apex V2 tooling
-        run: pip install -e '.[dev]'
+      - name: Install exact Apex V2 production core
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$APEX_CORE_PATH/requirements-v2.lock" ]; then
+            PIP_PIN="$(grep -E '^pip==' "$APEX_CORE_PATH/requirements-v2.lock")"
+            SETUPTOOLS_PIN="$(grep -E '^setuptools==' "$APEX_CORE_PATH/requirements-v2.lock")"
+            WHEEL_PIN="$(grep -E '^wheel==' "$APEX_CORE_PATH/requirements-v2.lock")"
+            test -n "$PIP_PIN"
+            test -n "$SETUPTOOLS_PIN"
+            test -n "$WHEEL_PIN"
+            python -m pip install "$PIP_PIN" "$SETUPTOOLS_PIN" "$WHEEL_PIN"
+            python -m pip install --no-build-isolation \
+              -c "$APEX_CORE_PATH/requirements-v2.lock" -e "$APEX_CORE_PATH[dev]"
+            (cd "$APEX_CORE_PATH" && python scripts/check_v2_dependency_lock.py requirements-v2.lock)
+          else
+            python -m pip install -e "$APEX_CORE_PATH[dev]"
+          fi
+          python -m pip check
+
+      - name: Verify control-plane/core separation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C "$APEX_CORE_PATH" rev-parse HEAD)" = "$APEX_CODE_SHA"
+          test "$APEX_CODE_SHA" = '${{ steps.core.outputs.sha }}'
+          test '${{ steps.core.outputs.frozen_sha }}' = "$FROZEN_APEX_BASE_SHA"
 
       - name: Private-manager storage preflight
         if: env.APEX_PRIVATE_MANAGER_ENABLED == '1'
@@ -69,34 +119,22 @@ jobs:
 
       - name: Materialize exact operations auth controller
         if: env.APEX_PRIVATE_MANAGER_ENABLED == '1'
-        env:
-          CONTROL_PLANE_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/main"
-          test -n "$CONTROL_PLANE_SHA"
-          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
-          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
-          git show "$CONTROL_PLANE_SHA:scripts/apex_v2_auth_ops.py" > "$RUNNER_TEMP/apex_v2_auth_ops.py"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          cp scripts/apex_v2_auth_ops.py "$RUNNER_TEMP/apex_v2_auth_ops.py"
           test -s "$RUNNER_TEMP/apex_v2_auth_ops.py"
-          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
 
       - name: Materialize exact external-shadow operations controller
-        env:
-          CONTROL_PLANE_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/main"
-          test -n "$CONTROL_PLANE_SHA"
-          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
-          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
-          git show "$CONTROL_PLANE_SHA:scripts/apex_v2_shadow_provider_ops.py" > "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          cp scripts/apex_v2_shadow_provider_ops.py "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py"
+          cp "$APEX_CORE_PATH/upstreams.lock.json" "$RUNNER_TEMP/apex-v2-upstreams.lock.json"
           test -s "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py"
-          git show "$FROZEN_APEX_SHA:upstreams.lock.json" > "$RUNNER_TEMP/apex-v2-upstreams.lock.json"
           test -s "$RUNNER_TEMP/apex-v2-upstreams.lock.json"
-          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
 
       - name: Derive production config with external diagnostics isolated
         shell: bash
@@ -104,11 +142,11 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/v2/diagnostics/external-shadow
           python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" derive-runtime-config \
-            --source config/apex_v2.yaml \
+            --source "$APEX_CORE_PATH/config/apex_v2.yaml" \
             --output "$RUNNER_TEMP/apex_v2_runtime.yaml" \
             --report artifacts/v2/diagnostics/external-shadow/boundary.json
           test -s "$RUNNER_TEMP/apex_v2_runtime.yaml"
-          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test "$(git -C "$APEX_CORE_PATH" rev-parse HEAD)" = "$APEX_CODE_SHA"
 
       - name: Verify and recover FPL owner credential before provider work
         if: env.APEX_PRIVATE_MANAGER_ENABLED == '1'
@@ -125,8 +163,8 @@ jobs:
           set -euo pipefail
           python "$RUNNER_TEMP/apex_v2_auth_ops.py" \
             --mode production \
-            --preflight-script scripts/preflight_fpl_auth.py \
-            --config config/apex_v2.yaml \
+            --preflight-script "$APEX_CORE_PATH/scripts/preflight_fpl_auth.py" \
+            --config "$APEX_CORE_PATH/config/apex_v2.yaml" \
             --github-output "$GITHUB_OUTPUT" \
             --github-env "$GITHUB_ENV"
 
@@ -160,7 +198,7 @@ jobs:
           python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" pitchside-health \
             --report artifacts/v2/diagnostics/external-shadow/pitchside.json || true
           python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" openfpl-readiness \
-            --policy config/openfpl_training_policy.yaml \
+            --policy "$APEX_CORE_PATH/config/openfpl_training_policy.yaml" \
             --lock "$RUNNER_TEMP/apex-v2-upstreams.lock.json" \
             --history-ref master \
             --report artifacts/v2/diagnostics/external-shadow/openfpl.json || true
@@ -171,7 +209,8 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          source = json.load(open("upstreams.lock.json", encoding="utf-8"))["sources"]["airsenal"]
+          import os
+          source = json.load(open(os.path.join(os.environ["APEX_CORE_PATH"], "upstreams.lock.json"), encoding="utf-8"))["sources"]["airsenal"]
           print(f"repository={source['repository']}")
           print(f"sha={source['commit']}")
           PY
@@ -200,9 +239,9 @@ jobs:
           if [ ! -s "$AIRSENAL_DB_FILE" ]; then
             (cd workers/airsenal && uv run airsenal_setup_initial_db --fpl_team_id 1)
           fi
-          (cd workers/airsenal && uv run python "$GITHUB_WORKSPACE/scripts/update_airsenal_worker.py")
-          python scripts/patch_airsenal_positions.py "$AIRSENAL_DB_FILE" workers/airsenal
-          (cd workers/airsenal && uv run python "$GITHUB_WORKSPACE/scripts/run_airsenal_worker.py" \
+          (cd workers/airsenal && uv run python "$APEX_CORE_PATH/scripts/update_airsenal_worker.py")
+          python "$APEX_CORE_PATH/scripts/patch_airsenal_positions.py" "$AIRSENAL_DB_FILE" workers/airsenal
+          (cd workers/airsenal && uv run python "$APEX_CORE_PATH/scripts/run_airsenal_worker.py" \
             --db "$AIRSENAL_DB_FILE" --horizon 8 \
             --output "$GITHUB_WORKSPACE/acquisition/providers/airsenal.csv")
 
@@ -212,7 +251,7 @@ jobs:
         run: |
           set -euo pipefail
           python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" dastan-run \
-            --runner scripts/acquire_dastan_shadow.py \
+            --runner "$APEX_CORE_PATH/scripts/acquire_dastan_shadow.py" \
             --expected-official-hash '${{ steps.official_seal.outputs.hash }}' \
             --lock "$RUNNER_TEMP/apex-v2-upstreams.lock.json" \
             --report artifacts/v2/diagnostics/external-shadow/dastan.json \
@@ -272,7 +311,7 @@ jobs:
         env:
           APEX_ALLOW_NETWORK_DURING_SOLVE: "0"
         run: |
-          python scripts/check_v2_architecture.py
+          python "$APEX_CORE_PATH/scripts/check_v2_architecture.py"
           apex-v2 solve "${{ steps.freeze.outputs.snapshot }}" --output artifacts/v2/decision_bundle.json
 
       - name: Publish immutable completed attempt
