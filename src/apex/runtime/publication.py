@@ -18,14 +18,46 @@ for _name in dir(_impl):
         globals()[_name] = getattr(_impl, _name)
 
 
+# Solver backend telemetry is useful diagnostics, but it is not part of the FPL
+# decision identity. HiGHS/SciPy may emit different status text or a numerically tiny
+# MIP-gap value on different CPU/runner images even when the integral incumbent,
+# optimiser policy and exact FPL decision are identical. Replay must fail closed on
+# decision-driving state, not on backend presentation/noise.
+_NON_SEMANTIC_SOLVER_FIELDS = frozenset(
+    {
+        "message",
+        "mip_gap",
+        "primary_message",
+        "secondary_message",
+        "next_candidate_message",
+    }
+)
+
+
+def _semantic_decision_optimisation(value):
+    if not isinstance(value, dict):
+        return value
+    semantic = dict(value)
+    solver = semantic.get("solver")
+    if isinstance(solver, dict):
+        semantic["solver"] = {
+            key: item
+            for key, item in solver.items()
+            if key not in _NON_SEMANTIC_SOLVER_FIELDS
+        }
+    return semantic
+
+
 def replay_security_payload(decision: dict) -> dict:
     """Return the immutable semantic DecisionBundle surface used for replay proof.
 
     Runtime execution metadata such as ``workflow_run_id`` is intentionally excluded:
     it identifies the execution that produced an otherwise identical sealed decision,
-    not the recommendation itself. Recommendation, certification, optimiser result,
-    serving policy, contingency state, evidence interpretation, and serving health are
-    all retained and therefore must reproduce exactly.
+    not the recommendation itself. Backend-only solver telemetry is also excluded when
+    it cannot change the optimiser policy or FPL action. Recommendation,
+    certification, decision-driving optimiser state, serving policy, contingency
+    state, evidence interpretation, and serving health are all retained and therefore
+    must reproduce exactly.
     """
     diagnostics = decision.get("provider_diagnostics")
     if not isinstance(diagnostics, dict):
@@ -45,7 +77,9 @@ def replay_security_payload(decision: dict) -> dict:
             "serving_provider_by_horizon": diagnostics.get(
                 "serving_provider_by_horizon"
             ),
-            "decision_optimisation": diagnostics.get("decision_optimisation"),
+            "decision_optimisation": _semantic_decision_optimisation(
+                diagnostics.get("decision_optimisation")
+            ),
             "runtime_serving_h1_health": diagnostics.get(
                 "runtime_serving_h1_health"
             ),
