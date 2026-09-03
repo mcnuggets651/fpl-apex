@@ -543,6 +543,15 @@ def _public_identity(
         "run_id": run["run_id"],
         "code_sha": run["code_sha"],
         "config_sha": run["config_sha"],
+        # Distinct from code_sha/config_sha: identity of the GOVERNING
+        # provider authority (role/serve_authorized/priority per provider),
+        # not the whole commit or the whole raw config file. This is the
+        # value a consumer must compare against to detect whether serving
+        # authority has actually changed between two attempts -- code_sha
+        # changes on every commit including unrelated ones, and config_sha
+        # changes on any config edit including ones with no bearing on
+        # authority (e.g. snapshot_dir). See apex.runtime.config.production_core_sha.
+        "production_core_sha": run["production_core_sha"],
         "snapshot_id": snapshot.snapshot_id,
         "official_snapshot_sha256": _required_sha256(
             decision, "official_snapshot_hash"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,3 +92,42 @@ class ApexConfig:
 
 def config_sha(path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def production_core_sha(config: ApexConfig) -> str:
+    """Identity of the currently-authorized production core, distinct from
+    `config_sha`.
+
+    `config_sha` hashes the entire raw config file, so it changes on any
+    edit whatsoever -- including ones with zero bearing on which provider
+    is authorized to serve (e.g. `snapshot_dir`, `release_prefix`). That
+    makes it useless for answering "did production authority actually
+    change", which is exactly the question a consumer verifying a private
+    manager attempt against current authority needs answered.
+
+    `production_core_sha` hashes only the governance-relevant slice: for
+    each provider, its id, role, serve_authorized flag and priority (the
+    fields that jointly determine which provider(s) may serve and in what
+    order), plus the scoring rules version. Providers are sorted by id so
+    the hash is independent of their order in the config file. Unrelated
+    config edits (paths, snapshot directories, evidence config) do not
+    change this value; a genuine promotion (role/serve_authorized/priority
+    change for any provider) always does.
+    """
+    governed = {
+        "scoring_rules_version": config.scoring_rules_version,
+        "providers": sorted(
+            (
+                {
+                    "provider_id": provider.provider_id,
+                    "role": provider.role.value,
+                    "serve_authorized": provider.serve_authorized,
+                    "priority": provider.priority,
+                }
+                for provider in config.providers
+            ),
+            key=lambda row: row["provider_id"],
+        ),
+    }
+    canonical = json.dumps(governed, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
