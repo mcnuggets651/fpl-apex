@@ -6,15 +6,15 @@ Apex V2 is the production FPL system for season **2026/27** and entry **63984**.
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 ## Production authority
 
 - The immutable forensic/base SHA anchors clean-room lineage and PR #90; it is not the serving-code promotion pointer.
-- The current serving core is the exact `production_core_sha` above and is independently governed from PR #90.
+- The current serving core is the exact `production_core_sha` declared by machine authority and is independently governed from PR #90.
 - Frozen engine PR: **#90**, draft/open/unmerged. It is not an operations branch and must not be merged or advanced.
 - Operations/research control plane: `main`. The live `main` head is intentionally not frozen in this document; verify it directly on GitHub at session start.
-- PR #122 separated immutable-base authority from the serving-core pointer without changing serving code; PR #123 then promoted the certified hardened successor through `production_core_sha` only.
+- PR #122 separated immutable-base authority from the serving-core pointer without changing serving code; PR #123 then promoted the first certified hardened successor through `production_core_sha` only.
 - Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
 - Sole serving forecast provider: **AIrsenal**, H1–H8.
 - Apex Proprietary, Dastan, PITCHSIDE and OpenFPL are shadow/diagnostic only and have no serving authority.
@@ -63,7 +63,7 @@ This is the live acceptance proof for the Decision Quality runtime repair. No fu
 
 ## Governance status
 
-The authority split and hardened-core promotion are complete. Canonical Project Brain documents must explicitly distinguish immutable `frozen_engine_sha` from current `production_core_sha`; repository tests fail if they drift. Required CI also resolves and installs the exact serving core, using its dependency lock when present.
+The authority split and hardened-core promotion are complete. Canonical Project Brain documents must explicitly distinguish immutable `frozen_engine_sha` from the movable `production_core_sha`; durable prose reads the current serving value from machine authority rather than copying it. Required CI also resolves and installs the exact serving core, using its dependency lock when present.
 
 Legacy executable publishers (`pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml`, `gw1-final-2026.yml`) are preserved under `archive/workflows/` and are absent from GitHub's executable workflow directory. The generic governance checker recognizes exactly one serving production workflow, while the V2 Ops Contract fails if legacy publishers return, operations cross serving boundaries, or the forensic workflow archive is modified.
 
