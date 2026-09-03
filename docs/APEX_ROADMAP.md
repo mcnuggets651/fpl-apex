@@ -2,30 +2,36 @@
 
 Machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json). Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
 
-Apex V2 frozen engine SHA is `99cc7b51b0cff45462b567084cb1844cfe0a456f`; the sole serving workflow is `.github/workflows/apex-v2-daily-production.yml`, and **AIrsenal** is the sole serving provider H1–H8.
+Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-## Current release — frozen V2 operations and prospective evidence
+Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
 
-Production architecture is frozen. `main` may improve bounded operations/governance/research without changing frozen model semantics.
+The immutable base anchors PR #90/lineage and never moves during successor promotion. The sole serving workflow is `.github/workflows/apex-v2-daily-production.yml`, and **AIrsenal** is the sole serving provider H1–H8.
+
+## Current release — certified serving core plus prospective evidence
+
+The production architecture is stable, but serving code is now independently versioned through `production_core_sha`. `main` may improve bounded operations/governance/research without modifying serving semantics; serving-code changes require a separately certified immutable successor and deliberate pointer promotion.
 
 Current priorities:
 
 1. keep authenticated immutable V2 Daily Production healthy and fail-closed;
-2. complete prospective multi-provider evaluation without serving influence;
-3. complete the GW3 Decision Quality lab with every counterfactual sealed predeadline;
-4. keep Project Brain, generic governance and executable workflow inventory aligned with the V2 constitution;
-5. retire reproducibility/runner-maintenance debt only with full CI and live acceptance.
+2. keep the serving-core certification/readiness path reproducible across runners;
+3. complete prospective multi-provider evaluation without serving influence;
+4. keep Project Brain, generic governance and executable workflow inventory aligned with machine authority;
+5. improve forecast calibration and decision quality prospectively rather than through hindsight.
 
 ## Production foundations
 
 - Official FPL factual authority and snapshot anchoring;
 - exact authenticated manager state for entry 63984;
-- frozen Apex V2 optimiser/mechanics at `99cc7b51b0cff45462b567084cb1844cfe0a456f`;
+- immutable PR #90 forensic/base lineage at `99cc7b51b0cff45462b567084cb1844cfe0a456f`;
+- independently governed serving code through `production_core_sha`;
 - AIrsenal sole serving H1–H8 provider;
 - immutable private prerequisites and final production releases;
 - offline solve after one frozen input snapshot;
 - exact XI/captain/vice/bench/transfer mechanics;
 - fail-closed auth/data/provider/publication gates;
+- exact serving-core provenance from intent through acquisition and final publication;
 - deadline-aware production dispatch and bounded auth keepalive.
 
 ## Prospective research foundations
@@ -41,17 +47,17 @@ Current priorities:
 
 ## Near-term work
 
-### GW3 live acceptance
+### Portable reproducibility closure
 
-Complete the corrected 50-minute Decision Quality matrix, canonical assembly and private attestation before the Official GW3 deadline for every required decision task. Missing predeadline decisions remain permanently missing.
+Close the cross-runner deterministic-replay portability defect without weakening decision identity. Backend-only solver status/MIP-gap telemetry must not define FPL semantics, while recommendation, certification, optimiser policy/objectives, serving map and evidence remain replay-bound. Certified and operational readiness installs must use the serving core's exact lock when available.
 
-### Reproducibility debt
+### Prospective calibration
 
-Replace mutable non-serving historical references such as `vaastav/Fantasy-Premier-League@master` with exact pins from `upstreams.lock.json` where the consumer supports it.
+As completed Gameweeks accumulate, score xP error and minutes/appearance/start/60 calibration prospectively, preserve every predeadline forecast, and use the evidence to challenge rather than silently rewrite the serving champion.
 
-### Actions runtime maintenance
+### Reliability and observability
 
-Move GitHub Actions off Node-20-targeted action releases only after current stable replacements are verified and full repository/V2 contracts pass.
+Add runtime/SLO evidence for acquisition, optimisation, publication and the deterministic initial-squad canonicalisation path. Fault injection should prove fail-closed behavior for provider staleness, incomplete evidence, storage/release failures and provenance disagreement.
 
 ### External provider intake governance
 
@@ -69,8 +75,8 @@ Potential improvements must remain challengers until prospectively validated:
 - chip opportunity-cost modelling;
 - ownership/rank-game-theory research when the objective explicitly requires it.
 
-None of these belongs in serving production merely because it is theoretically attractive. A serving change requires explicit architecture review, no-hindsight evidence, re-certification and a deliberate frozen-engine migration.
+None of these belongs in serving production merely because it is theoretically attractive. A serving change requires explicit architecture review, no-hindsight evidence, re-certification and a deliberate `production_core_sha` migration while `frozen_engine_sha` remains unchanged.
 
 ## Definition of “Apex 10.0”
 
-Not perfect foresight. It means one coherent, reproducible and auditable production authority: exact state, current facts, qualified serving projections, legal maximum-EV optimisation, exact FPL mechanics, immutable publication, prospective learning and governance that fails when architecture descriptions drift.
+Not perfect foresight. It means one coherent, reproducible and auditable production authority: exact state, current facts, qualified serving projections, legal maximum-EV optimisation, exact FPL mechanics, immutable publication, prospective learning and governance that fails when architecture descriptions or serving-core identity drift.
