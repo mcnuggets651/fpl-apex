@@ -130,7 +130,8 @@ jobs:
 
           changed = set(
               subprocess.check_output(
-                  ["git", "diff", "--name-only", "--no-renames", "origin/main...HEAD"], text=True
+                  ["git", "diff", "--name-only", "--no-renames", "origin/main...HEAD"],
+                  text=True,
               ).splitlines()
           )
 
@@ -145,7 +146,9 @@ jobs:
                       "legacy diagnostic retirement must be atomic across all three workflows"
                   )
               if archive_manifest not in changed:
-                  raise SystemExit("legacy diagnostic retirement must update archive/workflows/README.md")
+                  raise SystemExit(
+                      "legacy diagnostic retirement must update archive/workflows/README.md"
+                  )
               for source, target in retirements.items():
                   if source not in changed or target not in changed:
                       raise SystemExit(f"incomplete retirement pair: {source} -> {target}")
@@ -207,10 +210,7 @@ jobs:
               raise SystemExit("ops/governance PR has no changes")
           PY
 
-      - name: Install repository runtime
-        run: python -m pip install -e .
-
-      - name: Materialize exact frozen evaluator source
+      - name: Materialize and install exact frozen evaluator source
         shell: bash
         run: |
           set -euo pipefail
@@ -223,10 +223,11 @@ jobs:
           test -f "$RUNNER_TEMP/frozen-apex/src/apex/governance/evaluation.py"
           test -f "$RUNNER_TEMP/frozen-apex/src/apex/governance/tournament.py"
           test -f "$RUNNER_TEMP/frozen-apex/src/apex/runtime/evaluation_archive.py"
+          python -m pip install -e "$RUNNER_TEMP/frozen-apex[dev]"
 
       - name: Run operations regressions against frozen evaluator
         env:
-          PYTHONPATH: ${{ runner.temp }}/frozen-apex/src:${{ github.workspace }}/scripts:${{ github.workspace }}/src
+          PYTHONPATH: ${{ runner.temp }}/frozen-apex/src:${{ github.workspace }}/scripts
         run: python -m unittest discover -s ops_tests -p 'test_*.py' -v
 
       - name: Assert repository V2 governance is consistent
@@ -243,10 +244,12 @@ jobs:
           frozen = "99cc7b51b0cff45462b567084cb1844cfe0a456f"
           production = Path(".github/workflows/apex-v2-daily-production.yml").read_text(encoding="utf-8")
           for needle in (
-              frozen,
+              "production_core_sha",
+              "frozen_engine_sha",
               'cron: "17 4 * * *"',
               "group: apex-v2-fpl-auth",
               "cancel-in-progress: false",
+              "git merge-base --is-ancestor",
               "apex-v2 private-store-preflight",
               "apex-v2 official-hash",
               "FPL_TEAM_ID: \"1\"",
@@ -258,33 +261,72 @@ jobs:
           ):
               if needle not in production:
                   raise SystemExit(f"daily production contract missing: {needle}")
-          for forbidden in ("pull_request:", "\n  push:\n", "git push", "scripts/run_apex.py", "run_pinnacle.py"):
+          for forbidden in (
+              "pull_request:",
+              "\n  push:\n",
+              "git push",
+              "scripts/run_apex.py",
+              "run_pinnacle.py",
+          ):
               if forbidden in production:
                   raise SystemExit(f"daily production crossed authority boundary: {forbidden}")
 
           keepalive = Path(".github/workflows/apex-v2-auth-keepalive.yml").read_text(encoding="utf-8")
-          for needle in ('cron: "22 */6 * * *"', "contents: read", "group: apex-v2-fpl-auth", "--mode keepalive"):
+          for needle in (
+              'cron: "22 */6 * * *"',
+              "contents: read",
+              "group: apex-v2-fpl-auth",
+              "--mode keepalive",
+          ):
               if needle not in keepalive:
                   raise SystemExit(f"auth keepalive contract missing: {needle}")
-          for forbidden in ("apex-v2 acquire", "apex-v2 solve", "apex-v2 publish", "contents: write"):
+          for forbidden in (
+              "apex-v2 acquire",
+              "apex-v2 solve",
+              "apex-v2 publish",
+              "contents: write",
+          ):
               if forbidden in keepalive:
                   raise SystemExit(f"auth keepalive crossed safety boundary: {forbidden}")
 
           deadline = Path(".github/workflows/apex-v2-deadline-watch.yml").read_text(encoding="utf-8")
-          for needle in ('cron: "11,41 * * * *"', "actions: write", "--min-minutes 90", "--max-minutes 150"):
+          for needle in (
+              'cron: "11,41 * * * *"',
+              "actions: write",
+              "--min-minutes 90",
+              "--max-minutes 150",
+          ):
               if needle not in deadline:
                   raise SystemExit(f"deadline watcher contract missing: {needle}")
-          for forbidden in ("FPL_REFRESH_TOKEN", "FPL_SESSION_COOKIE", "apex-v2 solve", "apex-v2 publish", "contents: write"):
+          for forbidden in (
+              "FPL_REFRESH_TOKEN",
+              "FPL_SESSION_COOKIE",
+              "apex-v2 solve",
+              "apex-v2 publish",
+              "contents: write",
+          ):
               if forbidden in deadline:
                   raise SystemExit(f"deadline watcher crossed safety boundary: {forbidden}")
 
           evaluation = Path(".github/workflows/apex-v2-daily-evaluation.yml").read_text(encoding="utf-8")
-          for needle in (frozen, 'cron: "41 6 * * *"', "apex-v2 evaluate-completed", "apex-v2 tournament-standings"):
+          for needle in (
+              frozen,
+              'cron: "41 6 * * *"',
+              "apex-v2 evaluate-completed",
+              "apex-v2 tournament-standings",
+          ):
               if needle not in evaluation:
                   raise SystemExit(f"daily evaluation contract missing: {needle}")
 
           decision = Path(".github/workflows/apex-v2-decision-quality.yml").read_text(encoding="utf-8")
-          for needle in ("max-parallel: 8", "timeout-minutes: 50", "--mode prepare", "--mode solve-task", "--mode assemble", "--mode postoutcome"):
+          for needle in (
+              "max-parallel: 8",
+              "timeout-minutes: 50",
+              "--mode prepare",
+              "--mode solve-task",
+              "--mode assemble",
+              "--mode postoutcome",
+          ):
               if needle not in decision:
                   raise SystemExit(f"decision-quality contract missing: {needle}")
           for forbidden in ("contents: write", "apex-v2 acquire", "apex-v2 publish"):
@@ -292,11 +334,20 @@ jobs:
                   raise SystemExit(f"decision-quality crossed serving boundary: {forbidden}")
 
           tournament_contract = Path("scripts/apex_v2_tournament_contract.py").read_text(encoding="utf-8")
-          for needle in ("LAST_VALID_COMMON_PREDEADLINE_SEAL", '"production_influence": "NONE"', '"serve_authorized": False'):
+          for needle in (
+              "LAST_VALID_COMMON_PREDEADLINE_SEAL",
+              '"production_influence": "NONE"',
+              '"serve_authorized": False',
+          ):
               if needle not in tournament_contract:
                   raise SystemExit(f"tournament governance invariant missing: {needle}")
 
           manifest = json.loads(Path("docs/APEX_V2_AUTHORITY.json").read_text(encoding="utf-8"))
+          if manifest["frozen_engine_sha"] != frozen:
+              raise SystemExit("immutable PR #90 base changed")
+          production_core = manifest["production_core_sha"]
+          if len(production_core) != 40:
+              raise SystemExit("production core SHA is malformed")
           if manifest["serving_provider"] != "airsenal":
               raise SystemExit("AIrsenal is no longer sole declared serving provider")
           if manifest["research"]["production_influence"] != "NONE":
@@ -350,8 +401,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install explicit governance checker dependency
+        run: python -m pip install 'PyYAML==6.0.3'
 
-      - name: Verify frozen pin and reconciled authority
+      - name: Verify immutable base, production pointer and reconciled authority
         shell: bash
         run: |
           set -euo pipefail
@@ -373,6 +429,8 @@ jobs:
           assert manifest["frozen_engine_sha"] == "99cc7b51b0cff45462b567084cb1844cfe0a456f"
           assert manifest["frozen_engine_pr"] == 90
           assert manifest["frozen_engine_pr_policy"] == "NEVER_MERGE_OR_ADVANCE"
+          production = manifest["production_core_sha"]
+          assert len(production) == 40 and all(c in "0123456789abcdef" for c in production)
           assert manifest["canonical_production_workflow"] == ".github/workflows/apex-v2-daily-production.yml"
           assert manifest["serving_provider"] == "airsenal"
           assert manifest["research"]["production_influence"] == "NONE"

@@ -6,25 +6,33 @@ ROOT = Path(__file__).parents[1]
 
 
 class ShadowProviderWorkflowTests(unittest.TestCase):
-    def test_production_keeps_frozen_engine_and_resilient_dastan(self):
+    def test_production_keeps_immutable_base_serving_core_and_resilient_dastan(self):
         text = (ROOT / ".github/workflows/apex-v2-daily-production.yml").read_text(encoding="utf-8")
         for needle in (
-            f'FROZEN_APEX_SHA: "{FROZEN}"',
-            f'APEX_CODE_SHA: "{FROZEN}"',
-            'git show "$CONTROL_PLANE_SHA:scripts/apex_v2_shadow_provider_ops.py"',
-            'git show "$FROZEN_APEX_SHA:upstreams.lock.json"',
-            '--source config/apex_v2.yaml',
+            f'FROZEN_APEX_BASE_SHA: "{FROZEN}"',
+            'authority["production_core_sha"]',
+            'authority["frozen_engine_sha"]',
+            'git merge-base --is-ancestor "$FROZEN_ENGINE_SHA" "$PRODUCTION_CORE_SHA"',
+            'git worktree add --detach "$CORE" "$PRODUCTION_CORE_SHA"',
+            'echo "APEX_CODE_SHA=$PRODUCTION_CORE_SHA" >> "$GITHUB_ENV"',
+            'cp "$APEX_CORE_PATH/upstreams.lock.json" "$RUNNER_TEMP/apex-v2-upstreams.lock.json"',
+            '--source "$APEX_CORE_PATH/config/apex_v2.yaml"',
             '--output "$RUNNER_TEMP/apex_v2_runtime.yaml"',
             '--config "$RUNNER_TEMP/apex_v2_runtime.yaml"',
             'Acquire Dastan H1 shadow with bounded transient retry',
             'dastan-run',
+            '--runner "$APEX_CORE_PATH/scripts/acquire_dastan_shadow.py"',
             '--max-attempts 2',
             '--wall-clock-seconds 900',
             'Generate fresh AIrsenal candidate',
+            '"$APEX_CORE_PATH/scripts/run_airsenal_worker.py"',
+            '"$APEX_CORE_PATH/scripts/check_v2_architecture.py"',
             'apex-v2 solve',
             'apex-v2 publish',
         ):
             self.assertIn(needle, text)
+        self.assertNotIn(f'APEX_CODE_SHA: "{FROZEN}"', text)
+        self.assertNotIn('ref: ${{ env.APEX_CODE_SHA }}', text)
 
     def test_external_health_workflow_has_no_serving_or_manager_authority(self):
         text = (ROOT / ".github/workflows/apex-v2-shadow-health.yml").read_text(encoding="utf-8")

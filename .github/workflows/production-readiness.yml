@@ -1,183 +1,188 @@
-name: Apex Unified Readiness Audit
+name: Apex V2 Core Readiness Audit
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Optional exact 40-character Apex V2 core SHA. Empty uses the authority-declared production core.
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: apex-unified-readiness
+  group: apex-v2-core-readiness-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   readiness:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.14"
           cache: pip
 
-      - name: Install Apex + pinned AIrsenal worker
-        run: bash scripts/install_pinned_airsenal.sh
-
-      - name: Run deterministic repository tests
+      - name: Resolve exact core SHA and immutable lineage
+        id: core
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          pytest -q
-          ruff check src tests scripts
-          python scripts/check_upstreams.py
-
-      - name: Restore Apex runtime cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: data/cache
-          key: apex-unified-readiness-${{ github.run_id }}
-          restore-keys: |
-            apex-unified-runtime-2627-
-            apex-pinnacle-runtime-2627-
-            apex-runtime-2627-
-
-      - name: Cache AIrsenal database
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/airsenal.db
-          key: airsenal-2627-${{ runner.os }}-v3
-
-      - name: Refresh genuine AIrsenal worker
-        env:
-          AIRSENAL_DB_FILE: ${{ runner.temp }}/airsenal.db
-        run: |
-          if [ ! -s "$AIRSENAL_DB_FILE" ]; then
-            airsenal_setup_initial_db --fpl_team_id 1
-          fi
-          python scripts/update_airsenal_worker.py
-          python scripts/run_airsenal_worker.py \
-            --db "$AIRSENAL_DB_FILE" \
-            --horizon 8 \
-            --output data/generated/airsenal.csv
-
-      - name: Generate Pinnacle surface for same-surface parity
-        env:
-          APEX_SEASON: "2026-2027"
-          APEX_HORIZON: "8"
-          FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
-          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/build_decision_bundle.py \
-            --horizon 8 \
-            --bundle-dir data/generated/decision_bundle \
-            --force
-
-          set +e
-          python scripts/run_pinnacle.py \
-            --horizon 8 \
-            --stochastic-scenarios 256 \
-            --cvar-alpha 0.10 \
-            --cvar-weight 0.20 \
-            --bundle-dir data/generated/decision_bundle
-          status=$?
-          set -e
-
-          test -s data/generated/pinnacle_latest.json
-          if [ "$status" -ne 0 ]; then
-            python - <<'PY'
+          readarray -t AUTHORITY < <(python - <<'PY'
           import json
-          from pathlib import Path
-
-          payload = json.loads(Path("data/generated/pinnacle_latest.json").read_text())
-          blockers = (payload.get("pinnacle_gate") or {}).get("blockers") or []
-          parity_bootstrap = [
-              "required independent solver parity snapshot is not embedded"
-          ]
-          if payload.get("pinnacle_ready") is not False or blockers != parity_bootstrap:
-              raise SystemExit(
-                  "Pinnacle readiness failed before same-surface parity bootstrap: "
-                  + "; ".join(blockers)
-              )
-          print("Pinnacle surface complete; advancing to same-surface parity.")
+          authority = json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))
+          print(authority["production_core_sha"])
+          print(authority["frozen_engine_sha"])
           PY
+          )
+          DEFAULT_SHA="${AUTHORITY[0]}"
+          FROZEN_SHA="${AUTHORITY[1]}"
+          CORE_SHA="${REQUESTED_SHA:-$DEFAULT_SHA}"
+          [[ "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$FROZEN_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "$FROZEN_SHA" "$CORE_SHA"
+          git cat-file -e "$CORE_SHA^{commit}"
+          git merge-base --is-ancestor "$FROZEN_SHA" "$CORE_SHA"
+          echo "sha=$CORE_SHA" >> "$GITHUB_OUTPUT"
+          echo "frozen_sha=$FROZEN_SHA" >> "$GITHUB_OUTPUT"
+          if [ "$CORE_SHA" = "$DEFAULT_SHA" ]; then
+            echo "mode=production-core" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=non-serving-candidate" >> "$GITHUB_OUTPUT"
           fi
 
-          python scripts/export_open_solver.py \
-            reports/players.csv reports/projections.csv /tmp/apex.csv \
-            --projection-col xp
-
-      - name: Read pinned independent solver revision
-        id: parity-pin
-        shell: bash
-        run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          source = json.load(open("upstreams.lock.json", encoding="utf-8"))["sources"]["open_fpl_solver"]
-          print(f"repository={source['repository']}")
-          print(f"sha={source['commit']}")
-          PY
-
-      - name: Run and embed same-surface independent parity
+      - name: Materialize exact core in detached worktree
+        id: materialize
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install uv
-          git clone --filter=blob:none \
-            "https://github.com/${{ steps.parity-pin.outputs.repository }}.git" \
-            "$RUNNER_TEMP/open-fpl-solver"
-          git -C "$RUNNER_TEMP/open-fpl-solver" checkout --detach \
-            "${{ steps.parity-pin.outputs.sha }}"
-          cp /tmp/apex.csv "$RUNNER_TEMP/open-fpl-solver/data/apex.csv"
-          cd "$RUNNER_TEMP/open-fpl-solver"
-          uv sync
-          uv run python run/solve.py \
-            --config "$GITHUB_WORKSPACE/config/open_solver_parity.json" \
-            --datasource apex \
-            --horizon 8
-          cd "$GITHUB_WORKSPACE"
-          RESULT="$(ls -t "$RUNNER_TEMP"/open-fpl-solver/data/results/apex_*.csv | head -1)"
-          python scripts/compare_solver_parity.py \
-            data/generated/pinnacle_latest.json "$RESULT"
-          python scripts/embed_solver_parity.py \
-            data/generated/pinnacle_latest.json \
-            data/generated/solver_parity.json
+          CORE="$RUNNER_TEMP/apex-v2-readiness-core"
+          rm -rf "$CORE"
+          git worktree add --detach "$CORE" '${{ steps.core.outputs.sha }}'
+          test "$(git -C "$CORE" rev-parse HEAD)" = '${{ steps.core.outputs.sha }}'
+          test -f "$CORE/src/apex/runtime/solve.py"
+          test -f "$CORE/scripts/check_v2_architecture.py"
+          echo "path=$CORE" >> "$GITHUB_OUTPUT"
 
-      - name: Run canonical Apex readiness audit
-        env:
-          APEX_SEASON: "2026-2027"
-          APEX_HORIZON: "8"
-          FPL_ENTRY_ID: "63984"
-          AIRSENAL_PROJECTIONS_CSV: data/generated/airsenal.csv
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          ODDS_API_URL: ${{ secrets.ODDS_API_URL }}
-          APEX_NEWS_FEEDS: ${{ secrets.APEX_NEWS_FEEDS }}
+      - name: Install selected immutable core
+        shell: bash
         run: |
-          python scripts/run_apex.py \
-            --horizon 8 \
-            --stochastic-scenarios 256 \
-            --cvar-alpha 0.10 \
-            --cvar-weight 0.20 \
-            --reuse-pinnacle \
-            --force
+          set -euo pipefail
+          CORE='${{ steps.materialize.outputs.path }}'
+          if [ -f "$CORE/requirements-v2.lock" ]; then
+            PIP_PIN="$(grep -E '^pip==' "$CORE/requirements-v2.lock")"
+            SETUPTOOLS_PIN="$(grep -E '^setuptools==' "$CORE/requirements-v2.lock")"
+            WHEEL_PIN="$(grep -E '^wheel==' "$CORE/requirements-v2.lock")"
+            test -n "$PIP_PIN"
+            test -n "$SETUPTOOLS_PIN"
+            test -n "$WHEEL_PIN"
+            python -m pip install "$PIP_PIN" "$SETUPTOOLS_PIN" "$WHEEL_PIN"
+            python -m pip install --no-build-isolation \
+              -c "$CORE/requirements-v2.lock" -e "$CORE[dev]"
+            (cd "$CORE" && python scripts/check_v2_dependency_lock.py requirements-v2.lock)
+          else
+            python -m pip install -e "$CORE[dev]"
+          fi
+          python -m pip check
 
-      - name: Upload unified readiness artefacts
+      - name: Build candidate provenance and SBOM when supported
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE='${{ steps.materialize.outputs.path }}'
+          EVIDENCE="$GITHUB_WORKSPACE/artifacts/v2-readiness"
+          mkdir -p "$EVIDENCE"
+          if [ -f "$CORE/scripts/build_v2_provenance.py" ]; then
+            cd "$CORE"
+            python scripts/build_v2_provenance.py \
+              --engine-sha '${{ steps.core.outputs.sha }}' \
+              --output-dir "$EVIDENCE"
+            test -s "$EVIDENCE/provenance.json"
+            test -s "$EVIDENCE/sbom.cdx.json"
+            python -m json.tool "$EVIDENCE/provenance.json" >/dev/null
+            python -m json.tool "$EVIDENCE/sbom.cdx.json" >/dev/null
+          else
+            echo "Selected production core predates provenance/SBOM support."
+          fi
+
+      - name: Verify architecture and CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE='${{ steps.materialize.outputs.path }}'
+          cd "$CORE"
+          python scripts/check_v2_architecture.py
+          apex-v2 --help >/dev/null
+
+      - name: Run complete V2 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE='${{ steps.materialize.outputs.path }}'
+          COVERAGE="$GITHUB_WORKSPACE/artifacts/v2-readiness/coverage.json"
+          mkdir -p "$GITHUB_WORKSPACE/artifacts/v2-readiness"
+          cd "$CORE"
+          if [ -f "scripts/check_v2_critical_coverage.py" ]; then
+            pytest -q tests/test_apex_v2_*.py tests/test_v2_*.py \
+              --cov=apex --cov-branch \
+              --cov-report=term-missing \
+              --cov-report=json:"$COVERAGE"
+            python scripts/check_v2_critical_coverage.py "$COVERAGE"
+          else
+            pytest -q tests/test_apex_v2_*.py tests/test_v2_*.py
+          fi
+
+      - name: Run mutation sentinels when supported
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE='${{ steps.materialize.outputs.path }}'
+          if [ -f "$CORE/scripts/run_v2_mutation_sentinels.py" ]; then
+            (cd "$CORE" && python scripts/run_v2_mutation_sentinels.py)
+          else
+            echo "Selected core predates mutation sentinel gate."
+          fi
+
+      - name: Lint selected core assurance surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE='${{ steps.materialize.outputs.path }}'
+          cd "$CORE"
+          ruff check src/apex tests/test_apex_v2_*.py tests/test_v2_*.py scripts/check_v2_architecture.py
+          if [ -f "scripts/check_v2_critical_coverage.py" ]; then
+            ruff check scripts/check_v2_critical_coverage.py
+          fi
+          if [ -f "scripts/check_v2_dependency_lock.py" ]; then
+            ruff check scripts/check_v2_dependency_lock.py scripts/build_v2_provenance.py
+          fi
+          if [ -f "scripts/run_v2_mutation_sentinels.py" ]; then
+            ruff check scripts/run_v2_mutation_sentinels.py
+          fi
+
+      - name: Report read-only readiness result
+        shell: bash
+        run: |
+          printf 'Apex V2 readiness passed\ncore_sha=%s\nfrozen_base_sha=%s\nmode=%s\n' \
+            '${{ steps.core.outputs.sha }}' \
+            '${{ steps.core.outputs.frozen_sha }}' \
+            '${{ steps.core.outputs.mode }}'
+
+      - name: Retain read-only readiness evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: apex-unified-readiness-${{ github.run_id }}
-          path: |
-            data/generated/apex_recommendation_latest.json
-            data/generated/apex_recommendation_latest.md
-            data/generated/pinnacle_latest.json
-            data/generated/solver_parity.json
-            data/generated/elite_latest.json
-            data/generated/decision_bundle/
-            reports/
-            data/generated/airsenal.csv
+          name: apex-v2-readiness-${{ steps.core.outputs.sha }}
+          path: artifacts/v2-readiness/
+          if-no-files-found: warn
           retention-days: 30
+
+# This workflow is diagnostic only: no secrets, no network-backed model acquisition,
+# no release creation, no recommendation publication and no repository write permission.
