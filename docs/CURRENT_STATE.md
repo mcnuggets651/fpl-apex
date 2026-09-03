@@ -6,13 +6,13 @@ Canonical machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 ## Production now
 
 PR #90 and the immutable forensic/base SHA remain permanently anchored at `99cc7b51b0cff45462b567084cb1844cfe0a456f`. PR #90 stays open, draft and unmerged; operations and successor promotion must never merge or advance it.
 
-The authority-declared serving core is independently pinned by `production_core_sha`. PR #123 promoted the certified hardened successor `40ac0176ebdf0ce7db80b77b31dbf19623d57932` through that pointer only, after exact-head sealed assurance and a current-main non-serving canary.
+The authority-declared serving core is independently pinned by `production_core_sha`. PR #123 promoted the first certified hardened successor through that pointer only, after exact-head sealed assurance and a current-main non-serving canary. Always read the current value from machine authority rather than copying it into durable prose.
 
 The default branch `main` is the live operations/research control plane. Do not copy a historical `main` SHA into future reasoning as if it were permanent: verify the current signed head directly on GitHub.
 
