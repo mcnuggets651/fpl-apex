@@ -51,7 +51,21 @@ jobs:
           test "$(git -C "$CORE" rev-parse HEAD)" = '${{ steps.core.outputs.sha }}'
           test -f "$CORE/src/apex/runtime/solve.py"
           test -f "$CORE/scripts/check_v2_architecture.py"
-          python -m pip install -e "$CORE[dev]"
+          if [ -f "$CORE/requirements-v2.lock" ]; then
+            PIP_PIN="$(grep -E '^pip==' "$CORE/requirements-v2.lock")"
+            SETUPTOOLS_PIN="$(grep -E '^setuptools==' "$CORE/requirements-v2.lock")"
+            WHEEL_PIN="$(grep -E '^wheel==' "$CORE/requirements-v2.lock")"
+            test -n "$PIP_PIN"
+            test -n "$SETUPTOOLS_PIN"
+            test -n "$WHEEL_PIN"
+            python -m pip install "$PIP_PIN" "$SETUPTOOLS_PIN" "$WHEEL_PIN"
+            python -m pip install --no-build-isolation \
+              -c "$CORE/requirements-v2.lock" -e "$CORE[dev]"
+            (cd "$CORE" && python scripts/check_v2_dependency_lock.py requirements-v2.lock)
+          else
+            python -m pip install -e "$CORE[dev]"
+          fi
+          python -m pip check
       - name: Run live V2 operations regressions
         env:
           PYTHONPATH: ${{ runner.temp }}/apex-v2-core/src:${{ github.workspace }}/scripts
@@ -133,7 +147,21 @@ jobs:
           rm -rf "$CORE"
           git worktree add --detach "$CORE" "$CORE_SHA"
           test "$(git -C "$CORE" rev-parse HEAD)" = "$CORE_SHA"
-          python -m pip install -e "$CORE[dev]"
+          if [ -f "$CORE/requirements-v2.lock" ]; then
+            PIP_PIN="$(grep -E '^pip==' "$CORE/requirements-v2.lock")"
+            SETUPTOOLS_PIN="$(grep -E '^setuptools==' "$CORE/requirements-v2.lock")"
+            WHEEL_PIN="$(grep -E '^wheel==' "$CORE/requirements-v2.lock")"
+            test -n "$PIP_PIN"
+            test -n "$SETUPTOOLS_PIN"
+            test -n "$WHEEL_PIN"
+            python -m pip install "$PIP_PIN" "$SETUPTOOLS_PIN" "$WHEEL_PIN"
+            python -m pip install --no-build-isolation \
+              -c "$CORE/requirements-v2.lock" -e "$CORE[dev]"
+            (cd "$CORE" && python scripts/check_v2_dependency_lock.py requirements-v2.lock)
+          else
+            python -m pip install -e "$CORE[dev]"
+          fi
+          python -m pip check
           echo "path=$CORE" >> "$GITHUB_OUTPUT"
       - name: Verify production core readiness
         shell: bash
