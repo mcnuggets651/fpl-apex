@@ -54,9 +54,13 @@ def write_evidence(tmp: Path, records=()):
     (tmp / "evidence_manifest.json").write_text(json.dumps(manifest, sort_keys=True))
 
 
+def team_acquisition() -> TeamStateAcquisition:
+    return TeamStateAcquisition(state=None, mode="NO_PUBLIC_DEADLINE", credential_present=False, target_gameweek=2, detail="test")
+
+
 def patch_common(monkeypatch, tmp: Path):
     monkeypatch.setattr(acquire_module, "fetch_official_snapshot", lambda **_: (official(), {"bootstrap": {}, "fixtures": []}))
-    monkeypatch.setattr(acquire_module, "acquire_team_state", lambda *a, **k: TeamStateAcquisition(state=None, mode="NO_PUBLIC_DEADLINE", credential_present=False, target_gameweek=2, detail="test"))
+    monkeypatch.setattr(acquire_module, "acquire_team_state", lambda *a, **k: team_acquisition())
     write_evidence(tmp)
 
 
@@ -91,4 +95,22 @@ def test_provider_raw_mutation_during_load_aborts(monkeypatch, tmp_path: Path):
     with pytest.raises(acquire_module.AcquisitionStageError) as err:
         acquire_module.acquire_and_freeze(config(tmp_path, True), run_id="provider-toctou", code_sha="abc", run_started_at="2026-08-28T11:59:00+00:00", workdir=tmp_path, expected_official_hash="stable-hash")
     assert err.value.stage == "provider_integrity"
+    assert "changed during acquisition" in err.value.cause_message
+
+
+def test_config_mutation_after_parse_aborts_before_freeze(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(acquire_module, "fetch_official_snapshot", lambda **_: (official(), {"bootstrap": {}, "fixtures": []}))
+    write_evidence(tmp_path)
+    monkeypatch.setattr(acquire_module, "collect_v2_evidence", lambda **_: SimpleNamespace())
+    config_path = config(tmp_path)
+
+    def mutate_config(*args, **kwargs):
+        del args, kwargs
+        config_path.write_text(config_path.read_text().replace("entry_id: 63984", "entry_id: 99999"))
+        return team_acquisition()
+
+    monkeypatch.setattr(acquire_module, "acquire_team_state", mutate_config)
+    with pytest.raises(acquire_module.AcquisitionStageError) as err:
+        acquire_module.acquire_and_freeze(config_path, run_id="config-toctou", code_sha="abc", run_started_at="2026-08-28T11:59:00+00:00", workdir=tmp_path, expected_official_hash="stable-hash")
+    assert err.value.stage == "config_integrity"
     assert "changed during acquisition" in err.value.cause_message
