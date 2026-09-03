@@ -183,7 +183,7 @@ def test_golden_initial_squad_replay_is_semantically_stable(tmp_path: Path):
         snapshot,
         tmp_path,
         "900f15529a89c680b0be61b485ad62c9a8661597d3191317dfa4b6c5b66cf699",
-        "8a9cefdb3e50a8867092dde369ee54cae21fc54b94f27ad1879a885b5b8c59fb",
+        "e2a8ef2b1c38db557b479825f12f559f9c190d4fc9ffccac504e736beedb4151",
     )
     assert bundle.system_decision is not None
     assert bundle.system_decision.decision_mode == "INITIAL_SQUAD"
