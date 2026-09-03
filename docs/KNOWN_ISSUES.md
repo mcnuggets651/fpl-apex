@@ -4,7 +4,7 @@ Canonical machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`. Sole serving provider: **AIrsenal** H1–H8. The immutable base anchors PR #90 and evaluator lineage; current serving semantics come from `production_core_sha`.
 
@@ -42,7 +42,7 @@ Corrected Decision Quality run #10 (`33643925982`) completed successfully with a
 
 ## K008 — Project Brain architecture drift
 
-**Re-closed after the 3 September 2026 serving-core promotion.** Canonical Project Brain, ChatGPT/operator and status documents explicitly distinguish immutable `frozen_engine_sha` from current `production_core_sha`. Operations regressions read the machine authority and fail if canonical documents name a different serving core or conflate the PR #90 base with production.
+**Re-closed after the 3 September 2026 serving-core promotion.** Canonical Project Brain, ChatGPT/operator and status documents explicitly distinguish immutable `frozen_engine_sha` from current `production_core_sha`. Operations regressions read the machine authority and fail if canonical documents conflate the PR #90 base with production or copy a movable `Current serving core` SHA into durable prose.
 
 ## K009 — Generic governance preserved obsolete production
 
