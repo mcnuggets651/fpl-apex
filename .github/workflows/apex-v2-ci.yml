@@ -45,10 +45,14 @@ jobs:
       - name: Build candidate provenance and SBOM
         env:
           ENGINE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: >-
-          python scripts/build_v2_provenance.py
-          --engine-sha "$ENGINE_SHA"
-          --output-dir artifacts/v2
+        run: |
+          python scripts/build_v2_provenance.py \
+            --engine-sha "$ENGINE_SHA" \
+            --output-dir artifacts/v2
+          test -s artifacts/v2/provenance.json
+          test -s artifacts/v2/sbom.cdx.json
+          python -m json.tool artifacts/v2/provenance.json >/dev/null
+          python -m json.tool artifacts/v2/sbom.cdx.json >/dev/null
       - name: Compile Apex V2
         run: python -m compileall -q src/apex
       - name: Run V2 suite with branch coverage
