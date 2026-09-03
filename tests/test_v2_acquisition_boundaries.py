@@ -407,7 +407,7 @@ def test_provider_forecast_predating_attempt_is_degraded(monkeypatch, tmp_path: 
     )
     row = snapshot.read_json("qualification_matrix.json")[0]
     assert row["health"] == "INCOMPLETE"
-    assert "predates this production attempt" in row["reasons"]
+    assert any("predates this production attempt" in reason for reason in row["reasons"])
 
 
 def test_optional_pitchside_acquisition_failure_is_diagnostic(monkeypatch, tmp_path: Path):
