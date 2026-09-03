@@ -90,12 +90,17 @@ jobs:
         run: |
           set -euo pipefail
           CORE='${{ steps.materialize.outputs.path }}'
-          mkdir -p "$GITHUB_WORKSPACE/artifacts/v2-readiness"
+          EVIDENCE="$GITHUB_WORKSPACE/artifacts/v2-readiness"
+          mkdir -p "$EVIDENCE"
           if [ -f "$CORE/scripts/build_v2_provenance.py" ]; then
             cd "$CORE"
             python scripts/build_v2_provenance.py \
               --engine-sha '${{ steps.core.outputs.sha }}' \
-              --output-dir "$GITHUB_WORKSPACE/artifacts/v2-readiness"
+              --output-dir "$EVIDENCE"
+            test -s "$EVIDENCE/provenance.json"
+            test -s "$EVIDENCE/sbom.cdx.json"
+            python -m json.tool "$EVIDENCE/provenance.json" >/dev/null
+            python -m json.tool "$EVIDENCE/sbom.cdx.json" >/dev/null
           else
             echo "Selected production core predates provenance/SBOM support."
           fi
