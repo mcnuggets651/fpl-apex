@@ -30,7 +30,7 @@ from apex.sources.official import fetch_official_snapshot
 from apex.sources.pitchside import acquire_pitchside_shadow
 from apex.sources.team import acquire_team_state
 
-from .config import ApexConfig
+from .config import ApexConfig, production_core_sha
 from .snapshot import SnapshotBuilder
 
 T = TypeVar("T")
@@ -649,6 +649,7 @@ def acquire_and_freeze(
                 "run_id": run_id,
                 "code_sha": code_sha,
                 "config_sha": config_digest,
+                "production_core_sha": production_core_sha(config),
                 "run_started_at": run_started_at,
                 "acquired_at": now.isoformat(),
                 "frozen_at": frozen_at,
