@@ -84,9 +84,14 @@ jobs:
           frozen = authority["frozen_engine_sha"]
           assert len(frozen) == 40 and all(c in "0123456789abcdef" for c in frozen)
           assert authority["legacy"]["status"] == "HISTORICAL_NON_SERVING"
-          assert authority["production"]["serving_workflow"] == ".github/workflows/apex-v2-daily-production.yml"
-          assert authority["production"]["serving_provider"] == "airsenal"
-          production = Path(authority["production"]["serving_workflow"]).read_text(encoding="utf-8")
+          assert authority["canonical_production_workflow"] == ".github/workflows/apex-v2-daily-production.yml"
+          assert authority["serving_provider"] == "airsenal"
+          assert authority["research"]["production_influence"] == "NONE"
+          assert authority["research"]["automatic_promotion"] is False
+          champion = authority["provider_constitution"][authority["serving_provider"]]
+          assert champion["role"] == "CHAMPION"
+          assert champion["serve_authorized"] is True
+          production = Path(authority["canonical_production_workflow"]).read_text(encoding="utf-8")
           assert frozen in production
           for forbidden in ("scripts/run_apex.py", "run_pinnacle.py", "git push"):
               assert forbidden not in production
