@@ -22,6 +22,7 @@ from apex.domain.rules import (
 from .mechanics import decision_from_fixed_squad, xp_map
 
 LEXICOGRAPHIC_BLOCK_SIZE = 40
+OBJECTIVE_LOCK_ABS_TOLERANCE = 1e-9
 
 
 @dataclass(frozen=True)
@@ -43,10 +44,11 @@ def optimise_initial_squad(
 ) -> OptimisationResult:
     """Generate max-xP squads and exact-rescore a bounded near-optimal shortlist.
 
-    The primary MILP objective is authoritative. If multiple squads share that
-    exact primary optimum, a hierarchical lexicographic solve canonicalises the
-    15-player squad before shortlist generation. The tie-break is performed only
-    under an equality lock on the primary optimum, so it cannot trade away xP.
+    Initial-squad optimisation is a strict hierarchy. First maximise submitted
+    XI plus captain xP. Under that exact optimum, maximise total squad xP. Under
+    both locks, canonicalise the 15-player squad lexicographically before
+    shortlist generation. Keeping these objectives separate avoids relying on a
+    numerically tiny blended coefficient at the solver feasibility boundary.
     """
     if candidate_limit < 1:
         raise ValueError("candidate_limit must be positive")
@@ -75,10 +77,11 @@ def optimise_initial_squad(
         return 2 * count + index
 
     values = np.array([max(xp[player.element_id], 0.0) for player in candidates])
-    objective = np.zeros(3 * count)
-    objective[:count] = 1e-09 * values
-    objective[count : 2 * count] = values
-    objective[2 * count :] = values
+    primary_objective = np.zeros(3 * count)
+    primary_objective[count : 2 * count] = values
+    primary_objective[2 * count :] = values
+    squad_objective = np.zeros(3 * count)
+    squad_objective[:count] = values
 
     rows = []
     lower_bounds = []
@@ -138,7 +141,7 @@ def optimise_initial_squad(
                 matrix[row_index, column] = value
 
         return milp(
-            c=(-objective if cost is None else cost),
+            c=(-primary_objective if cost is None else cost),
             integrality=np.ones(variable_count),
             bounds=Bounds(np.zeros(variable_count), np.ones(variable_count)),
             constraints=LinearConstraint(
@@ -146,7 +149,24 @@ def optimise_initial_squad(
                 np.asarray(solve_lower),
                 np.asarray(solve_upper),
             ),
-            options={"time_limit": 60, "mip_rel_gap": 1e-09},
+            options={"time_limit": 60, "mip_rel_gap": 0.0},
+        )
+
+    def locked_value(vector, result) -> float:
+        return float(vector @ np.rint(result.x))
+
+    def lock_for(vector, optimum):
+        coefficients = {
+            index: float(value)
+            for index, value in enumerate(vector)
+            if value != 0.0
+        }
+        return coefficients, optimum, optimum
+
+    def lock_matches(vector, result, optimum) -> bool:
+        return (
+            abs(locked_value(vector, result) - float(optimum))
+            <= OBJECTIVE_LOCK_ABS_TOLERANCE
         )
 
     first = solve()
@@ -157,28 +177,38 @@ def optimise_initial_squad(
             {"message": str(first.message)},
         )
 
-    # Re-evaluate the primary optimum on the integral incumbent. This avoids
-    # baking solver feasibility noise into the equality constraint below.
-    primary_solution = np.rint(first.x)
-    primary_optimum = float(objective @ primary_solution)
-    primary_coefficients = {
-        index: float(value)
-        for index, value in enumerate(objective)
-        if value != 0.0
-    }
-    primary_lock = (primary_coefficients, primary_optimum, primary_optimum)
+    primary_optimum = locked_value(primary_objective, first)
+    primary_lock = lock_for(primary_objective, primary_optimum)
 
-    # Canonicalise equal-primary squads without adding a synthetic EV term.
-    # Each block encodes <=40 squad bits as an exact integer (<2^40 < 2^53),
-    # fixes the best value, then advances to the next block. Earlier/lower FPL
-    # element IDs dominate later IDs, yielding a stable lexicographically-small
-    # squad independent of candidate ordering or HiGHS incumbent ordering.
+    squad_stage = solve((primary_lock,), cost=-squad_objective)
+    if not squad_stage.success or squad_stage.x is None:
+        return OptimisationResult(
+            None,
+            "ERROR",
+            {
+                "message": "secondary squad-xP optimisation failed",
+                "primary_message": str(first.message),
+            },
+        )
+    if not lock_matches(primary_objective, squad_stage, primary_optimum):
+        return OptimisationResult(
+            None,
+            "ERROR",
+            {
+                "message": "secondary squad-xP solve escaped primary optimum lock",
+                "primary_message": str(first.message),
+                "secondary_message": str(squad_stage.message),
+            },
+        )
+    squad_optimum = locked_value(squad_objective, squad_stage)
+    squad_lock = lock_for(squad_objective, squad_optimum)
+
     ordered_indices = sorted(
         range(count),
         key=lambda index: candidates[index].element_id,
     )
-    tie_locks = [primary_lock]
-    canonical = first
+    tie_locks = [primary_lock, squad_lock]
+    canonical = squad_stage
     for offset in range(0, count, LEXICOGRAPHIC_BLOCK_SIZE):
         block = ordered_indices[offset : offset + LEXICOGRAPHIC_BLOCK_SIZE]
         block_cost = np.zeros(variable_count)
@@ -195,8 +225,31 @@ def optimise_initial_squad(
                 None,
                 "ERROR",
                 {
-                    "message": "primary-optimum deterministic tie-break failed",
+                    "message": "deterministic hierarchical tie-break failed",
                     "primary_message": str(first.message),
+                    "secondary_message": str(squad_stage.message),
+                },
+            )
+        if not lock_matches(primary_objective, candidate, primary_optimum):
+            return OptimisationResult(
+                None,
+                "ERROR",
+                {
+                    "message": "lexicographic tie-break escaped primary optimum lock",
+                    "primary_message": str(first.message),
+                    "secondary_message": str(squad_stage.message),
+                    "next_candidate_message": str(candidate.message),
+                },
+            )
+        if not lock_matches(squad_objective, candidate, squad_optimum):
+            return OptimisationResult(
+                None,
+                "ERROR",
+                {
+                    "message": "lexicographic tie-break escaped squad-xP optimum lock",
+                    "primary_message": str(first.message),
+                    "secondary_message": str(squad_stage.message),
+                    "next_candidate_message": str(candidate.message),
                 },
             )
         canonical = candidate
@@ -223,7 +276,7 @@ def optimise_initial_squad(
         if current.x is None:
             shortlist_complete = True
             break
-        approximate = float(objective @ np.rint(current.x))
+        approximate = locked_value(primary_objective, current)
         if approximate < shortlist_floor - 1e-7:
             shortlist_complete = True
             break
@@ -263,7 +316,7 @@ def optimise_initial_squad(
         if current.x is None:
             shortlist_complete = True
             break
-        if float(objective @ np.rint(current.x)) < shortlist_floor - 1e-7:
+        if locked_value(primary_objective, current) < shortlist_floor - 1e-7:
             shortlist_complete = True
             break
 
@@ -296,8 +349,13 @@ def optimise_initial_squad(
     raw_solver = {
         "message": selected["message"],
         "mip_gap": float(getattr(first, "mip_gap", 0) or 0),
-        "primary_tiebreak": "LEXICOGRAPHIC_SQUAD_BLOCKS_UNDER_EXACT_PRIMARY_LOCK",
+        "primary_tiebreak": (
+            "HIERARCHICAL_PRIMARY_XP_THEN_SQUAD_XP_THEN_"
+            "LEXICOGRAPHIC_SQUAD_BLOCKS"
+        ),
         "primary_tiebreak_block_size": LEXICOGRAPHIC_BLOCK_SIZE,
+        "objective_lock_abs_tolerance": OBJECTIVE_LOCK_ABS_TOLERANCE,
+        "secondary_squad_objective": float(squad_optimum),
         "selection_policy": selection_policy,
         "shortlist_complete": shortlist_complete,
         "candidate_count": len(generated),
