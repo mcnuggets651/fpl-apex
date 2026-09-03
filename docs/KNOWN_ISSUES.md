@@ -91,11 +91,19 @@ The repository may contain a directly supplied FPL bearer/cookie that expires in
 
 The direct-auth workflow is incident-only and manual `workflow_dispatch` only. Automatic `push`, `schedule` and `workflow_run` triggers are prohibited, refresh-token state is deliberately blanked, and it has no acquire/solve/publish/write authority. `ops_tests/test_github_actions_runtime_contract.py` locks this boundary. Managed auth health is established through the keepalive/production refresh path and exact manager-identity proof.
 
-## K017 — Cross-runner solver telemetry is not semantic decision identity
+## K017 — Initial-squad hierarchical optimiser nondeterminism
 
-**Defect reproduced on 3 September 2026 and repair under certification.** The exact same promoted core and commit produced one red and one green deterministic-replay readiness result on different GitHub runners with the same resolved Python/package versions. The in-run DecisionBundle was deterministic, but the semantic golden included backend solver status strings and MIP-gap telemetry that can vary by runner/CPU without changing the integral incumbent or FPL decision.
+**Repair promoted on 3 September 2026; legitimate production provenance smoke still pending.**
 
-The portable-replay successor keeps recommendation, certification, serving map, evidence, optimiser policy, candidate structure and objective values in the replay trust boundary while excluding backend-only status text and MIP-gap presentation noise. Focused tests prove decision-driving changes still alter replay identity. Generic readiness is also being made lock-aware so certified and operational installs share the core's exact dependency contract. Do not close K017 until the successor passes sealed CI on multiple runners and is promoted through `production_core_sha`.
+The same certified portable-replay core produced different initial-squad `system_decision` payloads on hosted runners despite identical Python and the same exact 36-distribution dependency lock. PR #128 proved the divergence was a real FPL decision change, not backend solver status text, MIP-gap telemetry, region drift, Python drift or dependency drift.
+
+Root cause was the initial-squad MILP hierarchy. The primary objective blended submitted-XI-plus-captain xP with a synthetic `1e-9 * squad_xP` term, then later relied on an exact floating equality lock. HiGHS could legally accept a solution differing by roughly `7e-9` within solver feasibility tolerance, which was enough to choose a different primary-equivalent squad while printing the same ordinary-precision objective.
+
+PR #129 replaces that numerically ill-conditioned blend with explicit application policy: (1) maximise submitted XI + captain xP, (2) under that locked optimum maximise total 15-player squad xP, and (3) under both locks choose the lexicographically canonical squad by FPL element ID. MIP relative gap is `0.0`, and later stages fail closed if they escape a previously locked optimum. Permanent hierarchy and lock-guard regressions cover the original failure mode.
+
+Before freezing the corrected replay identity, PR #130 reproduced the same corrected initial semantic digest on independent `westus2` and `centralus` hosted runners. The corrected initial replay digest is `e2a8ef2b1c38db557b479825f12f559f9c190d4fc9ffccac504e736beedb4151`; the transfer-horizon digest remains unchanged at `9e762d18ac09a8db341eee0a8d6ccf7625b56a0ee8dfe65f89bade26dc51f015`. Exact-head generic and sealed V2 assurance then passed on PR #129 at `30ecaf829caf3611615920fdb36190705cf99a30`.
+
+PR #127 promoted only `production_core_sha` to that certified successor after exact-head protected `test`, `contract` and `readiness` all passed. K017 nevertheless remains **open** until the next legitimate scheduled Daily Production run proves that the promoted core is actually serving with the expected frozen-engine lineage, AIrsenal authority, research influence `NONE`, valid snapshot/provenance, successful decision generation and no serving regression. Do not manufacture or manually trigger a Daily Production run solely to close this issue.
 
 ## Resolution discipline
 
