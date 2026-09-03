@@ -162,7 +162,11 @@ def _validate_evidence_acquisition(
             "completed": False,
             "required": False,
             "mode": "NOT_REQUIRED",
+            "observed_official_hash": str(official_hash),
+            "target_gameweek": int(target_gameweek),
             "record_count": len(records),
+            "records_sha256": _canonical_records_hash(records),
+            "required_source_failures": [],
         }
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     return _validate_evidence_manifest(
