@@ -440,9 +440,16 @@ def _load_outcome(*, public_store: Any, release: dict[str, Any], workdir: Path) 
     files = _download_release_files(public_store, release, {'outcomes.json'}, workdir)
     return (_load_json(files['outcomes.json']), sha256_path(files['outcomes.json']))
 
+def _validated_control_plane_sha(value: Any, *, context: str) -> str:
+    sha = str(value or '').strip().lower()
+    if len(sha) != 40 or any((char not in '0123456789abcdef' for char in sha)):
+        raise TournamentContractError(f'{context} lacks valid decision-lab control-plane identity')
+    return sha
+
 def build_decision_edge(*, lab: dict[str, Any], outcome: dict[str, Any], observation_number: int, selected_candidate_tag: str, outcome_sha256: str) -> dict[str, Any]:
     if lab.get('contract') != LAB_CONTRACT:
         raise TournamentContractError('decision-edge source lab contract mismatch')
+    lab_control_plane_sha = _validated_control_plane_sha(lab.get('control_plane_sha'), context='decision-edge source lab')
     source = lab.get('source') or {}
     if str(source.get('candidate_release_tag') or '') != str(selected_candidate_tag):
         raise TournamentContractError('decision-edge lab is not bound to canonical selected candidate')
@@ -476,7 +483,7 @@ def build_decision_edge(*, lab: dict[str, Any], outcome: dict[str, Any], observa
         realized = float(row['realized']['realized_points_after_hits'])
         row['edge_vs_production_points'] = realized - baseline_points
         row['decision_changed_vs_production'] = str(row.get('decision_signature_sha256') or '') != baseline_signature
-    return {'schema_version': 1, 'contract': PRIVATE_EDGE_CONTRACT, 'exposure_class': 'PRIVATE_MANAGER', 'production_influence': 'NONE', 'serving_authorized': False, 'promotion_authority': False, 'automatic_serving_change': False, 'retrospective_only_over_prospectively_sealed_variants': True, 'source': {'season': source.get('season'), 'target_gameweek': gameweek, 'run_id': source.get('run_id'), 'public_attempt_id': source.get('public_attempt_id'), 'prospective_observation_number': int(observation_number), 'selected_candidate_tag': selected_candidate_tag, 'candidate_readiness_sha256': source.get('candidate_readiness_sha256'), 'decision_lab_sha256': canonical_sha256(lab), 'outcome_sha256': outcome_sha256, 'official_live_hash': outcome.get('official_live_hash')}, 'active_chip': active_chip, 'baseline_variant_id': baseline_id, 'baseline_realized_points_after_hits': baseline_points, 'variants': scored}
+    return {'schema_version': 1, 'contract': PRIVATE_EDGE_CONTRACT, 'exposure_class': 'PRIVATE_MANAGER', 'production_influence': 'NONE', 'serving_authorized': False, 'promotion_authority': False, 'automatic_serving_change': False, 'retrospective_only_over_prospectively_sealed_variants': True, 'source': {'season': source.get('season'), 'target_gameweek': gameweek, 'run_id': source.get('run_id'), 'public_attempt_id': source.get('public_attempt_id'), 'prospective_observation_number': int(observation_number), 'selected_candidate_tag': selected_candidate_tag, 'candidate_readiness_sha256': source.get('candidate_readiness_sha256'), 'decision_lab_sha256': canonical_sha256(lab), 'decision_lab_control_plane_sha': lab_control_plane_sha, 'outcome_sha256': outcome_sha256, 'official_live_hash': outcome.get('official_live_hash')}, 'active_chip': active_chip, 'baseline_variant_id': baseline_id, 'baseline_realized_points_after_hits': baseline_points, 'variants': scored}
 
 def score_completed_labs(*, public_store: Any, private_store: Any, season: str) -> dict[str, Any]:
     public_releases = public_store.list_releases()
@@ -554,19 +561,23 @@ def build_decision_edge_learning(edges: Iterable[dict[str, Any]], *, season: str
     if len(observations) != len(set(observations)):
         raise TournamentContractError('decision-edge learning has duplicate observations')
     max_observation = max(observations, default=0)
-    series: dict[str, list[dict[str, Any]]] = {}
+    series: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    control_planes_by_variant: dict[str, set[str]] = {}
     for edge in edge_rows:
         source = edge.get('source') or {}
         observation = int(source['prospective_observation_number'])
+        control_plane_sha = _validated_control_plane_sha(source.get('decision_lab_control_plane_sha'), context=f'decision-edge observation {observation}')
         for variant_id, row in (edge.get('variants') or {}).items():
             if variant_id == edge.get('baseline_variant_id'):
                 continue
-            key = str(variant_id)
-            series.setdefault(key, []).append({'observation_number': observation, 'target_gameweek': int(source['target_gameweek']), 'provider_id': str(row.get('provider_id') or ''), 'variant_kind': str(row.get('variant_kind') or ''), 'edge_points': float(row.get('edge_vs_production_points') or 0.0), 'decision_changed': bool(row.get('decision_changed_vs_production'))})
+            variant_id = str(variant_id)
+            control_planes_by_variant.setdefault(variant_id, set()).add(control_plane_sha)
+            key = (variant_id, control_plane_sha)
+            series.setdefault(key, []).append({'observation_number': observation, 'target_gameweek': int(source['target_gameweek']), 'provider_id': str(row.get('provider_id') or ''), 'variant_kind': str(row.get('variant_kind') or ''), 'edge_points': float(row.get('edge_vs_production_points') or 0.0), 'decision_changed': bool(row.get('decision_changed_vs_production')), 'decision_lab_control_plane_sha': control_plane_sha})
     variants: dict[str, Any] = {}
     provider_summary: dict[str, Any] = {}
     review_queue: list[dict[str, Any]] = []
-    for variant_id, rows in sorted(series.items()):
+    for (variant_id, control_plane_sha), rows in sorted(series.items()):
         latest_observation = max((row['observation_number'] for row in rows))
         weights = [0.5 ** ((latest_observation - row['observation_number']) / RECENCY_HALF_LIFE_OBSERVATIONS) for row in rows]
         denominator = sum(weights)
@@ -579,18 +590,23 @@ def build_decision_edge_learning(edges: Iterable[dict[str, Any]], *, season: str
         variant_kind = rows[-1]['variant_kind']
         if any((row['provider_id'] != provider_id for row in rows)):
             raise TournamentContractError(f'decision-edge variant provider identity drift: {variant_id}')
+        cohort_id = variant_id if len(control_planes_by_variant[variant_id]) == 1 else f'{variant_id}@@{control_plane_sha[:12]}'
         stage = _edge_stage(observations=len(rows), positive_rate=positive_rate, mean_edge=weighted_edge, worst_edge=worst)
-        summary = {'variant_id': variant_id, 'provider_id': provider_id, 'variant_kind': variant_kind, 'observation_count': len(rows), 'observation_numbers': [row['observation_number'] for row in rows], 'recency_weighted_mean_edge_points': weighted_edge, 'recency_weighted_positive_edge_rate': positive_rate, 'worst_edge_points': worst, 'best_edge_points': max((row['edge_points'] for row in rows)), 'decision_changed_observations': len(changed), 'decision_changed_rate': changed_rate, 'stage': stage, 'review_eligible': stage in EDGE_REVIEW_STAGES, 'serving_change_authorized': False}
-        variants[variant_id] = summary
-        provider = provider_summary.setdefault(provider_id, {'variant_ids': [], 'review_eligible_variant_ids': [], 'best_weighted_edge_points': None})
-        provider['variant_ids'].append(variant_id)
+        summary = {'variant_id': variant_id, 'evidence_cohort_id': cohort_id, 'decision_lab_control_plane_sha': control_plane_sha, 'provider_id': provider_id, 'variant_kind': variant_kind, 'observation_count': len(rows), 'observation_numbers': [row['observation_number'] for row in rows], 'recency_weighted_mean_edge_points': weighted_edge, 'recency_weighted_positive_edge_rate': positive_rate, 'worst_edge_points': worst, 'best_edge_points': max((row['edge_points'] for row in rows)), 'decision_changed_observations': len(changed), 'decision_changed_rate': changed_rate, 'stage': stage, 'review_eligible': stage in EDGE_REVIEW_STAGES, 'serving_change_authorized': False}
+        variants[cohort_id] = summary
+        provider = provider_summary.setdefault(provider_id, {'variant_ids': [], 'evidence_cohort_ids': [], 'review_eligible_variant_ids': [], 'review_eligible_evidence_cohort_ids': [], 'best_weighted_edge_points': None})
+        if variant_id not in provider['variant_ids']:
+            provider['variant_ids'].append(variant_id)
+        provider['evidence_cohort_ids'].append(cohort_id)
         if summary['review_eligible']:
-            provider['review_eligible_variant_ids'].append(variant_id)
-            review_queue.append({'provider_id': provider_id, 'variant_id': variant_id, 'variant_kind': variant_kind, 'stage': stage, 'observations': len(rows), 'recency_weighted_mean_edge_points': weighted_edge, 'serving_change_authorized': False})
+            if variant_id not in provider['review_eligible_variant_ids']:
+                provider['review_eligible_variant_ids'].append(variant_id)
+            provider['review_eligible_evidence_cohort_ids'].append(cohort_id)
+            review_queue.append({'provider_id': provider_id, 'variant_id': variant_id, 'evidence_cohort_id': cohort_id, 'decision_lab_control_plane_sha': control_plane_sha, 'variant_kind': variant_kind, 'stage': stage, 'observations': len(rows), 'recency_weighted_mean_edge_points': weighted_edge, 'serving_change_authorized': False})
         best = provider['best_weighted_edge_points']
         provider['best_weighted_edge_points'] = weighted_edge if best is None else max(float(best), weighted_edge)
-    review_queue.sort(key=lambda row: (-EDGE_STAGE_RANK[row['stage']], -float(row['recency_weighted_mean_edge_points']), row['provider_id'], row['variant_id']))
-    return {'schema_version': 1, 'contract': PRIVATE_EDGE_LEARNING_CONTRACT, 'exposure_class': 'PRIVATE_RESEARCH_AGGREGATE', 'season': season, 'production_influence': 'NONE', 'serving_authorized': False, 'promotion_authority': False, 'automatic_serving_change': False, 'learning_mode': 'SEQUENTIAL_EVERY_COMPLETED_CANONICAL_H1', 'twelve_gameweeks_required_before_learning': False, 'twelve_gameweeks_required_before_review': False, 'recency_half_life_observations': RECENCY_HALF_LIFE_OBSERVATIONS, 'completed_observation_count': len(observations), 'observation_numbers': observations, 'through_observation': max_observation or None, 'variant_evidence': variants, 'provider_summary': provider_summary, 'owner_review_queue': review_queue, 'serving_action': 'NO_AUTOMATIC_CHANGE'}
+    review_queue.sort(key=lambda row: (-EDGE_STAGE_RANK[row['stage']], -float(row['recency_weighted_mean_edge_points']), row['provider_id'], row['variant_id'], row['evidence_cohort_id']))
+    return {'schema_version': 1, 'contract': PRIVATE_EDGE_LEARNING_CONTRACT, 'exposure_class': 'PRIVATE_MANAGER', 'season': season, 'production_influence': 'NONE', 'serving_authorized': False, 'promotion_authority': False, 'automatic_serving_change': False, 'learning_mode': 'SEQUENTIAL_EVERY_COMPLETED_CANONICAL_H1', 'evidence_cohorting': 'DECISION_LAB_CONTROL_PLANE_SHA', 'cross_control_plane_pooling': False, 'twelve_gameweeks_required_before_learning': False, 'twelve_gameweeks_required_before_review': False, 'recency_half_life_observations': RECENCY_HALF_LIFE_OBSERVATIONS, 'completed_observation_count': len(observations), 'observation_numbers': observations, 'through_observation': max_observation or None, 'variant_evidence': variants, 'provider_summary': provider_summary, 'owner_review_queue': review_queue, 'serving_action': 'NO_AUTOMATIC_CHANGE'}
 PRIVATE_EDGE_LEARNING_PREFIX = 'apex-v2/private-decision-edge-learning'
 PRIVATE_EDGE_LEARNING_ASSETS = frozenset({'decision_edge_learning.json', 'decision_edge_learning_attestation.json'})
 
