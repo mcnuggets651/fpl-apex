@@ -134,10 +134,11 @@ jobs:
         run: |
           set -euo pipefail
           CORE='${{ steps.core.outputs.path }}'
-          python "$CORE/scripts/check_v2_architecture.py"
+          cd "$CORE"
+          python scripts/check_v2_architecture.py
           apex-v2 --help >/dev/null
-          pytest -q "$CORE"/tests/test_apex_v2_*.py "$CORE"/tests/test_v2_*.py
-          ruff check "$CORE/src/apex" "$CORE"/tests/test_apex_v2_*.py "$CORE"/tests/test_v2_*.py "$CORE/scripts/check_v2_architecture.py"
+          pytest -q tests/test_apex_v2_*.py tests/test_v2_*.py
+          ruff check src/apex tests/test_apex_v2_*.py tests/test_v2_*.py scripts/check_v2_architecture.py
 
 # Production acquisition, solve and publication remain exclusively in the
 # authority-declared V2 production workflow. This workflow has no publish path.
