@@ -4,7 +4,7 @@
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 ## 1. Production operating constitution
 
@@ -189,7 +189,7 @@ The generic governance checker and operations contracts must read `APEX_V2_AUTHO
 
 They must compare provider constitution/season/entry/horizon semantics with the **production-core** `config/apex_v2.yaml`, enforce exactly one serving production workflow, prove the production workflow resolves the production pointer and rejects a non-descendant core, require lock-aware serving-core installation, bind intent/acquisition/publication provenance to the same serving-core SHA, and reject legacy executable publishers in `.github/workflows`.
 
-Canonical authority docs must carry both the exact immutable-base marker and the exact current serving-core marker. A production-core promotion that leaves Project Brain prose on the prior core is a CI failure, not a documentation follow-up.
+Canonical authority docs must carry the exact immutable-base marker and the manifest-native serving-pointer marker. They must not copy the movable serving SHA into a `Current serving core` line. A production-core promotion therefore remains a one-file authority change while durable prose remains correct by construction.
 
 Retired executable workflows are preserved under `archive/workflows/` for forensics. Moving them there is a safety boundary: GitHub Actions does not execute workflow YAML outside `.github/workflows`.
 
