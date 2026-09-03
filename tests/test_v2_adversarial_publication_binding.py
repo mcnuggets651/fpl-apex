@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
-from apex.domain.models import ProductionProjectionSurface
-from apex.forecast.contract import projection_surface_hash
 from apex.runtime.publication import build_publication_materials
 from apex.runtime.serving import status_from_row
+from apex.runtime.solve import solve_snapshot
 from apex.runtime.snapshot import SnapshotBuilder
 
 
@@ -79,6 +79,7 @@ def _fixture(tmp_path: Path):
         ],
     )
     builder.add_json("evidence.json", [])
+    builder.add_json("evidence_validation.json", {"errors": []})
     provider_payload = {
         "schema_version": 1,
         "provider_id": "airsenal",
@@ -96,61 +97,15 @@ def _fixture(tmp_path: Path):
         tmp_path / "snapshots",
         metadata={"frozen_at": "2026-09-02T12:01:00Z"},
     )
-    canonical_hash = projection_surface_hash(
-        ProductionProjectionSurface(
-            1,
-            "airsenal",
-            "airsenal:pinned",
-            "2026-09-02T12:00:00Z",
-            "2026-2027",
-            official_hash,
-            "fpl-2026-27-v1",
-            (1,),
-            (),
-        )
-    )
-    decision = {
-        "schema_version": 1,
-        "manifest": {
-            "schema_version": 1,
-            "run_id": "run-123",
-            "workflow_run_id": None,
-            "season": "2026-2027",
-            "target_gameweek": 3,
-            "code_sha": "code-abc",
-            "config_sha": "config-abc",
-            "acquired_at": "2026-09-02T12:00:00Z",
-            "snapshot_id": snapshot.snapshot_id,
-            "serving_provider_by_horizon": {"1": "airsenal"},
-            "started_at": "2026-09-02T11:59:00Z",
-            "frozen_at": "2026-09-02T12:01:00Z",
-        },
-        "official_snapshot_hash": official_hash,
-        "canonical_projection_hash": canonical_hash,
-        "system_decision": None,
-        "certification": {
-            "schema_version": 1,
-            "state": "BLOCKED",
-            "actionable": False,
-            "reasons": ["DECISION_ILLEGAL"],
-            "warnings": [],
-            "valid_until": "2026-09-12T10:00:00Z",
-        },
-        "provider_diagnostics": {
-            "max_contiguous_horizon": 1,
-            "serving_provider_by_horizon": {"1": "airsenal"},
-            "decision_optimisation": {
-                "kind": "NONE",
-                "status": "NOT_RUN",
-                "solver": {},
-                "weeks": [],
-            },
-        },
-        "evidence_manifest": {},
-    }
     decision_path = tmp_path / "decision.json"
-    decision_path.write_text(json.dumps(decision), encoding="utf-8")
+    solve_snapshot(
+        snapshot.root,
+        decision_path,
+        now=datetime(2026, 9, 2, 12, 2, tzinfo=timezone.utc),
+    )
+    decision = json.loads(decision_path.read_text(encoding="utf-8"))
     return snapshot, decision, decision_path
+
 
 
 def _publish(tmp_path: Path, snapshot, decision: dict):
@@ -214,7 +169,15 @@ def test_publication_rejects_tampered_certification_with_same_snapshot(tmp_path:
     changed["certification"]["state"] = "CERTIFIED"
     changed["certification"]["actionable"] = True
     changed["certification"]["reasons"] = []
-    with pytest.raises(RuntimeError, match="decision|certification|bundle"):
+    with pytest.raises(RuntimeError, match="decision|certification|replay"):
+        _publish(tmp_path, snapshot, changed)
+
+
+def test_publication_rejects_tampered_system_decision_with_same_snapshot(tmp_path: Path):
+    snapshot, decision, _ = _fixture(tmp_path)
+    changed = deepcopy(decision)
+    changed["system_decision"] = {"decision_mode": "FORGED"}
+    with pytest.raises(RuntimeError, match="decision|certification|replay"):
         _publish(tmp_path, snapshot, changed)
 
 
