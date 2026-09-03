@@ -7,7 +7,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from apex.domain.models import EvidenceEffect, EvidenceRecord, OfficialPlayer, OfficialSnapshot, Position, ProviderHealth, dataclass_to_dict
+from apex.domain.models import (
+    CoverageStatus,
+    EvidenceEffect,
+    EvidenceRecord,
+    OfficialPlayer,
+    OfficialSnapshot,
+    Position,
+    ProjectionRow,
+    ProjectionSurface,
+    ProviderHealth,
+    dataclass_to_dict,
+)
 from apex.runtime import acquire as acquire_module
 from apex.sources.team import TeamStateAcquisition
 
@@ -27,8 +38,10 @@ def official() -> OfficialSnapshot:
 
 def config(tmp: Path, provider: bool = False) -> Path:
     p = tmp / "apex_v2.yaml"
-    provider_yaml = "  - id: airsenal\n    role: CHAMPION\n    priority: 0\n    serve_authorized: true\n    max_age_hours: 48\n    requested_horizons: [1]\n    predictive_status: INSUFFICIENT_HISTORY\n    path: provider.json\n" if provider else ""
-    p.write_text("schema_version: 1\nseason: '2026-2027'\nentry_id: 63984\nmax_horizon: 1\nsnapshot_dir: snapshots\nevidence:\n  required: true\n  sources_path: evidence_sources.yaml\n  records_path: evidence_records.json\n  manifest_path: evidence_manifest.json\nproviders:\n" + provider_yaml)
+    providers = "providers: []\n"
+    if provider:
+        providers = "providers:\n  - id: airsenal\n    role: CHAMPION\n    priority: 0\n    serve_authorized: true\n    max_age_hours: 48\n    requested_horizons: [1]\n    predictive_status: INSUFFICIENT_HISTORY\n    path: provider.json\n"
+    p.write_text("schema_version: 1\nseason: '2026-2027'\nentry_id: 63984\nmax_horizon: 1\nsnapshot_dir: snapshots\nevidence:\n  required: true\n  sources_path: evidence_sources.yaml\n  records_path: evidence_records.json\n  manifest_path: evidence_manifest.json\n" + providers)
     return p
 
 
@@ -69,7 +82,7 @@ def test_provider_raw_mutation_during_load_aborts(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(acquire_module, "collect_v2_evidence", lambda **_: SimpleNamespace())
     path = tmp_path / "provider.json"
     path.write_text('{"version":"before"}\n')
-    surface = SimpleNamespace(generated_at="2026-08-28T11:59:30+00:00", scoring_rules_version="fpl-2026-27-v1")
+    surface = ProjectionSurface(1, "airsenal", "test", "2026-08-28T11:59:30+00:00", "2026-2027", "stable-hash", "fpl-2026-27-v1", (1,), (), (ProjectionRow(1, 2, 1, 5.0, expected_minutes=90.0, p_appearance=1.0, p_start=1.0, p_60=1.0, coverage_status=CoverageStatus.FORECAST),))
     def mutate(*a, **k):
         path.write_text('{"version":"after"}\n')
         return surface
