@@ -4,7 +4,7 @@ Machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 ## Immutable forensic base / promoted production core / mutable control plane
 
@@ -14,7 +14,7 @@ PR #90 and its clean-room base are permanently anchored at:
 
 That value is `frozen_engine_sha`. It is a forensic/lineage anchor and **must never be advanced or repurposed as a promotion pointer**. PR #90 remains open/draft/unmerged with policy `NEVER_MERGE_OR_ADVANCE`.
 
-The independently governed serving-code pointer is `production_core_sha` in `APEX_V2_AUTHORITY.json`. A production core must be a 40-character commit SHA descending from the immutable PR #90 base and must pass the full successor/readiness/canary gate before that pointer moves. The authority split and first hardened-core promotion are complete: the immutable base remains `99cc...`, while current serving code is the separate authority-declared production core above.
+The independently governed serving-code pointer is `production_core_sha` in `APEX_V2_AUTHORITY.json`. A production core must be a 40-character commit SHA descending from the immutable PR #90 base and must pass the full successor/readiness/canary gate before that pointer moves. The authority split and first hardened-core promotion are complete: the immutable base remains `99cc...`, while current serving code is always the separate authority-declared production core.
 
 The default branch `main` is the mutable operations control plane. It owns bounded scheduling/orchestration/research controllers but does not become model authority. The canonical production workflow checks out `main`, resolves `production_core_sha`, proves ancestry to `frozen_engine_sha`, materializes the exact production core in a detached worktree and runs decision-driving code/config from that worktree.
 
@@ -132,7 +132,7 @@ It runs operations/research regressions against the exact frozen evaluator, sepa
 
 Generic `Apex CI` resolves the same authority-declared production core. When that core provides `requirements-v2.lock`, both the operations test job and readiness job install it under that exact lock and run its dependency-lock checker before exercising the core. This keeps operational readiness aligned with the sealed successor-certification environment while retaining the explicit compatibility fallback needed to rehearse older rollback cores without a lock.
 
-Operations or authority-reconciliation changes may touch only explicit allowlisted governance/workflow/documentation paths. Moving `production_core_sha` requires the separate deliberate successor certification/readiness/canary process; moving `frozen_engine_sha` is prohibited.
+Operations or authority-reconciliation changes may touch only explicit allowlisted governance/workflow/documentation paths. Moving `production_core_sha` requires the separate deliberate successor certification/readiness/canary process; moving `frozen_engine_sha` is prohibited. Durable docs intentionally do not copy the movable serving SHA, so a future promotion can remain a one-file authority change.
 
 ## Runtime acceptance
 
