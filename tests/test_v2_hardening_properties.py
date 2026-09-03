@@ -108,7 +108,10 @@ def test_captain_vice_matches_exhaustive_objective(xp_values, appearances):
     xp = dict(zip(xi, xp_values, strict=True))
     appearance = dict(zip(xi, appearances, strict=True))
     captain, vice, bonus = _best_captain_vice(xi, xp, appearance)
-    clamp = lambda value: min(max(float(value), 0.0), 1.0)
+
+    def clamp(value):
+        return min(max(float(value), 0.0), 1.0)
+
     expected = max(
         xp[c] + (1.0 - clamp(appearance[c])) * xp[v]
         for c in xi for v in xi if c != v
