@@ -108,6 +108,7 @@ def test_solve_rechecks_provider_freshness_against_frozen_sla(tmp_path: Path):
             "config_sha": "cfg",
             "run_started_at": "2026-09-02T10:00:00Z",
             "acquired_at": "2026-09-02T10:05:00Z",
+            "frozen_at": "2026-09-02T10:06:00Z",
             "target_gameweek": 3,
             "season": official.season,
             "entry_id": 63984,
@@ -135,13 +136,27 @@ providers:
     path: acquisition/providers/airsenal.csv
 """,
     )
-    snapshot = builder.freeze(tmp_path / "snapshots")
+    snapshot = builder.freeze(
+        tmp_path / "snapshots",
+        metadata={"frozen_at": "2026-09-02T10:06:00Z"},
+    )
 
-    bundle = solve_snapshot(
+    stale_bundle = solve_snapshot(
         snapshot.root,
-        tmp_path / "decision.json",
+        tmp_path / "decision-stale.json",
         now=datetime(2026, 9, 2, 12, 30, tzinfo=timezone.utc),
     )
 
-    assert bundle.certification.actionable is False
-    assert ReasonCode.CHAMPION_STALE in bundle.certification.reasons
+    assert stale_bundle.certification.actionable is False
+    assert ReasonCode.CHAMPION_STALE in stale_bundle.certification.reasons
+
+    # Production solve/replay omits ``now``. That path must be a pure function of the
+    # sealed snapshot, not of when a runner happens to execute it. The sealed freeze
+    # instant is one minute after the provider forecast and safely before the deadline.
+    frozen_bundle = solve_snapshot(
+        snapshot.root,
+        tmp_path / "decision-frozen-clock.json",
+    )
+
+    assert frozen_bundle.certification.actionable is True
+    assert ReasonCode.CHAMPION_STALE not in frozen_bundle.certification.reasons
