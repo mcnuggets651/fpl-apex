@@ -113,6 +113,44 @@ def replay_security_payload(decision: dict) -> dict:
 _replay_security_payload = replay_security_payload
 
 
+def _replay_mismatch_paths(observed, expected, path: str = "$") -> list[str]:
+    """Return value-free JSON paths that differ across a replay comparison.
+
+    Decision payloads can contain owner-private FPL material.  A production failure
+    therefore reports only structural paths, never either value, while still making
+    the remaining nondeterminism diagnosable from sanitized Actions logs.
+    """
+    if type(observed) is not type(expected):
+        return [path]
+    if isinstance(observed, dict):
+        mismatches = []
+        for key in sorted(set(observed) | set(expected)):
+            child = f"{path}.{key}"
+            if key not in observed or key not in expected:
+                mismatches.append(child)
+            else:
+                mismatches.extend(
+                    _replay_mismatch_paths(observed[key], expected[key], child)
+                )
+        return mismatches
+    if isinstance(observed, list):
+        mismatches = []
+        if len(observed) != len(expected):
+            mismatches.append(f"{path}.length")
+        for index, (observed_item, expected_item) in enumerate(
+            zip(observed, expected, strict=False)
+        ):
+            mismatches.extend(
+                _replay_mismatch_paths(
+                    observed_item,
+                    expected_item,
+                    f"{path}[{index}]",
+                )
+            )
+        return mismatches
+    return [] if observed == expected else [path]
+
+
 def _assert_decision_matches_frozen_replay(snapshot, decision: dict) -> None:
     """Fail closed unless an offline re-solve reproduces the published decision."""
     with tempfile.TemporaryDirectory(prefix="apex-v2-publication-replay-") as tmp:
@@ -123,9 +161,14 @@ def _assert_decision_matches_frozen_replay(snapshot, decision: dict) -> None:
     expected = replay_security_payload(dataclass_to_dict(replay_bundle))
     observed = replay_security_payload(decision)
     if _impl.canonical_json_bytes(observed) != _impl.canonical_json_bytes(expected):
+        mismatch_paths = _replay_mismatch_paths(observed, expected)
+        diagnostic = ", ".join(mismatch_paths[:20])
+        if len(mismatch_paths) > 20:
+            diagnostic += f", ... (+{len(mismatch_paths) - 20} more)"
         raise RuntimeError(
             "DecisionBundle recommendation/certification does not match "
-            "deterministic replay of the frozen snapshot"
+            "deterministic replay of the frozen snapshot; "
+            f"value-free mismatch paths: {diagnostic or '$'}"
         )
 
 
