@@ -13,6 +13,7 @@ MINIMUMS = {
     "src/apex/forecast/contract.py": 75.0,
     "src/apex/forecast/qualification.py": 80.0,
     "src/apex/governance/certification.py": 80.0,
+    "src/apex/runtime/acquire.py": 90.0,
     "src/apex/runtime/config.py": 80.0,
     "src/apex/runtime/publication.py": 80.0,
     "src/apex/runtime/publication_impl.py": 70.0,
