@@ -6,12 +6,12 @@ The machine-readable repository authority is [`docs/APEX_V2_AUTHORITY.json`](doc
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 ## Production constitution
 
 - The immutable forensic/base SHA above anchors PR #90 and clean-room lineage; it is not the serving-code promotion pointer.
-- The current serving core is the exact `production_core_sha` above and must descend from the immutable base.
+- The current serving core is the exact `production_core_sha` declared by machine authority and must descend from the immutable base.
 - Frozen engine PR #90 remains draft/open/unmerged and is not an operations branch.
 - `main` is the operations/research control plane; it does not redefine serving-core model semantics.
 - Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
