@@ -1,4 +1,4 @@
-# FPL Apex — Known Issues / Boundaries
+# FPL Apex V2 — Known Issues / Boundaries
 
 Canonical machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json). Operating authority: [`APEX_OPERATING_MANUAL.md`](APEX_OPERATING_MANUAL.md).
 
