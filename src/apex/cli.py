@@ -268,9 +268,15 @@ def publish(
     from apex.runtime.evaluation_archive import (
         build_private_provider_evaluation_material,
     )
-    from apex.runtime.publication import build_publication_materials
+    from apex.runtime.publication import (
+        assert_publication_safe_now,
+        build_publication_materials,
+    )
 
     material = build_publication_materials(snapshot, decision, artifact_dir)
+    # Replay proves the sealed decision. Wall-clock safety is checked separately and
+    # immediately before any immutable private or public release can be created.
+    assert_publication_safe_now(snapshot, decision)
 
     # Persist every sensitive/private prerequisite before the public final Release.
     # The manager Release remains a strict two-asset contract. Provider forecast
