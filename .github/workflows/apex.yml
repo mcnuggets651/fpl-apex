@@ -17,8 +17,6 @@ env:
   AUTHORITY_FILE: docs/APEX_V2_AUTHORITY.json
 
 jobs:
-  # `test`, `contract`, and `readiness` are the repository-wide required check
-  # contexts on main. They validate the declared immutable V2 architecture only.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -29,20 +27,21 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Resolve declared immutable core
+      - name: Resolve declared production core
         id: core
         shell: bash
         run: |
           set -euo pipefail
           CORE_SHA="$(python - <<'PY'
           import json
-          print(json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))["frozen_engine_sha"])
+          authority = json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))
+          print(authority["production_core_sha"])
           PY
           )"
           [[ "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
           git fetch --no-tags origin "$CORE_SHA"
           echo "sha=$CORE_SHA" >> "$GITHUB_OUTPUT"
-      - name: Materialize exact immutable core
+      - name: Materialize exact production core
         shell: bash
         run: |
           set -euo pipefail
@@ -84,7 +83,12 @@ jobs:
 
           authority = json.loads(Path("docs/APEX_V2_AUTHORITY.json").read_text(encoding="utf-8"))
           frozen = authority["frozen_engine_sha"]
-          assert len(frozen) == 40 and all(c in "0123456789abcdef" for c in frozen)
+          production_core = authority["production_core_sha"]
+          assert frozen == "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+          assert authority["frozen_engine_pr"] == 90
+          assert authority["frozen_engine_pr_policy"] == "NEVER_MERGE_OR_ADVANCE"
+          for value in (frozen, production_core):
+              assert len(value) == 40 and all(c in "0123456789abcdef" for c in value)
           assert authority["legacy"]["status"] == "HISTORICAL_NON_SERVING"
           assert authority["canonical_production_workflow"] == ".github/workflows/apex-v2-daily-production.yml"
           assert authority["serving_provider"] == "airsenal"
@@ -94,10 +98,11 @@ jobs:
           assert champion["role"] == "CHAMPION"
           assert champion["serve_authorized"] is True
           production = Path(authority["canonical_production_workflow"]).read_text(encoding="utf-8")
-          assert frozen in production
+          assert "production_core_sha" in production
+          assert "frozen_engine_sha" in production
           for forbidden in ("scripts/run_apex.py", "run_pinnacle.py", "git push"):
               assert forbidden not in production
-          print(f"V2 authority contract OK: {frozen}")
+          print(f"V2 authority contract OK: frozen={frozen} production={production_core}")
           PY
 
   readiness:
@@ -111,14 +116,15 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Resolve and materialize declared immutable core
+      - name: Resolve and materialize declared production core
         id: core
         shell: bash
         run: |
           set -euo pipefail
           CORE_SHA="$(python - <<'PY'
           import json
-          print(json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))["frozen_engine_sha"])
+          authority = json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))
+          print(authority["production_core_sha"])
           PY
           )"
           [[ "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -129,7 +135,7 @@ jobs:
           test "$(git -C "$CORE" rev-parse HEAD)" = "$CORE_SHA"
           python -m pip install -e "$CORE[dev]"
           echo "path=$CORE" >> "$GITHUB_OUTPUT"
-      - name: Verify immutable core readiness
+      - name: Verify production core readiness
         shell: bash
         run: |
           set -euo pipefail
