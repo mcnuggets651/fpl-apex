@@ -4,12 +4,16 @@ import json
 from datetime import datetime, timezone
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from apex.domain.models import ProviderHealth
+from apex.runtime import publication
 from apex.runtime.publication import (
     assert_publication_safe_now,
     build_publication_materials,
+    replay_security_payload,
 )
 from apex.runtime.serving import status_from_row
 from apex.runtime.solve import solve_snapshot
@@ -142,6 +146,108 @@ def test_publication_live_safety_rejects_expired_actionable_decision(tmp_path: P
             decision_path,
             now=datetime(2026, 9, 2, 12, 3, tzinfo=timezone.utc),
         )
+
+
+def test_publication_live_safety_rejects_invalid_certification(tmp_path: Path):
+    snapshot, decision, _ = _fixture(tmp_path)
+    decision["certification"] = None
+    decision_path = tmp_path / "invalid-certification.json"
+    decision_path.write_text(json.dumps(decision), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="certification is invalid"):
+        assert_publication_safe_now(snapshot.root, decision_path)
+
+
+def test_publication_live_safety_allows_non_actionable_without_clock_checks(
+    tmp_path: Path,
+):
+    snapshot, decision, decision_path = _fixture(tmp_path)
+    assert decision["certification"]["actionable"] is False
+
+    # This deliberately uses the real wall clock, long after the fixture deadline.
+    # A withheld decision is safe to publish for audit/status purposes.
+    assert_publication_safe_now(snapshot.root, decision_path)
+
+
+def test_publication_clock_helpers_fail_closed_and_normalize_naive_values():
+    assert publication._publication_utc_now(
+        datetime(2026, 9, 2, 12, 0)
+    ) == datetime(2026, 9, 2, 12, 0, tzinfo=timezone.utc)
+    assert publication._parse_deadline("2026-09-02T12:03:00") == datetime(
+        2026, 9, 2, 12, 3, tzinfo=timezone.utc
+    )
+    with pytest.raises(RuntimeError, match="deadline is invalid"):
+        publication._parse_deadline("not-a-timestamp")
+
+
+@pytest.mark.parametrize(
+    ("health", "message"),
+    [
+        (None, "unavailable"),
+        (ProviderHealth.STALE, "stale"),
+        (ProviderHealth.INCOMPLETE, "incomplete"),
+        (ProviderHealth.ERROR, "incomplete"),
+    ],
+)
+def test_publication_live_safety_rejects_unsafe_serving_champion(
+    tmp_path: Path,
+    monkeypatch,
+    health,
+    message: str,
+):
+    snapshot, decision, _ = _fixture(tmp_path)
+    decision["certification"]["actionable"] = True
+    decision_path = tmp_path / f"unsafe-{message}-{health}.json"
+    decision_path.write_text(json.dumps(decision), encoding="utf-8")
+    monkeypatch.setattr(
+        publication,
+        "reconstruct_frozen_serving",
+        lambda *args: (None, None, {1: object()}, None, None),
+    )
+    runtime_health = None if health is None else SimpleNamespace(health=health)
+    monkeypatch.setattr(
+        publication,
+        "_runtime_freshness",
+        lambda *args: runtime_health,
+    )
+
+    with pytest.raises(RuntimeError, match=message):
+        assert_publication_safe_now(
+            snapshot.root,
+            decision_path,
+            now=datetime(2026, 9, 2, 12, 2, tzinfo=timezone.utc),
+        )
+
+
+def test_publication_live_safety_accepts_healthy_serving_champion(
+    tmp_path: Path,
+    monkeypatch,
+):
+    snapshot, decision, _ = _fixture(tmp_path)
+    decision["certification"]["actionable"] = True
+    decision_path = tmp_path / "healthy-actionable.json"
+    decision_path.write_text(json.dumps(decision), encoding="utf-8")
+    monkeypatch.setattr(
+        publication,
+        "reconstruct_frozen_serving",
+        lambda *args: (None, None, {1: object()}, None, None),
+    )
+    monkeypatch.setattr(
+        publication,
+        "_runtime_freshness",
+        lambda *args: SimpleNamespace(health=ProviderHealth.HEALTHY),
+    )
+
+    assert_publication_safe_now(
+        snapshot.root,
+        decision_path,
+        now=datetime(2026, 9, 2, 12, 2, tzinfo=timezone.utc),
+    )
+
+
+def test_replay_security_payload_rejects_missing_diagnostics():
+    with pytest.raises(RuntimeError, match="provider diagnostics"):
+        replay_security_payload({})
 
 
 def test_publication_rejects_decision_from_different_snapshot(tmp_path: Path):
