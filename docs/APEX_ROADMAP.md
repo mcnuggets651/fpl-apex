@@ -4,7 +4,7 @@ Machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json). Operating
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core (`production_core_sha`): `40ac0176ebdf0ce7db80b77b31dbf19623d57932`
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 The immutable base anchors PR #90/lineage and never moves during successor promotion. The sole serving workflow is `.github/workflows/apex-v2-daily-production.yml`, and **AIrsenal** is the sole serving provider H1–H8.
 
