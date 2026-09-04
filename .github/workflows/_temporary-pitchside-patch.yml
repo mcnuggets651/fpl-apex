@@ -27,6 +27,9 @@ jobs:
       - name: Apply exact bounded patch
         run: python .github/patches/apply_pitchside_recovery.py
 
+      - name: Normalize changed master header
+        run: sed -i '/^\*\*State snapshot:\*\*/s/[[:space:]]*$//' docs/FPL_APEX_MASTER_STATE.md
+
       - name: Install test tooling
         run: python -m pip install -e '.[dev]'
 
