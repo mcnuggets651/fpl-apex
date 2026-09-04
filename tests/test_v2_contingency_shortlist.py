@@ -195,8 +195,20 @@ def _transfer_fixture():
     return official, team, surface
 
 
-def test_transfer_shortlist_falls_back_when_candidate_cap_prevents_proof() -> None:
+def test_transfer_shortlist_falls_back_when_candidate_cap_prevents_proof(
+    monkeypatch,
+) -> None:
     official, team, surface = _transfer_fixture()
+    from apex.decision import transfers
+
+    real_milp = transfers.milp
+    calls = []
+
+    def counted_milp(*args, **kwargs):
+        calls.append(1)
+        return real_milp(*args, **kwargs)
+
+    monkeypatch.setattr(transfers, "milp", counted_milp)
     result = optimise_transfer_horizon(
         official,
         surface,
@@ -215,3 +227,5 @@ def test_transfer_shortlist_falls_back_when_candidate_cap_prevents_proof() -> No
     )
     assert result.solver["selected_generation_rank"] == 1
     assert "candidate limit" in result.solver["reason"]
+    assert len(calls) == 1
+    assert result.decision.horizon == 2
