@@ -8,7 +8,7 @@
 
 **PRODUCTION PIPELINE PASSED; PRIVATE QUERY ACCEPTANCE BLOCKED BY GITHUB BILLING**
 
-Apex V2 is the production FPL system for season **2026/27** and entry **63984**. Canonical production run #9 (`33850307770`; immutable run `33850307770-1`) completed successfully for GW3 and published a matching immutable public/private run pair using serving core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
+Apex V2 is the production FPL system for season **2026/27** and entry **63984**. Canonical production run #9 (`33850307770`; immutable run `33850307770-1`) completed successfully for GW3 and published a matching immutable public/private run pair under the then-current authority-declared serving core. Exact historical core identity remains in immutable release evidence and the canonical continuity ledger rather than being copied here as a movable current pointer.
 
 The only remaining acceptance gate is owner-private strategy query execution in explicit-run and authority-selected `latest` modes. GitHub rejected both jobs before runner allocation because of account billing/spending state. A 4 September retry of `latest` again had zero steps and `runner_id=0`; this is not evidence of query code failure.
 
@@ -16,8 +16,10 @@ Do not reopen model/architecture development because of this external gate. The 
 
 ## Production authority
 
-- Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`.
-- Current serving core: read `production_core_sha` live from machine authority; at this snapshot it is `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
+Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
+
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
+
 - Frozen engine PR: **#90**, draft/open/unmerged, policy `NEVER_MERGE_OR_ADVANCE`.
 - Operations/research control plane: `main`; verify the current head live rather than treating a prose SHA as permanent.
 - Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
@@ -26,7 +28,7 @@ Do not reopen model/architecture development because of this external gate. The 
 - Research/tournament output has `production_influence = NONE`; no blending, voting or automatic challenger promotion.
 - Official FPL remains factual authority for identity, club, position, price, status/availability, fixtures and deadlines.
 
-PR #122 separated immutable-base authority from the serving-core pointer. PR #146 permanently repaired duplicate production optimisation/incorrect one-candidate semantics and made publication witness-only. PR #147 promoted the exact repaired serving core through `production_core_sha`. PR #149 restored normal Deadline Watch after the controlled one-shot production dispatch.
+PR #122 separated immutable-base authority from the serving-core pointer. PR #146 permanently repaired duplicate production optimisation/incorrect one-candidate semantics and made publication witness-only. PR #147 promoted the repaired serving core through `production_core_sha`. PR #149 restored normal Deadline Watch after the controlled one-shot production dispatch.
 
 ## Successful production proof
 
@@ -45,7 +47,7 @@ Public final:
 
 `apex-v2/final/2026-2027/33850307770-1`
 
-Release ID `382559137`, immutable, published `2026-09-04T07:51:49Z`, target core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
+Release ID `382559137`, immutable, published `2026-09-04T07:51:49Z`. The immutable release/attestation records the exact serving-core identity; this canonical status document deliberately does not duplicate the movable `production_core_sha` value.
 
 Matching owner-private manager/evaluation/presentation releases share run identity `33850307770-1`; private payload details stay in the private repository and its companion master ledger.
 
