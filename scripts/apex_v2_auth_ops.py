@@ -136,7 +136,9 @@ def _refresh_store_configured(env: Mapping[str, str]) -> bool:
     )
     present = [bool(str(env.get(name, "")).strip()) for name in required]
     if any(present) and not all(present):
-        raise AuthOpsError("Refresh authentication requires complete private-store configuration")
+        raise AuthOpsError(
+            "Refresh authentication requires complete private-store configuration"
+        )
     return all(present)
 
 
@@ -211,7 +213,9 @@ def _find_staged_draft(store, tag: str) -> dict | None:
         if bool(item.get("draft", False)) and str(item.get("tag_name") or "") == tag
     ]
     if len(matches) > 1:
-        raise AuthOpsError("Private FPL refresh store contains duplicate staged rotation tags")
+        raise AuthOpsError(
+            "Private FPL refresh store contains duplicate staged rotation tags"
+        )
     return matches[0] if matches else None
 
 
@@ -365,6 +369,31 @@ def _cleanup_superseded_drafts(store, tags: tuple[str, ...]) -> None:
             pass
 
 
+def _discard_wrong_manager_drafts(store, tags: tuple[str, ...]) -> None:
+    """Strictly purge staged state proved to belong to the wrong manager.
+
+    Unlike post-success cleanup, failure here cannot be ignored: a surviving
+    wrong-manager staged child would be eligible for recovery on the next run.
+    """
+
+    for tag in reversed(tags):
+        draft = _find_staged_draft(store, tag)
+        if draft is None:
+            continue
+        try:
+            store._cleanup_mutable_release(int(draft["id"]), tag)
+        except Exception as exc:
+            raise AuthOpsError(
+                "Wrong-manager FPL refresh state could not be discarded; "
+                "manual private-store cleanup is required"
+            ) from exc
+        if _find_staged_draft(store, tag) is not None:
+            raise AuthOpsError(
+                "Wrong-manager FPL refresh state remained staged after cleanup; "
+                "manual private-store cleanup is required"
+            )
+
+
 def _verify_refreshed_access(module: ModuleType, entry_id: int, access_token: str) -> str:
     return module._verify_headers(
         entry_id,
@@ -431,6 +460,7 @@ def _rotate_refresh_parent(
         ) from exc
 
     if status == "wrong_manager":
+        _discard_wrong_manager_drafts(store, recovered_tags + (staged_tag,))
         raise AuthOpsError(
             "Official FPL refreshed owner credential belongs to a different manager entry"
         )
@@ -566,7 +596,9 @@ def _try_private_refresh(
     try:
         parent = module._latest_private_refresh_token(store, fernet)
     except Exception as exc:
-        raise AuthOpsError("Encrypted private FPL refresh state could not be loaded") from exc
+        raise AuthOpsError(
+            "Encrypted private FPL refresh state could not be loaded"
+        ) from exc
     if not parent:
         return False
     entry_id = module._entry_id(config)
