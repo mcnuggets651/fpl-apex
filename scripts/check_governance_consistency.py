@@ -24,6 +24,7 @@ NON_SERVING_ACTIVE = {
     "apex-v2-deadline-watch.yml",
     "apex-v2-decision-quality.yml",
     "apex-v2-direct-auth-diagnostic.yml",
+    "apex-v2-draft-auth-relay.yml",
     "apex-v2-ops-contract.yml",
     "apex-v2-owner-brief.yml",
     "apex-v2-prospective-tournament.yml",
@@ -58,6 +59,7 @@ AUTHORITY_DOCS = (
     Path("docs/APEX_MASTER_CONTEXT.md"),
     Path("docs/APEX_OPERATING_MANUAL.md"),
     Path("docs/KNOWN_ISSUES.md"),
+    Path("docs/SESSION_LOG.md"),
     Path("docs/CHATGPT_USAGE.md"),
     Path("docs/CHATGPT_APEX_QUERY_POLICY.md"),
     Path("docs/APEX_ROADMAP.md"),
@@ -267,6 +269,7 @@ def check_workflows(manifest: dict, failures: list[str]) -> None:
         'cron: "17 4 * * *"',
         "group: apex-v2-fpl-auth",
         "cancel-in-progress: false",
+        "git merge-base --is-ancestor",
         "apex-v2 private-store-preflight",
         "apex-v2 official-hash",
         'FPL_TEAM_ID: "1"',
@@ -278,7 +281,7 @@ def check_workflows(manifest: dict, failures: list[str]) -> None:
     ):
         if needle not in production:
             failures.append(f"V2 production contract missing: {needle}")
-    for forbidden in ("git push", "scripts/run_apex.py", "run_pinnacle.py"):
+    for forbidden in ("pull_request:", "\n  push:\n", "git push", "scripts/run_apex.py", "run_pinnacle.py"):
         if forbidden in production:
             failures.append(
                 f"V2 production revived legacy/direct-main behavior: {forbidden}"
@@ -341,6 +344,25 @@ def check_non_serving_boundaries(failures: list[str]) -> None:
     ):
         if forbidden in shadow:
             failures.append(f"shadow health crossed boundary: {forbidden}")
+
+    draft = text(".github/workflows/apex-v2-draft-auth-relay.yml")
+    for needle in (
+        "group: apex-v2-fpl-auth",
+        "cancel-in-progress: false",
+        "scripts/apex_v2_draft_auth_relay_ops.py",
+        "apex-draft-auth-snapshot",
+        "APEX_V2_PRIVATE_REPO_TOKEN",
+    ):
+        if needle not in draft:
+            failures.append(f"Draft auth relay contract missing: {needle}")
+    for forbidden in (
+        "apex-v2 solve",
+        "apex-v2 publish",
+        "contents: write",
+        "actions/upload-artifact",
+    ):
+        if forbidden in draft:
+            failures.append(f"Draft auth relay crossed safety boundary: {forbidden}")
 
     # Tournament/research stays bound to the immutable evaluator lineage. It is
     # explicitly non-serving and must not become an alternate promotion path.
