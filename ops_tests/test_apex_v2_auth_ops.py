@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -18,6 +20,132 @@ def _load_module():
 
 
 ops = _load_module()
+
+
+class FakeFernet:
+    def encrypt(self, data: bytes) -> bytes:
+        return b"enc:" + data
+
+    def decrypt(self, data: bytes) -> bytes:
+        if not data.startswith(b"enc:"):
+            raise ValueError("bad ciphertext")
+        return data[4:]
+
+
+class FakeStore:
+    def __init__(self, events=None):
+        self.events = events if events is not None else []
+        self.drafts = {}
+        self.published = []
+        self.next_id = 1
+
+    def get_draft_by_tag(self, tag):
+        return self.drafts.get(tag)
+
+    def _create_draft_and_upload(
+        self,
+        tag,
+        files,
+        *,
+        target_commitish,
+        name,
+        body,
+    ):
+        self.events.append("stage")
+        if tag in self.drafts:
+            raise RuntimeError("duplicate draft")
+        asset_name, path = next(iter(files.items()))
+        release = {
+            "id": self.next_id,
+            "tag_name": tag,
+            "draft": True,
+            "name": name,
+            "body": body,
+            "asset_name": asset_name,
+            "raw": Path(path).read_bytes(),
+        }
+        self.next_id += 1
+        self.drafts[tag] = release
+        return release["id"], {asset_name: "fake-digest"}
+
+    def _cleanup_mutable_release(self, release_id, tag):
+        self.events.append("cleanup")
+        self.drafts.pop(tag, None)
+
+
+class FakeAuthModule:
+    DEFAULT_OIDC_CLIENT_ID = "client"
+    AUTH_ASSET = "fpl_refresh_state.enc"
+    Fernet = FakeFernet
+
+    def __init__(self, store=None, events=None):
+        self.events = events if events is not None else []
+        self.store = store or FakeStore(self.events)
+        self.exchange_results = []
+        self.verify_results = []
+        self.private_parent = None
+        self.exchanged = []
+
+    @staticmethod
+    def _refresh_transaction_fingerprint(token):
+        # Deterministic and value-free enough for unit tests.
+        return f"fp-{sum(token.encode('utf-8'))}"
+
+    def _rotation_tag(self, fingerprint):
+        return f"apex-v2/private-auth/rotation/{fingerprint}"
+
+    def _recover_pending_rotation(self, store, fernet, parent):
+        tag = self._rotation_tag(self._refresh_transaction_fingerprint(parent))
+        draft = store.get_draft_by_tag(tag)
+        if draft is None:
+            return None
+        payload = json.loads(fernet.decrypt(draft["raw"]).decode("utf-8"))
+        if payload["parent_fingerprint"] != self._refresh_transaction_fingerprint(parent):
+            raise RuntimeError("wrong parent fingerprint")
+        return payload["refresh_token"], tag
+
+    def _publish_pending_rotation(self, store, tag):
+        self.events.append("publish")
+        draft = store.drafts.pop(tag)
+        draft["draft"] = False
+        store.published.append(draft)
+
+    def _exchange_refresh_token(self, token):
+        self.events.append("exchange")
+        self.exchanged.append(token)
+        result = self.exchange_results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    def _verify_headers(self, entry_id, *, headers):
+        self.events.append("verify")
+        result = self.verify_results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    @staticmethod
+    def _bearer_header(token):
+        return f"Bearer {token}"
+
+    @staticmethod
+    def _entry_id(config):
+        return 63984
+
+    def _latest_private_refresh_token(self, store, fernet):
+        return self.private_parent
+
+    @staticmethod
+    def _write_runtime_env(path, *, token="", cookie=""):
+        with Path(path).open("a", encoding="utf-8") as handle:
+            handle.write(f"FPL_X_API_AUTHORIZATION={token}\n")
+            handle.write(f"FPL_SESSION_COOKIE={cookie}\n")
+
+    @staticmethod
+    def _write_github_output(path, mode):
+        with Path(path).open("a", encoding="utf-8") as handle:
+            handle.write(f"auth_mode={mode}\n")
 
 
 class AuthOperationsTests(unittest.TestCase):
@@ -39,33 +167,168 @@ class AuthOperationsTests(unittest.TestCase):
             args=["preflight"], returncode=returncode, stdout=stdout, stderr=stderr
         )
 
-    def test_primary_success_never_enters_recovery(self):
-        primary = self.result(0, stdout='{"authenticated": true}\n')
-        with (
-            mock.patch.object(ops, "_run_frozen_preflight", return_value=primary),
-            mock.patch.object(ops, "_bootstrap_recover") as bootstrap,
-            mock.patch.object(ops, "_direct_recover") as direct,
-        ):
-            outcome = ops.authenticate(
-                mode="production",
-                preflight_script=self.script,
-                config=self.config,
-                github_output=None,
-                github_env=None,
+    def test_rotation_stages_before_owner_verification_and_publishes_only_after_match(self):
+        events = []
+        store = FakeStore(events)
+        module = FakeAuthModule(store, events)
+        module.exchange_results = [("access", "child")]
+        module.verify_results = ["match"]
+
+        access, child = ops._rotate_refresh_parent(
+            module,
+            entry_id=63984,
+            store=store,
+            fernet=FakeFernet(),
+            parent_refresh_token="parent",
+            env=self.env,
+        )
+
+        self.assertEqual((access, child), ("access", "child"))
+        self.assertEqual(events[:4], ["exchange", "stage", "verify", "publish"])
+        self.assertEqual(len(store.published), 1)
+        self.assertFalse(store.drafts)
+
+    def test_unexpected_owner_verification_keeps_child_staged_and_inactive(self):
+        events = []
+        store = FakeStore(events)
+        module = FakeAuthModule(store, events)
+        module.exchange_results = [("access", "recoverable-child")]
+        module.verify_results = [RuntimeError("upstream 503 with secret-looking body")]
+
+        with self.assertRaises(ops.RefreshRotationIndeterminate) as exc_info:
+            ops._rotate_refresh_parent(
+                module,
+                entry_id=63984,
+                store=store,
+                fernet=FakeFernet(),
+                parent_refresh_token="parent",
                 env=self.env,
             )
-        self.assertEqual(outcome, "primary")
-        bootstrap.assert_not_called()
-        direct.assert_not_called()
 
-    def test_non_refresh_failure_is_never_recovered(self):
-        primary = self.result(1, stderr="wrong manager")
+        self.assertEqual(events, ["exchange", "stage", "verify"])
+        self.assertEqual(len(store.drafts), 1)
+        self.assertFalse(store.published)
+        self.assertNotIn("secret-looking", str(exc_info.exception))
+
+    def test_rejected_refreshed_access_is_indeterminate_not_bootstrap_fallback(self):
+        store = FakeStore()
+        module = FakeAuthModule(store)
+        module.exchange_results = [("access", "recoverable-child")]
+        module.verify_results = ["rejected"]
+
+        with self.assertRaises(ops.RefreshRotationIndeterminate):
+            ops._rotate_refresh_parent(
+                module,
+                entry_id=63984,
+                store=store,
+                fernet=FakeFernet(),
+                parent_refresh_token="parent",
+                env=self.env,
+            )
+        self.assertEqual(len(store.drafts), 1)
+        self.assertFalse(store.published)
+
+    def test_wrong_manager_never_activates_staged_child(self):
+        store = FakeStore()
+        module = FakeAuthModule(store)
+        module.exchange_results = [("access", "wrong-manager-child")]
+        module.verify_results = ["wrong_manager"]
+
+        with self.assertRaisesRegex(ops.AuthOpsError, "different manager"):
+            ops._rotate_refresh_parent(
+                module,
+                entry_id=63984,
+                store=store,
+                fernet=FakeFernet(),
+                parent_refresh_token="parent",
+                env=self.env,
+            )
+        self.assertEqual(len(store.drafts), 1)
+        self.assertFalse(store.published)
+
+    def test_stage_failure_after_exchange_is_indeterminate_and_not_generic_rejection(self):
+        store = FakeStore()
+        module = FakeAuthModule(store)
+        module.exchange_results = [("access", "child")]
+        module.verify_results = ["match"]
+        with mock.patch.object(
+            ops,
+            "_stage_refresh_rotation",
+            side_effect=RuntimeError("private store unavailable secret-value"),
+        ):
+            with self.assertRaises(ops.RefreshRotationIndeterminate) as exc_info:
+                ops._rotate_refresh_parent(
+                    module,
+                    entry_id=63984,
+                    store=store,
+                    fernet=FakeFernet(),
+                    parent_refresh_token="parent",
+                    env=self.env,
+                )
+        self.assertNotIn("secret-value", str(exc_info.exception))
+
+    def test_pending_child_is_used_before_consumed_parent_is_reexchanged(self):
+        events = []
+        store = FakeStore(events)
+        module = FakeAuthModule(store, events)
+        fernet = FakeFernet()
+        # Simulate a previous run: exchange parent -> child was staged, then
+        # owner verification failed before activation.
+        ops._stage_refresh_rotation(
+            module,
+            store,
+            fernet,
+            parent_refresh_token="dead-parent",
+            next_refresh_token="staged-child",
+            env=self.env,
+        )
+        events.clear()
+        module.exchange_results = [("fresh-access", "new-active-child")]
+        module.verify_results = ["match"]
+
+        result = ops._rotate_refresh_parent(
+            module,
+            entry_id=63984,
+            store=store,
+            fernet=fernet,
+            parent_refresh_token="dead-parent",
+            env=self.env,
+        )
+
+        self.assertEqual(result, ("fresh-access", "new-active-child"))
+        self.assertEqual(module.exchanged, ["staged-child"])
+        self.assertNotIn("dead-parent", module.exchanged)
+        self.assertEqual(len(store.published), 1)
+        # The consumed intermediate staged draft is removed after final child activation.
+        self.assertFalse(store.drafts)
+
+    def test_exchange_rejection_before_staging_is_safe_for_bootstrap_recovery(self):
+        module = FakeAuthModule(FakeStore())
+        module.exchange_results = [RuntimeError(ops.REFRESH_REJECTION)]
+        with self.assertRaises(ops.RefreshRejected):
+            ops._rotate_refresh_parent(
+                module,
+                entry_id=63984,
+                store=module.store,
+                fernet=FakeFernet(),
+                parent_refresh_token="rejected-parent",
+                env=self.env,
+            )
+        self.assertFalse(module.store.drafts)
+
+    def test_indeterminate_private_rotation_never_falls_through_to_bootstrap_or_direct(self):
+        fake_module = SimpleNamespace()
         with (
-            mock.patch.object(ops, "_run_frozen_preflight", return_value=primary),
+            mock.patch.object(ops, "_load_frozen_auth", return_value=fake_module),
+            mock.patch.object(
+                ops,
+                "_try_private_refresh",
+                side_effect=ops.RefreshRotationIndeterminate("staged child retained"),
+            ),
             mock.patch.object(ops, "_bootstrap_recover") as bootstrap,
             mock.patch.object(ops, "_direct_recover") as direct,
         ):
-            with self.assertRaises(ops.AuthOpsError):
+            with self.assertRaises(ops.RefreshRotationIndeterminate):
                 ops.authenticate(
                     mode="production",
                     preflight_script=self.script,
@@ -77,10 +340,15 @@ class AuthOperationsTests(unittest.TestCase):
         bootstrap.assert_not_called()
         direct.assert_not_called()
 
-    def test_refresh_rejection_prefers_bootstrap_recovery(self):
-        primary = self.result(1, stderr=ops.REFRESH_REJECTION)
+    def test_private_exchange_rejection_prefers_bootstrap_recovery(self):
+        fake_module = SimpleNamespace()
         with (
-            mock.patch.object(ops, "_run_frozen_preflight", return_value=primary),
+            mock.patch.object(ops, "_load_frozen_auth", return_value=fake_module),
+            mock.patch.object(
+                ops,
+                "_try_private_refresh",
+                side_effect=ops.RefreshRejected(ops.REFRESH_REJECTION),
+            ),
             mock.patch.object(ops, "_bootstrap_recover") as bootstrap,
             mock.patch.object(ops, "_direct_recover") as direct,
         ):
@@ -96,10 +364,15 @@ class AuthOperationsTests(unittest.TestCase):
         bootstrap.assert_called_once()
         direct.assert_not_called()
 
-    def test_production_can_use_direct_auth_only_after_both_refresh_paths_reject(self):
-        primary = self.result(1, stderr=ops.REFRESH_REJECTION)
+    def test_production_direct_auth_only_after_refresh_and_bootstrap_exchange_reject(self):
+        fake_module = SimpleNamespace()
         with (
-            mock.patch.object(ops, "_run_frozen_preflight", return_value=primary),
+            mock.patch.object(ops, "_load_frozen_auth", return_value=fake_module),
+            mock.patch.object(
+                ops,
+                "_try_private_refresh",
+                side_effect=ops.RefreshRejected(ops.REFRESH_REJECTION),
+            ),
             mock.patch.object(
                 ops,
                 "_bootstrap_recover",
@@ -120,9 +393,14 @@ class AuthOperationsTests(unittest.TestCase):
         direct.assert_called_once()
 
     def test_keepalive_never_substitutes_direct_auth_for_dead_refresh_chain(self):
-        primary = self.result(1, stderr=ops.REFRESH_REJECTION)
+        fake_module = SimpleNamespace()
         with (
-            mock.patch.object(ops, "_run_frozen_preflight", return_value=primary),
+            mock.patch.object(ops, "_load_frozen_auth", return_value=fake_module),
+            mock.patch.object(
+                ops,
+                "_try_private_refresh",
+                side_effect=ops.RefreshRejected(ops.REFRESH_REJECTION),
+            ),
             mock.patch.object(
                 ops,
                 "_bootstrap_recover",
@@ -133,28 +411,6 @@ class AuthOperationsTests(unittest.TestCase):
             with self.assertRaises(ops.AuthOpsError):
                 ops.authenticate(
                     mode="keepalive",
-                    preflight_script=self.script,
-                    config=self.config,
-                    github_output=None,
-                    github_env=None,
-                    env=self.env,
-                )
-        direct.assert_not_called()
-
-    def test_bootstrap_persistence_or_identity_error_is_not_masked_by_direct_auth(self):
-        primary = self.result(1, stderr=ops.REFRESH_REJECTION)
-        with (
-            mock.patch.object(ops, "_run_frozen_preflight", return_value=primary),
-            mock.patch.object(
-                ops,
-                "_bootstrap_recover",
-                side_effect=RuntimeError("persist failed"),
-            ),
-            mock.patch.object(ops, "_direct_recover") as direct,
-        ):
-            with self.assertRaisesRegex(RuntimeError, "persist failed"):
-                ops.authenticate(
-                    mode="production",
                     preflight_script=self.script,
                     config=self.config,
                     github_output=None,
@@ -176,7 +432,7 @@ class AuthOperationsTests(unittest.TestCase):
                 env=env,
             )
 
-    def test_direct_recovery_disables_refresh_inputs_for_frozen_preflight(self):
+    def test_direct_recovery_disables_refresh_inputs_for_selected_preflight(self):
         seen_env = {}
 
         def fake_run(*args, **kwargs):
@@ -195,31 +451,24 @@ class AuthOperationsTests(unittest.TestCase):
         self.assertEqual(seen_env["FPL_REFRESH_WRAP_KEY"], "")
         self.assertEqual(seen_env["FPL_X_API_AUTHORIZATION"], "direct-token")
 
-    def test_refresh_rejection_match_is_exactly_the_frozen_diagnostic(self):
-        self.assertTrue(
-            ops._is_refresh_rejection(self.result(1, stderr=ops.REFRESH_REJECTION))
-        )
-        self.assertFalse(
-            ops._is_refresh_rejection(
-                self.result(1, stderr="Official FPL owner credential belongs to a different manager entry")
-            )
-        )
-
-    def test_primary_success_writes_non_recovery_marker(self):
-        primary = self.result(0, stdout='{"authenticated": true}\n')
+    def test_refresh_success_writes_auth_mode_and_non_recovery_marker(self):
+        module = FakeAuthModule()
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "output"
+            env_file = Path(tmp) / "env"
             output.touch()
-            with mock.patch.object(ops, "_run_frozen_preflight", return_value=primary):
-                ops.authenticate(
-                    mode="production",
-                    preflight_script=self.script,
-                    config=self.config,
-                    github_output=output,
-                    github_env=None,
-                    env=self.env,
-                )
-            self.assertIn("auth_recovery=none", output.read_text(encoding="utf-8"))
+            env_file.touch()
+            ops._emit_refresh_success(
+                module,
+                access_token="masked-access",
+                github_output=output,
+                github_env=env_file,
+                recovery="none",
+            )
+            rendered = output.read_text(encoding="utf-8")
+            self.assertIn("auth_mode=refresh", rendered)
+            self.assertIn("auth_recovery=none", rendered)
+            self.assertIn("FPL_X_API_AUTHORIZATION=masked-access", env_file.read_text(encoding="utf-8"))
 
     def test_wrapper_suppresses_arbitrary_exception_detail(self):
         rendered = ops._format_wrapper_error(RuntimeError("super-secret-token-material"))
