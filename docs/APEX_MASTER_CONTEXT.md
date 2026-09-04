@@ -4,7 +4,7 @@
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`; at the 4 September 2026 continuity snapshot it is `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 ## Mission
 
@@ -32,7 +32,7 @@ Official FPL is factual authority for identity, club, FPL position, price, statu
 
 ## Current production closure
 
-Canonical production run #9 (`33850307770`, immutable run `33850307770-1`) successfully completed for GW3 using production core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`. PR #146 permanently established the production single-solve / witness-only publication semantics and PR #147 promoted that exact core.
+Canonical production run #9 (`33850307770`, immutable run `33850307770-1`) successfully completed for GW3 under the then-current authority-declared serving core. Exact historical core identity is preserved by the immutable release/attestation and canonical master ledger, while this constitutional document deliberately reads the current serving pointer dynamically. PR #146 permanently established the production single-solve / witness-only publication semantics and PR #147 promoted the repaired core.
 
 The only outstanding system-acceptance gate is private strategy-query execution in exact and `latest` modes. GitHub Actions currently rejects those jobs before runner allocation because of owner account billing/spending state. This is not a serving-model defect. Until the private bridge actually executes both modes successfully, status is:
 
