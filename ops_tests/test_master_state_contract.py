@@ -52,15 +52,14 @@ class MasterStateContractTests(unittest.TestCase):
             "master-state guard must execute before the operations regression suite",
         )
 
-    def test_master_records_current_machine_authority_and_run(self) -> None:
+    def test_master_records_current_machine_authority_run_and_operational_state(self) -> None:
         text = (ROOT / MASTER).read_text(encoding="utf-8")
         self.assertIn("c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437", text)
         self.assertIn("99cc7b51b0cff45462b567084cb1844cfe0a456f", text)
         self.assertIn("33850307770-1", text)
-        self.assertIn(
-            "PRODUCTION PIPELINE PASSED; PRIVATE QUERY ACCEPTANCE BLOCKED BY GITHUB BILLING",
-            text,
-        )
+        self.assertIn("APEX OPERATIONAL", text)
+        self.assertIn("33868412431", text)
+        self.assertIn("33868662109", text)
 
 
 if __name__ == "__main__":
