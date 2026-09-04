@@ -30,6 +30,26 @@ Schedule: `22 */6 * * *` UTC.
 
 The keepalive validates/rotates durable FPL owner credentials, verifies exact manager identity and persists rotated private state. It cannot acquire providers, solve or publish a recommendation. It shares the non-cancelling `apex-v2-fpl-auth` concurrency boundary with production.
 
+### Authenticated FPL Draft transaction relay
+
+Workflow: `.github/workflows/apex-v2-draft-auth-relay.yml`
+
+Runbook: [`APEX_DRAFT_QUERY.md`](APEX_DRAFT_QUERY.md).
+
+Schedule: `7,22,37,52 * * * *` UTC plus manual dispatch and bounded `main` push execution for relay-contract changes.
+
+The relay is an owner-query operation, not a serving path. It shares the same non-cancelling `apex-v2-fpl-auth` concurrency boundary as production/keepalive so refresh-state rotation cannot race. It:
+
+1. uses the existing frozen owner-auth preflight plus current `scripts/apex_v2_auth_ops.py` controller;
+2. proves the Classic owner credential before using the resulting certified bearer/cookie transport against Official FPL Draft;
+3. resolves the live Draft team-entry ID from public league details for configured league `33160`, entry `mcnuggets`;
+4. reads only the authenticated Draft entry transaction endpoint;
+5. strips the result to a bounded allowlist and refuses credential-bearing keys;
+6. sends only the credential-free `apex-private-draft-auth-relay-v1` payload through repository dispatch to private `mcnuggets651/fpl`;
+7. creates no public owner transaction artifact and performs no Draft write/waiver/trade action.
+
+The private receiver lives on the repository-scoped self-hosted Mac and stores only a seven-day private artifact. If auth, identity, endpoint status, payload validation or dispatch fails, the relay fails closed and must not be interpreted as an empty pending-waiver queue.
+
 ### Direct owner-auth diagnostic
 
 Workflow: `.github/workflows/apex-v2-direct-auth-diagnostic.yml`
@@ -87,6 +107,8 @@ A bounded recovery path is entered only for the classified rejected/expired refr
 
 Keepalive cannot turn a direct credential into a durable pseudo-success. If a browser-issued refresh credential is genuinely required, it must be re-seeded explicitly; automation cannot manufacture a Premier League login.
 
+The Draft relay deliberately reuses this certified owner-auth lifecycle. It may not read/decrypt private refresh state independently or create a second refresh-token owner.
+
 ## Immutable failed-attempt policy
 
 Intent without final remains a production signal. Six previously investigated PR-era failed attempts are explicitly acknowledged in `scripts/apex_v2_attempt_audit_ops.py`; any other missing final is unacknowledged and daily evaluation fails closed.
@@ -120,9 +142,10 @@ Fail closed on:
 - solve/mechanics/architecture failure;
 - serving-core provenance disagreement;
 - immutable publication failure;
-- new unacknowledged missing final.
+- new unacknowledged missing final;
+- Draft authenticated relay identity/auth/endpoint/payload/dispatch failure when pending-waiver state is requested.
 
-Optional shadow failure is recorded under the production provider constitution and cannot become a serving fallback.
+Optional shadow failure is recorded under the production provider constitution and cannot become a serving fallback. Draft relay failure leaves serving authority unchanged and must not be converted into a guessed owner transaction state.
 
 ## Ops Contract
 
@@ -137,3 +160,5 @@ Operations or authority-reconciliation changes may touch only explicit allowlist
 ## Runtime acceptance
 
 CI is necessary but live state matters. An operations repair is accepted only when the exact merged head receives the relevant live secret/private-store/runtime proof without changing serving semantics. A successor promotion requires exact-head assurance plus the read-only core readiness/canary proof before `production_core_sha` can change. For Decision Quality, see [`operations/PARALLEL_DECISION_LAB.md`](operations/PARALLEL_DECISION_LAB.md).
+
+For authenticated Draft owner transactions, acceptance additionally requires a successful merged public relay run, a successful private repository-dispatch receiver run, inspection of the resulting credential-free private artifact and final private public-capability binding acceptance. See [`APEX_DRAFT_QUERY.md`](APEX_DRAFT_QUERY.md).
