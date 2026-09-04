@@ -52,10 +52,29 @@ TRANSACTIONS = {
         }
     ]
 }
+MY_TEAM = {
+    "picks": [{"element": 10, "position": 1}],
+    "waiver_requests": [
+        {
+            "id": 99,
+            "element_in": 10,
+            "element_out": 20,
+            "priority": 1,
+            "private_note": "must never be emitted as a value",
+        }
+    ],
+    "manager_private_value": "must never be emitted",
+}
 
 
 class DraftAuthRelayTests(unittest.TestCase):
-    def client(self, transaction_status=200, transaction_payload=TRANSACTIONS):
+    def client(
+        self,
+        transaction_status=200,
+        transaction_payload=TRANSACTIONS,
+        my_team_status=200,
+        my_team_payload=MY_TEAM,
+    ):
         return FakeClient(
             {
                 "league/33160/details": (200, DETAILS),
@@ -63,6 +82,10 @@ class DraftAuthRelayTests(unittest.TestCase):
                 "draft/entry/172178/transactions": (
                     transaction_status,
                     transaction_payload if transaction_status == 200 else None,
+                ),
+                "entry/172178/my-team": (
+                    my_team_status,
+                    my_team_payload if my_team_status == 200 else None,
                 ),
             }
         )
@@ -82,7 +105,7 @@ class DraftAuthRelayTests(unittest.TestCase):
         kwargs.update(overrides)
         return relay.build_relay(**kwargs)
 
-    def test_builds_allowlisted_pending_transaction_snapshot(self):
+    def test_builds_allowlisted_unresolved_transaction_snapshot(self):
         client = self.client()
         result = self.build(client)
         self.assertEqual(result["contract"], relay.CONTRACT)
@@ -93,14 +116,68 @@ class DraftAuthRelayTests(unittest.TestCase):
         self.assertEqual(rows[0]["element_in_name"], "Incoming")
         self.assertEqual(rows[0]["element_out_name"], "Outgoing")
         self.assertNotIn("private_note", rows[0])
+        self.assertEqual(
+            result["entry_transactions"]["resolution"],
+            {"resolved": 0, "unresolved": 1},
+        )
         self.assertNotIn("owner-token", repr(result))
 
-    def test_authenticated_endpoint_uses_bearer_transport(self):
+    def test_nonempty_result_is_classified_resolved_without_guessing_code_meaning(self):
+        payload = {
+            "transactions": [
+                {
+                    "id": 7,
+                    "element_in": 10,
+                    "element_out": 20,
+                    "priority": 1,
+                    "result": "a",
+                }
+            ]
+        }
+        result = self.build(self.client(transaction_payload=payload))
+        self.assertEqual(
+            result["entry_transactions"]["resolution"],
+            {"resolved": 1, "unresolved": 0},
+        )
+        self.assertEqual(result["entry_transactions"]["rows"][0]["result"], "a")
+
+    def test_authenticated_endpoints_use_bearer_transport(self):
         client = self.client()
         self.build(client)
-        path, headers = client.calls[-1]
-        self.assertEqual(path, "draft/entry/172178/transactions")
-        self.assertEqual(headers["X-API-Authorization"], "Bearer owner-token")
+        authenticated = {
+            path: headers
+            for path, headers in client.calls
+            if path in {"draft/entry/172178/transactions", "entry/172178/my-team"}
+        }
+        self.assertEqual(
+            set(authenticated),
+            {"draft/entry/172178/transactions", "entry/172178/my-team"},
+        )
+        for headers in authenticated.values():
+            self.assertEqual(headers["X-API-Authorization"], "Bearer owner-token")
+
+    def test_my_team_diagnostic_is_schema_only(self):
+        result = self.build(self.client())
+        diagnostic = result["source_diagnostics"]["entry_my_team"]
+        self.assertEqual(diagnostic["status"], "ok")
+        schema = diagnostic["schema"]
+        self.assertIn("picks", schema["top_level_keys"])
+        self.assertIn("waiver_requests", schema["top_level_keys"])
+        paths = {item["path"]: item for item in schema["interesting_paths"]}
+        self.assertIn("waiver_requests", paths)
+        self.assertEqual(paths["waiver_requests"]["type"], "list")
+        self.assertEqual(paths["waiver_requests"]["count"], 1)
+        self.assertIn("priority", paths["waiver_requests"]["sample_fields"])
+        rendered = repr(diagnostic)
+        self.assertNotIn("must never be emitted", rendered)
+        self.assertNotIn("owner-token", rendered)
+
+    def test_my_team_diagnostic_failure_is_bounded_and_does_not_fabricate_state(self):
+        result = self.build(self.client(my_team_status=404))
+        diagnostic = result["source_diagnostics"]["entry_my_team"]
+        self.assertEqual(diagnostic["status"], "http_404")
+        self.assertEqual(diagnostic["schema"]["type"], "unavailable")
+        self.assertEqual(diagnostic["schema"]["interesting_paths"], [])
 
     def test_cookie_transport_is_supported_without_exposing_cookie(self):
         client = self.client()
