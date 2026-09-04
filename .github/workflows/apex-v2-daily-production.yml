@@ -250,13 +250,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" dastan-run \
-            --runner "$APEX_CORE_PATH/scripts/acquire_dastan_shadow.py" \
-            --expected-official-hash '${{ steps.official_seal.outputs.hash }}' \
-            --lock "$RUNNER_TEMP/apex-v2-upstreams.lock.json" \
-            --report artifacts/v2/diagnostics/external-shadow/dastan.json \
-            --max-attempts 2 \
-            --wall-clock-seconds 900
+          test "$(git -C "$APEX_CORE_PATH" rev-parse HEAD)" = "$APEX_CODE_SHA"
+          rm -f "$GITHUB_WORKSPACE/acquisition/providers/dastan.csv"
+          (
+            cd "$APEX_CORE_PATH"
+            python "$RUNNER_TEMP/apex_v2_shadow_provider_ops.py" dastan-run \
+              --runner "$APEX_CORE_PATH/scripts/acquire_dastan_shadow.py" \
+              --expected-official-hash '${{ steps.official_seal.outputs.hash }}' \
+              --lock "$RUNNER_TEMP/apex-v2-upstreams.lock.json" \
+              --report "$GITHUB_WORKSPACE/artifacts/v2/diagnostics/external-shadow/dastan.json" \
+              --max-attempts 2 \
+              --wall-clock-seconds 900
+          )
+          test -s "$APEX_CORE_PATH/acquisition/providers/dastan.csv"
+          mkdir -p "$GITHUB_WORKSPACE/acquisition/providers"
+          cp "$APEX_CORE_PATH/acquisition/providers/dastan.csv" \
+            "$GITHUB_WORKSPACE/acquisition/providers/dastan.csv"
+          test -s "$GITHUB_WORKSPACE/acquisition/providers/dastan.csv"
 
       - name: Combine shadow-provider health diagnostics
         if: always()
