@@ -83,7 +83,6 @@ A replay decision may consume only immutable inputs proven available before its 
 ## D027 — Stateful rules are season-versioned
 Free-transfer initialization, special top-ups, chip windows and other state transitions belong to an explicit `SeasonRules` contract. Historical replay must never inherit a later season's rules silently. Before GW1 the initial squad has unlimited changes but zero bankable FTs; the first FT is available for GW2.
 
-
 ## D028 — Current role evidence supersedes stale minutes priors
 The maximum-EV optimiser remains unchanged: it already maximises canonical raw xP. The conservative selection bias was traced to expected-minutes construction, where a fixed preseason blend could leave repeated current team-sheet evidence dominated by a prior-season role that no longer applied. Preseason weight now rises with repeated appearances and starts, capped at 82%, and verified deadline evidence may explicitly override expected minutes/start/appearance probabilities. Official injury, suspension and negative availability evidence is applied after those upside signals and remains a hard ceiling. Confidence and CVaR remain diagnostics; they do not discount canonical xP a second time.
 
@@ -110,3 +109,17 @@ and MILP incumbent/bound/gap/termination metadata.
 Effective for the certified 2026/27 V2 runtime, the frozen engine is `99cc7b51b0cff45462b567084cb1844cfe0a456f`; PR #90 must never be merged or advanced; `.github/workflows/apex-v2-daily-production.yml` is the sole production execution path; AIrsenal is the sole serving provider H1–H8; and immutable `apex-v2` final releases are the serving authority. Prospective tournament and Decision Quality evidence remain non-serving with `production_influence = NONE`, `serving_authorized = false`, and no automatic challenger promotion.
 
 Earlier decisions are retained as historical design records. Where D002, D004, D006–D007, D017–D018, D021–D024, D029 or any other pre-V2 decision describes Pinnacle, Elite, `scripts/run_apex.py`, generated repository files, or a blended projection layer as current production authority, that production-authority statement is superseded by this decision and `docs/APEX_V2_AUTHORITY.json`. Their still-applicable modelling, audit and no-hindsight principles remain historical context unless the frozen V2 constitution says otherwise.
+
+## D032 — One capability/documentation constitution, no duplicated authority
+
+FPL Apex uses one discoverable documentation hierarchy: immutable evidence → machine authority → canonical master state → capability registry → current system map → capability runbooks/contracts → append-only decision history → code/tests → conversation memory.
+
+`docs/APEX_CAPABILITY_REGISTRY.yaml` is the single semantic capability index across the public and private planes. It assigns stable capability IDs and maps purpose, lifecycle, authority references, ref-aware entry points, inputs/outputs, dependencies, privacy, invariants, failure behavior, runbooks, tests, runtime acceptance and registered change surfaces. It is **not** serving authority and must not copy movable production-core SHAs, workflow run IDs, current release identity, current owner squad/bank/free transfers/prices or live provider health. Private capabilities are indexed publicly at the semantic level; the private repository validates its own paths and must not create a competing semantic registry.
+
+`docs/APEX_ARCHITECTURE.md` is the single current cross-repository V2 system map. Older architecture and `scripts/run_apex.py`/generated-recommendation canonical-policy documents are retained and visibly classified as historical/non-serving rather than silently rewritten or deleted.
+
+`docs/APEX_DECISION_INDEX.yaml` records active/partially-superseded/superseded/historical status and affected capability IDs while `docs/APEX_DECISIONS.md` remains the append-only rationale source.
+
+Repository changes declare `Apex-Capabilities`, authority impact, invariant impact and reopened decisions. `scripts/check_capability_registry.py` compares that declaration with the actual diff, validates ref-aware entry points, active workflow/`scripts/apex_v2_*.py` coverage, serving/research boundaries and decision-index completeness. The checker is wired into existing Apex CI and Apex V2 Ops Contract rather than creating a new required workflow.
+
+This constitution changes documentation/governance only. It does not change PR #90 policy, `production_core_sha`, serving provider/horizons, production solve/publication semantics, models, research methodology, private owner state, runner spending/billing policy or any production recommendation.
