@@ -1,10 +1,10 @@
 # FPL Apex — Master Context
 
-**Canonical Project Brain for Apex V2.** Read the machine authority first: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
+**Supporting Project Brain / constitutional context.** Read [`FPL_APEX_MASTER_STATE.md`](FPL_APEX_MASTER_STATE.md) first for current continuity/history, then machine authority [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json). Machine authority and immutable release evidence outrank prose.
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`; at the 4 September 2026 continuity snapshot it is `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
 
 ## Mission
 
@@ -30,6 +30,16 @@ Separately, run rigorous prospective/no-hindsight research to measure forecast q
 
 Official FPL is factual authority for identity, club, FPL position, price, status/availability and fixtures.
 
+## Current production closure
+
+Canonical production run #9 (`33850307770`, immutable run `33850307770-1`) successfully completed for GW3 using production core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`. PR #146 permanently established the production single-solve / witness-only publication semantics and PR #147 promoted that exact core.
+
+The only outstanding system-acceptance gate is private strategy-query execution in exact and `latest` modes. GitHub Actions currently rejects those jobs before runner allocation because of owner account billing/spending state. This is not a serving-model defect. Until the private bridge actually executes both modes successfully, status is:
+
+**PRODUCTION PIPELINE PASSED; PRIVATE QUERY ACCEPTANCE BLOCKED BY GITHUB BILLING**
+
+The exact evidence and closure steps are maintained in `FPL_APEX_MASTER_STATE.md` and the private repository companion.
+
 ## One production recommendation
 
 The serving result is the immutable Apex V2 final produced by the authenticated production workflow using the exact authority-declared `production_core_sha`. It contains the legal action from exact current state: transfers/roll, XI, captain, vice, bench order and exact mechanics, with horizon planning/contingencies where supported by the serving-core contract.
@@ -53,6 +63,8 @@ Apex V2 Daily Production:
 11. solves with network access disabled and checks exact architecture/mechanics and qualification;
 12. publishes private prerequisites then the immutable public final, again bound to the same serving-core SHA.
 
+Publication performs deterministic frozen-witness verification and must not rerun the optimiser.
+
 No research workflow may acquire/solve/publish a serving recommendation.
 
 ## Prospective tournament and decision edge
@@ -69,7 +81,7 @@ A forecast or decision variant must be immutably committed before the relevant O
 
 ## Manager-state law
 
-Never reconstruct the current squad from conversation history, an old screenshot, a historical generated file or a shadow provider. Use the authenticated production manager state for entry 63984. A current user-supplied private state may be evidence only where the current control plane explicitly supports it; do not bypass production governance manually.
+Never reconstruct the current squad from conversation history, an old screenshot, a historical generated file or a shadow provider. Use the authenticated production manager state for entry 63984 through the approved private persistence/query boundary. A current user-supplied private state may be evidence only where the current control plane explicitly supports it; do not bypass production governance manually.
 
 AIrsenal worker setup team ID `1` is deliberately an upstream database-initialisation placeholder. The worker produces player forecasts and skips manager-specific transaction updates; it is not the production manager identity and must not be changed to 63984 as an operations fix.
 
@@ -79,15 +91,18 @@ Normal operations may change scheduling, bounded auth recovery, evaluation orche
 
 Never alter candidate depth, horizon, MILP precision or exact mechanics merely to make research faster. Runtime/orchestration must accommodate certified semantics instead.
 
+Every tracked repository change must also update `FPL_APEX_MASTER_STATE.md` in the same change unless the master ledger is the only tracked file changed. This is an enforced continuity requirement, not a production-authority promotion mechanism.
+
 ## Continuity protocol
 
 Before substantive Apex work:
 
-1. read `APEX_V2_AUTHORITY.json`;
-2. read `CURRENT_STATE.md`;
-3. read this file and `APEX_OPERATING_MANUAL.md`;
+1. read `FPL_APEX_MASTER_STATE.md` completely;
+2. read `APEX_V2_AUTHORITY.json`;
+3. read `CURRENT_STATE.md`, this file and `APEX_OPERATING_MANUAL.md`;
 4. read `APEX_V2_DAILY_OPERATIONS.md` plus the relevant V2 research/operations runbook;
 5. verify live GitHub `main`, PR #90, `production_core_sha`, workflow runs and immutable release state;
-6. only then implement or answer.
+6. for owner-state questions, use the private query boundary rather than conversation memory;
+7. update the master ledger with every tracked repository change and exact completion evidence.
 
 Repository history remains useful evidence, but it may not overrule the current V2 authority chain.
