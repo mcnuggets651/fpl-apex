@@ -30,7 +30,9 @@ Immutable release evidence + live GitHub / Official FPL facts
 
 The capability registry does **not** select a production core, provider, run, release, squad or current health state. It points to the machine authority and to the code/runbooks/tests that implement each capability.
 
-## 2. Manager question / ChatGPT path
+## 2. Manager question / ChatGPT paths
+
+### Classic FPL owner path
 
 ```text
 User / ChatGPT
@@ -55,14 +57,59 @@ authority-correct immutable private manager release
 verified squad / transfer / strategy answer
 ```
 
+### FPL Draft owner path
+
+```text
+User / ChatGPT
+      |
+      | read continuity + capability registry + Draft runbook
+      v
+mcnuggets651/fpl
+(private live Draft query)
+      |
+      +--> Official Draft public league/details/status/bootstrap
+      |         |
+      |         +--> exact roster
+      |         +--> available / locked pool
+      |         +--> public league history
+      |
+      v
+narrow private Draft query artifact
+```
+
+Pending/open personal Draft transactions use a separate authenticated side channel so reusable credentials never move into the private query workflow:
+
+```text
+mcnuggets651/fpl-apex
+(existing governed owner-auth lifecycle)
+      |
+      | certified bearer/cookie/refresh transport
+      v
+Official FPL Draft authenticated entry transaction endpoint
+      |
+      | allowlist + credential stripping
+      v
+credential-free repository_dispatch
+      |
+      v
+mcnuggets651/fpl
+(private relay validation + short-retention artifact)
+      |
+      v
+fresh ChatGPT pending/open-waiver answer
+```
+
 Rules:
 
-- owner state is never reconstructed from conversation memory, screenshots or historical generated recommendation files;
+- Classic owner state is never reconstructed from conversation memory, screenshots or historical generated recommendation files;
+- Draft roster/waiver state is never reconstructed from memory, screenshots or old transaction rows when the live query is required;
 - `latest` is authority-first, not newest-timestamp-first;
-- an explicit historical run may be queried, but it is labelled historical rather than treated as current authority;
-- credentials, private-auth material, commitment keys and unfiltered private payloads never enter the public repository or public answer surface.
+- an explicit historical Classic run may be queried, but it is labelled historical rather than treated as current authority;
+- Draft and Classic player element IDs are separate namespaces; projection joins reconcile by name + club + position;
+- reusable credentials, private-auth material, commitment keys, raw authenticated Draft bodies and unfiltered private payloads never enter the public repository or public answer surface;
+- an empty pending Draft queue is valid only after the authenticated endpoint succeeds and the private relay records a successful snapshot.
 
-The detailed manager-query contract is `docs/CHATGPT_APEX_QUERY_POLICY.md`. Private implementation lives in `mcnuggets651/fpl`; the public registry records that capability semantically without duplicating private state.
+The detailed manager-query contract is `docs/CHATGPT_APEX_QUERY_POLICY.md`. Draft-specific procedure is `docs/APEX_DRAFT_QUERY.md`. Private implementation lives in `mcnuggets651/fpl`; the public registry records those capabilities semantically without duplicating private state.
 
 ## 3. Canonical production path
 
@@ -108,6 +155,8 @@ deterministic publication witness
 
 The control plane on `main` orchestrates and governs production. The serving implementation is materialised from the exact `production_core_sha` declared by machine authority. Therefore a path that exists in the serving core but not on mutable `main` is not missing; capability/path validation must resolve against the correct authority ref.
 
+The Draft query/relay path is **outside** the production solve/publish chain. It cannot create or alter a Classic serving decision and cannot submit Draft transactions.
+
 ### Production invariants
 
 - `.github/workflows/apex-v2-daily-production.yml` is the canonical production workflow only while machine authority says so.
@@ -127,6 +176,7 @@ Current provider roles/horizons are intentionally **not copied here**; read `doc
 ```text
                     +--> Auth keepalive
                     +--> Direct-auth incident diagnostic
+                    +--> Authenticated Draft transaction relay
                     +--> Deadline watch
 Production evidence +--> Daily prospective evaluation
                     +--> Owner brief
@@ -134,9 +184,14 @@ Production evidence +--> Daily prospective evaluation
                     +--> Failed/orphan attempt audit
 ```
 
-Operations capabilities support or inspect production but do not create a second serving authority. Their exact entry points, runbooks, tests and failure behavior are indexed by `OPS-*` capabilities in `docs/APEX_CAPABILITY_REGISTRY.yaml`.
+Operations capabilities support or inspect production/interaction state but do not create a second serving authority. The authenticated Draft relay shares the existing non-cancelling owner-auth concurrency boundary and emits only a credential-free private dispatch; it does not publish a public owner artifact.
 
-The principal live operations runbook is `docs/APEX_V2_DAILY_OPERATIONS.md`.
+Exact entry points, runbooks, tests and failure behavior are indexed by `OPS-*` capabilities in `docs/APEX_CAPABILITY_REGISTRY.yaml`.
+
+Principal runbooks:
+
+- `docs/APEX_V2_DAILY_OPERATIONS.md` for production-support operations;
+- `docs/APEX_DRAFT_QUERY.md` for the live Draft owner query and authenticated relay.
 
 ## 5. Research plane and hard serving barrier
 
@@ -188,6 +243,8 @@ Owns:
 - machine serving authority;
 - public control plane/workflows;
 - authority-selected production-core pointer;
+- governed FPL owner-auth lifecycle;
+- credential-stripping authenticated Draft relay producer;
 - research-safe immutable publication;
 - operations and research orchestration;
 - canonical public master state, capability registry, system map and decision history.
@@ -195,8 +252,10 @@ Owns:
 Must not contain:
 
 - credentials or private-auth payloads;
+- authenticated raw Draft owner transaction bodies;
 - exact unfiltered manager state from private releases;
 - private commitment material;
+- a public artifact containing owner Draft transaction state;
 - a copied private semantic registry that could drift from the public one.
 
 ### Private repository — `mcnuggets651/fpl`
@@ -204,13 +263,15 @@ Must not contain:
 Owns:
 
 - immutable private manager/provider persistence;
-- authority-first owner queries;
+- authority-first Classic owner queries;
 - exact multi-week strategy query output;
+- live Official Draft roster/available/locked query artifacts;
+- validated credential-free authenticated Draft transaction relay artifacts;
 - safe manager-shape diagnostics;
 - repository-scoped self-hosted execution;
 - private continuity contract.
 
-It does **not** own public serving authority. A later bounded private governance change may consume the public capability registry and validate private bindings locally; it must not create a competing registry.
+It does **not** own public serving authority. It consumes the public capability registry and validates private bindings locally; it must not create a competing registry. Reusable FPL authentication remains outside the private Draft query workflow.
 
 ## 7. Capability/documentation constitution
 
@@ -298,6 +359,7 @@ The machine authority's `legacy` section and `LEG-*` registry capabilities own t
 - Decision rationale: `docs/APEX_DECISIONS.md`
 - Daily production/operations: `docs/APEX_V2_DAILY_OPERATIONS.md`
 - Manager-query rules: `docs/CHATGPT_APEX_QUERY_POLICY.md`
+- FPL Draft owner query/relay: `docs/APEX_DRAFT_QUERY.md`
 - Research tournament: `docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md`
 - Parallel decision research: `docs/operations/PARALLEL_DECISION_LAB.md`
 - Shadow reliability: `docs/operations/SHADOW_PROVIDER_RELIABILITY.md`
