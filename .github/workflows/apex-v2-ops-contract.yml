@@ -10,6 +10,7 @@ on:
       - "AGENTS.md"
       - "CLAUDE.md"
       - "scripts/apex_v2_*.py"
+      - "scripts/check_capability_registry.py"
       - "scripts/check_governance_consistency.py"
       - "scripts/check_master_state_sync.py"
       - "ops_tests/**"
@@ -20,8 +21,14 @@ on:
       - "tests/test_solver_parity_contract.py"
       - "README.md"
       - "PROJECT_STATUS.md"
+      - "docs/README.md"
       - "docs/APEX_V2_AUTHORITY.json"
       - "docs/FPL_APEX_MASTER_STATE.md"
+      - "docs/APEX_CAPABILITY_REGISTRY.yaml"
+      - "docs/APEX_DECISION_INDEX.yaml"
+      - "docs/APEX_ARCHITECTURE.md"
+      - "docs/ARCHITECTURE.md"
+      - "docs/APEX_CANONICAL_DECISION_POLICY.md"
       - "docs/CURRENT_STATE.md"
       - "docs/APEX_MASTER_CONTEXT.md"
       - "docs/APEX_OPERATING_MANUAL.md"
@@ -103,6 +110,7 @@ jobs:
               "scripts/apex_v2_tournament_contract.py",
               "scripts/apex_v2_tournament_ops.py",
               "scripts/apex_v2_tournament_scoring.py",
+              "scripts/check_capability_registry.py",
               "scripts/check_governance_consistency.py",
               "scripts/check_master_state_sync.py",
               "tests/test_airsenal_source_absence_policy.py",
@@ -112,8 +120,14 @@ jobs:
               "tests/test_solver_parity_contract.py",
               "README.md",
               "PROJECT_STATUS.md",
+              "docs/README.md",
               "docs/APEX_V2_AUTHORITY.json",
               "docs/FPL_APEX_MASTER_STATE.md",
+              "docs/APEX_CAPABILITY_REGISTRY.yaml",
+              "docs/APEX_DECISION_INDEX.yaml",
+              "docs/APEX_ARCHITECTURE.md",
+              "docs/ARCHITECTURE.md",
+              "docs/APEX_CANONICAL_DECISION_POLICY.md",
               "docs/CURRENT_STATE.md",
               "docs/APEX_MASTER_CONTEXT.md",
               "docs/APEX_OPERATING_MANUAL.md",
@@ -219,6 +233,19 @@ jobs:
           if not changed:
               raise SystemExit("ops/governance PR has no changes")
           PY
+
+      - name: Assert semantic capability registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE_SHA="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path("docs/APEX_V2_AUTHORITY.json").read_text(encoding="utf-8"))["production_core_sha"])
+          PY
+          )"
+          git fetch --no-tags origin "$FROZEN_APEX_SHA" "$CORE_SHA"
+          python scripts/check_capability_registry.py
 
       - name: Materialize and install exact frozen evaluator source
         shell: bash
