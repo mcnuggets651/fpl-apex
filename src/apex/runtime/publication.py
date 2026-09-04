@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import json
-import tempfile
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from apex.domain.models import ProviderHealth, dataclass_to_dict
+from apex.decision.mechanics import decision_from_fixed_squad
+from apex.decision.validate import validate_system_decision
+from apex.domain.models import ProviderHealth, SystemDecision, dataclass_to_dict
+from apex.governance.certification import certify
 from apex.runtime.serde import official_from_dict, team_from_dict
 from apex.runtime.serving import reconstruct_frozen_serving
 from apex.runtime.snapshot import open_frozen_snapshot
-from apex.runtime.solve import _runtime_freshness, solve_snapshot
+from apex.runtime.solve import (
+    _evidence_acquisition_state,
+    _runtime_freshness,
+    snapshot_evaluation_time,
+)
 
 from . import publication_impl as _impl
 
@@ -151,24 +158,109 @@ def _replay_mismatch_paths(observed, expected, path: str = "$") -> list[str]:
     return [] if observed == expected else [path]
 
 
-def _assert_decision_matches_frozen_replay(snapshot, decision: dict) -> None:
-    """Fail closed unless an offline re-solve reproduces the published decision."""
-    with tempfile.TemporaryDirectory(prefix="apex-v2-publication-replay-") as tmp:
-        replay_bundle = solve_snapshot(
-            snapshot.root,
-            Path(tmp) / "decision_bundle.json",
+def _system_decision_from_dict(value) -> SystemDecision | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise RuntimeError("DecisionBundle system decision is invalid")
+    try:
+        return SystemDecision(
+            int(value["schema_version"]),
+            tuple(map(int, value["squad_ids"])),
+            tuple(map(int, value["xi_ids"])),
+            int(value["captain_id"]),
+            int(value["vice_captain_id"]),
+            tuple(map(int, value["bench_order"])),
+            tuple(map(int, value.get("transfers_in", []))),
+            tuple(map(int, value.get("transfers_out", []))),
+            float(value["objective"]),
+            int(value["horizon"]),
+            int(value.get("transfer_hits", 0)),
+            str(value["decision_mode"]),
         )
-    expected = replay_security_payload(dataclass_to_dict(replay_bundle))
-    observed = replay_security_payload(decision)
-    if _impl.canonical_json_bytes(observed) != _impl.canonical_json_bytes(expected):
-        mismatch_paths = _replay_mismatch_paths(observed, expected)
-        diagnostic = ", ".join(mismatch_paths[:20])
-        if len(mismatch_paths) > 20:
-            diagnostic += f", ... (+{len(mismatch_paths) - 20} more)"
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("DecisionBundle system decision is invalid") from exc
+
+
+def _assert_decision_witness(snapshot, decision: dict) -> None:
+    """Verify the frozen decision deterministically without rerunning the MILP.
+
+    Publication verifies the optimiser's witness: exact frozen inputs, legal FPL
+    mechanics, recomputed H1 lineup/objective, and independently reconstructed
+    certification. Re-optimising the same 8-GW MIP here duplicated 30+ minutes of
+    work and made wall-clock-bounded search telemetry a false security boundary.
+    """
+    official = official_from_dict(snapshot.read_json("official.json"))
+    team_raw = snapshot.read_json("team_state.json")
+    team = team_from_dict(team_raw) if team_raw else None
+    run = snapshot.read_json("run.json")
+    matrix = snapshot.read_json("qualification_matrix.json")
+    _, _, policy, _, canonical = reconstruct_frozen_serving(
+        snapshot, official, team, run, matrix
+    )
+    system = _system_decision_from_dict(decision.get("system_decision"))
+
+    if system is not None:
+        errors = validate_system_decision(official, system, team)
+        if errors:
+            raise RuntimeError(
+                "DecisionBundle system decision fails frozen FPL mechanics: "
+                + "; ".join(errors)
+            )
+        if canonical is None:
+            raise RuntimeError("DecisionBundle decision exists without serving projection")
+        excluded = frozenset(
+            int(row["element_id"])
+            for row in snapshot.read_json("evidence.json")
+            if row.get("effect") == "HARD_EXCLUDE"
+            and int(row.get("gameweek", -1)) == int(run["target_gameweek"])
+        )
+        recomputed = decision_from_fixed_squad(
+            official,
+            canonical,
+            system.squad_ids,
+            horizon=1,
+            transfers_in=system.transfers_in,
+            transfers_out=system.transfers_out,
+            transfer_hits=system.transfer_hits,
+            decision_mode=system.decision_mode,
+            xi_excluded=excluded,
+        )
+        recomputed = replace(recomputed, horizon=system.horizon)
+        if _impl.canonical_json_bytes(dataclass_to_dict(recomputed)) != (
+            _impl.canonical_json_bytes(dataclass_to_dict(system))
+        ):
+            raise RuntimeError(
+                "DecisionBundle system decision does not match frozen exact mechanics"
+            )
+
+    certification = decision.get("certification")
+    diagnostics = decision.get("provider_diagnostics")
+    if not isinstance(certification, dict) or not isinstance(diagnostics, dict):
+        raise RuntimeError("DecisionBundle certification/diagnostics are invalid")
+    evaluation_now = snapshot_evaluation_time(snapshot, run)
+    serving_h1 = _runtime_freshness(policy.get(1), snapshot, evaluation_now)
+    evidence_complete, _, _ = _evidence_acquisition_state(snapshot, run, official)
+    evidence_errors = snapshot.read_json("evidence_validation.json").get("errors", [])
+    expected_certification = certify(
+        official=official,
+        serving=serving_h1,
+        decision=system,
+        team_state=team,
+        hard_evidence_conflict=bool(evidence_errors),
+        evidence_acquisition_complete=evidence_complete,
+        contingency_model_complete=(
+            int(diagnostics.get("contingency_qualified_horizon") or 0) >= 1
+        ),
+        degraded_warnings=tuple(certification.get("warnings") or []),
+        valid_until=run["deadline"],
+        now=evaluation_now,
+    )
+    if _impl.canonical_json_bytes(dataclass_to_dict(expected_certification)) != (
+        _impl.canonical_json_bytes(certification)
+    ):
         raise RuntimeError(
-            "DecisionBundle recommendation/certification does not match "
-            "deterministic replay of the frozen snapshot; "
-            f"value-free mismatch paths: {diagnostic or '$'}"
+            "DecisionBundle certification does not match frozen witness verification"
         )
 
 
@@ -241,7 +333,7 @@ def build_publication_materials(
     decision = json.loads(Path(decision_path).read_text(encoding="utf-8"))
     run = snapshot.read_json("run.json")
     _impl._assert_decision_bound_to_snapshot(snapshot, decision, run)
-    _assert_decision_matches_frozen_replay(snapshot, decision)
+    _assert_decision_witness(snapshot, decision)
     return _impl.build_publication_materials(
         snapshot_path,
         decision_path,
