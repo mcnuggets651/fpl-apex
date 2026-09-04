@@ -1,0 +1,100 @@
+name: Temporary PITCHSIDE closure ledger updater
+
+on:
+  push:
+    branches:
+      - docs/record-pitchside-recovery-closure
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: docs/record-pitchside-recovery-closure
+          fetch-depth: 0
+
+      - name: Record merged/runtime PITCHSIDE closure
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('docs/FPL_APEX_MASTER_STATE.md')
+          text = path.read_text(encoding='utf-8')
+
+          old = '**State snapshot:** 4 September 2026, after PR #158 merged the exact-ID auth activation-race repair and the GW3 PITCHSIDE postmortem exposed a bounded prospective-tournament reseal defect now being repaired on `agent/pitchside-predeadline-recovery`'
+          new = '**State snapshot:** 4 September 2026, after PR #160 merged the PITCHSIDE predeadline tournament recovery repair and post-merge tournament run `33927642761` safely proved no retrospective GW3 reseal after the deadline'
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new, 1)
+
+          old = '- active bounded research-operations repair branch: `agent/pitchside-predeadline-recovery`;'
+          new = '- PR #160, **Fix PITCHSIDE predeadline tournament recovery**, exact head `f7b67d0a79acef82ee4fa0b0b858a207810f5521`, passed Apex CI `33927262385` and Ops Contract `33927262342`, then merged at `4e02c315509f41865198dd3cc1ea6098c5bd2f73`;'
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new, 1)
+
+          old = 'The GW3 postmortem identified a separate research-only defect: one immutable tournament candidate per production `run_id` plus schedule-only maintenance meant a PITCHSIDE DNS could not recover automatically if the external source became complete later before deadline. `agent/pitchside-predeadline-recovery` makes external seals content-addressed, lets the existing hourly schedule reseal the same immutable production run when evidence changes, and selects the latest valid `tournament_sealed_at`. Production authority, optimiser semantics, research influence and frozen PR #90 remain unchanged.'
+          new = 'The GW3 postmortem identified a separate research-only defect: one immutable tournament candidate per production `run_id` plus schedule-only maintenance meant a PITCHSIDE DNS could not recover automatically if the external source became complete later before deadline. PR #160 closed that defect: external seals are content-addressed, the existing hourly schedule can reseal the same immutable production run when evidence changes, and canonical selection uses the latest valid `tournament_sealed_at`. Post-merge run `33927642761` completed both seal and maintenance successfully and returned `NO_ELIGIBLE_SOURCE` because GW3 was already past deadline, proving the repair does not backfill hindsight evidence. Production authority, optimiser semantics, research influence and frozen PR #90 remain unchanged.'
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new, 1)
+
+          pattern = r'## 11\. Next actions — close PITCHSIDE reseal recovery and verify live runtime state from evidence[\s\S]*?\n---\n\n## 12\. Change-control protocol for all future work'
+          replacement = '''## 11. Next actions — normal operations and next live PITCHSIDE recovery proof
+
+The PITCHSIDE orchestration defect is merged and post-merge safe-noop acceptance is complete. No further GW3 repair is permitted or required: the deadline has passed and the immutable prospective record must remain untouched.
+
+For the next still-predeadline Gameweek:
+
+1. allow the normal hourly prospective-tournament schedule to re-capture PITCHSIDE against the exact eligible production Official hash;
+2. if an early PITCHSIDE attempt is DNS and a materially changed external publication becomes valid before deadline, require a distinct content-addressed seal while retaining the earlier DNS evidence;
+3. require canonical selection after deadline to choose the latest valid `tournament_sealed_at`;
+4. treat that DNS→ENTERED transition as the remaining live runtime proof of recovery semantics, not as a condition for considering PR #160 merged/accepted;
+5. never weaken completeness, freshness, Official-hash or no-hindsight gates merely to make PITCHSIDE enter.
+
+Normal operations remain: keep the private runner healthy, verify current auth/Draft state from governed runtime evidence, keep Deadline Watch/auth/production workflows healthy, obtain fresh Official FPL/provider state each deadline, use private `latest` for Classic owner retrieval, keep research non-serving, keep PR #90 frozen and update this ledger whenever substantive state changes.
+
+---
+
+## 12. Change-control protocol for all future work'''
+          text, count = re.subn(pattern, replacement, text, count=1)
+          assert count == 1, count
+
+          marker = '## 13. Changelog for this ledger\n\n'
+          assert text.count(marker) == 1, text.count(marker)
+          entry = '''### 2026-09-04 — PITCHSIDE predeadline recovery merged and post-merge safe-noop accepted
+
+- PR #160 exact head `f7b67d0a79acef82ee4fa0b0b858a207810f5521` passed Apex CI `33927262385` and Apex V2 Ops Contract `33927262342`, including semantic capability coverage, frozen-evaluator regressions and production-core readiness;
+- PR #160 squash-merged to `main` at `4e02c315509f41865198dd3cc1ea6098c5bd2f73`;
+- post-merge Prospective Tournament run `33927642761` completed both `seal` and `maintenance` successfully;
+- its source resolver examined 18 final releases, found zero still-predeadline eligible sources, classified 17 as `DEADLINE_PASSED` and one historical release as `MISSING_PUBLIC_ATTEMPT_ASSET`, and therefore correctly skipped OpenFPL/PITCHSIDE resealing for GW3;
+- source-resolution artifact `apex-v2-tournament-source-33927642761`, artifact ID `9957383169`, SHA-256 `c4eac0241d8ad53eaeb19704603e1f0088d9b25ae53a9ee081b91cad264f2034`, preserves that no-hindsight acceptance evidence;
+- future still-predeadline runs now support content-addressed repeated PITCHSIDE seals for one immutable production run, unchanged-byte idempotency and latest-valid-`tournament_sealed_at` canonical selection;
+- AIrsenal serving authority, machine authority, OpenFPL's 10-GW readiness policy and frozen PR #90 were unchanged.
+
+'''
+          text = text.replace(marker, marker + entry, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify ledger diff
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff -- docs/FPL_APEX_MASTER_STATE.md
+          grep -F 'PR #160' docs/FPL_APEX_MASTER_STATE.md >/dev/null
+          grep -F '33927642761' docs/FPL_APEX_MASTER_STATE.md >/dev/null
+
+      - name: Commit ledger only
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/FPL_APEX_MASTER_STATE.md
+          git commit -m 'Record PITCHSIDE recovery closure evidence'
+          git push origin HEAD:docs/record-pitchside-recovery-closure
