@@ -29,6 +29,13 @@ DEFAULT_ENTRY_NAME = "mcnuggets"
 DEFAULT_TIMEOUT = 25
 MAX_ROWS = 100
 MAX_DISPATCH_BYTES = 60_000
+INTERESTING_SCHEMA_FRAGMENTS = (
+    "transaction",
+    "waiver",
+    "request",
+    "pending",
+    "trade",
+)
 SAFE_TRANSACTION_FIELDS = {
     "id",
     "event",
@@ -60,6 +67,8 @@ SAFE_TRANSACTION_FIELDS = {
     "vetoed",
     "deadline",
     "stage",
+    "added",
+    "index",
 }
 FORBIDDEN_KEY_FRAGMENTS = ("token", "cookie", "authorization", "secret", "credential")
 
@@ -254,6 +263,79 @@ def _safe_rows(payload: Any, players: dict[int, str], *, limit: int) -> list[dic
     return safe_rows
 
 
+def _transaction_resolution_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Classify only by whether Official Draft has supplied a result code.
+
+    A missing result is deliberately called ``unresolved`` rather than ``pending``
+    until runtime evidence proves that the upstream field has that exact semantic.
+    """
+
+    resolved = 0
+    unresolved = 0
+    for row in rows:
+        result = row.get("result")
+        if result is None or not str(result).strip():
+            unresolved += 1
+        else:
+            resolved += 1
+    return {"resolved": resolved, "unresolved": unresolved}
+
+
+def _interesting_schema(payload: Any) -> dict[str, Any]:
+    """Return schema-only diagnostics with no scalar owner values.
+
+    The purpose is to discover authenticated Draft surfaces without ever logging
+    raw manager state. Only key names, container types, list counts and sample
+    field names are retained.
+    """
+
+    result: dict[str, Any] = {
+        "type": "object" if isinstance(payload, dict) else type(payload).__name__,
+        "top_level_keys": sorted(str(key) for key in payload) if isinstance(payload, dict) else [],
+        "interesting_paths": [],
+    }
+
+    def walk(value: Any, path: str, depth: int) -> None:
+        if depth > 5:
+            return
+        if isinstance(value, dict):
+            for key, child in value.items():
+                key_text = str(key)
+                child_path = f"{path}.{key_text}" if path else key_text
+                lowered = key_text.casefold()
+                if any(fragment in lowered for fragment in INTERESTING_SCHEMA_FRAGMENTS):
+                    item: dict[str, Any] = {"path": child_path}
+                    if isinstance(child, dict):
+                        item.update(
+                            {
+                                "type": "object",
+                                "keys": sorted(str(child_key) for child_key in child),
+                            }
+                        )
+                    elif isinstance(child, list):
+                        fields: set[str] = set()
+                        for sample in child[:3]:
+                            if isinstance(sample, dict):
+                                fields.update(str(sample_key) for sample_key in sample)
+                        item.update(
+                            {
+                                "type": "list",
+                                "count": len(child),
+                                "sample_fields": sorted(fields),
+                            }
+                        )
+                    else:
+                        item["type"] = type(child).__name__
+                    result["interesting_paths"].append(item)
+                walk(child, child_path, depth + 1)
+        elif isinstance(value, list):
+            for index, child in enumerate(value[:3]):
+                walk(child, f"{path}[]" if path else "[]", depth + 1)
+
+    walk(payload, "", 0)
+    return result
+
+
 def _reject_sensitive_keys(value: Any, *, path: str = "payload") -> None:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -308,6 +390,21 @@ def build_relay(
     if status != 200:
         raise DraftRelayError(f"Official Draft entry transactions unavailable: HTTP {status}")
 
+    rows = _safe_rows(transactions, players, limit=max_rows)
+    resolution = _transaction_resolution_counts(rows)
+
+    my_team_status, my_team = client.get_json(f"entry/{team_entry_id}/my-team", headers)
+    if my_team_status == 200:
+        my_team_diagnostic = {
+            "status": "ok",
+            "schema": _interesting_schema(my_team),
+        }
+    else:
+        my_team_diagnostic = {
+            "status": f"http_{my_team_status}",
+            "schema": {"type": "unavailable", "top_level_keys": [], "interesting_paths": []},
+        }
+
     relay = {
         "schema_version": 1,
         "contract": CONTRACT,
@@ -318,8 +415,12 @@ def build_relay(
         "entry_transactions": {
             "status": "ok",
             "auth_mode": auth_mode,
-            "rows": _safe_rows(transactions, players, limit=max_rows),
+            "rows": rows,
+            "resolution": resolution,
         },
+        # Schema-only metadata. The private relay validator is free to discard it;
+        # it exists so endpoint drift can be diagnosed without logging owner values.
+        "source_diagnostics": {"entry_my_team": my_team_diagnostic},
         "producer": {
             "repository": producer_repository,
             "run_id": str(producer_run_id),
@@ -368,7 +469,10 @@ def main() -> int:
                     "entry_name": relay["entry"]["entry_name"],
                     "team_entry_id": relay["entry"]["team_entry_id"],
                     "transaction_rows": len(relay["entry_transactions"]["rows"]),
+                    "resolved_transaction_rows": relay["entry_transactions"]["resolution"]["resolved"],
+                    "unresolved_transaction_rows": relay["entry_transactions"]["resolution"]["unresolved"],
                     "auth_mode": relay["entry_transactions"]["auth_mode"],
+                    "entry_my_team_schema": relay["source_diagnostics"]["entry_my_team"],
                     "dispatch_status": status,
                 },
                 sort_keys=True,
