@@ -348,7 +348,6 @@ def check_non_serving_boundaries(failures: list[str]) -> None:
         "group: apex-v2-fpl-auth",
         "cancel-in-progress: false",
         "scripts/apex_v2_draft_auth_relay_ops.py",
-        "apex-draft-auth-snapshot",
         "APEX_V2_PRIVATE_REPO_TOKEN",
     ):
         if needle not in draft:
@@ -361,6 +360,15 @@ def check_non_serving_boundaries(failures: list[str]) -> None:
     ):
         if forbidden in draft:
             failures.append(f"Draft auth relay crossed safety boundary: {forbidden}")
+    draft_controller = text("scripts/apex_v2_draft_auth_relay_ops.py")
+    for needle in (
+        'DISPATCH_EVENT = "apex-draft-auth-snapshot"',
+        'CONTRACT = "apex-private-draft-auth-relay-v1"',
+        'method="GET"',
+        '/dispatches',
+    ):
+        if needle not in draft_controller:
+            failures.append(f"Draft relay controller contract missing: {needle}")
 
     # Tournament/research stays bound to the immutable evaluator lineage. It is
     # explicitly non-serving and must not become an alternate promotion path.
