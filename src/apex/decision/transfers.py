@@ -53,7 +53,7 @@ def optimise_transfer_horizon(
     *,
     max_horizon: int,
     excluded_h1: frozenset[int] = frozenset(),
-    candidate_limit: int = 1,
+    candidate_limit: int = 8,
     candidate_regret_fraction: float = 0.005,
 ) -> TransferOptimisationResult:
     """Optimise a transfer path then exact-rescore near-optimal paths.
