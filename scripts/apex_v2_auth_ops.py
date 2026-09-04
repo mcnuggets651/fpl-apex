@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -33,7 +34,7 @@ def _load_frozen_auth(path: Path) -> ModuleType:
     """Load the authority-selected auth implementation supplied by the caller.
 
     The historical function name is retained for compatibility with existing
-    operations tests. Production, keepalive and Draft relay now pass the
+    operations tests. Production, keepalive and Draft relay pass the
     authority-selected production-core preflight rather than assuming the
     immutable forensic base is current authentication authority.
     """
@@ -60,12 +61,7 @@ def _preflight_command(
     github_output: Path | None,
     github_env: Path | None,
 ) -> list[str]:
-    command = [
-        sys.executable,
-        str(preflight_script),
-        "--config",
-        str(config),
-    ]
+    command = [sys.executable, str(preflight_script), "--config", str(config)]
     if github_output is not None:
         command.extend(["--github-output", str(github_output)])
     if github_env is not None:
@@ -177,21 +173,80 @@ def _require_two_phase_support(module: ModuleType, store) -> None:
         "_bearer_header",
         "_refresh_transaction_fingerprint",
         "_rotation_tag",
-        "_recover_pending_rotation",
-        "_publish_pending_rotation",
         "_latest_private_refresh_token",
         "_write_runtime_env",
         "_write_github_output",
+        "download_release_asset",
+        "AUTH_ASSET",
+        "DEFAULT_OIDC_CLIENT_ID",
     )
     if any(not hasattr(module, name) for name in required_module):
         raise AuthOpsError(
             "Authority-selected production core lacks two-phase refresh-rotation support"
         )
-    required_store = ("get_draft_by_tag", "_create_draft_and_upload")
+    required_store = (
+        "list_releases",
+        "_create_draft_and_upload",
+        "_publish_draft",
+        "_cleanup_mutable_release",
+    )
     if any(not hasattr(store, name) for name in required_store):
         raise AuthOpsError(
             "Authority-selected private release store lacks staged refresh-rotation support"
         )
+
+
+def _find_staged_draft(store, tag: str) -> dict | None:
+    """Find an unpublished private rotation by tag through authenticated listing.
+
+    GitHub's REST `releases/tags/{tag}` endpoint is explicitly for a *published*
+    release. Draft releases are visible to push-authorized callers through List
+    releases, so recovery must search that authenticated list instead of assuming
+    the published-by-tag endpoint can see a draft.
+    """
+
+    matches = [
+        item
+        for item in store.list_releases()
+        if bool(item.get("draft", False)) and str(item.get("tag_name") or "") == tag
+    ]
+    if len(matches) > 1:
+        raise AuthOpsError("Private FPL refresh store contains duplicate staged rotation tags")
+    return matches[0] if matches else None
+
+
+def _read_staged_refresh(
+    module: ModuleType,
+    store,
+    fernet,
+    draft: dict,
+    *,
+    parent_refresh_token: str,
+) -> str:
+    expected = module._refresh_transaction_fingerprint(parent_refresh_token)
+    with tempfile.TemporaryDirectory(prefix="apex-fpl-auth-recover-") as tmp:
+        path = module.download_release_asset(
+            store,
+            draft,
+            module.AUTH_ASSET,
+            Path(tmp) / module.AUTH_ASSET,
+        )
+        try:
+            plaintext = fernet.decrypt(Path(path).read_bytes())
+        except Exception as exc:
+            raise AuthOpsError("Staged FPL refresh rotation could not be decrypted") from exc
+    try:
+        payload = json.loads(plaintext.decode("utf-8"))
+    except Exception as exc:
+        raise AuthOpsError("Staged FPL refresh rotation has invalid JSON") from exc
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        raise AuthOpsError("Staged FPL refresh rotation has an invalid schema")
+    if payload.get("parent_fingerprint") != expected:
+        raise AuthOpsError("Staged FPL refresh rotation does not match its parent")
+    child = str(payload.get("refresh_token") or "").strip()
+    if not child:
+        raise AuthOpsError("Staged FPL refresh rotation omitted its child token")
+    return child
 
 
 def _stage_refresh_rotation(
@@ -203,19 +258,11 @@ def _stage_refresh_rotation(
     next_refresh_token: str,
     env: Mapping[str, str],
 ) -> str:
-    """Durably stage the rotated child as a PRIVATE draft before owner proof.
-
-    This closes the live incident window where Official FPL could consume the
-    parent refresh token, `/api/me/` could then fail transiently, and the only
-    child refresh token would previously disappear before persistence.
-
-    The staged draft is deliberately NOT active state. Only exact manager proof
-    may publish it. No credential material enters the tag, name, body or logs.
-    """
+    """Durably stage the rotated child as a PRIVATE draft before owner proof."""
 
     parent_fingerprint = module._refresh_transaction_fingerprint(parent_refresh_token)
     tag = module._rotation_tag(parent_fingerprint)
-    if store.get_draft_by_tag(tag) is not None:
+    if _find_staged_draft(store, tag) is not None:
         raise RefreshRotationIndeterminate(
             "A staged FPL refresh child already exists for the current parent; "
             "refuse duplicate rotation"
@@ -264,40 +311,61 @@ def _recover_pending_chain(
         if fingerprint in seen:
             raise AuthOpsError("FPL refresh staging chain contains a cycle")
         seen.add(fingerprint)
-        recovered = module._recover_pending_rotation(store, fernet, current)
-        if recovered is None:
+        tag = module._rotation_tag(fingerprint)
+        draft = _find_staged_draft(store, tag)
+        if draft is None:
             return current, tuple(tags)
-        child, tag = recovered
+        current = _read_staged_refresh(
+            module,
+            store,
+            fernet,
+            draft,
+            parent_refresh_token=current,
+        )
         tags.append(tag)
-        current = child
-    if module._recover_pending_rotation(store, fernet, current) is not None:
+    fingerprint = module._refresh_transaction_fingerprint(current)
+    if _find_staged_draft(store, module._rotation_tag(fingerprint)) is not None:
         raise AuthOpsError("FPL refresh staging chain exceeds bounded recovery depth")
     return current, tuple(tags)
 
 
-def _cleanup_superseded_drafts(store, tags: tuple[str, ...]) -> None:
-    """Best-effort delete consumed intermediate drafts after final activation."""
+def _activate_staged_rotation(module: ModuleType, store, tag: str) -> None:
+    """Digest-verify and publish exactly the already-staged encrypted child."""
 
-    cleanup = getattr(store, "_cleanup_mutable_release", None)
-    if cleanup is None:
-        return
+    draft = _find_staged_draft(store, tag)
+    if draft is None:
+        raise RefreshRotationIndeterminate("Verified staged FPL refresh child disappeared")
+    with tempfile.TemporaryDirectory(prefix="apex-fpl-auth-activate-") as tmp:
+        path = module.download_release_asset(
+            store,
+            draft,
+            module.AUTH_ASSET,
+            Path(tmp) / module.AUTH_ASSET,
+        )
+        digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        store._publish_draft(
+            tag,
+            int(draft["id"]),
+            {module.AUTH_ASSET: digest},
+            require_immutable=True,
+        )
+
+
+def _cleanup_superseded_drafts(store, tags: tuple[str, ...]) -> None:
+    """Best-effort remove consumed intermediate staged drafts after activation."""
+
     for tag in tags:
         try:
-            draft = store.get_draft_by_tag(tag)
+            draft = _find_staged_draft(store, tag)
             if draft is not None:
-                cleanup(int(draft["id"]), tag)
+                store._cleanup_mutable_release(int(draft["id"]), tag)
         except Exception:
-            # A verified final child has already become active. Stale private drafts
-            # are non-authoritative and can be cleaned later; never turn cleanup
-            # failure into a reason to discard the now-durable valid child.
+            # The verified final child is already active. A stale private draft is
+            # non-authoritative and may be cleaned later; never invalidate success.
             pass
 
 
-def _verify_refreshed_access(
-    module: ModuleType,
-    entry_id: int,
-    access_token: str,
-) -> str:
+def _verify_refreshed_access(module: ModuleType, entry_id: int, access_token: str) -> str:
     return module._verify_headers(
         entry_id,
         headers={
@@ -322,7 +390,7 @@ def _rotate_refresh_parent(
 
     Any failure after a successful exchange is indeterminate unless it is an
     explicit wrong-manager proof. The staged replacement is retained privately
-    so a later run can recover from it rather than retrying a consumed parent.
+    so a later run recovers from it instead of retrying a consumed parent.
     """
 
     current, recovered_tags = _recover_pending_chain(
@@ -333,7 +401,9 @@ def _rotate_refresh_parent(
     except RuntimeError as exc:
         if str(exc) == REFRESH_REJECTION:
             raise RefreshRejected(REFRESH_REJECTION) from exc
-        raise AuthOpsError("Official FPL refresh exchange failed for an unclassified reason") from exc
+        raise AuthOpsError(
+            "Official FPL refresh exchange failed for an unclassified reason"
+        ) from exc
 
     try:
         staged_tag = _stage_refresh_rotation(
@@ -371,7 +441,9 @@ def _rotate_refresh_parent(
         )
 
     try:
-        module._publish_pending_rotation(store, staged_tag)
+        _activate_staged_rotation(module, store, staged_tag)
+    except RefreshRotationIndeterminate:
+        raise
     except Exception as exc:
         raise RefreshRotationIndeterminate(
             "Official FPL owner identity matched but the staged refresh child could not "
@@ -486,17 +558,17 @@ def _try_private_refresh(
     github_output: Path | None,
     github_env: Path | None,
     env: Mapping[str, str],
-) -> tuple[bool, str | None]:
+) -> bool:
     store, fernet = _refresh_context(module, env)
     if store is None or fernet is None:
-        return False, None
+        return False
     _require_two_phase_support(module, store)
     try:
         parent = module._latest_private_refresh_token(store, fernet)
     except Exception as exc:
         raise AuthOpsError("Encrypted private FPL refresh state could not be loaded") from exc
     if not parent:
-        return False, None
+        return False
     entry_id = module._entry_id(config)
     access_token, _ = _rotate_refresh_parent(
         module,
@@ -513,7 +585,7 @@ def _try_private_refresh(
         github_env=github_env,
         recovery="none",
     )
-    return True, parent
+    return True
 
 
 def authenticate(
@@ -528,16 +600,14 @@ def authenticate(
     """Run the serialized two-phase refresh transaction and bounded recovery ladder."""
 
     module = _load_frozen_auth(preflight_script)
-    private_parent: str | None = None
     try:
-        refreshed, private_parent = _try_private_refresh(
+        if _try_private_refresh(
             module,
             config=config,
             github_output=github_output,
             github_env=github_env,
             env=env,
-        )
-        if refreshed:
+        ):
             return "primary"
     except RefreshRejected:
         print(
@@ -551,30 +621,22 @@ def authenticate(
         raise
 
     if _bootstrap_configured(env):
-        bootstrap = str(env.get("FPL_REFRESH_TOKEN", "")).strip()
-        if private_parent is not None and bootstrap == private_parent:
+        try:
+            _bootstrap_recover(
+                preflight_script,
+                config=config,
+                github_output=github_output,
+                github_env=github_env,
+                env=env,
+            )
+            return "bootstrap"
+        except RefreshRejected:
             print(
-                "Configured bootstrap refresh token matches the rejected private parent; "
-                "skip duplicate exchange.",
+                "Configured bootstrap refresh token was also rejected/expired.",
                 file=sys.stderr,
             )
-        else:
-            try:
-                _bootstrap_recover(
-                    preflight_script,
-                    config=config,
-                    github_output=github_output,
-                    github_env=github_env,
-                    env=env,
-                )
-                return "bootstrap"
-            except RefreshRejected:
-                print(
-                    "Configured bootstrap refresh token was also rejected/expired.",
-                    file=sys.stderr,
-                )
-            except RefreshRotationIndeterminate:
-                raise
+        except RefreshRotationIndeterminate:
+            raise
 
     if mode == "keepalive":
         raise AuthOpsError(
