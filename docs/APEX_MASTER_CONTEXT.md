@@ -1,6 +1,6 @@
 # FPL Apex — Master Context
 
-**Canonical Project Brain for Apex V2.** Read the machine authority first: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
+**Supporting Project Brain / constitutional context.** Read [`FPL_APEX_MASTER_STATE.md`](FPL_APEX_MASTER_STATE.md) first for current continuity/history, then machine authority [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json). Machine authority and immutable release evidence outrank prose.
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
@@ -30,6 +30,26 @@ Separately, run rigorous prospective/no-hindsight research to measure forecast q
 
 Official FPL is factual authority for identity, club, FPL position, price, status/availability and fixtures.
 
+## Current production closure
+
+# **APEX OPERATIONAL**
+
+Canonical production run #9 (`33850307770`, immutable run `33850307770-1`) successfully completed for GW3. PR #146 permanently established production single-solve / witness-only publication semantics and PR #147 promoted the repaired core.
+
+The owner-private strategy-query gate is also complete. Private repository `mcnuggets651/fpl` now has a dedicated self-hosted runner `fpl-apex-private-mac`; active private query/continuity workflows use `[self-hosted, macOS, ARM64]` with no GitHub-hosted fallback.
+
+Accepted private evidence:
+
+- initial authority-selected `latest` run `33867975181`: success;
+- explicit exact run `33850307770-1`: strategy run `33868412431`, success;
+- final restored authority-selected `latest`: strategy run `33868662109`, success;
+- exact and final-latest strategy JSON byte-identical at SHA-256 `e50c4ebde19a2c68bfa4c38f33a6dd81f1d0922851f1e932bae522a898609d60`;
+- final private master-state contract `33868662187`: success.
+
+Both modes resolved immutable run `33850307770-1`, entry `63984`, an exact 15-player TeamState, £0.5m bank, 1 free transfer and complete purchase/selling-price transfer state. The historical billing failures remain provenance only.
+
+The exact evidence is maintained in `FPL_APEX_MASTER_STATE.md` and the private repository companion.
+
 ## One production recommendation
 
 The serving result is the immutable Apex V2 final produced by the authenticated production workflow using the exact authority-declared `production_core_sha`. It contains the legal action from exact current state: transfers/roll, XI, captain, vice, bench order and exact mechanics, with horizon planning/contingencies where supported by the serving-core contract.
@@ -53,7 +73,28 @@ Apex V2 Daily Production:
 11. solves with network access disabled and checks exact architecture/mechanics and qualification;
 12. publishes private prerequisites then the immutable public final, again bound to the same serving-core SHA.
 
+Publication performs deterministic frozen-witness verification and must not rerun the optimiser.
+
 No research workflow may acquire/solve/publish a serving recommendation.
+
+## Owner-private query lifecycle
+
+For owner-state questions a fresh connected agent uses the private repository/query boundary rather than conversation memory.
+
+`latest` is authority-first, not timestamp-first. The bridge:
+
+1. fetches current public production authority;
+2. derives the current public attempt identity;
+3. filters candidate private manager releases to that exact linked `public_attempt_id`;
+4. verifies GitHub release-asset digests;
+5. verifies Apex persisted attestations and tag/payload identity;
+6. requires an exact 15-player TeamState and complete transfer state;
+7. emits only narrow approved owner/strategy fields;
+8. fails closed with refresh required if no authority-correct private release exists.
+
+Explicit historical run requests are separately supported and were accepted for immutable run `33850307770-1`.
+
+`APEX OPERATIONAL` means this recovery/query path is reproducibly executable. It does not override normal production freshness/deadline rules or turn an old immutable decision into a fresh recommendation after material facts change.
 
 ## Prospective tournament and decision edge
 
@@ -69,7 +110,7 @@ A forecast or decision variant must be immutably committed before the relevant O
 
 ## Manager-state law
 
-Never reconstruct the current squad from conversation history, an old screenshot, a historical generated file or a shadow provider. Use the authenticated production manager state for entry 63984. A current user-supplied private state may be evidence only where the current control plane explicitly supports it; do not bypass production governance manually.
+Never reconstruct the current squad from conversation history, an old screenshot, a historical generated file or a shadow provider. Use the authenticated production manager state for entry 63984 through the approved private persistence/query boundary.
 
 AIrsenal worker setup team ID `1` is deliberately an upstream database-initialisation placeholder. The worker produces player forecasts and skips manager-specific transaction updates; it is not the production manager identity and must not be changed to 63984 as an operations fix.
 
@@ -79,15 +120,18 @@ Normal operations may change scheduling, bounded auth recovery, evaluation orche
 
 Never alter candidate depth, horizon, MILP precision or exact mechanics merely to make research faster. Runtime/orchestration must accommodate certified semantics instead.
 
+Every tracked repository change must also update `FPL_APEX_MASTER_STATE.md` in the same change unless the master ledger is the only tracked file changed. This is an enforced continuity requirement, not a production-authority promotion mechanism.
+
 ## Continuity protocol
 
 Before substantive Apex work:
 
-1. read `APEX_V2_AUTHORITY.json`;
-2. read `CURRENT_STATE.md`;
-3. read this file and `APEX_OPERATING_MANUAL.md`;
+1. read `FPL_APEX_MASTER_STATE.md` completely;
+2. read `APEX_V2_AUTHORITY.json`;
+3. read `CURRENT_STATE.md`, this file and `APEX_OPERATING_MANUAL.md`;
 4. read `APEX_V2_DAILY_OPERATIONS.md` plus the relevant V2 research/operations runbook;
 5. verify live GitHub `main`, PR #90, `production_core_sha`, workflow runs and immutable release state;
-6. only then implement or answer.
+6. for owner-state questions, use the private query boundary rather than conversation memory;
+7. update the master ledger with every tracked repository change and exact completion evidence.
 
 Repository history remains useful evidence, but it may not overrule the current V2 authority chain.

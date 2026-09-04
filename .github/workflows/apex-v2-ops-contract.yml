@@ -6,8 +6,12 @@ on:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
       - ".github/dependabot.yml"
+      - ".github/pull_request_template.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
       - "scripts/apex_v2_*.py"
       - "scripts/check_governance_consistency.py"
+      - "scripts/check_master_state_sync.py"
       - "ops_tests/**"
       - "tests/test_airsenal_source_absence_policy.py"
       - "tests/test_airsenal_workflow_contract.py"
@@ -17,6 +21,7 @@ on:
       - "README.md"
       - "PROJECT_STATUS.md"
       - "docs/APEX_V2_AUTHORITY.json"
+      - "docs/FPL_APEX_MASTER_STATE.md"
       - "docs/CURRENT_STATE.md"
       - "docs/APEX_MASTER_CONTEXT.md"
       - "docs/APEX_OPERATING_MANUAL.md"
@@ -70,6 +75,7 @@ jobs:
 
           allowed_exact = {
               ".github/dependabot.yml",
+              ".github/pull_request_template.md",
               ".github/workflows/apex-v2-auth-keepalive.yml",
               ".github/workflows/apex-v2-daily-evaluation.yml",
               ".github/workflows/apex-v2-daily-production.yml",
@@ -84,6 +90,8 @@ jobs:
               ".github/workflows/production-readiness.yml",
               ".github/workflows/projection-policy-audit.yml",
               ".github/workflows/team-strength-validation.yml",
+              "AGENTS.md",
+              "CLAUDE.md",
               "scripts/apex_v2_auth_ops.py",
               "scripts/apex_v2_attempt_audit_ops.py",
               "scripts/apex_v2_deadline_ops.py",
@@ -96,6 +104,7 @@ jobs:
               "scripts/apex_v2_tournament_ops.py",
               "scripts/apex_v2_tournament_scoring.py",
               "scripts/check_governance_consistency.py",
+              "scripts/check_master_state_sync.py",
               "tests/test_airsenal_source_absence_policy.py",
               "tests/test_airsenal_workflow_contract.py",
               "tests/test_core_candidate_publication.py",
@@ -104,6 +113,7 @@ jobs:
               "README.md",
               "PROJECT_STATUS.md",
               "docs/APEX_V2_AUTHORITY.json",
+              "docs/FPL_APEX_MASTER_STATE.md",
               "docs/CURRENT_STATE.md",
               "docs/APEX_MASTER_CONTEXT.md",
               "docs/APEX_OPERATING_MANUAL.md",

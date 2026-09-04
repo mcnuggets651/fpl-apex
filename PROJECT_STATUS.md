@@ -1,31 +1,76 @@
 # FPL Apex — production status
 
-**Status date:** 3 September 2026
+**Status date:** 4 September 2026
 
-Apex V2 is the production FPL system for season **2026/27** and entry **63984**. The machine-readable authority is [`docs/APEX_V2_AUTHORITY.json`](docs/APEX_V2_AUTHORITY.json); canonical documentation and governance checks must agree with it.
+> Canonical human continuity/history is [`docs/FPL_APEX_MASTER_STATE.md`](docs/FPL_APEX_MASTER_STATE.md). Machine serving authority is [`docs/APEX_V2_AUTHORITY.json`](docs/APEX_V2_AUTHORITY.json) and outranks prose.
+
+## Current verdict
+
+# **APEX OPERATIONAL**
+
+Apex V2 is the production FPL system for season **2026/27** and entry **63984**. Canonical production run #9 (`33850307770`; immutable run `33850307770-1`) completed successfully for GW3 and published a matching immutable public/private run pair under the authority-declared serving core.
+
+The previously outstanding owner-private query gate is now closed. A dedicated private self-hosted macOS ARM64 runner (`fpl-apex-private-mac`) executes private query/continuity workflows with no `ubuntu-latest` fallback and no GitHub-hosted runner spend.
+
+Private acceptance evidence:
+
+- post-PR-#4 private strategy `latest` run `33867975181`: success;
+- explicit exact run `33850307770-1`: strategy run `33868412431`, success;
+- final restored authority-selected `latest`: strategy run `33868662109`, success;
+- exact and final-latest narrow JSON outputs were byte-for-byte identical at SHA-256 `e50c4ebde19a2c68bfa4c38f33a6dd81f1d0922851f1e932bae522a898609d60`;
+- both resolved immutable run `33850307770-1`, entry `63984`, exact 15-player TeamState, £0.5m bank, 1 free transfer and complete purchase/selling-price transfer state;
+- final private post-merge master-state contract `33868662187`: success.
+
+The historical GitHub-hosted billing failures remain provenance only and are not current blockers.
+
+## Production authority
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
 Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
-## Production authority
-
-- The immutable forensic/base SHA anchors clean-room lineage and PR #90; it is not the serving-code promotion pointer.
-- The current serving core is the exact `production_core_sha` declared by machine authority and is independently governed from PR #90.
-- Frozen engine PR: **#90**, draft/open/unmerged. It is not an operations branch and must not be merged or advanced.
-- Operations/research control plane: `main`. The live `main` head is intentionally not frozen in this document; verify it directly on GitHub at session start.
-- PR #122 separated immutable-base authority from the serving-core pointer without changing serving code; PR #123 then promoted the first certified hardened successor through `production_core_sha` only.
+- Frozen engine PR: **#90**, draft/open/unmerged, policy `NEVER_MERGE_OR_ADVANCE`.
+- Operations/research control plane: `main`; verify the current head live rather than treating a prose SHA as permanent.
 - Canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`.
 - Sole serving forecast provider: **AIrsenal**, H1–H8.
 - Apex Proprietary, Dastan, PITCHSIDE and OpenFPL are shadow/diagnostic only and have no serving authority.
-- Research/tournament output has `production_influence = NONE`; there is no blending, voting or automatic challenger promotion.
-- Official FPL remains factual authority for identity, club, position, price, status/availability and fixtures.
+- Research/tournament output has `production_influence = NONE`; no blending, voting or automatic challenger promotion.
+- Official FPL remains factual authority for identity, club, position, price, status/availability, fixtures and deadlines.
 
-The serving recommendation is the immutable Apex V2 final release produced by the exact authority-declared production core. Repository V1/V1.5 generated recommendation files and `scripts/run_apex.py` remain historical/test surfaces; they are not the live production authority.
+PR #122 separated immutable-base authority from the serving-core pointer. PR #146 permanently repaired duplicate production optimisation/incorrect one-candidate semantics and made publication witness-only. PR #147 promoted the repaired serving core through `production_core_sha`. PR #149 restored normal Deadline Watch after the controlled one-shot production dispatch.
+
+## Successful production proof
+
+Run #9 passed:
+
+- authenticated owner-state recovery;
+- Official FPL acquisition/re-anchor;
+- AIrsenal H1–H8 generation;
+- single frozen solve;
+- exact mechanics/certification;
+- deterministic publication witness;
+- private prerequisite publication;
+- immutable public final publication.
+
+Public final:
+
+`apex-v2/final/2026-2027/33850307770-1`
+
+Release ID `382559137`, immutable, published `2026-09-04T07:51:49Z`.
+
+Matching owner-private manager/evaluation/presentation releases share run identity `33850307770-1`; private payload details stay in the private repository and its companion master ledger.
+
+## Owner-private query capability
+
+The private repository is the approved owner-state/query plane. `latest` is authority-first, not publication-time-first: it resolves current public production authority, filters private manager releases by the exact linked `public_attempt_id`, verifies GitHub asset digests and Apex attestations, and fails closed if no authority-correct private release exists.
+
+A fresh connected agent can therefore recover exact current persisted owner state without reconstructing the squad from chat memory. Private query output remains narrow and does not expose `private-auth`, credentials, commitment keys or unfiltered private provider payloads.
+
+Operational does not mean a historical immutable recommendation remains fresh indefinitely. Production deadline/freshness/auth/source gates still govern whether a new manager-facing recommendation is actionable.
 
 ## Current operations
 
-Apex V2 Daily Production checks out `main` as the bounded control plane, resolves `production_core_sha`, proves it descends from `frozen_engine_sha`, materializes that exact core in a detached worktree, authenticates the exact configured manager, captures Official FPL authority before provider work, acquires/freeze-checks provider surfaces, re-anchors Official FPL, solves with network access disabled and publishes private prerequisites before the immutable public final. Intent, acquisition snapshot and final publication are all bound to the exact serving-core SHA.
+The serving recommendation is the immutable Apex V2 final produced by the exact authority-declared production core. Repository V1/V1.5 generated recommendation files and `scripts/run_apex.py` remain historical/test surfaces, not live authority.
 
 Supporting workflows are separated by role:
 
@@ -35,46 +80,18 @@ Supporting workflows are separated by role:
 - prospective tournament — non-serving provider evaluation;
 - Decision Quality — non-serving prospective counterfactual decision-edge research.
 
-All executable GitHub workflows use exact commit pins for the certified Node-24-native GitHub Actions generations. Future GitHub Action updates are proposed by Dependabot through the normal protected pull-request path. The historical `archive/workflows/` tree is forensic evidence and the V2 Ops Contract rejects modifications to it.
+The historical `archive/workflows/` tree is forensic evidence and must not be modified/resurrected as live publishing code.
 
-See [`docs/APEX_V2_DAILY_OPERATIONS.md`](docs/APEX_V2_DAILY_OPERATIONS.md), [`docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md`](docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md), and [`docs/operations/PARALLEL_DECISION_LAB.md`](docs/operations/PARALLEL_DECISION_LAB.md).
+## Governance and continuity
 
-## GW3 decision-quality acceptance — COMPLETE
+Before substantive work:
 
-Canonical prospective candidate:
+1. read `docs/FPL_APEX_MASTER_STATE.md`;
+2. read `docs/APEX_V2_AUTHORITY.json`;
+3. read `docs/CURRENT_STATE.md` and `docs/APEX_OPERATING_MANUAL.md`;
+4. verify live `main`, PR #90, ruleset/checks, relevant workflow runs and immutable releases;
+5. never reconstruct the manager squad from conversation memory;
+6. use the private query boundary for owner-specific state;
+7. update the canonical master ledger in the same change as every tracked repository change.
 
-`apex-v2/tournament-candidate/2026-2027/33590896695-1`
-
-Official GW3 deadline:
-
-`2026-09-04T17:30:00Z`
-
-PR #114 repaired the exact-task runtime contract without changing serving decision semantics. The transfer optimiser can legally consume 34 minutes of MILP allowance; Decision Quality grants 50 minutes per independent matrix solve and CI derives/guards that bound against the immutable evaluator source.
-
-Corrected Decision Quality run #10 is run `33643925982`, bound to control-plane SHA `e123fb312015a620795f343f503f8c214699afb4`. It completed successfully on 2 September 2026. All **8/8** required fresh tasks sealed successfully before the GW3 deadline, including the exact production baseline and the previously timing-out Apex Proprietary availability overlay. Every solve retained its immutable-worktree proof.
-
-Canonical assembly also completed successfully and published the immutable private lab:
-
-`apex-v2/private-decision-lab/2026-2027/33590896695-1`
-
-The assembler requires every deterministic staging task, validates each task fingerprint and attestation, rejects any constituent not sealed/published predeadline, requires exact production-baseline reproduction, forbids postdeadline decision backfill, and keeps the lab non-serving. The assembled lab contains eight decision variants and has `production_influence = NONE`, `serving_authorized = false`, and no automatic serving change. `postoutcome` also completed successfully; because GW3 outcomes did not yet exist, it correctly made no learning or serving change.
-
-This is the live acceptance proof for the Decision Quality runtime repair. No further GW3 acceptance work is pending.
-
-## Governance status
-
-The authority split and hardened-core promotion are complete. Canonical Project Brain documents must explicitly distinguish immutable `frozen_engine_sha` from the movable `production_core_sha`; durable prose reads the current serving value from machine authority rather than copying it. Required CI also resolves and installs the exact serving core, using its dependency lock when present.
-
-Legacy executable publishers (`pinnacle.yml`, `airsenal.yml`, `refresh-core-pin.yml`, `gw1-final-2026.yml`) are preserved under `archive/workflows/` and are absent from GitHub's executable workflow directory. The generic governance checker recognizes exactly one serving production workflow, while the V2 Ops Contract fails if legacy publishers return, operations cross serving boundaries, or the forensic workflow archive is modified.
-
-Main protection ruleset `21759706` is the required live control: pull-request enforcement, strict required `test` / `contract` / `readiness` checks, and no bypass actors. Verify it live rather than trusting this prose if repository state is being changed.
-
-## Startup rule
-
-For a new operator or ChatGPT session:
-
-1. read `docs/APEX_V2_AUTHORITY.json`;
-2. read `docs/CURRENT_STATE.md`;
-3. read `docs/APEX_MASTER_CONTEXT.md` and `docs/APEX_OPERATING_MANUAL.md`;
-4. verify live `main`, PR #90, ruleset `21759706`, `production_core_sha` and the relevant immutable Apex V2 release/workflow state;
-5. never reconstruct the manager squad from conversation memory.
+`AGENTS.md`, `CLAUDE.md`, `scripts/check_master_state_sync.py` and required Apex CI encode/enforce this continuity contract.
