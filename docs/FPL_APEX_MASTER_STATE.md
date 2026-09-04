@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 4 September 2026, after PR #155 open-waiver semantic hardening merged and during bounded Official FPL owner-auth upstream-status diagnosis  
+**State snapshot:** 4 September 2026, after PR #156 safely identified the owner-auth failure as credential rejection and during the bounded two-phase refresh-rotation repair  
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -48,11 +48,15 @@ Before changing code, workflows, governance, model behavior, production operatio
 
 # **APEX OPERATIONAL**
 
-The serving production chain and accepted Classic owner-private query chain have completed their required acceptance. The live FPL Draft roster/market connection and the authenticated transaction relay are also runtime-proven. One narrower Draft claim remains deliberately uncertified: the exact **current open/pending waiver-request semantics**. The first authenticated stable receipt proved that the known entry transaction endpoint includes processed history, so resolved history must not be mislabeled as the current open queue.
+The serving production chain and accepted Classic owner-private query chain have completed their required acceptance. The live FPL Draft roster/market connection and authenticated transaction relay are also historically runtime-proven. One narrower Draft claim remains deliberately uncertified: the exact **current open/pending waiver-request semantics**. The first authenticated stable receipt proved that the known entry transaction endpoint includes processed history, so resolved history must not be mislabeled as the current open queue.
 
-A new live incident on 4 September 2026 is currently blocking further authenticated Draft semantic discovery: Official FPL `/api/me/` began returning the frozen preflight's generic **unexpected status** from GitHub-hosted runners. This has now reproduced both after refresh-token exchange and through the independent static direct-bearer diagnostic. The system is correctly failing closed. Do not call this a credential rejection, rate limit or outage until the bounded status-only diagnostic identifies the exact HTTP class.
+The 4 September 2026 owner-auth incident is now classified rather than ambiguous. Public PR #156 merged a status-only fail-closed diagnostic. Exact-head Apex CI `33902899716` and Apex V2 Ops Contract `33902899673` passed on head `174790f7cea7d0b2f235f0a607630d0c974b76a9`; merge commit is `cd5bd12eda187c372b8d389260768667d0e26234`. Merged Draft relay run `33908393271` then failed closed at owner authentication as intended. Its sanitized diagnostic step succeeded and reported the configured static bearer against Official FPL `/api/me/` as **HTTP 401 / `rejected`**. The same run also showed the rotating private refresh state rejected and the configured bootstrap refresh rejected; Draft acquisition/dispatch was skipped and the frozen worktree proof passed.
 
-Canonical production run `33850307770-1` proved AIrsenal serving and the owner decision path. A later bounded Dastan H1 shadow orchestration repair merged through public PR #153; Dastan and PITCHSIDE remain research-only and none of the Draft work changes serving authority.
+Therefore this is not established as rate limiting, a 5xx outage or a Draft endpoint defect. The currently configured durable owner credentials are exhausted/rejected. A fresh browser-issued refresh credential will be required, but **not until the permanent two-phase rotation repair has merged and passed exact-head acceptance**. The new credential must be written directly to the approved GitHub Actions secret and must never be pasted into chat, issues, docs or logs.
+
+The diagnosis also exposed a genuine durability defect in the prior refresh lifecycle: Official FPL refresh exchange could consume the parent before `/api/me/` manager verification, while the rotated child became durable only after verification. A transient or unexpected verification failure could therefore strand the refresh chain. Bounded branch `agent/auth-refresh-two-phase-rotation` repairs that window without changing serving authority: it recovers already-staged children first, exchanges once, encrypts/stages the rotated child privately before manager verification, activates it immutably only after exact manager match, prohibits fallback after an indeterminate post-exchange state and strictly purges wrong-manager staged state. Keepalive and Draft Relay are also aligned with Daily Production by resolving auth preflight/config from machine authority `production_core_sha`; frozen `99cc...` remains ancestry/forensic authority only.
+
+Canonical production run `33850307770-1` remains the accepted serving proof. AIrsenal remains sole serving provider H1–H8. Dastan and PITCHSIDE remain research-only. None of the Draft/auth work changes model authority, optimiser semantics, research influence or frozen PR #90.
 
 ### Production acceptance
 
@@ -107,7 +111,7 @@ Private PR #8 repaired the chat-facing projection request that was still explici
 
 That query resolved exact current immutable run `33850307770-1`, the matching private evaluation namespace and the matching private PITCHSIDE tournament namespace. It exposed current PITCHSIDE rows for the requested strategy universe. The same-run provider archive contained AIrsenal only because Dastan had failed earlier during production acquisition; the private query bridge itself was no longer the Dastan blocker.
 
-### FPL Draft owner-query closure — connection/relay accepted; exact open-waiver semantics under bounded discovery
+### FPL Draft owner-query closure — connection/relay accepted; current auth and exact open-waiver semantics still gated
 
 The live Draft connection itself is proven and does not depend on chat memory.
 
@@ -176,29 +180,42 @@ Public PR #155, **Harden FPL Draft open-waiver semantics**, then merged the boun
 - exact head: `9315fa90ba1c23bfaf8c4a51c281aea73fa6e1f2`;
 - exact-head Apex V2 Ops Contract `33899930818`: success;
 - exact-head Apex CI `33899930858`: success;
-- merge/current public `main` before the status-diagnostic change: `a533a9bcd25699f0f9fe444f11487ac271923471`;
+- merge commit: `a533a9bcd25699f0f9fe444f11487ac271923471`;
 - transaction rows are classified as `resolved` when upstream `result` is non-empty and `unresolved` when it is absent/empty;
 - `unresolved` is deliberately not renamed `pending` until runtime evidence proves that exact relationship;
 - authenticated `entry/<live_team_entry_id>/my-team` is queried only for a schema-only diagnostic;
 - the diagnostic may expose key names, container types, list counts and sample field names for transaction/waiver/request/pending/trade-like paths, but never owner scalar values;
 - no Draft POST/DELETE/write path was introduced.
 
-Immediately after PR #155 merged, push-triggered relay `33901095469` failed **before any Draft endpoint was queried** at `Acquire certified owner credential`. The frozen preflight reported `Official FPL owner-auth preflight returned an unexpected status`, which means the observed `/api/me/` status was not `200`, `401` or `403` but did not expose the exact code. One bounded failed-job rerun of the same SHA reproduced the same failure. Blind retries were stopped.
+Immediately after PR #155 merged, relay `33901095469` failed before any Draft endpoint at `Acquire certified owner credential`; one bounded rerun reproduced the failure. Public PR #156 then added only a status-only diagnostic. Its exact head `174790f7cea7d0b2f235f0a607630d0c974b76a9` passed Apex CI `33902899716` and Apex V2 Ops Contract `33902899673` and merged at `cd5bd12eda187c372b8d389260768667d0e26234`.
 
-To separate refresh-token behavior from the Official FPL owner endpoint itself, the existing non-serving `OPS-002` direct-auth diagnostic was rerun from historical workflow run `33662138778` using current repository secrets. It disabled refresh authentication entirely and again failed at frozen `/api/me/` verification with the **same unexpected-status class**. Therefore the current incident is not established as a normal credential rejection and is not isolated to refresh-token rotation. The exact upstream status still requires bounded diagnosis.
+Merged scheduled relay run `33908393271` provides the accepted incident classification:
 
-Current bounded branch `agent/auth-owner-me-status-diagnostic` adds only a post-failure status probe to `OPS-008`:
+- private auth-store preflight: passed;
+- rotating refresh exchange: rejected/expired;
+- configured bootstrap refresh exchange: rejected/expired;
+- direct owner recovery: rejected;
+- failure-only direct status probe: **HTTP 401 / `rejected`** for bearer;
+- diagnostic response body read: false;
+- Draft transaction query/dispatch: skipped;
+- frozen worktree integrity: passed.
 
-- it runs only after the certified owner-auth step fails;
-- it uses the already-configured static direct bearer/cookie only;
-- it performs one streamed GET to Official FPL `/api/me/` per configured direct transport;
-- it records only final HTTP status code plus coarse class and closes the response without reading the body;
-- it reads no response body or response headers and emits no credential values;
-- it does not exchange, rotate, retry or persist refresh state;
-- it does not recover authentication, does not unlock Draft querying/dispatch and leaves the job failed;
-- frozen PR #90 and the frozen preflight remain untouched.
+This proves the current blocker is credential health, not Draft connection, rate limiting or an upstream 5xx. It also proves the old frozen-auth flow is unsafe to keep retrying because its exchange can consume a parent before later manager verification/persistence.
 
-**Do not call current pending/open waiver retrieval certified yet.** The connection, historical authenticated relay, private artifact and fresh-session stable receipt are accepted. Current authenticated semantic discovery is temporarily blocked by the new owner-auth upstream-status incident. First identify the exact status class without weakening fail-closed auth; then restore/verify certified owner authentication before resuming schema-only open-waiver discovery.
+Bounded branch `agent/auth-refresh-two-phase-rotation` now implements the permanent repair under existing `PROD-002`/`OPS-001`/`OPS-008` semantics:
+
+- all live refresh callers use `main:scripts/apex_v2_auth_ops.py` as the one serialized operations controller;
+- production, Keepalive and Draft Relay resolve preflight/config/auth-store primitives from machine authority `production_core_sha` and prove ancestry to immutable `frozen_engine_sha`;
+- before exchange, authenticated private release listing is searched for an already-staged child for that exact parent;
+- after exchange, the encrypted rotated child is durably staged as a **private draft before `/api/me/` verification**;
+- the staged child is inactive until exact entry `63984` manager identity matches;
+- exact match triggers re-download/digest verification and immutable activation;
+- an indeterminate post-exchange verification leaves the child staged and prohibits retrying the consumed parent or falling through to bootstrap/direct auth;
+- explicit wrong-manager proof strictly purges the wrong-manager staged chain or fails for manual private-store cleanup;
+- no credential values enter public artifacts, logs or documentation;
+- no Draft write path is introduced.
+
+**Do not call current pending/open waiver retrieval certified yet.** Historical connection/relay/private receipt evidence remains valid, but current authenticated discovery is blocked until the repair merges, a new browser-issued refresh credential is safely re-seeded, Keepalive proves the repaired rotation live and `OPS-008` again produces fresh authenticated Draft evidence. Only then resume exact `my-team`/open-waiver semantic discovery.
 
 ### Operational qualification
 
@@ -222,14 +239,16 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - capability/documentation constitution PR #151 merged at `6a1509f766e6438a43d296e8e900518a18967959` after exact-head Apex CI `33873835393` and Ops Contract `33873835399`; post-merge Apex CI `33874537255`: success;
 - PR #152 closed the final documentation-only loop and merged at `620ad5d305008c018c9ea3ccd887c9de8b510b9c` after exact-head Apex CI `33877989903` and Apex V2 Ops Contract `33877990068` passed;
 - PR #153, **repair Dastan shadow acquisition core-root wiring**, merged at `adf7c22058ef9b384793fabdad6853259d23a648`;
-- PR #154, **Complete governed FPL Draft authenticated owner-query relay**, merged at authenticated-relay public baseline `4a37729b7cf38a72a48a511fbeb60c7decb89af4` after exact-head Apex CI `33896311945` and Ops Contract `33896311949` passed;
-- PR #155, **Harden FPL Draft open-waiver semantics**, merged at current public baseline `a533a9bcd25699f0f9fe444f11487ac271923471` after exact-head Apex CI `33899930858` and Ops Contract `33899930818` passed;
-- bounded owner-auth diagnostic branch: `agent/auth-owner-me-status-diagnostic`;
+- PR #154, **Complete governed FPL Draft authenticated owner-query relay**, merged at `4a37729b7cf38a72a48a511fbeb60c7decb89af4` after exact-head Apex CI `33896311945` and Ops Contract `33896311949` passed;
+- PR #155, **Harden FPL Draft open-waiver semantics**, merged at `a533a9bcd25699f0f9fe444f11487ac271923471` after exact-head Apex CI `33899930858` and Ops Contract `33899930818` passed;
+- PR #156, **Diagnose unexpected Official FPL owner status safely**, exact head `174790f7cea7d0b2f235f0a607630d0c974b76a9`, passed Apex CI `33902899716` and Ops Contract `33902899673`, merged at current public `main` `cd5bd12eda187c372b8d389260768667d0e26234`;
+- merged Draft relay `33908393271` classified the direct owner endpoint as 401/rejected while preserving fail-closed Draft skip/frozen integrity;
+- active bounded repair branch: `agent/auth-refresh-two-phase-rotation`;
 - protected control plane; historical ruleset identifier `21759706` — verify live before relying on it.
 
 ### Machine authority
 
-`docs/APEX_V2_AUTHORITY.json` was re-read before the owner-auth diagnostic change and remains unchanged:
+`docs/APEX_V2_AUTHORITY.json` was re-read before this two-phase repair and remains unchanged:
 
 - `schema_version`: `1`;
 - `season`: `2026-2027`;
@@ -248,13 +267,13 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - automatic promotion: `false`;
 - legacy status: `HISTORICAL_NON_SERVING`.
 
-The Draft owner-query/relay/semantic-discovery/status-diagnostic work does not change machine authority.
+The Draft owner-query/relay/status-diagnostic/two-phase auth repair does not change machine authority.
 
 ### Frozen PR #90
 
 PR #90, **Build Apex V2 clean-room production architecture**, remains deliberately open, draft, unmerged, not an operations branch and not a branch to advance as part of successor promotion.
 
-The immutable authority anchor is forensic SHA `99cc7b51b0cff45462b567084cb1844cfe0a456f`. The policy remains **NEVER_MERGE_OR_ADVANCE**.
+The immutable authority anchor is forensic SHA `99cc7b51b0cff45462b567084cb1844cfe0a456f`. The policy remains **NEVER_MERGE_OR_ADVANCE**. A mutable PR branch head is not authority and must never replace this SHA in continuity or runtime decisions.
 
 ### Private repository
 
@@ -265,7 +284,7 @@ The immutable authority anchor is forensic SHA `99cc7b51b0cff45462b567084cb1844c
 - live Draft query PR #9 merged at `6474254554b3b5f2500fdad2005ee90fb7c0656f`; post-merge Draft query `33889278311`: success;
 - authenticated Draft relay receiver PR #10 merged at `e215785fdfecd37cee967ffec9a66cf45e6e9d85` after exact-head Draft query `33892177717` and private master contract `33892177813` succeeded;
 - stable connected-session Draft surface PR #12 merged at current private baseline `e089b31be4bea257a27964fd52951822d68dc324` after exact-head Draft run `33897979229` and private master/public-capability contract `33897979355` succeeded;
-- current-main repository-dispatch `33898312773` successfully validated the authenticated relay, uploaded artifact `9946749382` and published stable private issue #11;
+- current accepted repository-dispatch `33898312773` successfully validated the last healthy authenticated relay, uploaded artifact `9946749382` and published stable private issue #11;
 - private CI consumes and validates the single public capability registry and rejects a competing private registry;
 - owner-private payloads, exact manager commitments, Draft owner transactions and authentication material remain private.
 
@@ -348,27 +367,39 @@ This is closed production engineering. **Do not reopen it without new reproducib
 
 ---
 
-## 5. Authentication recovery — historical closure plus current upstream-status incident
+## 5. Authentication recovery — 401 credential exhaustion and two-phase durability repair
 
-Before production run #8, stored FPL tokens expired. Auth keepalive #22 failed and both rotating private refresh state and bootstrap refresh secret were rejected.
+Before production run #8, stored FPL tokens expired. A fresh authenticated FPL browser session renewed the encrypted Actions secret; auth keepalive `33850189866` then passed private-store preflight, credential rotation, private persistence and frozen-worktree integrity. That historical recovery was valid and supported the accepted production run.
 
-A fresh authenticated FPL browser session renewed the encrypted Actions secret. The credential was immediately exchanged/rotated and persisted through the private rotating state.
+The authenticated Draft relay reuses this same owner-auth lifecycle. It does not create a second refresh-state owner and does not copy reusable auth into the private Draft workflow.
 
-Acceptance run:
+On 4 September 2026 the current credential set expired again. PR #156 and merged relay run `33908393271` now provide exact evidence:
 
-- auth keepalive `33850189866`: success;
-- private-store preflight: passed;
-- credential rotation: passed;
-- new rotating state: persisted;
-- frozen worktree integrity: passed.
+- newest rotating private refresh: explicitly rejected at exchange;
+- configured bootstrap refresh: explicitly rejected at exchange;
+- configured static bearer: `/api/me/` returns HTTP 401, classified `rejected`;
+- no cookie transport was configured in that run;
+- Draft acquisition did not execute after auth failure;
+- no response body was read by the diagnostic.
 
-The temporary browser refresh credential was rotated before production and is not the active credential. Never write credentials, token values or authenticated payloads into this file.
+The incident therefore requires credential re-seeding, but it also exposed a durability problem that must be fixed **before** re-seeding. In the prior flow, a refresh exchange occurred before manager verification and the rotated child was persisted only after successful verification. If `/api/me/` then failed, the identity provider could have consumed the parent while Apex had not made the child durable.
 
-The authenticated Draft relay reuses this existing lifecycle. It does not create a second refresh-state owner and does not copy reusable auth into the private Draft workflow.
+Bounded repair `agent/auth-refresh-two-phase-rotation` moves the durability boundary ahead of manager verification while preserving fail-closed identity proof:
 
-New evidence on 4 September 2026 reopens **operational diagnosis only**, not the authentication architecture: relay run `33901095469` and its single bounded rerun both exchanged refresh state successfully enough to reach frozen `/api/me/` verification, then failed with an unexpected status. Independent static direct-bearer diagnostic rerun `33662138778` reached the same frozen `/api/me/` verifier and failed with the same unexpected-status class while refresh inputs were deliberately blank. Public website monitoring did not establish a broad FPL outage, so the exact HTTP class must be measured rather than guessed.
+1. resolve auth implementation/config from authority-selected `production_core_sha`, never from remembered or hard-coded promoted SHAs;
+2. serialize Production, Keepalive and Draft Relay in `apex-v2-fpl-auth`;
+3. before exchanging a parent, recover any encrypted staged child for that exact parent from authenticated private release listing;
+4. exchange once;
+5. encrypt/upload the rotated child as a private draft before `/api/me/` verification;
+6. treat the draft as inactive recovery evidence;
+7. verify exact manager entry `63984`;
+8. only on exact match, re-download/digest-check and publish the child immutably as active refresh state;
+9. retain staged state and prohibit parent retry/bootstrap/direct fallback for any indeterminate post-exchange verification result;
+10. strictly purge a staged chain proven to belong to another manager, or fail until manual private-store cleanup is performed.
 
-Because the frozen refresh flow exchanges before `/api/me/` verification and persists the replacement refresh token only after successful identity verification, repeated blind refresh attempts are prohibited while this unexpected-status incident is unresolved. A diagnostic may inspect only status metadata and must not consume refresh state or become a new recovery path.
+This repair uses existing private release-store primitives and existing capability ownership. It does not create a new secret, new auth service, new public credential store or new serving authority. Frozen PR #90 is untouched; `frozen_engine_sha` is ancestry/forensic authority, while live auth preflight/config follow machine authority `production_core_sha`.
+
+Do **not** update `FPL_REFRESH_TOKEN` yet while this branch is unmerged. After exact-head CI/Ops Contract acceptance and merge, obtain one fresh browser-issued refresh credential and update the approved GitHub Actions secret directly. Never paste the credential into chat. Then require a successful merged Keepalive rotation before using current authenticated Draft state as evidence.
 
 ---
 
@@ -448,11 +479,11 @@ AIrsenal is current production champion and sole serving provider H1–H8. Shado
 
 ### Privacy
 
-Public releases must not contain manager-private squad state, exact commitments, credentials, authenticated Draft owner transaction rows or unfiltered private provider material. Private-auth releases are never query data. Schema-only Draft diagnostics may expose key names/types/counts/sample field names but never authenticated owner scalar values. Owner-auth incident diagnostics may expose only HTTP status code/class and configured transport count/mode labels; they must not read or emit response bodies/headers or credential values.
+Public releases must not contain manager-private squad state, exact commitments, credentials, authenticated Draft owner transaction rows or unfiltered private provider material. Private-auth releases are never query data. Schema-only Draft diagnostics may expose key names/types/counts/sample field names but never authenticated owner scalar values. Owner-auth incident diagnostics may expose only HTTP status code/class and configured transport count/mode labels; they must not read or emit response bodies/headers or credential values. Encrypted staged refresh children remain private drafts and are never active until exact manager identity is verified.
 
 ### Frozen engine separation
 
-`frozen_engine_sha` is immutable forensic lineage. `production_core_sha` is the independently promoted serving pointer. Never update or merge PR #90 to promote production.
+`frozen_engine_sha` is immutable forensic lineage. `production_core_sha` is the independently promoted serving pointer and the resolver for live production-core auth preflight/config. Never update or merge PR #90 to promote production or to repair authentication.
 
 ---
 
@@ -474,18 +505,22 @@ Canonical public documentation surfaces have separated responsibilities:
 
 ### Public control plane (`fpl-apex`)
 
-Primary live surfaces include machine authority, canonical production, auth keepalive, deadline watch, evaluation/research, Apex CI/Ops Contract and semantic governance. Draft-specific additions are:
+Primary live surfaces include machine authority, canonical production, auth keepalive, deadline watch, evaluation/research, Apex CI/Ops Contract and semantic governance. Authentication/Draft-specific surfaces are:
 
-- `.github/workflows/apex-v2-draft-auth-relay.yml` — authenticated read-only Draft transaction relay plus failure-only owner endpoint status diagnostic;
+- `scripts/apex_v2_auth_ops.py` — the one current serialized operations auth transaction controller; it uses authority-selected core auth helpers/config and stages rotated children privately before manager verification;
+- `.github/workflows/apex-v2-auth-keepalive.yml` — non-serving durable auth maintenance using the same authority-selected core boundary;
+- `.github/workflows/apex-v2-draft-auth-relay.yml` — authenticated read-only Draft transaction relay plus failure-only owner endpoint status diagnostic, also using the same auth boundary;
 - `scripts/apex_v2_draft_auth_relay_ops.py` — credential-stripping relay controller plus bounded schema-only authenticated diagnostics;
+- `docs/APEX_V2_DAILY_OPERATIONS.md` — auth lifecycle and production operations runbook;
 - `docs/APEX_DRAFT_QUERY.md` — Draft owner-query runbook.
 
-The Draft relay is not a serving production workflow. It shares auth concurrency but cannot solve, publish or submit Draft transactions. Its post-auth-failure status probe cannot certify or recover authentication.
+The Draft relay is not a serving production workflow. It shares auth concurrency but cannot solve, publish or submit Draft transactions. Its post-auth-failure status probe cannot certify or recover authentication. The two-phase auth repair changes durability/order inside the existing auth boundary; it does not add another auth owner or serving plane.
 
 ### Private persistence/query plane (`fpl`)
 
 Key surfaces include Classic manager/provider persistence/query, plus:
 
+- encrypted immutable/private auth releases and temporary encrypted staged rotation drafts used only by public `PROD-002` auth operations;
 - `apex-query/draft_request.json` — Draft roster/pool request;
 - `tools/apex_draft_query.py` — live public Official Draft query;
 - `tools/apex_draft_relay_ingest.py` — authenticated relay validator;
@@ -495,7 +530,7 @@ Key surfaces include Classic manager/provider persistence/query, plus:
 - short-retention private Draft query/auth artifacts;
 - `fpl-apex-private-mac` — dedicated repository-level self-hosted execution surface.
 
-Public registry `PRIV-*` capabilities document these boundaries semantically. There is no second private semantic registry.
+Public registry `PRIV-*` capabilities document these boundaries semantically. There is no second private semantic registry. The private Draft query workflow never receives reusable FPL credentials.
 
 ---
 
@@ -555,7 +590,7 @@ Public PR #150 established the canonical continuity ledger and same-change enfor
 
 Public PR #151 added the single semantic capability registry and decision index, repurposed `APEX_ARCHITECTURE.md` as the current cross-repository map, added semantic CI enforcement and merged with exact-head/post-merge green evidence. Private PR #7 then consumed/validated the public `PRIV-*` bindings without creating a second registry. Public PR #152 closed the final documentation loop.
 
-### Era M — Draft fresh-session owner query, authenticated relay and open-waiver semantic hardening
+### Era M — Draft fresh-session owner query, authenticated relay and auth durability closure
 
 - private PR #9 merged the governed live Draft roster/available/locked query and runtime-proved exact current state in `33889278311`;
 - that runtime isolated entry-specific transactions as auth-required rather than a broken Draft connection;
@@ -565,8 +600,11 @@ Public PR #151 added the single semantic capability registry and decision index,
 - public relay `33897685281` → private dispatch `33898312773` runtime-proved authenticated acquisition, credential-free relay, private artifact and stable receipt publication;
 - inspection proved the first four result-bearing event-3 rows are resolved transaction history, not a current open queue;
 - public PR #155 merged resolved/unresolved classification plus schema-only authenticated `my-team` discovery at `a533a9bcd25699f0f9fe444f11487ac271923471` after exact-head public gates passed;
-- its first merged relay and one bounded rerun exposed a new frozen owner-auth unexpected-status incident before Draft acquisition;
-- independent static direct-bearer diagnosis reproduced the same unexpected-status class, so bounded status-only upstream diagnosis now precedes further open-waiver semantic work.
+- the first merged semantic-discovery relay exposed an owner-auth failure before Draft acquisition;
+- public PR #156 exact head `174790f7cea7d0b2f235f0a607630d0c974b76a9` passed Apex CI `33902899716` and Ops Contract `33902899673`, merged at `cd5bd12eda187c372b8d389260768667d0e26234`, and merged relay `33908393271` established static bearer `/api/me/` as 401/rejected while rotating/bootstrap refresh were also rejected;
+- the incident exposed an exchange-before-durable-child window in prior refresh handling and stale reliance by Keepalive/Draft Relay on the frozen auth preflight;
+- bounded branch `agent/auth-refresh-two-phase-rotation` now stages the encrypted child before manager verification, recovers forward from staged children, forbids post-exchange fallback, purges wrong-manager staged state and aligns all live auth callers with authority-selected production-core preflight/config;
+- pending/open-waiver semantics remain deliberately uncertified until repaired auth is live, current authenticated `my-team` semantics are proven and the private fresh-session receipt is revalidated.
 
 ---
 
@@ -596,26 +634,32 @@ Public PR #151 added the single semantic capability registry and decision index,
 22. **Do not copy FPL credentials into the private Draft workflow.** The public governed auth owner must relay only a credential-free allowlist.
 23. **Do not assume Draft and Classic element IDs are equal.** Reconcile name + club + position.
 24. **Do not submit a test waiver/free-agent/trade merely to manufacture semantic evidence.** No Draft write capability exists; discovery remains read-only unless an explicit governed write capability is separately authorized.
-25. **Do not repeatedly rerun refresh authentication after an unclassified owner `/api/me/` status.** Refresh exchange precedes identity verification; diagnose the upstream status safely before consuming more attempts.
+25. **Do not keep probing the already-classified owner incident.** The accepted result is 401/rejected; current rotating, bootstrap and direct durable credentials are rejected.
 26. **Do not treat the status-only direct probe as authentication or recovery.** It may report only transport/status metadata and cannot unlock manager or Draft state.
+27. **Do not bind live owner auth to the frozen forensic preflight when machine authority selects a promoted production core.** Resolve live auth preflight/config from `production_core_sha`; use `frozen_engine_sha` only for ancestry/forensics.
+28. **Do not exchange a refresh parent and wait until after manager verification to make the child durable.** Stage the encrypted child privately immediately after exchange and before `/api/me/` verification.
+29. **Do not retry a consumed refresh parent when a staged child exists.** Recover forward from the staged child under the serialized auth lock.
+30. **Do not fall through to bootstrap/direct auth after an indeterminate post-exchange state.** The staged child is the only safe recovery path.
+31. **Do not retain staged credentials proven to belong to another manager.** Purge the wrong-manager staged chain or stop for manual private-store cleanup.
+32. **Do not re-seed the browser refresh credential before the two-phase repair is merged and green.** Re-seed directly in the GitHub Actions secret only; never paste the credential into chat.
 
 ---
 
-## 11. Next actions — diagnose owner auth, then resume exact open/pending Draft semantics
+## 11. Next actions — merge two-phase auth repair, re-seed once, then finish exact open/pending Draft semantics
 
-The serving production and Classic owner-query system remain historically accepted. Draft live roster/pool access, prior governed authentication, transaction-history relay, private artifact and stable connected-session receipt are accepted. Current authenticated semantic discovery is blocked by the new Official FPL owner `/api/me/` unexpected-status incident.
+The serving production and Classic owner-query system remain historically accepted. Draft live roster/pool access, prior governed authentication, transaction-history relay, private artifact and stable connected-session receipt are accepted. Current authenticated semantic discovery is now blocked by **known credential rejection**, while the permanent refresh-durability repair is being completed.
 
 Immediate bounded closure:
 
-1. exact-head test and document `agent/auth-owner-me-status-diagnostic`;
-2. merge only after Apex CI and Apex V2 Ops Contract are green on the exact head and no authority/provider/PR #90 drift exists;
-3. let the merged `OPS-008` push run fail closed if owner auth remains unhealthy, while its post-failure direct probe records only the exact HTTP status/class;
-4. classify the incident from that evidence — e.g. rate limiting, upstream 5xx, other 4xx/redirect or network error — without guessing and without reading a response body;
-5. repair or wait out the exact proven upstream condition using the existing authentication constitution; do not introduce silent fallback or repeated blind refresh attempts;
-6. require a fresh certified owner-auth success before resuming Draft authenticated discovery;
-7. run the merged schema-safe `my-team` diagnostic and inspect resolved/unresolved transaction counts;
-8. if `my-team` exposes a distinct waiver/request/pending list, implement an explicit allowlisted extractor for that proven list; if it does not, continue only with bounded authenticated GET discovery and do not guess;
-9. update the private relay contract/stable issue only after the exact current-request surface is proven;
+1. finish exact branch review for `agent/auth-refresh-two-phase-rotation`, including canonical master/runbook continuity and no unregistered capability/change-surface drift;
+2. open the governed public PR with `Apex-Capabilities: GOV-002, PROD-002, OPS-001, OPS-008`, `Apex-Authority-Changed: no`, explicit strengthened auth invariants and no reopened decisions;
+3. require Apex CI and Apex V2 Ops Contract to pass on the **exact final PR head**;
+4. before merge, re-verify current `main`, machine authority, PR #90 frozen policy/head relationship and exact PR head; merge only if unchanged/green;
+5. after merge, obtain one fresh browser-issued FPL refresh credential and update the approved repository Actions secret `FPL_REFRESH_TOKEN` directly — never paste it into chat;
+6. run the merged Auth Keepalive once and require successful authority-selected-core two-phase rotation, exact manager identity, private immutable child activation and clean worktree proof;
+7. run merged `OPS-008` and require successful owner authentication, fresh authenticated Draft transaction/current-state discovery, private dispatch and frozen/core integrity proof;
+8. inspect only the credential-free private receipt plus schema-only `my-team` diagnostic; if `my-team` exposes a distinct waiver/request/pending list, implement an explicit allowlisted extractor for that exact proven list; otherwise continue only with bounded authenticated GET discovery and do not guess;
+9. update private relay/stable issue semantics only after the exact current-request surface is proven;
 10. inspect a resulting current pending/open queue, or a proven empty queue from that exact current-request surface;
 11. rerun private public-capability binding validation and record exact final acceptance in public/private continuity docs;
 12. only then call the Draft connection **CERTIFIED COMPLETE** for fresh-session roster, market and pending/open waiver queries and provide the owner the final Project-instruction block.
@@ -664,14 +708,27 @@ Editing this file, the capability registry, decision index, Draft runbook or arc
 
 ## 13. Changelog for this ledger
 
+### 2026-09-04 — owner auth classified 401/rejected; two-phase refresh durability repair prepared
+
+- public PR #156 exact head `174790f7cea7d0b2f235f0a607630d0c974b76a9` passed Apex CI `33902899716` and Apex V2 Ops Contract `33902899673` and merged at `cd5bd12eda187c372b8d389260768667d0e26234`;
+- merged scheduled Draft relay `33908393271` failed closed at owner authentication while its failure-only diagnostic succeeded and reported configured bearer `/api/me/` as HTTP `401`, status class `rejected`, with `body_read=false`;
+- the same run confirmed rotating private refresh and bootstrap refresh were explicitly rejected, Draft acquisition/dispatch was skipped and frozen worktree integrity passed;
+- the incident is therefore credential exhaustion/rejection rather than an unclassified rate-limit/5xx/Draft failure;
+- investigation exposed a real prior durability window: refresh exchange could consume the parent before manager verification while the child was not yet durable;
+- bounded branch `agent/auth-refresh-two-phase-rotation` stages the encrypted rotated child privately before manager verification, recovers already-staged children through authenticated private release listing, activates only after exact entry `63984` proof, forbids post-exchange fallback and strictly purges wrong-manager staged state;
+- Keepalive and Draft Relay are changed to resolve auth preflight/config from machine authority `production_core_sha`, matching Daily Production, while `frozen_engine_sha` remains immutable ancestry/forensic authority;
+- adversarial tests model draft listing, encrypted asset recovery, digest-verified activation, wrong-manager purge and workflow binding;
+- a fresh browser refresh re-seed remains required **after** this repair merges; no credential value belongs in chat;
+- machine authority, AIrsenal serving, research influence, Draft no-write policy, private owner-state boundaries, billing policy and frozen PR #90 are unchanged.
+
 ### 2026-09-04 — owner-auth unexpected-status incident isolated and bounded
 
 - public PR #155 exact head `9315fa90ba1c23bfaf8c4a51c281aea73fa6e1f2` passed Apex CI `33899930858` and Ops Contract `33899930818` and merged at `a533a9bcd25699f0f9fe444f11487ac271923471`;
 - merged Draft relay `33901095469` failed before any Draft request because frozen Official FPL owner `/api/me/` verification returned an unexpected non-200/non-401/non-403 status;
 - one bounded rerun reproduced the same failure and blind refresh retries stopped;
 - historical non-serving direct-auth workflow run `33662138778` was rerun with current static bearer and refresh disabled; it independently reproduced the same frozen `/api/me/` unexpected-status class;
-- current diagnostic branch adds only failure-gated streamed status-code/class reporting, reads no body/headers, exposes no credentials and cannot recover auth or unlock Draft querying;
-- refresh/auth recovery semantics, machine authority, AIrsenal serving, frozen PR #90, private owner surfaces and Draft no-write policy are unchanged.
+- PR #156 then added only failure-gated streamed status-code/class reporting, reading no body/headers, exposing no credentials and unable to recover auth or unlock Draft querying;
+- refresh/auth recovery semantics, machine authority, AIrsenal serving, frozen PR #90, private owner surfaces and Draft no-write policy were unchanged by that diagnostic PR.
 
 ### 2026-09-04 — authenticated Draft connection accepted; open-waiver semantics hardened
 
