@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 4 September 2026, after the successful GW3 production run and the second billing-blocked private-query retry  
+**State snapshot:** 4 September 2026, after successful production and completed exact/latest private-query acceptance  
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -44,48 +44,67 @@ Before changing code, workflows, governance, model behavior, production operatio
 
 ## 1. Current executive status
 
-### Current production verdict
+# **APEX OPERATIONAL**
 
-**PRODUCTION PIPELINE PASSED; PRIVATE QUERY ACCEPTANCE BLOCKED BY GITHUB BILLING**
+The serving production chain and owner-private query chain have both completed their required acceptance.
 
-Do **not** call the whole system `APEX OPERATIONAL` until the two private strategy-query acceptance modes have actually run and passed.
-
-### What is working
+### Production acceptance
 
 Canonical production run #9 completed successfully and produced a matched immutable public/private release pair for 2026/27 GW3.
 
-- Workflow run: `33850307770`
-- Immutable run ID: `33850307770-1`
-- Production core: `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`
-- Frozen forensic base: `99cc7b51b0cff45462b567084cb1844cfe0a456f`
-- Serving provider: AIrsenal
-- Serving horizon: H1–H8
-- Authentication: passed
-- Official FPL acquisition: passed
-- AIrsenal generation: passed
-- frozen solve: passed
-- publication witness: passed
-- public release write: passed
-- private manager release write: passed
-- observed runtime: approximately four minutes
+- workflow run: `33850307770`;
+- immutable run ID: `33850307770-1`;
+- production core: `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`;
+- frozen forensic base: `99cc7b51b0cff45462b567084cb1844cfe0a456f`;
+- serving provider: AIrsenal H1–H8;
+- authentication: passed;
+- Official FPL acquisition: passed;
+- AIrsenal generation: passed;
+- frozen solve: passed;
+- publication witness: passed;
+- public final release write: passed;
+- private manager release write: passed;
+- observed production runtime: approximately four minutes.
 
-### What remains blocked
+### Owner-private query acceptance
 
-Only private **strategy query bridge execution acceptance** remains.
+The former GitHub-hosted billing blocker has been eliminated without increasing spending limits. Private repo `mcnuggets651/fpl` now uses a dedicated repository-level self-hosted runner on the existing Mac:
 
-The exact-run and `latest` requests reached GitHub Actions but GitHub rejected their jobs before runner allocation because of account billing/spending state. The bridge code did not execute, so this is not evidence of an Apex code defect.
+- runner: `fpl-apex-private-mac`;
+- labels: `self-hosted`, `macOS`, `ARM64`;
+- machine: `BC02336`;
+- observed runner version: `2.337.0`;
+- no `ubuntu-latest` fallback.
 
-Verified blocked runs:
+Required acceptance modes both executed successfully:
 
-- exact request `33850307770-1`: private commit `cf241905c03c258132ef505ce113e68ad16b578a`, workflow run `33850914999`, failed pre-run;
-- restored `latest`: private commit/main head `112c627e7ba9d871355f10bb85856adebe203a4f`, workflow run `33851275595`;
-- `33851275595` attempt 2 was explicitly retried on 4 September 2026 and again failed with zero job steps, `runner_id=0` and no runner name.
+- explicit exact run `33850307770-1`: strategy workflow `33868412431` — **success**;
+- restored authority-selected `latest`: strategy workflow `33868662109` — **success**;
+- final private master-state contract `33868662187` — **success**.
 
-The exact GitHub account-level error observed on the original requests was:
+Exact and final `latest` narrow strategy JSON were byte-for-byte identical at SHA-256:
 
-> The job was not started because recent account payments have failed or your spending limit needs to be increased.
+`e50c4ebde19a2c68bfa4c38f33a6dd81f1d0922851f1e932bae522a898609d60`
 
-No model, solver, publication, authentication, release-integrity or query-integrity change is justified by this blocker.
+Both resolved:
+
+- immutable run `33850307770-1`;
+- entry `63984`;
+- exactly 15 unique owned players;
+- bank £0.5m;
+- 1 free transfer;
+- no active chip;
+- complete purchase/selling prices;
+- complete transfer state;
+- narrow private-safe output only.
+
+The final `latest` run re-read public authority and selected the authority-correct private manager release, not merely the newest publication. Historical zero-step billing failures remain provenance only and are not current blockers.
+
+### Operational qualification
+
+`APEX OPERATIONAL` means a fresh connected agent can reproducibly recover and verify the authority-correct immutable owner state without relying on remembered squad information.
+
+It does **not** mean a historical immutable decision is automatically fresh forever. Normal production freshness, deadline, authentication, Official FPL and provider-qualification gates continue to determine whether a new manager-facing recommendation is actionable.
 
 ---
 
@@ -95,27 +114,29 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 
 ### Public repository
 
-- repository: `mcnuggets651/fpl-apex`
-- `main` at this snapshot: `ae251a31b245d17869fc9e2301376af7c456b635`
-- that head is merge PR #149, restoring the normal deadline watcher after the one-shot production dispatch
-- protected control plane; historical ruleset identifier: `21759706` — verify live before relying on it
+- repository: `mcnuggets651/fpl-apex`;
+- `main` immediately before public continuity PR #150: `ae251a31b245d17869fc9e2301376af7c456b635`;
+- that head is merge PR #149, restoring normal Deadline Watch after the one-shot production dispatch;
+- protected control plane; historical ruleset identifier `21759706` — verify live before relying on it.
 
 ### Machine authority
 
-`docs/APEX_V2_AUTHORITY.json` currently declares:
+`docs/APEX_V2_AUTHORITY.json` was re-read after final private acceptance and declares:
 
-- `schema_version`: `2`
-- `season`: `2026-2027`
-- `frozen_engine_pr`: `90`
-- `frozen_engine_sha`: `99cc7b51b0cff45462b567084cb1844cfe0a456f`
-- `frozen_engine_pr_policy`: `NEVER_MERGE_OR_ADVANCE`
-- `production_core_sha`: `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`
-- canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`
-- serving provider: `airsenal`
-- AIrsenal role: `CHAMPION`, serving authorized
-- research production influence: `NONE`
-- automatic promotion: `false`
-- legacy status: `HISTORICAL_NON_SERVING`
+- `schema_version`: `1`;
+- `season`: `2026-2027`;
+- `entry_id`: `63984`;
+- `frozen_engine_pr`: `90`;
+- `frozen_engine_sha`: `99cc7b51b0cff45462b567084cb1844cfe0a456f`;
+- `frozen_engine_pr_policy`: `NEVER_MERGE_OR_ADVANCE`;
+- `production_core_sha`: `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`;
+- canonical production workflow: `.github/workflows/apex-v2-daily-production.yml`;
+- serving provider: `airsenal`;
+- serving horizons: 1–8;
+- AIrsenal role: `CHAMPION`, serving authorized;
+- research production influence: `NONE`;
+- automatic promotion: `false`;
+- legacy status: `HISTORICAL_NON_SERVING`.
 
 ### Frozen PR #90
 
@@ -127,15 +148,15 @@ PR #90, **Build Apex V2 clean-room production architecture**, remains deliberate
 - not an operations branch;
 - not a branch to advance as part of successor promotion.
 
-The immutable authority anchor is its frozen/forensic SHA `99cc7b51b0cff45462b567084cb1844cfe0a456f`. A later branch head does not change that frozen authority. The policy is explicit: **NEVER_MERGE_OR_ADVANCE**.
+The immutable authority anchor is forensic SHA `99cc7b51b0cff45462b567084cb1844cfe0a456f`. The policy remains **NEVER_MERGE_OR_ADVANCE**.
 
 ### Private repository
 
-- repository: `mcnuggets651/fpl`
-- `main` at this snapshot: `112c627e7ba9d871355f10bb85856adebe203a4f`
-- current strategy request: `apex-query/strategy_request.json`
-- current request body: schema 1, `run_id="latest"`, `top_n=12`
-- private manager state, exact prices, commitments, authenticated material and unfiltered provider payloads must remain private
+- repository: `mcnuggets651/fpl`;
+- accepted final-latest merge commit: `a310450fd27aa469eac9ae91971334925b4bee77`;
+- private operational-ledger closure commit: `9e55ee8e98fb15eeb0a5189c7e65b88c5a6467af`;
+- current request: schema 1, `run_id="latest"`, `top_n=12`;
+- owner-private payloads, exact manager commitments and authentication material remain private.
 
 ---
 
@@ -147,10 +168,10 @@ Tag:
 
 `apex-v2/final/2026-2027/33850307770-1`
 
-- release ID: `382559137`
-- immutable: yes
-- published: `2026-09-04T07:51:49Z`
-- target commitish: `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`
+- release ID: `382559137`;
+- immutable: yes;
+- published: `2026-09-04T07:51:49Z`;
+- target commitish: `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
 
 Assets and GitHub release digests:
 
@@ -165,13 +186,13 @@ Assets and GitHub release digests:
 
 ### Matching private finals
 
-The private persistence repository contains the matching immutable run identity `33850307770-1` in the required private namespaces, including:
+The private persistence repository contains matching immutable run identity `33850307770-1` in:
 
-- `apex-v2/private/2026-2027/33850307770-1`
-- `apex-v2/private-evaluation/2026-2027/33850307770-1`
-- `apex-v2/private-presentation/2026-2027/33850307770-1`
+- `apex-v2/private/2026-2027/33850307770-1`;
+- `apex-v2/private-evaluation/2026-2027/33850307770-1`;
+- `apex-v2/private-presentation/2026-2027/33850307770-1`.
 
-Exact private payload/digest detail belongs in the private master companion, not in this public repository.
+Exact private payload/digest details belong in the private master companion, not in this public repository.
 
 ### Architectural conclusion proved by run #9
 
@@ -181,7 +202,7 @@ The two-repository design is valid:
 - `fpl` is the owner-private persistence/query plane;
 - the earlier long-run failure was duplicate time-bounded optimisation/publication behavior, **not** the repository split.
 
-Do not collapse the repositories or move private manager state into the public repo to “simplify” querying.
+Do not collapse the repositories or move private manager state into the public repo to simplify querying.
 
 ---
 
@@ -189,11 +210,11 @@ Do not collapse the repositories or move private manager state into the public r
 
 ### Defect A — duplicate optimisation during publication
 
-The old production path performed the expensive H1–H8 candidate MIP search in the primary solve and then reran it during publication. Repeated approximately 120-second MIPs expanded runtime to roughly 68 minutes and allowed time-bound solver-search details to differ, causing false nondeterminism.
+The old production path performed the expensive H1–H8 candidate MIP search in the primary solve and reran it during publication. Repeated approximately 120-second MIPs expanded runtime to roughly 68 minutes and allowed time-bound solver-search details to differ, causing false nondeterminism.
 
 ### Defect B — incorrect one-candidate semantics
 
-Even with one candidate requested, the optimiser ran primary, secondary and excluded-path MIPs and then returned the secondary result while describing the primary as retained. Multi-week transfer decisions were also recorded with `horizon=1`, causing valid multi-week transfer paths to fail certification.
+Even with one candidate requested, the optimiser ran primary, secondary and excluded-path MIPs and returned the secondary result while describing the primary as retained. Multi-week transfer decisions were also recorded with `horizon=1`, causing valid multi-week transfer paths to fail certification.
 
 ### Permanent repair — PR #146
 
@@ -215,12 +236,12 @@ Verification attached to this repair included:
 - production single-candidate test proved exactly one `milp` invocation;
 - all six critical semantic mutation sentinels were killed;
 - lint passed;
-- exact-head Apex CI run `33846244269`: success;
-- exact-head Apex V2 CI run `33846244193`: success.
+- exact-head Apex CI `33846244269`: success;
+- exact-head Apex V2 CI `33846244193`: success.
 
 ### Authority promotion — PR #147
 
-PR #147 promoted the repaired exact core to:
+PR #147 promoted repaired exact core:
 
 `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`
 
@@ -251,48 +272,89 @@ The temporary browser refresh credential was rotated before production and is no
 
 ---
 
-## 6. Private query bridge contract and remaining acceptance
+## 6. Private query bridge contract and completed acceptance
 
 ### Why the bridge exists
 
-A chat session must be able to answer questions such as “what is my current FPL team?” or “should I transfer or roll?” without having manager state in public GitHub and without reconstructing it from memory.
+A chat session must be able to answer questions such as “what is my current FPL team?” or “should I transfer or roll?” without putting manager state in public GitHub and without reconstructing it from memory.
 
-The private repository is therefore the only approved owner-state/query surface.
+The private repository is the only approved owner-state/query surface.
 
 ### `latest` semantics
 
-`latest` must **not** mean “newest publication timestamp”. The bridge must first read current public `APEX_V2_AUTHORITY.json`, then select only a private manager release linked to a public attempt whose serving core matches current `production_core_sha`. Publication time may only break ties among authority-correct candidates. Otherwise fail closed with refresh required.
+`latest` does **not** mean newest publication timestamp. The bridge first reads current public production authority and filters candidate private manager releases by exact linked `public_attempt_id`. Publication time can only break ties among authority-correct candidates. If no candidate matches, it fails closed with `REFRESH_REQUIRED`.
 
-Explicit historical `run_id` requests may directly resolve that immutable attempt, subject to integrity checks.
+Explicit historical `run_id` requests directly resolve that immutable attempt, subject to integrity checks.
 
-### Required exact-run acceptance after billing is fixed
+### Integrity contract
 
-Run query for `33850307770-1` and prove:
+The accepted bridge verifies:
 
-1. immutable private manager release selected;
-2. GitHub release-asset digests verified;
-3. Apex private attestations verified;
-4. tag-derived and payload run identity agree;
-5. `public_attempt_id` linkage agrees across payload/attestation;
-6. entry ID is exactly `63984`;
-7. complete 15-player TeamState exists;
-8. bank, free transfers, purchase/selling prices, chip/status and transfer legality are internally consistent;
-9. no private-auth namespace is read;
-10. result is narrow and does not emit credentials/unfiltered private payloads.
+1. immutable private manager release;
+2. GitHub release-asset digests before parsing;
+3. Apex private attestations;
+4. tag-derived and payload season/run identity;
+5. attestation/payload `public_attempt_id` linkage;
+6. entry ID `63984`;
+7. exact 15-player unique TeamState;
+8. bank, FT, purchase/selling prices, chip/status and transfer completeness;
+9. no `private-auth` read;
+10. narrow output without credentials, commitment keys or unfiltered private payloads.
 
-### Required `latest` acceptance after billing is fixed
+### Zero-cost runner acceptance
 
-Restore/confirm `run_id="latest"`, execute, and prove it selects `33850307770-1` because it matches public authority core `c0ae9f6e…`, **not** merely because it is newest.
+Private continuity PR #4 established the dedicated self-hosted path. Important evidence:
 
-Only when both exact and `latest` pass may the status change to:
+- pre-registration self-hosted diagnostic `33860400423` queued with matching labels but no runner, proving separate repo registration was required;
+- registered runner `fpl-apex-private-mac` on machine `BC02336`;
+- corrected PR #4 exact-head contract `33867686466`: success;
+- PR #4 merge commit `08f0979e97b67b0978f2abd35f726be48e832505`;
+- post-merge private Projection Query `33867975154`: success;
+- Manager Shape `33867975165`: success;
+- Strategy Query `33867975181`: success;
+- Master State Contract `33867975208`: success.
 
-**APEX OPERATIONAL**
+### Exact-run acceptance — PASSED
+
+Private PR #5:
+
+- head `ad7e1305173853831b07d328ac8e0ec0af36a4f2`;
+- PR contract `33868373995`: success;
+- merge commit `1ac3048383d3395d2ad7b0cbd566aa92329e4518`;
+- explicit strategy run `33868412431`: success;
+- artifact `apex-private-strategy-33868412431`;
+- artifact ID `9934875378`;
+- artifact digest `sha256:7b032b9738cee7e01d9fe06f40d0a135bfa84b53201e50d54c66022e869dffe5`;
+- post-merge private contract `33868412440`: success.
+
+The exact output resolved immutable run `33850307770-1`, entry `63984`, exactly 15 unique squad IDs, £0.5m bank, 1 FT, no active chip and complete purchase/selling-price transfer state.
+
+### Final restored `latest` acceptance — PASSED
+
+Private PR #6:
+
+- head `4da60fc76d9751f25c7de37f0d074ddb17814527`;
+- PR contract `33868620244`: success;
+- merge commit `a310450fd27aa469eac9ae91971334925b4bee77`;
+- final `latest` strategy run `33868662109`: success;
+- artifact `apex-private-strategy-33868662109`;
+- artifact ID `9934972157`;
+- artifact digest `sha256:ec70331515fa3fff6dee9fb512c0cfc2001af98124cb9ab08fb3f0b64b0fe778`;
+- post-merge private contract `33868662187`: success.
+
+The final `latest` output independently selected authority-correct immutable run `33850307770-1` and had the same narrow state as exact mode.
+
+Both exact and final `latest` JSON bytes share SHA-256:
+
+`e50c4ebde19a2c68bfa4c38f33a6dd81f1d0922851f1e932bae522a898609d60`
+
+This gate is **closed**. Do not reopen it without a new reproducible query/authority defect.
 
 ---
 
 ## 7. Production constitution — closed decisions
 
-These are not brainstorming prompts. They are constraints unless a separately evidenced governance change deliberately supersedes them.
+These are constraints unless a separately evidenced governance change deliberately supersedes them.
 
 ### Factual authority
 
@@ -335,7 +397,7 @@ Public releases must not contain manager-private squad state, exact commitments,
 
 ### Frozen engine separation
 
-`frozen_engine_sha` is immutable forensic lineage. `production_core_sha` is the independently promoted serving pointer. Never “update PR #90” to promote production.
+`frozen_engine_sha` is immutable forensic lineage. `production_core_sha` is the independently promoted serving pointer. Never update or merge PR #90 to promote production.
 
 ---
 
@@ -363,22 +425,23 @@ Serving implementation is materialized from the exact authority-declared product
 
 Key surfaces:
 
+- `FPL_APEX_PRIVATE_MASTER_STATE.md` — canonical private continuity companion;
 - `APEX_PRIVATE_QUERY_BRIDGE.md` — private projection query contract;
 - `apex-query/request.json` — narrow player/projection query request;
-- `apex-query/strategy_request.json` — owner multi-week strategy request;
+- `apex-query/strategy_request.json` — owner multi-week strategy request, normally `latest`;
 - `tools/apex_private_query_entry.py` — projection bridge entry;
 - `tools/apex_strategy_query.py` — manager/multi-week strategy query;
 - `.github/workflows/apex-private-query.yml` — narrow private projection query;
 - `.github/workflows/apex-strategy-query.yml` — private strategy snapshot query;
+- `.github/workflows/apex-master-state-contract.yml` — private continuity contract;
+- `fpl-apex-private-mac` — dedicated repository-level self-hosted execution surface;
 - private immutable releases — owner state/evaluation/presentation/auth separation.
-
-The private companion master state is `FPL_APEX_PRIVATE_MASTER_STATE.md` in that repository.
 
 ---
 
 ## 9. Project history — compressed but durable engineering lineage
 
-GitHub remains the exact per-commit/per-PR archive. This section records the **decision lineage** so future sessions do not rediscover settled problems. The PR history through #149 was audited while creating this ledger.
+GitHub remains the exact per-commit/per-PR archive. This section records decision lineage so future sessions do not rediscover settled problems.
 
 ### Era A — V1 foundations and Project Brain (#1–#25)
 
@@ -398,11 +461,11 @@ Key decisions included max-EV-first selection, projection truth/calibration expe
 
 ### Era D — pre-clean-room V2 exploration (#67–#89)
 
-A sequence of V2 slice/modernisation PRs explored acquisition, projections, optimisation, persistence, governance and operations. These are historical/research lineage. They must not be mistaken for current serving authority.
+A sequence of V2 slice/modernisation PRs explored acquisition, projections, optimisation, persistence, governance and operations. These are historical/research lineage, not current serving authority.
 
 ### Era E — clean-room V2 freeze and champion/challenger constitution (#90–#96)
 
-- **#90** established the clean-room production architecture and is the permanent frozen lineage anchor; draft/open/unmerged.
+- **#90** established clean-room production architecture and remains the permanent frozen lineage anchor; draft/open/unmerged.
 - **#91** integrated champion–challenger prospective tournament logic into the frozen V2 line.
 - **#92** added Apex proprietary shadow challenger behavior.
 - **#94** activated frozen V2 daily operations on `main`.
@@ -428,48 +491,54 @@ Replay portability, reproducibility investigations, canaries, deterministic succ
 
 ### Era J — final production closure and single-solve repair (#138–#149)
 
-Temporary one-shot production dispatches were deliberately added/removed around controlled runs. Snapshot/core mismatch diagnostics isolated production issues. **#146** permanently eliminated duplicate production optimisation and made publication witness-only. **#147** promoted exact core `c0ae9f6e…`. Production run #9 succeeded. **#149** restored the normal deadline watcher and removed temporary dispatch hygiene.
+Temporary one-shot production dispatches were deliberately added/removed around controlled runs. Snapshot/core mismatch diagnostics isolated production issues. **#146** permanently eliminated duplicate production optimisation and made publication witness-only. **#147** promoted exact core `c0ae9f6e…`. Production run #9 succeeded. **#149** restored normal Deadline Watch and removed temporary dispatch hygiene.
 
-The remaining private query acceptance failure is external GitHub billing, not a reason to start Era K model development.
+### Era K — continuity and private-query operational closure (#150 public; private #4–#6)
+
+- Public PR #150 established the canonical human continuity ledger, agent startup contracts and same-change CI enforcement.
+- Private PR #4 created the private continuity companion, migrated private workflows to zero-cost self-hosted execution, and proved the dedicated runner.
+- Private PR #5 executed/accepted exact immutable-run strategy querying.
+- Private PR #6 restored and accepted authority-selected `latest` querying.
+- Both modes returned byte-identical authority-correct owner state.
+- Private operational closure was recorded on private `main` commit `9e55ee8e98fb15eeb0a5189c7e65b88c5a6467af`.
+
+This is a finite operational closure, not an invitation to start another model-development loop.
 
 ---
 
 ## 10. Known traps — future agents must not repeat these loops
 
-1. **Do not rebuild the current squad from old chats/screenshots.** Query the owner-private state.
-2. **Do not treat publication timestamp as `latest` authority.** Authority core linkage comes first.
+1. **Do not rebuild the current squad from old chats/screenshots.** Query owner-private state.
+2. **Do not treat publication timestamp as `latest` authority.** Exact public-attempt linkage comes first.
 3. **Do not merge or advance PR #90.** Production promotion uses `production_core_sha`.
 4. **Do not rerun the optimiser in publication.** Publication is deterministic witness verification.
 5. **Do not restore multi-candidate search to production by changing reusable research defaults.** Production explicitly selects one candidate.
-6. **Do not interpret a zero-step GitHub Actions billing rejection as bridge-code failure.** A runner must actually execute steps before code can be blamed.
-7. **Do not weaken deterministic replay/certification to make a failing run pass.** Diagnose provenance/mechanics instead.
-8. **Do not let shadow providers influence serving output implicitly.** They are prospective evidence only.
-9. **Do not backfill prospective evidence after outcomes.** No hindsight.
-10. **Do not resurrect archived legacy publishers.** Archive is forensic only.
-11. **Do not put private manager payloads or credentials into public docs/releases/logs.**
-12. **Do not create another competing “master” document.** Update this ledger and machine authority/supporting docs as appropriate.
-13. **Do not leave state-changing code undocumented.** CI requires this ledger to move with substantive changes.
-14. **Do not reopen solved model/architecture work merely because the private query acceptance gate is externally blocked.**
+6. **Do not interpret historical zero-step GitHub Actions billing rejections as query-code failures.** Those are closed provenance.
+7. **Do not switch private workflows back to billable hosted runners.** `fpl-apex-private-mac` is the intended zero-cost private execution surface.
+8. **Do not weaken deterministic replay/certification to make a failing run pass.** Diagnose provenance/mechanics instead.
+9. **Do not let shadow providers influence serving output implicitly.** They are prospective evidence only.
+10. **Do not backfill prospective evidence after outcomes.** No hindsight.
+11. **Do not resurrect archived legacy publishers.** Archive is forensic only.
+12. **Do not put private manager payloads or credentials into public docs/releases/logs.**
+13. **Do not create another competing master document.** Update this ledger and machine authority/supporting docs as appropriate.
+14. **Do not leave state-changing code undocumented.** CI requires this ledger to move with substantive changes.
+15. **Do not reopen exact/latest query acceptance without a new reproducible defect or authority change.**
 
 ---
 
-## 11. Exact next steps — bounded closure, no scope expansion
+## 11. Next actions — normal operations, not unfinished closure
 
-### External owner action
+The production/query system is accepted. There is no outstanding architectural acceptance blocker in this closure sequence.
 
-Resolve GitHub Actions billing/account spending so private jobs can obtain a runner. This is an account/financial action and cannot be repaired in Apex code.
+Normal next actions are operational:
 
-### Then, and only then
-
-1. Set private strategy query to exact `33850307770-1`.
-2. Update the private master companion in the same commit/change.
-3. Execute the private strategy query.
-4. Verify all exact-run integrity/TeamState/legal-transfer assertions in §6.
-5. Restore `strategy_request.json` to `run_id="latest"` and update the private master companion in the same change.
-6. Execute `latest`.
-7. Prove authority-based selection through public production core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`, not timestamp alone.
-8. If both pass, update this ledger and private companion to `APEX OPERATIONAL`.
-9. Do not add model scope during this closure sequence.
+1. keep `fpl-apex-private-mac` service healthy for private query execution;
+2. keep public Deadline Watch/auth keepalive/production workflows healthy;
+3. at each new deadline, obtain fresh Official FPL/auth/provider state through the production chain before making an actionable recommendation;
+4. use private `latest` query for owner-specific retrieval and fail closed if it returns `REFRESH_REQUIRED`;
+5. continue prospective research/evaluation without serving influence unless explicitly promoted through governance;
+6. keep PR #90 frozen/open/draft/unmerged;
+7. update this ledger whenever substantive public state changes and the private companion whenever private state changes.
 
 ---
 
@@ -501,13 +570,24 @@ Editing this file cannot promote a serving core, merge the frozen engine, change
 
 ## 13. Changelog for this ledger
 
+### 2026-09-04 — APEX OPERATIONAL closure
+
+- private self-hosted runner `fpl-apex-private-mac` registered and accepted without spending-limit changes;
+- exact strategy query run `33868412431` passed;
+- final authority-selected `latest` strategy query `33868662109` passed;
+- exact and final-latest JSON were byte-identical at SHA-256 `e50c4ebde19a2c68bfa4c38f33a6dd81f1d0922851f1e932bae522a898609d60`;
+- both resolved immutable run `33850307770-1`, entry `63984`, exact 15-player owner state, £0.5m bank, 1 FT and complete transfer prices/state;
+- final private contract `33868662187` passed;
+- public authority remained core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437` with frozen PR #90 unchanged;
+- historical billing blocker reclassified as closed provenance;
+- public guard/tests updated to assert durable operational state rather than the obsolete billing-blocked sentence.
+
 ### 2026-09-04 — master continuity control layer introduced
 
 - consolidated live production closure state after successful immutable run `33850307770-1`;
-- recorded current authority core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437` and frozen base `99cc7b51b0cff45462b567084cb1844cfe0a456f`;
-- documented the permanent PR #146 single-solve/publication-witness repair and #147 promotion;
-- recorded authentication recovery and exact successful release evidence;
-- recorded the external GitHub billing blocker and both private acceptance modes;
-- reconciled the older Project Brain with a single canonical human continuity ledger rather than creating a competing source of truth;
+- recorded authority core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437` and frozen base `99cc7b51b0cff45462b567084cb1844cfe0a456f`;
+- documented permanent PR #146 single-solve/publication-witness repair and #147 promotion;
+- recorded authentication recovery and successful release evidence;
+- reconciled older Project Brain documents into one canonical human continuity ledger;
 - added mandatory agent startup instructions and same-change CI enforcement;
-- preserved machine authority and immutable release evidence above this prose in the precedence hierarchy.
+- preserved machine authority and immutable release evidence above prose in the precedence hierarchy.
