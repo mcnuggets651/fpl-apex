@@ -211,6 +211,62 @@ def _load_internal_private_surfaces(
     return surfaces, hashes, public_files, public_attempt
 
 
+
+def _candidate_seal_id(
+    *,
+    run_id: str,
+    public_attempt_id: str,
+    pitchside_capture: dict[str, Any],
+    openfpl_readiness: dict[str, Any] | None,
+) -> str:
+    """Return a stable identity for materially distinct external evidence.
+
+    Volatile observation timestamps are deliberately excluded so hourly retries of
+    unchanged upstream bytes are idempotent. A repaired/new PITCHSIDE publication,
+    Official-hash state, or governed OpenFPL readiness state creates a new seal.
+    """
+
+    pitchside_basis = {
+        "health": str(pitchside_capture.get("health") or ""),
+        "dns_code": str(pitchside_capture.get("dns_code") or ""),
+        "generated_at": pitchside_capture.get("generated_at"),
+        "expected_official_hash": pitchside_capture.get("expected_official_hash"),
+        "current_official_hash": pitchside_capture.get("current_official_hash"),
+        "post_capture_official_hash": pitchside_capture.get(
+            "post_capture_official_hash"
+        ),
+        "source_bundle_sha256": pitchside_capture.get("source_bundle_sha256"),
+        "surface_sha256": pitchside_capture.get("surface_sha256"),
+        "qualified_horizons": sorted(
+            {int(value) for value in pitchside_capture.get("qualified_horizons") or []}
+        ),
+        "missing_forecastable_ids_by_horizon": (
+            pitchside_capture.get("missing_forecastable_ids_by_horizon") or {}
+        ),
+    }
+    openfpl = openfpl_readiness or {}
+    openfpl_basis = {
+        "health": str(openfpl.get("health") or ""),
+        "state": str(openfpl.get("state") or ""),
+        "exact_rule_gameweek_count": openfpl.get("exact_rule_gameweek_count"),
+        "minimum_exact_rule_gameweeks": openfpl.get(
+            "minimum_exact_rule_gameweeks"
+        ),
+        "observed_history_commit": openfpl.get("observed_history_commit"),
+        "observed_history_manifest_sha256": openfpl.get(
+            "observed_history_manifest_sha256"
+        ),
+    }
+    return canonical_sha256(
+        {
+            "schema_version": 1,
+            "run_id": str(run_id),
+            "public_attempt_id": str(public_attempt_id),
+            "pitchside": pitchside_basis,
+            "openfpl": openfpl_basis,
+        }
+    )
+
 def _private_tournament_files(
     *,
     pitchside_capture: dict[str, Any],
@@ -355,6 +411,7 @@ def _seal_private_tournament_surface(
     private_store: Any,
     season: str,
     run_id: str,
+    seal_id: str,
     pitchside_capture: dict[str, Any],
     public_attempt_id: str,
     target_commitish: str | None,
@@ -369,7 +426,7 @@ def _seal_private_tournament_surface(
     if material is None:
         return None, None
     files, expected_attestation = material
-    tag = f"{PRIVATE_TOURNAMENT_PREFIX}/{season}/{run_id}"
+    tag = f"{PRIVATE_TOURNAMENT_PREFIX}/{season}/{run_id}/{seal_id}"
     existing = _find_release(private_store.list_releases(), tag)
     if existing is not None:
         _, observed_attestation = _load_private_tournament_surface(
@@ -389,7 +446,7 @@ def _seal_private_tournament_surface(
         tag,
         files,
         target_commitish=target_commitish,
-        name=f"Apex V2 private tournament supplement {season} {run_id}",
+        name=f"Apex V2 private tournament supplement {season} {run_id} {seal_id[:12]}",
         body=(
             "Predeadline non-serving PITCHSIDE tournament supplement; "
             "no manager state."
@@ -448,6 +505,12 @@ def _download_candidate(
         raise TournamentContractError(
             "candidate attestation public identity mismatch"
         )
+    attested_seal_id = str(attestation.get("seal_id") or "")
+    readiness_seal_id = str(
+        (readiness.get("common_seal") or {}).get("seal_id") or ""
+    )
+    if attested_seal_id and attested_seal_id != readiness_seal_id:
+        raise TournamentContractError("candidate attestation seal identity mismatch")
     return readiness
 
 
@@ -469,27 +532,8 @@ def seal_github_run(
     private_store = GitHubReleaseStore(private_repo, private_token)
     source_tag = f"apex-v2/final/{season}/{run_id}"
     private_base_tag = f"apex-v2/private-evaluation/{season}/{run_id}"
-    candidate_tag = f"{CANDIDATE_PREFIX}/{season}/{run_id}"
 
     public_releases = public_store.list_releases()
-    existing_candidate = _find_release(public_releases, candidate_tag)
-    if existing_candidate is not None:
-        with tempfile.TemporaryDirectory() as tmp:
-            readiness = _download_candidate(
-                public_store,
-                existing_candidate,
-                Path(tmp),
-            )
-        if str((readiness.get("common_seal") or {}).get("run_id") or "") != str(
-            run_id
-        ):
-            raise TournamentContractError(
-                "existing candidate run identity mismatch"
-            )
-        if output:
-            _write_json(output, readiness)
-        return readiness
-
     source_release = _find_release(public_releases, source_tag)
     private_releases = private_store.list_releases()
     private_base_release = _find_release(
@@ -546,18 +590,49 @@ def seal_github_run(
             deadline=deadline,
             output=root / "pitchside_capture.json",
         )
+        openfpl = _load_json(openfpl_readiness_path)
+        seal_id = _candidate_seal_id(
+            run_id=run_id,
+            public_attempt_id=str(public_attempt["public_attempt_id"]),
+            pitchside_capture=pitchside,
+            openfpl_readiness=openfpl,
+        )
+        candidate_tag = f"{CANDIDATE_PREFIX}/{season}/{run_id}/{seal_id}"
+
+        # Rechecking unchanged upstream bytes is intentionally idempotent. Only a
+        # materially different external-evidence identity creates another seal.
+        existing_candidate = _find_release(public_releases, candidate_tag)
+        if existing_candidate is not None:
+            readiness = _download_candidate(
+                public_store,
+                existing_candidate,
+                root / "existing-candidate",
+            )
+            seal = readiness.get("common_seal") or {}
+            if str(seal.get("run_id") or "") != str(run_id):
+                raise TournamentContractError(
+                    "existing candidate run identity mismatch"
+                )
+            if str(seal.get("seal_id") or "") != seal_id:
+                raise TournamentContractError(
+                    "existing candidate seal identity mismatch"
+                )
+            if output:
+                _write_json(output, readiness)
+            return readiness
+
         private_tournament_tag, supplement_sha = (
             _seal_private_tournament_surface(
                 private_store=private_store,
                 season=season,
                 run_id=run_id,
+                seal_id=seal_id,
                 pitchside_capture=pitchside,
                 public_attempt_id=str(public_attempt["public_attempt_id"]),
                 target_commitish=None,
                 workdir=root,
             )
         )
-        openfpl = _load_json(openfpl_readiness_path)
         readiness = build_readiness(
             public_attempt,
             governance,
@@ -571,6 +646,7 @@ def seal_github_run(
         )
         readiness["control_plane_sha"] = str(control_plane_sha)
         readiness["private_tournament_supplement_sha256"] = supplement_sha
+        readiness["common_seal"]["seal_id"] = seal_id
         readiness["common_seal"]["candidate_release_tag"] = candidate_tag
         readiness["readiness_sha256"] = canonical_sha256(
             {
@@ -587,6 +663,7 @@ def seal_github_run(
             "schema_version": 1,
             "scope": "PUBLIC_TOURNAMENT_CANDIDATE",
             "run_id": run_id,
+            "seal_id": seal_id,
             "public_attempt_id": public_attempt.get("public_attempt_id"),
             "readiness_sha256": sha256_path(readiness_path),
             "private_supplement_sha256": supplement_sha,
@@ -604,7 +681,10 @@ def seal_github_run(
                 "tournament_attestation.json": attestation_path,
             },
             target_commitish=control_plane_sha,
-            name=f"Apex V2 tournament candidate {season} {run_id}",
+            name=(
+                f"Apex V2 tournament candidate {season} {run_id} "
+                f"{seal_id[:12]}"
+            ),
             body=(
                 "Prospective non-serving tournament candidate. Raw provider "
                 "forecasts remain private; this release cannot change "

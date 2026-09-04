@@ -611,8 +611,20 @@ def select_latest_valid_common_seal(
 
     selected = max(
         eligible,
-        key=lambda row: _parse_utc(
-            str((row.get("common_seal") or {})["snapshot_frozen_at"])
+        key=lambda row: (
+            _parse_utc(
+                str(
+                    (row.get("common_seal") or {}).get("tournament_sealed_at")
+                    or (row.get("common_seal") or {})["snapshot_frozen_at"]
+                )
+            ),
+            _parse_utc(
+                str((row.get("common_seal") or {})["snapshot_frozen_at"])
+            ),
+            str(
+                (row.get("common_seal") or {}).get("candidate_release_tag")
+                or ""
+            ),
         ),
     )
     if require_cutoff_passed:
