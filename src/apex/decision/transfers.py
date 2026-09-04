@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
@@ -53,7 +53,7 @@ def optimise_transfer_horizon(
     *,
     max_horizon: int,
     excluded_h1: frozenset[int] = frozenset(),
-    candidate_limit: int = 8,
+    candidate_limit: int = 1,
     candidate_regret_fraction: float = 0.005,
 ) -> TransferOptimisationResult:
     """Optimise a transfer path then exact-rescore near-optimal paths.
@@ -557,7 +557,29 @@ def optimise_transfer_horizon(
     shortlist_complete = False
     next_message = None
 
-    for generation_rank in range(1, int(candidate_limit) + 1):
+    # Production uses one primary max-xP solve. With a one-candidate policy there
+    # is nothing to shortlist: decoding the primary incumbent directly is both
+    # faster and faithful to the documented fallback. The old path unnecessarily
+    # ran a secondary MILP plus an excluded-path MILP, then returned the secondary
+    # solution while claiming the primary path was retained.
+    if int(candidate_limit) == 1:
+        weeks, exact_objective = decode(first.x)
+        candidates.append(
+            {
+                "generation_rank": 1,
+                "approximate_objective": primary_optimum,
+                "exact_objective": exact_objective,
+                "weeks": weeks,
+                "solution": first.x,
+                "path_key": tuple(week.squad_ids for week in weeks),
+                "primary_message": str(first.message),
+                "secondary_message": "not run: single primary candidate policy",
+            }
+        )
+
+    for generation_rank in (
+        range(1, int(candidate_limit) + 1) if int(candidate_limit) > 1 else ()
+    ):
         if current.x is None:
             shortlist_complete = True
             break
@@ -652,6 +674,9 @@ def optimise_transfer_horizon(
         decision_mode="TRANSFER_HORIZON",
         xi_excluded=excluded_h1,
     )
+    # The submitted action is evaluated on H1, while the decision horizon records
+    # how many qualified weeks governed the transfer path.
+    decision = replace(decision, horizon=int(max_horizon))
 
     solver = {
         "primary_message": str(first.message),
