@@ -42,7 +42,7 @@ jobs:
       - name: Lint touched Python surfaces
         run: python -m ruff check scripts/apex_v2_tournament_ops.py scripts/apex_v2_tournament_contract.py ops_tests/test_apex_v2_tournament_ops.py
 
-      - name: Verify patch hygiene
+      - name: Verify full patch hygiene
         run: |
           set -euo pipefail
           git diff --check
@@ -52,14 +52,16 @@ jobs:
           grep -F 'tournament_sealed_at' scripts/apex_v2_tournament_contract.py
           grep -F '_candidate_seal_id' scripts/apex_v2_tournament_ops.py
 
-      - name: Commit validated repair
+      - name: Commit validated non-workflow repair
         env:
           BRANCH: agent/pitchside-predeadline-recovery
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git restore --source=HEAD -- .github/workflows/apex-v2-prospective-tournament.yml
+          git restore --source=HEAD -- .github/workflows/_temporary-pitchside-patch.yml
           git add -A
           git diff --cached --stat
-          git commit -m 'Fix PITCHSIDE predeadline tournament recovery'
+          git commit -m 'Fix PITCHSIDE predeadline tournament recovery core'
           git push origin "HEAD:$BRANCH"
