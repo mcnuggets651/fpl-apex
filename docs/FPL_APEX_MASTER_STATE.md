@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 4 September 2026, after public continuity PR #150 merge and during bounded capability/documentation constitution implementation  
+**State snapshot:** 4 September 2026, after public PR #151 and private PR #7 documentation/continuity closure  
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -108,7 +108,7 @@ The final `latest` run re-read public authority and selected the authority-corre
 
 It does **not** mean a historical immutable decision is automatically fresh forever. Normal production freshness, deadline, authentication, Official FPL and provider-qualification gates continue to determine whether a new manager-facing recommendation is actionable.
 
-The capability/documentation constitution described below changes documentation/governance only and does not alter this production acceptance.
+The documentation/capability constitution and private semantic-binding closure changed governance/documentation only and did not alter this production acceptance.
 
 ---
 
@@ -119,17 +119,21 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 ### Public repository
 
 - repository: `mcnuggets651/fpl-apex`;
-- public continuity PR #150 merged successfully on 4 September 2026;
-- merge commit / verified `main` at the start of the capability-constitution implementation: `a00f0a45d8e74d834f79cbc473a6482656b9feda`;
+- public continuity PR #150 merged successfully on 4 September 2026 at `a00f0a45d8e74d834f79cbc473a6482656b9feda`;
 - PR #150 exact-head Apex CI `33870084591`: success;
 - PR #150 exact-head Apex V2 Ops Contract `33870084665`: success;
-- post-merge Apex CI `33870475132`: completed successfully, including continuity, operations regressions, authority/upstream validation and final production-core readiness;
-- capability/documentation implementation branch: `agent/apex-capability-constitution`, created from that exact `main` SHA;
+- post-merge Apex CI `33870475132`: success;
+- capability/documentation constitution PR #151 merged successfully on 4 September 2026;
+- PR #151 exact head: `400210e12e829fab2d0ab4f85ee7f31aef96dea0`;
+- PR #151 exact-head Apex CI `33873835393`: success;
+- PR #151 exact-head Apex V2 Ops Contract `33873835399`: success;
+- PR #151 merge commit / verified `main` at the start of this final ledger cleanup: `6a1509f766e6438a43d296e8e900518a18967959`;
+- post-merge Apex CI `33874537255`: success;
 - protected control plane; historical ruleset identifier `21759706` — verify live before relying on it.
 
 ### Machine authority
 
-`docs/APEX_V2_AUTHORITY.json` was re-read before the capability/documentation implementation and remains unchanged:
+`docs/APEX_V2_AUTHORITY.json` was re-read before this final ledger cleanup and remains unchanged:
 
 - `schema_version`: `1`;
 - `season`: `2026-2027`;
@@ -146,7 +150,7 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - automatic promotion: `false`;
 - legacy status: `HISTORICAL_NON_SERVING`.
 
-The capability/documentation PR must not change this file.
+This ledger-only cleanup does not change machine authority.
 
 ### Frozen PR #90
 
@@ -165,10 +169,14 @@ The immutable authority anchor is forensic SHA `99cc7b51b0cff45462b567084cb1844c
 - repository: `mcnuggets651/fpl`;
 - accepted final-latest merge commit: `a310450fd27aa469eac9ae91971334925b4bee77`;
 - private operational-ledger closure commit: `9e55ee8e98fb15eeb0a5189c7e65b88c5a6467af`;
+- private capability/documentation binding PR #7 merged successfully at `459427fe1e90565d61f8a9f6547f3876c4f3ec9a`;
+- PR #7 final exact-head private contract `33876581770`: success on `fpl-apex-private-mac`;
+- PR #7 post-merge private master-state contract `33876640309`: success;
+- private CI now consumes and validates the single public `PRIV-001`–`PRIV-008` capability semantics and rejects a competing private registry;
 - current request: schema 1, `run_id="latest"`, `top_n=12`;
 - owner-private payloads, exact manager commitments and authentication material remain private.
 
-This public capability-constitution PR does not modify the private repository. A separate bounded follow-up may make private CI consume/validate the public semantic registry; it must not create a second private capability registry.
+The separate private semantic-binding follow-up is complete. Any future-tense wording in subordinate documentation about a pending private registry-binding follow-up is superseded by this ledger and verified live GitHub state; do not reopen that closure without a new reproducible defect or an explicit governed change.
 
 ---
 
@@ -466,7 +474,7 @@ Key surfaces:
 - `fpl-apex-private-mac` — dedicated repository-level self-hosted execution surface;
 - private immutable releases — owner state/evaluation/presentation/auth separation.
 
-Public registry `PRIV-*` capabilities document these boundaries semantically. Full private path validation remains a separate private-CI follow-up; there is no second private registry.
+Public registry `PRIV-*` capabilities document these boundaries semantically. Private PR #7 completed live private-path validation against the single public registry and added fail-closed enforcement for missing/wrong private bindings, a second private registry, stale acceptance state or hosted-runner fallback. There is no second private semantic registry.
 
 ---
 
@@ -534,21 +542,32 @@ Temporary one-shot production dispatches were deliberately added/removed around 
 - Both modes returned byte-identical authority-correct owner state.
 - Private operational closure was recorded on private `main` commit `9e55ee8e98fb15eeb0a5189c7e65b88c5a6467af`.
 
-### Era L — capability/documentation constitution
+### Era L — capability/documentation constitution and private binding closure
 
-The bounded public governance implementation on branch `agent/apex-capability-constitution` adds:
+Public PR #151 completed the bounded documentation/governance constitution:
 
-- `docs/APEX_CAPABILITY_REGISTRY.yaml` as the one semantic index across governance/production/operations/research/private/interaction/legacy capabilities;
-- `docs/APEX_DECISION_INDEX.yaml` as machine-readable decision status/supersession while preserving `APEX_DECISIONS.md` rationale;
-- `docs/APEX_ARCHITECTURE.md` as the single current V2 cross-repository system map;
-- explicit historical classification for `docs/ARCHITECTURE.md` and `docs/APEX_CANONICAL_DECISION_POLICY.md`;
-- `scripts/check_capability_registry.py` plus adversarial `ops_tests/test_capability_registry_contract.py`;
-- semantic PR metadata and changed-path ↔ capability enforcement;
-- checker wiring into existing Apex CI and Apex V2 Ops Contract, not a new workflow.
+- added `docs/APEX_CAPABILITY_REGISTRY.yaml` as the one semantic index across governance/production/operations/research/private/interaction/legacy capabilities;
+- added `docs/APEX_DECISION_INDEX.yaml` as machine-readable decision status/supersession while preserving `APEX_DECISIONS.md` rationale;
+- repurposed `docs/APEX_ARCHITECTURE.md` as the single current V2 cross-repository system map;
+- explicitly classified `docs/ARCHITECTURE.md` and `docs/APEX_CANONICAL_DECISION_POLICY.md` as historical/non-serving;
+- added `scripts/check_capability_registry.py` plus adversarial `ops_tests/test_capability_registry_contract.py`;
+- added semantic PR metadata and changed-path ↔ capability enforcement;
+- wired the checker into existing Apex CI and Apex V2 Ops Contract, not a new workflow;
+- passed exact-head Apex CI `33873835393` and Apex V2 Ops Contract `33873835399`;
+- merged at `6a1509f766e6438a43d296e8e900518a18967959`;
+- passed post-merge Apex CI `33874537255`.
 
-Decision D032 records the constitution. Exact-head CI/Ops acceptance for this new PR is pending until the PR is opened; it must be recorded here before merge if additional evidence is required.
+Private PR #7 then completed the intentionally separate private semantic-binding closure:
 
-This is documentation/governance closure, not another model-development loop.
+- consumed the single public `APEX_CAPABILITY_REGISTRY.yaml` rather than creating a second registry;
+- validated public `PRIV-001`–`PRIV-008` semantics against private workflows/tools/runbooks/tests;
+- enforced the exact self-hosted `[self-hosted, macOS, ARM64]` / no-hosted-fallback boundary;
+- corrected stale private acceptance language;
+- passed final exact-head private contract `33876581770` on `fpl-apex-private-mac`;
+- merged at `459427fe1e90565d61f8a9f6547f3876c4f3ec9a`;
+- passed post-merge private contract `33876640309`.
+
+Decision D032 records the public constitution. This sequence is closed documentation/governance work, not an invitation to restart model development or architecture redesign.
 
 ---
 
@@ -572,27 +591,25 @@ This is documentation/governance closure, not another model-development loop.
 16. **Do not leave state-changing code undocumented.** CI requires this ledger to move with substantive changes.
 17. **Do not create an active workflow or `scripts/apex_v2_*.py` surface without registering its capability.**
 18. **Do not reopen exact/latest query acceptance without a new reproducible defect or authority change.**
+19. **Do not reopen the public/private capability-binding closure merely because subordinate prose still contains historical future-tense wording.** This ledger and verified live GitHub state outrank that prose.
 
 ---
 
 ## 11. Next actions — normal operations, not unfinished closure
 
-The production/query system is accepted. There is no outstanding production architectural acceptance blocker in this closure sequence.
+The production/query system is accepted and the documentation/continuity constitution is closed. There is no outstanding production architectural, private-query, capability-registry or ChatGPT-continuity acceptance blocker in this closure sequence.
 
-Immediate bounded governance action:
-
-1. finish exact-head validation of the capability/documentation constitution PR and merge it only if Apex CI and Apex V2 Ops Contract are green;
-2. after public merge, perform one **separate bounded private PR** so private CI consumes the public registry semantics, validates private bindings locally and removes stale procedural status from the private Query Bridge; do not create a private registry.
+The only remaining gate for the branch containing this ledger update is the normal exact-head CI required before merging the ledger-only correction itself. Once that one-file correction is merged green, there is no follow-on documentation architecture project.
 
 Normal operations remain:
 
-3. keep `fpl-apex-private-mac` service healthy for private query execution;
-4. keep public Deadline Watch/auth keepalive/production workflows healthy;
-5. at each new deadline, obtain fresh Official FPL/auth/provider state through the production chain before making an actionable recommendation;
-6. use private `latest` query for owner-specific retrieval and fail closed if it returns `REFRESH_REQUIRED`;
-7. continue prospective research/evaluation without serving influence unless explicitly promoted through governance;
-8. keep PR #90 frozen/open/draft/unmerged;
-9. update this ledger whenever substantive public state changes and the private companion whenever private state changes.
+1. keep `fpl-apex-private-mac` service healthy for private query execution;
+2. keep public Deadline Watch/auth keepalive/production workflows healthy;
+3. at each new deadline, obtain fresh Official FPL/auth/provider state through the production chain before making an actionable recommendation;
+4. use private `latest` query for owner-specific retrieval and fail closed if it returns `REFRESH_REQUIRED`;
+5. continue prospective research/evaluation without serving influence unless explicitly promoted through governance;
+6. keep PR #90 frozen/open/draft/unmerged and never use its moving branch head as the immutable authority anchor;
+7. update this ledger whenever substantive public state changes and the private companion whenever private state changes.
 
 ---
 
@@ -636,7 +653,19 @@ Editing this file, the capability registry, decision index or architecture map c
 
 ## 13. Changelog for this ledger
 
-### 2026-09-04 — capability/documentation constitution staged
+### 2026-09-04 — documentation/continuity constitution closed
+
+- public PR #151 exact-head Apex CI `33873835393` and Apex V2 Ops Contract `33873835399` passed;
+- PR #151 merged as `6a1509f766e6438a43d296e8e900518a18967959` and post-merge Apex CI `33874537255` passed;
+- private PR #7 consumed/validated the single public `PRIV-*` capability semantics without creating a private registry;
+- private PR #7 final exact-head contract `33876581770` passed on `fpl-apex-private-mac`;
+- private PR #7 merged as `459427fe1e90565d61f8a9f6547f3876c4f3ec9a` and post-merge private contract `33876640309` passed;
+- stale future-tense continuation instructions were removed from the canonical ledger;
+- affected capability for this final ledger correction: `GOV-002` only;
+- machine authority, PR #90 policy, production core, serving provider/horizons, model/research behavior, production workflow semantics, private owner/auth state and billing/spend were unchanged;
+- after this ledger-only PR passes exact-head checks and merges, the documentation/continuity closure sequence has no remaining action beyond normal operations.
+
+### 2026-09-04 — capability/documentation constitution staged (historical staging record)
 
 - verified public PR #150 merged at `a00f0a45d8e74d834f79cbc473a6482656b9feda` and post-merge Apex CI `33870475132` completed successfully;
 - created bounded branch `agent/apex-capability-constitution` from that exact head;
@@ -647,7 +676,7 @@ Editing this file, the capability registry, decision index or architecture map c
 - wired semantic enforcement into existing Apex CI and Apex V2 Ops Contract;
 - recorded decision D032;
 - machine authority, PR #90, production core, provider roles/horizons, production workflow semantics, model/research behavior, owner-private state and spending/billing policy were not changed;
-- exact-head PR checks are the remaining acceptance gate for this bounded governance change.
+- at that staging point, exact-head PR checks were the remaining acceptance gate; Era L and the closure entry above record their successful completion.
 
 ### 2026-09-04 — APEX OPERATIONAL closure
 
