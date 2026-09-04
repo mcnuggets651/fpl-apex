@@ -1,6 +1,18 @@
-# Apex FPL Architecture
+# Apex FPL Architecture — HISTORICAL PRE-V2
 
-## Decision pipeline
+> **HISTORICAL / NON-SERVING DOCUMENT**
+>
+> This file preserves the original pre-V2 architecture for forensic and legacy-model research context. It is **not** the current production system map and must not be used to determine serving authority.
+>
+> Current sources:
+> - machine authority: `docs/APEX_V2_AUTHORITY.json`;
+> - human continuity: `docs/FPL_APEX_MASTER_STATE.md`;
+> - capability registry: `docs/APEX_CAPABILITY_REGISTRY.yaml`;
+> - current cross-repository system map: `docs/APEX_ARCHITECTURE.md`.
+>
+> The current V2 authority classifies the old `scripts/run_apex.py`, generated recommendation outputs and pre-V2 selector chain as historical/non-serving.
+
+## Historical decision pipeline
 
 ```text
 Official FPL API
@@ -29,76 +41,49 @@ Auditable report + source health + scenario comparison
 
 ## 1. Canonical entity layer
 
-The official FPL `bootstrap-static` response defines the player universe. Auxiliary rows are joined by FPL player ID. External club, position, price or name fields are diagnostic only and cannot override the official values.
+Official FPL `bootstrap-static` defined the player universe. Auxiliary rows were joined by FPL player ID. External club, position, price or name fields were diagnostic only and could not override official values.
 
-If official FPL cannot be fetched on a live refresh, Apex fails the run. An old “confident” squad is less useful than a clear failure when identity or fixtures might have changed.
+If official FPL could not be fetched on a live refresh, this architecture failed the run rather than treating stale identity or fixtures as current.
 
 ## 2. Source adapters
 
-Adapters isolate upstream projects from the core model:
+Historical adapters isolated upstream projects from the old core model:
 - `OfficialFPLClient`
 - `FPLCoreClient`
 - `AIrsenalProjectionAdapter`
 - `OddsAdapter`
 - RSS/Atom collector
 
-This avoids copying large upstream repositories into Apex and makes it possible to upgrade or remove one source without rewriting the optimisation layer.
-
 ## 3. Integrity and provenance
 
-`reconcile()` records conflicts between canonical fields and auxiliary fields. The official value wins. Each source also produces a `SourceStatus` row with success/failure details and timestamp, written to `reports/sources.csv`.
+The historical `reconcile()` path recorded conflicts between canonical and auxiliary fields. Official values won. Source status rows were written to generated reports.
 
 ## 4. Feature layer
 
-Statistical features include:
-- xG/90, xA/90 and goal involvement;
-- starts/minutes;
-- preseason starts/minutes/xG/xA;
-- official player status and chance of playing;
-- defensive contributions;
-- set-piece/penalty order;
-- goalkeeper save rate;
-- fixture attack/defence strength;
-- optional external expert predictions.
+Historical statistical features included xG/xA rates, minutes, preseason evidence, availability, defensive contributions, set pieces, goalkeeper save rate, fixture strength and optional external expert predictions.
 
 ## 5. Expected minutes
 
-The expected-minutes model blends established usage and preseason usage, then applies official availability. Manual verified evidence and conservative news signals can reduce it further. It is bounded to 0–90.
-
-This model is deliberately separate from xP so rotation/news improvements can be calibrated independently.
+The old expected-minutes model blended established/preseason usage and availability separately from xP.
 
 ## 6. Fixture-level expected points
 
-Apex projects each player once per actual fixture. Therefore:
-- no fixture => zero xP;
-- two fixtures in one Gameweek => two rows that sum to a DGW total.
-
-The transparent expected-points decomposition includes appearance, attack, clean sheet, defensive contribution, goalkeeper saves, capped bonus prior and set-piece context.
+The old pipeline projected player/fixture rows and aggregated them to Gameweeks, including DGWs.
 
 ## 7. Ensemble and risk
 
-Expert weights are configured in `config/apex.yaml`. For every player/Gameweek row, only available experts contribute and their weights are re-normalised. This is important early in the season when some upstream models may not yet publish 2026/27 projections.
-
-Apex stores both the mean projection and a risk-adjusted projection. Optimisation uses the risk-adjusted value by default.
+The old `src/apex_fpl` stack used configured expert weights and risk-adjusted projections. **This is not the V2 serving-provider constitution.** Current serving roles come only from `docs/APEX_V2_AUTHORITY.json`.
 
 ## 8. Initial squad MILP
 
-Binary variables represent squad, XI and captain. Constraints enforce budget, 15-man composition, legal XI formation and club limits. Lock/ban constraints create explicit alternative scenarios such as Haaland vs no-Haaland.
+The historical optimiser selected squad/XI/captain under budget, formation and club constraints.
 
 ## 9. Multi-GW transfer MILP
 
-For every player and Gameweek, binary variables represent squad, XI, captain, transfer-in and transfer-out. Additional state/action variables model the exact 1–5 free-transfer roll state and transfer-hit cost. A continuous bank variable enforces cash flow at current snapshot prices.
-
-This is materially stronger than independently selecting the best squad every Gameweek because it prices the path required to move between squads.
+The historical transfer planner modelled transfer-in/out, free-transfer roll state, hits and bank cash flow.
 
 ## 10. Reporting
 
-Every result is reproducible from:
-- projection rows;
-- official current player data;
-- model configuration;
-- current squad/team state if transfer planning;
-- source health;
-- integrity warnings.
+Historical results were reproduced from generated projections, Official state, configuration, team state, source health and warnings.
 
-The machine-readable JSON is intended to be the stable interface for a future dashboard, API or ChatGPT-connected reporting layer.
+The machine-readable generated JSON surfaces from this architecture are retained as historical interfaces. They are **not** the current ChatGPT/manager decision boundary. Current owner questions route through public V2 authority and the approved private query plane described in `docs/APEX_ARCHITECTURE.md` and `docs/CHATGPT_APEX_QUERY_POLICY.md`.
