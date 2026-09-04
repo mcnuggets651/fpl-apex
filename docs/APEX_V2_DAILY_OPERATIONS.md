@@ -109,12 +109,15 @@ The rotating owner credential is a serialized two-phase private transaction:
 1. load the newest active encrypted private refresh state, or the explicitly configured bootstrap refresh only when bounded recovery permits it;
 2. before exchanging a parent, recover any already-staged encrypted child for that exact parent from authenticated private release listing, so a consumed parent is never blindly retried;
 3. exchange the current refresh token once;
-4. immediately encrypt and durably upload the rotated child as a **private draft** before making `/api/me/` manager verification a success prerequisite;
+4. immediately encrypt and durably upload the rotated child as a **private draft** before making `/api/me/` manager verification a success prerequisite, retaining the exact GitHub release ID and upload SHA-256 map returned by that successful stage call;
 5. verify the returned access token against the configured manager entry;
-6. only after an exact manager match, re-download/digest-check the staged encrypted child and publish it immutably as active refresh state;
-7. after successful activation, best-effort clean consumed intermediate staged drafts.
+6. only after an exact manager match, activate that exact same-run release ID after the private store re-verifies its asset set and GitHub SHA-256 digests against the upload map, then publish it immutably as active refresh state;
+7. for crash recovery on a later serialized run, discover the staged child through authenticated private release listing and re-download/decrypt/validate it before using it to recover forward;
+8. after successful activation, best-effort clean consumed intermediate staged drafts.
 
-A staged draft is durable recovery evidence, **not active auth state**. Any network/unclassified/rejected access result after a successful exchange is `RefreshRotationIndeterminate`: leave the child staged, do not retry the consumed parent and do not fall through to bootstrap or direct authentication. The next serialized run must recover forward from that staged child. Explicit wrong-manager proof is different: the wrong-manager staged chain is strictly discarded; failure to purge it requires manual private-store cleanup and remains a hard failure.
+Same-run activation must not depend on immediate visibility through GitHub's release-list endpoint: the just-created draft's exact release ID and upload digests are already authoritative transaction evidence and avoid an eventual-consistency race. Recovery after process loss is different and deliberately uses authenticated draft listing plus re-download/decryption before the staged child is reused.
+
+A staged draft is durable recovery evidence, **not active auth state**. Any network/unclassified/rejected access result after a successful exchange is `RefreshRotationIndeterminate`: leave the child staged, do not retry the consumed parent and do not fall through to bootstrap or direct authentication. The next serialized run must recover forward from that staged child. Explicit wrong-manager proof is different: the exact same-run draft is purged by its returned release ID, recovered wrong-manager staged state is also strictly discarded, and failure to purge requires manual private-store cleanup and remains a hard failure.
 
 The bounded recovery ladder is entered only when the refresh **exchange itself** is explicitly rejected/expired before a new child is staged. It may then try a configured bootstrap refresh token through the same two-phase transaction. For production only, direct bearer/cookie verification is allowed after both rotating and bootstrap refresh exchanges are explicitly rejected. Keepalive cannot substitute direct auth for a dead durable refresh chain.
 
