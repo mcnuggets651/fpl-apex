@@ -44,7 +44,7 @@ def validate_static_contract(root: Path) -> None:
     text = master.read_text(encoding="utf-8")
     required_master_markers = (
         "APEX_V2_AUTHORITY.json",
-        "PRODUCTION PIPELINE PASSED; PRIVATE QUERY ACCEPTANCE BLOCKED BY GITHUB BILLING",
+        "APEX OPERATIONAL",
         "NEVER_MERGE_OR_ADVANCE",
         "c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437",
         "99cc7b51b0cff45462b567084cb1844cfe0a456f",
@@ -91,8 +91,6 @@ def event_base() -> str | None:
 
 
 def changed_paths(base: str, head: str) -> list[str]:
-    # Two-dot diff is correct for both a PR base SHA and github.event.before:
-    # it asks what this checked-out head changed relative to the supplied base.
     out = git("diff", "--name-only", f"{base}..{head}")
     return [line.strip() for line in out.splitlines() if line.strip()]
 
@@ -138,7 +136,6 @@ def main() -> int:
         if not base:
             print("master-state static contract OK; no comparable base available")
             return 0
-        # Make an explicit SHA/ref failure clear instead of silently skipping.
         git("rev-parse", "--verify", base)
         git("rev-parse", "--verify", args.head)
         paths = changed_paths(base, args.head)
