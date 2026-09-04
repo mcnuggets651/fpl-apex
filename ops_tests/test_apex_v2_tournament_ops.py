@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import apex_v2_tournament_common as common  # noqa: E402
 import apex_v2_tournament_contract as contract  # noqa: E402
+import apex_v2_tournament_ops as ops  # noqa: E402
 import apex_v2_tournament_scoring as scoring  # noqa: E402
 
 
@@ -450,22 +451,69 @@ class TournamentContractTests(unittest.TestCase):
                 private_tournament_release_tag="supplement",
             )
 
-    def test_latest_valid_predeadline_candidate_wins(self):
+    def test_latest_valid_predeadline_tournament_seal_wins(self):
         first = readiness()
         second = json.loads(json.dumps(first))
         first["common_seal"]["snapshot_frozen_at"] = (
-            "2026-09-01T12:00:00+00:00"
+            "2026-09-04T15:00:00+00:00"
+        )
+        first["common_seal"]["tournament_sealed_at"] = (
+            "2026-09-04T15:10:00+00:00"
         )
         second["common_seal"]["snapshot_frozen_at"] = (
-            "2026-09-04T15:00:00+00:00"
+            "2026-09-04T13:00:00+00:00"
+        )
+        second["common_seal"]["tournament_sealed_at"] = (
+            "2026-09-04T16:20:00+00:00"
         )
         selected = contract.select_latest_valid_common_seal(
             [first, second], gameweek=3
         )
         self.assertEqual(
-            selected["common_seal"]["snapshot_frozen_at"],
-            "2026-09-04T15:00:00+00:00",
+            selected["common_seal"]["tournament_sealed_at"],
+            "2026-09-04T16:20:00+00:00",
         )
+
+    def test_pitchside_recovery_creates_new_seal_but_recheck_is_idempotent(self):
+        args = list(base_inputs())
+        healthy = json.loads(json.dumps(args[4]))
+        healthy["checked_at"] = "2026-09-04T15:00:00Z"
+        same_bytes_later = json.loads(json.dumps(healthy))
+        same_bytes_later["checked_at"] = "2026-09-04T16:00:00Z"
+        dns = json.loads(json.dumps(healthy))
+        dns["health"] = "INCOMPLETE"
+        dns["dns_code"] = common.DNS_INCOMPLETE_UNIVERSE
+        dns["qualified_horizons"] = []
+        dns["surface"] = None
+        dns["surface_sha256"] = None
+        dns["missing_forecastable_ids_by_horizon"]["1"] = [3]
+
+        healthy_id = ops._candidate_seal_id(
+            run_id=args[0]["run_id"],
+            public_attempt_id=args[0]["public_attempt_id"],
+            pitchside_capture=healthy,
+            openfpl_readiness=args[5],
+        )
+        later_id = ops._candidate_seal_id(
+            run_id=args[0]["run_id"],
+            public_attempt_id=args[0]["public_attempt_id"],
+            pitchside_capture=same_bytes_later,
+            openfpl_readiness=args[5],
+        )
+        dns_id = ops._candidate_seal_id(
+            run_id=args[0]["run_id"],
+            public_attempt_id=args[0]["public_attempt_id"],
+            pitchside_capture=dns,
+            openfpl_readiness=args[5],
+        )
+        self.assertEqual(healthy_id, later_id)
+        self.assertNotEqual(healthy_id, dns_id)
+
+    def test_hourly_schedule_attempts_candidate_seal(self):
+        workflow = (
+            ROOT / ".github/workflows/apex-v2-prospective-tournament.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("github.event_name == 'schedule'", workflow)
 
     def test_selection_requires_deadline_and_marks_canonical_seal(self):
         selected = readiness()

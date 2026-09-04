@@ -28,6 +28,12 @@ The tournament therefore creates a separate immutable evidence chain:
 
 No forecast can be regenerated after seeing an outcome. A postdeadline manual replay may be diagnostic, but it cannot become a prospective candidate or canonical win/loss.
 
+### PITCHSIDE predeadline recovery
+
+A PITCHSIDE DNS is not terminal while the Official deadline is still in the future. The hourly tournament schedule resolves the latest eligible immutable production final, re-captures PITCHSIDE against that exact production Official hash, and content-addresses the external evidence. Unchanged upstream bytes reuse the same seal; a materially different PITCHSIDE publication or governed external-readiness state creates a new immutable seal for the same production run. This allows an early `INCOMPLETE`, `STALE` or transient-unavailable PITCHSIDE state to recover to `ENTERED` before deadline without rerunning production or mutating prior evidence.
+
+Canonicalization chooses the latest valid `tournament_sealed_at` before the Official deadline. `snapshot_frozen_at` remains the immutable production snapshot time and is only a deterministic secondary tie-breaker; it must never be rewritten to simulate a later external capture.
+
 ## Provider reliability contracts
 
 ### AIrsenal
@@ -135,7 +141,7 @@ After the target deadline the controller selects:
 
 `LAST_VALID_COMMON_PREDEADLINE_SEAL`
 
-among all immutable ready candidates for that Gameweek. The selected record becomes:
+among all immutable ready candidates for that Gameweek, ordered first by the latest valid `tournament_sealed_at` and then by deterministic production/tag tie-breakers. The selected record becomes:
 
 `CANONICAL_PROSPECTIVE_OBSERVATION`
 
@@ -263,14 +269,14 @@ Operational reliability remains separate from forecast skill.
 
 Public:
 
-- `apex-v2/tournament-candidate/{season}/{run_id}`
+- `apex-v2/tournament-candidate/{season}/{run_id}/{seal_id}`
 - `apex-v2/tournament-selection/{season}/gw{gw}`
 - `apex-v2/tournament-evaluation/{season}/obs{n}/h{h}`
 - `apex-v2/tournament-diagnostic/{season}/gw2`
 
 Private:
 
-- `apex-v2/private-tournament/{season}/{run_id}`
+- `apex-v2/private-tournament/{season}/{run_id}/{seal_id}`
 
 Every release is create-once and requires repository release immutability.
 
@@ -280,7 +286,7 @@ Every release is create-once and requires repository release immutability.
 
 - after a successful `Apex V2 Daily Production`, it seals a candidate for that exact production run;
 - after a relevant tournament/provider-ops push to `main`, it performs post-ops runtime acceptance by resolving the latest eligible immutable production final and sealing it idempotently;
-- hourly maintenance retains GW2 diagnostics, canonicalizes any deadline-passed observation, scores newly completed horizons and materializes the public status artifact.
+- hourly maintenance first attempts a content-addressed predeadline reseal of the latest eligible immutable production final, then retains GW2 diagnostics, canonicalizes any deadline-passed observation, scores newly completed horizons and materializes the public status artifact.
 
 A manual dispatch can still provide an exact production run key. If the manual input is blank, it uses the same bounded resolver as post-ops acceptance.
 

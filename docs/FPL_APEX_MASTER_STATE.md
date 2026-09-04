@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 4 September 2026, after PR #157 merged the two-phase auth durability repair and a fresh browser refresh re-seed runtime-proved exchange + exact manager verification, exposing one final same-run draft-list activation race  
+**State snapshot:** 4 September 2026, after PR #158 merged the exact-ID auth activation-race repair and the GW3 PITCHSIDE postmortem exposed a bounded prospective-tournament reseal defect now being repaired on `agent/pitchside-predeadline-recovery`
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -54,9 +54,9 @@ The 4 September owner-auth incident is no longer a credential mystery. Public PR
 
 After #157 merged, one fresh browser-issued refresh credential was re-seeded directly into the approved GitHub Actions secret without entering chat. Keepalive rerun attempt 2, job `101151219540` on run `33911608442`, proved the new credential itself is valid: the old rotating private refresh was rejected, bounded bootstrap recovery successfully exchanged the newly re-seeded refresh credential, the rotated child was durably staged, and execution advanced through exact manager verification to immutable-activation code. It then failed with `RefreshRotationIndeterminate: Verified staged FPL refresh child disappeared before immutable activation` because same-run activation immediately tried to rediscover the just-created private draft through GitHub's eventually-consistent release listing.
 
-That failure does **not** mean the user must extract another token. The consumed bootstrap parent produced a durable staged child by design. Bounded branch `agent/auth-stage-activation-race` closes only the observed activation race: staging retains the exact release ID and upload SHA-256 map returned by GitHub; after manager match, same-run activation publishes that exact release ID after private-store asset/digest verification instead of re-listing; crash recovery remains list + re-download/decrypt based; wrong-manager same-run cleanup uses the exact returned release ID. Regression tests explicitly hide newly created drafts from `list_releases()` while requiring exact-ID activation and purge to succeed.
+That failure did **not** require another token. PR #158, **Fix same-run FPL refresh draft activation race**, merged at `8efaa70b1172b0a0c6d20357d5d528a5a65ac8b7` from exact head `4528715a625adc94a60a249e1fb4df42c5811bae` after Apex CI `33913733476` and Apex V2 Ops Contract `33913733468` passed. Same-run activation now uses the exact staged release ID/upload digests; cross-run recovery remains list + re-download/decrypt based. Any remaining auth health claim must come from fresh runtime evidence rather than the pre-merge failure.
 
-Canonical production run `33850307770-1` remains the accepted serving proof. AIrsenal remains sole serving provider H1–H8. Dastan and PITCHSIDE remain research-only. None of the Draft/auth work changes model authority, optimiser semantics, research influence or frozen PR #90.
+Canonical production run `33850307770-1` remains the accepted serving proof. AIrsenal remains sole serving provider H1–H8. Dastan and PITCHSIDE remain research-only. The GW3 postmortem identified a separate research-only defect: one immutable tournament candidate per production `run_id` plus schedule-only maintenance meant a PITCHSIDE DNS could not recover automatically if the external source became complete later before deadline. `agent/pitchside-predeadline-recovery` makes external seals content-addressed, lets the existing hourly schedule reseal the same immutable production run when evidence changes, and selects the latest valid `tournament_sealed_at`. Production authority, optimiser semantics, research influence and frozen PR #90 remain unchanged.
 
 ### Production acceptance
 
@@ -233,9 +233,10 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - PR #154, **Complete governed FPL Draft authenticated owner-query relay**, merged at `4a37729b7cf38a72a48a511fbeb60c7decb89af4` after exact-head Apex CI `33896311945` and Ops Contract `33896311949` passed;
 - PR #155, **Harden FPL Draft open-waiver semantics**, merged at `a533a9bcd25699f0f9fe444f11487ac271923471` after exact-head Apex CI `33899930858` and Ops Contract `33899930818` passed;
 - PR #156, **Diagnose unexpected Official FPL owner status safely**, exact head `174790f7cea7d0b2f235f0a607630d0c974b76a9`, passed Apex CI `33902899716` and Ops Contract `33902899673`, merged at `cd5bd12eda187c372b8d389260768667d0e26234`;
-- PR #157, **Harden FPL owner-auth refresh rotation durability**, exact head `e0a0f5c4a62f07ef10ad17f544bd7b08b63f19f7`, passed Apex CI `33911107334` and Ops Contract `33911107378`, merged at current public `main` `1219861f3b9c3d707f6c80f94fa6f26325bab4a1`;
+- PR #157, **Harden FPL owner-auth refresh rotation durability**, exact head `e0a0f5c4a62f07ef10ad17f544bd7b08b63f19f7`, passed Apex CI `33911107334` and Ops Contract `33911107378`, merged at `1219861f3b9c3d707f6c80f94fa6f26325bab4a1`;
 - fresh browser re-seed acceptance attempt: Keepalive run `33911608442`, attempt-2 job `101151219540`, reached verified staged-child activation and failed only on immediate release-list rediscovery;
-- active bounded repair branch: `agent/auth-stage-activation-race`;
+- PR #158, **Fix same-run FPL refresh draft activation race**, exact head `4528715a625adc94a60a249e1fb4df42c5811bae`, passed Apex CI `33913733476` and Ops Contract `33913733468`, merged at current public `main` `8efaa70b1172b0a0c6d20357d5d528a5a65ac8b7`;
+- active bounded research-operations repair branch: `agent/pitchside-predeadline-recovery`;
 - protected control plane; historical ruleset identifier `21759706` — verify live before relying on it.
 
 ### Machine authority
@@ -624,30 +625,25 @@ Public PR #151 added the single semantic capability registry and decision index,
 31. **Do not retain staged credentials proven to belong to another manager.** Purge the wrong-manager staged chain or stop for manual private-store cleanup.
 32. **Do not ask for another browser re-seed after the accepted 4 September attempt merely because same-run draft activation failed.** The new credential already exchanged and verified the manager; first recover the durable staged child.
 33. **Do not make same-run activation depend on immediate `list_releases()` visibility.** Use the exact release ID/upload digests returned by the successful stage call; reserve list + re-download for cross-run recovery.
+34. **Do not treat an external-provider DNS as terminal before the deadline.** PITCHSIDE must be re-captured prospectively against the same Official hash and a materially changed source must be allowed to create a new immutable seal for the same production run.
+35. **Do not select repeated external captures by `snapshot_frozen_at`.** Canonical prospective selection is by latest valid `tournament_sealed_at`; the production snapshot timestamp remains immutable evidence, not a reseal clock.
 
 ---
 
-## 11. Next actions — merge exact-ID activation fix, recover staged auth, then finish exact open/pending Draft semantics
+## 11. Next actions — close PITCHSIDE reseal recovery and verify live runtime state from evidence
 
-The serving production and Classic owner-query system remain accepted. Draft live roster/pool access, prior governed authentication, transaction-history relay, private artifact and stable connected-session receipt are accepted. The browser re-seed is now proven valid; the only current auth blocker is the observed same-run private-draft activation race.
+The serving production and Classic owner-query system remain accepted. PR #158 has merged the bounded exact-ID auth activation code. Current auth/Draft runtime health must be verified from fresh runs before making new owner-specific claims; do not infer it from the earlier pre-merge failure.
 
-Immediate bounded closure:
+Immediate bounded PITCHSIDE closure:
 
-1. finish exact branch review for `agent/auth-stage-activation-race`, including master/runbook continuity and the two regression tests that hide just-created drafts from `list_releases()`;
-2. open one governed public PR with only the capability IDs required by the registered changed paths, `Apex-Authority-Changed: no`, strengthened activation-durability wording and no reopened decisions;
-3. require Apex CI and Apex V2 Ops Contract to pass on the **exact final PR head**;
-4. before merge, re-verify current `main`, machine authority, PR #90 frozen policy/head relationship and exact PR head; merge only if unchanged/green;
-5. after merge, run one Auth Keepalive and require recovery from the already-staged child, forward rotation, exact manager `63984`, exact-ID private immutable activation and clean worktree proof; do not request another browser token unless that merged recovery run proves the staged chain genuinely unrecoverable;
-6. run merged `OPS-008` and require successful owner authentication, fresh authenticated Draft transaction/current-state discovery, private dispatch and frozen/core integrity proof;
-7. inspect only the credential-free private receipt plus schema-only `my-team` diagnostic; if `my-team` exposes a distinct waiver/request/pending list, implement an explicit allowlisted extractor for that exact proven list; otherwise continue only with bounded authenticated GET discovery and do not guess;
-8. update private relay/stable issue semantics only after the exact current-request surface is proven;
-9. inspect a resulting current pending/open queue, or a proven empty queue from that exact current-request surface;
-10. rerun private public-capability binding validation and record exact final acceptance in public/private continuity docs;
-11. only then call the Draft connection **CERTIFIED COMPLETE** for fresh-session roster, market and pending/open waiver queries and provide the owner the final Project-instruction block.
+1. finish `agent/pitchside-predeadline-recovery` with `GOV-002`, `GOV-004`, `PROD-006` and `RES-001` only if the exact changed-path semantic checker agrees;
+2. require regression proof that unchanged PITCHSIDE bytes are idempotent, DNS→healthy evidence creates a distinct seal, scheduled hourly execution participates in sealing and canonical selection uses `tournament_sealed_at`;
+3. require Apex CI and Apex V2 Ops Contract to pass on the exact final PR head; do not weaken no-hindsight, immutability, privacy, common-Official-hash or research-only gates;
+4. merge only after live `main`, machine authority and frozen PR #90 are reverified unchanged;
+5. accept live recovery on the next still-predeadline Gameweek only when the scheduled tournament path can retain an earlier DNS and later seal a materially changed valid PITCHSIDE publication against the same immutable production run/hash;
+6. never backfill GW3 after the deadline; its already-sealed/canonical evidence remains immutable historical prospective evidence.
 
-Separately, Dastan remains a non-serving runtime-health item after PR #153; its current shadow health can be verified independently without blocking the Draft owner-query closure or changing AIrsenal serving authority.
-
-Normal operations remain: keep the private runner healthy, keep Deadline Watch/auth/production workflows healthy, obtain fresh Official FPL/provider state each deadline, use private `latest` for Classic owner retrieval, keep research non-serving, keep PR #90 frozen and update this ledger whenever substantive state changes.
+Normal operations remain: keep the private runner healthy, verify current auth/Draft state from governed runtime evidence, keep Deadline Watch/auth/production workflows healthy, obtain fresh Official FPL/provider state each deadline, use private `latest` for Classic owner retrieval, keep research non-serving, keep PR #90 frozen and update this ledger whenever substantive state changes.
 
 ---
 
@@ -688,6 +684,15 @@ Editing this file, the capability registry, decision index, Draft runbook or arc
 ---
 
 ## 13. Changelog for this ledger
+
+### 2026-09-04 — PITCHSIDE same-run predeadline recovery defect bounded after PR #158 merge
+
+- PR #158 merged at `8efaa70b1172b0a0c6d20357d5d528a5a65ac8b7` from exact head `4528715a625adc94a60a249e1fb4df42c5811bae` after Apex CI `33913733476` and Apex V2 Ops Contract `33913733468` passed, closing the same-run auth draft-list activation code defect;
+- GW3 tournament inspection then showed PITCHSIDE could be explicit DNS correctly yet remain unable to recover automatically before deadline because scheduled runs performed maintenance only and the candidate/private supplement namespace was one immutable object per production `run_id`;
+- the selector also used `snapshot_frozen_at`, which cannot distinguish repeated external captures against one immutable production snapshot;
+- bounded `agent/pitchside-predeadline-recovery` content-addresses materially distinct external evidence, allows the existing hourly schedule to attempt a predeadline reseal, preserves unchanged-byte idempotency and selects by latest valid `tournament_sealed_at`;
+- the repair does not rerun production, alter Official hashes, fill missing forecasts, backfill GW3, change AIrsenal serving authority, change machine authority or touch frozen PR #90;
+- OpenFPL remains governed by its separate 10-completed-exact-rule-GW readiness policy and is not made artificially eligible by this PITCHSIDE repair.
 
 ### 2026-09-04 — two-phase auth merged; valid browser re-seed exposed and bounded same-run activation race
 
