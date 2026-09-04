@@ -24,6 +24,7 @@ NON_SERVING_ACTIVE = {
     "apex-v2-deadline-watch.yml",
     "apex-v2-decision-quality.yml",
     "apex-v2-direct-auth-diagnostic.yml",
+    "apex-v2-draft-auth-relay.yml",
     "apex-v2-ops-contract.yml",
     "apex-v2-owner-brief.yml",
     "apex-v2-prospective-tournament.yml",
@@ -341,6 +342,33 @@ def check_non_serving_boundaries(failures: list[str]) -> None:
     ):
         if forbidden in shadow:
             failures.append(f"shadow health crossed boundary: {forbidden}")
+
+    draft = text(".github/workflows/apex-v2-draft-auth-relay.yml")
+    for needle in (
+        "group: apex-v2-fpl-auth",
+        "cancel-in-progress: false",
+        "scripts/apex_v2_draft_auth_relay_ops.py",
+        "APEX_V2_PRIVATE_REPO_TOKEN",
+    ):
+        if needle not in draft:
+            failures.append(f"Draft auth relay contract missing: {needle}")
+    for forbidden in (
+        "apex-v2 solve",
+        "apex-v2 publish",
+        "contents: write",
+        "actions/upload-artifact",
+    ):
+        if forbidden in draft:
+            failures.append(f"Draft auth relay crossed safety boundary: {forbidden}")
+    draft_controller = text("scripts/apex_v2_draft_auth_relay_ops.py")
+    for needle in (
+        'DISPATCH_EVENT = "apex-draft-auth-snapshot"',
+        'CONTRACT = "apex-private-draft-auth-relay-v1"',
+        'method="GET"',
+        '/dispatches',
+    ):
+        if needle not in draft_controller:
+            failures.append(f"Draft relay controller contract missing: {needle}")
 
     # Tournament/research stays bound to the immutable evaluator lineage. It is
     # explicitly non-serving and must not become an alternate promotion path.
