@@ -26,6 +26,7 @@ class ShadowProviderWorkflowTests(unittest.TestCase):
             'rm -f "$GITHUB_WORKSPACE/acquisition/providers/dastan.csv"',
             'cd "$APEX_CORE_PATH"',
             '--report "$GITHUB_WORKSPACE/artifacts/v2/diagnostics/external-shadow/dastan.json"',
+            'test -s "$APEX_CORE_PATH/acquisition/providers/dastan.csv"',
             'cp "$APEX_CORE_PATH/acquisition/providers/dastan.csv"',
             '"$GITHUB_WORKSPACE/acquisition/providers/dastan.csv"',
             '--max-attempts 2',
