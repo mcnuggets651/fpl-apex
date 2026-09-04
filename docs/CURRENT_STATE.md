@@ -1,18 +1,28 @@
 # FPL Apex — Current State
 
-**Last updated:** 3 September 2026
+**Last updated:** 4 September 2026
+
+> **Read first:** [`FPL_APEX_MASTER_STATE.md`](FPL_APEX_MASTER_STATE.md) is the canonical human/project continuity ledger. Machine authority remains [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json), which outranks prose. This file is a shorter operational view and must not be used as a competing master state.
+
+## Current closure status
+
+**PRODUCTION PIPELINE PASSED; PRIVATE QUERY ACCEPTANCE BLOCKED BY GITHUB BILLING**
+
+Canonical production run #9 (`33850307770`, immutable run `33850307770-1`) completed successfully for GW3 using production core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`. Authentication, Official FPL acquisition, AIrsenal H1–H8 generation, frozen solve, deterministic publication witness and matched immutable public/private publication all passed.
+
+The only remaining acceptance gate is execution of the private strategy-query bridge in exact and `latest` modes. GitHub rejected both jobs before runner allocation because of account billing/spending state; a second retry of `latest` on 4 September again produced zero job steps and `runner_id=0`. This is not bridge-code failure. Do not reopen model development because of it.
 
 Canonical machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json` and verify it live. At this snapshot it is `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
 
 ## Production now
 
 PR #90 and the immutable forensic/base SHA remain permanently anchored at `99cc7b51b0cff45462b567084cb1844cfe0a456f`. PR #90 stays open, draft and unmerged; operations and successor promotion must never merge or advance it.
 
-The authority-declared serving core is independently pinned by `production_core_sha`. PR #123 promoted the first certified hardened successor through that pointer only, after exact-head sealed assurance and a current-main non-serving canary. Always read the current value from machine authority rather than copying it into durable prose.
+The authority-declared serving core is independently pinned by `production_core_sha`. PR #122 separated immutable forensic lineage from the serving pointer. Successor promotions, including the PR #147 promotion of the PR #146 single-solve/publication-witness repair, move only `production_core_sha` through explicit certification.
 
 The default branch `main` is the live operations/research control plane. Do not copy a historical `main` SHA into future reasoning as if it were permanent: verify the current signed head directly on GitHub.
 
@@ -69,7 +79,8 @@ Structurally healthy:
 - Decision Quality parallel/resumable exact-task runtime;
 - Node-24-native GitHub Actions execution surface;
 - independently governed immutable-base and serving-core authority;
-- lock-aware production/readiness installation.
+- lock-aware production/readiness installation;
+- single-solve production and deterministic publication witness.
 
 Executable workflows use exact commit pins for the certified Node-24-native generations of `actions/checkout`, `actions/setup-python`, `actions/cache` and `actions/upload-artifact`. A dedicated operations regression rejects stale/mutable action references, and Dependabot proposes future GitHub Actions updates weekly through the normal protected pull-request path.
 
@@ -81,10 +92,11 @@ The OpenFPL current-history observer deliberately resolves its moving upstream h
 
 For substantive work:
 
-1. read `APEX_V2_AUTHORITY.json`;
-2. read this file;
-3. read `APEX_MASTER_CONTEXT.md` and `APEX_OPERATING_MANUAL.md`;
-4. use `APEX_V2_DAILY_OPERATIONS.md`, `APEX_V2_SAFE_EXTENSIONS.md`, `APEX_V2_PROSPECTIVE_TOURNAMENT.md` and `operations/PARALLEL_DECISION_LAB.md` for implementation details;
-5. verify live `main`, PR #90, `production_core_sha`, main ruleset `21759706` and relevant workflow/release state before changing anything.
+1. read `FPL_APEX_MASTER_STATE.md` completely;
+2. read `APEX_V2_AUTHORITY.json`;
+3. read this file and `APEX_OPERATING_MANUAL.md`;
+4. read the relevant V2 implementation/research runbook;
+5. verify live `main`, PR #90, `production_core_sha`, main ruleset and relevant workflow/release state before changing anything;
+6. update `FPL_APEX_MASTER_STATE.md` in the same change as every tracked repository change, as enforced by CI.
 
-Do not use an old GW1 squad or historical generated recommendation as current manager state. Do not invent a squad from memory.
+Do not use an old GW1 squad or historical generated recommendation as current manager state. Do not invent a squad from memory. Owner-specific state is recovered through the private repository/query boundary.
