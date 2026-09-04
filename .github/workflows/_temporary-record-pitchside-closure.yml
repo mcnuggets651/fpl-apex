@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - docs/record-pitchside-recovery-closure
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
