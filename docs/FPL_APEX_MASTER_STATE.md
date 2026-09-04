@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 4 September 2026, after public PR #151 and private PR #7 documentation/continuity closure  
+**State snapshot:** 4 September 2026, after private current-provider query closure and during bounded Dastan core-root repair  
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -50,6 +50,8 @@ Before changing code, workflows, governance, model behavior, production operatio
 
 The serving production chain and owner-private query chain have both completed their required acceptance.
 
+A bounded non-serving challenger repair is currently in progress: canonical production run `33850307770-1` proved AIrsenal serving and the owner decision path, but its Dastan H1 shadow acquisition failed with a control-plane/core working-directory defect. PITCHSIDE and Dastan remain research-only and this defect does **not** change the operational serving status or authority.
+
 ### Production acceptance
 
 Canonical production run #9 completed successfully and produced a matched immutable public/private release pair for 2026/27 GW3.
@@ -78,7 +80,7 @@ The former GitHub-hosted billing blocker has been eliminated without increasing 
 - observed runner version: `2.337.0`;
 - no `ubuntu-latest` fallback.
 
-Required acceptance modes both executed successfully:
+Required strategy acceptance modes both executed successfully:
 
 - explicit exact run `33850307770-1`: strategy workflow `33868412431` — **success**;
 - restored authority-selected `latest`: strategy workflow `33868662109` — **success**;
@@ -102,13 +104,26 @@ Both resolved:
 
 The final `latest` run re-read public authority and selected the authority-correct private manager release, not merely the newest publication. Historical zero-step billing failures remain provenance only and are not current blockers.
 
+### Current provider-query closure
+
+Private PR #8 repaired the chat-facing projection request that was still explicitly pinned to historical run `33719526625-1` after the accepted strategy path had moved to authority-selected `latest`.
+
+- PR #8 exact head: `95d62c985acb838c5df9b830ad0051036c114783`;
+- exact-head private master-state contract `33880335918`: success;
+- merge commit: `2f4ac141224f1fe222de6893a544abfbf685ea6a`;
+- post-merge private master-state contract `33880420453`: success;
+- post-merge projection query `33880420585`: success;
+- projection artifact ID `9939639578`, digest `sha256:c611bff6edbf49d8fbeeb92ea84e75c58d3404d37c86c6f84fc06393de847754`.
+
+That query resolved exact current immutable run `33850307770-1`, the matching private evaluation namespace and the matching private PITCHSIDE tournament namespace. It exposed current PITCHSIDE rows for the requested strategy universe. The same-run provider archive contained AIrsenal only because Dastan had failed earlier during production acquisition; the private query bridge itself was no longer the Dastan blocker.
+
 ### Operational qualification
 
 `APEX OPERATIONAL` means a fresh connected agent can reproducibly recover and verify the authority-correct immutable owner state without relying on remembered squad information.
 
 It does **not** mean a historical immutable decision is automatically fresh forever. Normal production freshness, deadline, authentication, Official FPL and provider-qualification gates continue to determine whether a new manager-facing recommendation is actionable.
 
-The documentation/capability constitution and private semantic-binding closure changed governance/documentation only and did not alter this production acceptance.
+It also does not mean every non-serving challenger must be healthy. A shadow failure is visible diagnostic evidence and may not change AIrsenal serving authority.
 
 ---
 
@@ -127,13 +142,15 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - PR #151 exact head: `400210e12e829fab2d0ab4f85ee7f31aef96dea0`;
 - PR #151 exact-head Apex CI `33873835393`: success;
 - PR #151 exact-head Apex V2 Ops Contract `33873835399`: success;
-- PR #151 merge commit / verified `main` at the start of this final ledger cleanup: `6a1509f766e6438a43d296e8e900518a18967959`;
+- PR #151 merged at `6a1509f766e6438a43d296e8e900518a18967959`;
 - post-merge Apex CI `33874537255`: success;
+- PR #152 closed the final documentation-only loop and merged at `620ad5d305008c018c9ea3ccd887c9de8b510b9c` after exact-head Apex CI `33877989903` and Apex V2 Ops Contract `33877990068` passed;
+- bounded branch `agent/fix-dastan-core-root` was created from exact `620ad5d305008c018c9ea3ccd887c9de8b510b9c` to repair the newly verified non-serving Dastan orchestration defect;
 - protected control plane; historical ruleset identifier `21759706` — verify live before relying on it.
 
 ### Machine authority
 
-`docs/APEX_V2_AUTHORITY.json` was re-read before this final ledger cleanup and remains unchanged:
+`docs/APEX_V2_AUTHORITY.json` was re-read before the Dastan repair and remains unchanged:
 
 - `schema_version`: `1`;
 - `season`: `2026-2027`;
@@ -146,11 +163,13 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - serving provider: `airsenal`;
 - serving horizons: 1–8;
 - AIrsenal role: `CHAMPION`, serving authorized;
+- Dastan role: `SHADOW`, H1 only, serving unauthorized;
+- PITCHSIDE role: `SHADOW`, H1–H8, serving unauthorized;
 - research production influence: `NONE`;
 - automatic promotion: `false`;
 - legacy status: `HISTORICAL_NON_SERVING`.
 
-This ledger-only cleanup does not change machine authority.
+The bounded Dastan repair does not change machine authority.
 
 ### Frozen PR #90
 
@@ -169,14 +188,15 @@ The immutable authority anchor is forensic SHA `99cc7b51b0cff45462b567084cb1844c
 - repository: `mcnuggets651/fpl`;
 - accepted final-latest merge commit: `a310450fd27aa469eac9ae91971334925b4bee77`;
 - private operational-ledger closure commit: `9e55ee8e98fb15eeb0a5189c7e65b88c5a6467af`;
-- private capability/documentation binding PR #7 merged successfully at `459427fe1e90565d61f8a9f6547f3876c4f3ec9a`;
+- private capability/documentation binding PR #7 merged at `459427fe1e90565d61f8a9f6547f3876c4f3ec9a`;
 - PR #7 final exact-head private contract `33876581770`: success on `fpl-apex-private-mac`;
 - PR #7 post-merge private master-state contract `33876640309`: success;
-- private CI now consumes and validates the single public `PRIV-001`–`PRIV-008` capability semantics and rejects a competing private registry;
-- current request: schema 1, `run_id="latest"`, `top_n=12`;
+- current-provider query PR #8 merged at `2f4ac141224f1fe222de6893a544abfbf685ea6a`;
+- PR #8 exact-head contract `33880335918`, post-merge contract `33880420453`, and post-merge Projection Query `33880420585`: success;
+- private CI consumes and validates the single public `PRIV-001`–`PRIV-008` capability semantics and rejects a competing private registry;
+- strategy request remains schema 1, `run_id="latest"`, `top_n=12`;
+- projection request now uses `run_id="latest"`, exact current-strategy player IDs and `canonical/providers/pitchside` H1–H8 surfaces where available;
 - owner-private payloads, exact manager commitments and authentication material remain private.
-
-The separate private semantic-binding follow-up is complete. Any future-tense wording in subordinate documentation about a pending private registry-binding follow-up is superseded by this ledger and verified live GitHub state; do not reopen that closure without a new reproducible defect or an explicit governed change.
 
 ---
 
@@ -210,7 +230,8 @@ The private persistence repository contains matching immutable run identity `338
 
 - `apex-v2/private/2026-2027/33850307770-1`;
 - `apex-v2/private-evaluation/2026-2027/33850307770-1`;
-- `apex-v2/private-presentation/2026-2027/33850307770-1`.
+- `apex-v2/private-presentation/2026-2027/33850307770-1`;
+- `apex-v2/private-tournament/2026-2027/33850307770-1`.
 
 Exact private payload/digest details belong in the private master companion, not in this public repository.
 
@@ -223,6 +244,33 @@ The two-repository design is valid:
 - the earlier long-run failure was duplicate time-bounded optimisation/publication behavior, **not** the repository split.
 
 Do not collapse the repositories or move private manager state into the public repo to simplify querying.
+
+### Dastan incident evidence from run #9
+
+The sanitized diagnostic artifact `apex-v2-diagnostic-33850307770-1` (artifact ID `9928201488`, digest `sha256:60d31b43aa5402e59df5376a6beb43553cdb903a12f581f0c520a2018a82b256`) proved that the optional Dastan step did not succeed even though the overall serving job did.
+
+Its Dastan report recorded:
+
+- provider `dastan`, pinned upstream `qazybekb/smartplayfpl-dastan@19376523afdec4836d0e6b5632c6773d0fe40c53`;
+- `health = ERROR`;
+- `state = ACQUISITION_FAILED`;
+- `failure_class = PROVIDER_LOGIC_OR_INVARIANT_FAILURE`;
+- one attempt, return code 1, non-transient;
+- sanitized failure ending in `KeyError: 'dastan'`;
+- `serve_authorized = false` and `production_influence = NONE`.
+
+Root cause is orchestration, not Dastan model authority: `scripts/acquire_dastan_shadow.py` in the authority-selected production core defaults `--repo-root` to the current working directory and reads `<repo-root>/upstreams.lock.json`. The production workflow invoked that frozen runner while its current directory was the mutable control-plane checkout. The control-plane root lock intentionally does not contain `dastan`; the authority-selected production core lock does. The wrapper itself received the correct core lock for its retry metadata, which is why the failure could be diagnosed precisely.
+
+The bounded repair changes only the Dastan orchestration step so it:
+
+1. re-verifies `$APEX_CORE_PATH` is exactly `$APEX_CODE_SHA`;
+2. removes any stale workspace Dastan surface;
+3. invokes the existing operations wrapper from inside the authority-selected production-core worktree, causing the frozen Dastan runner's default repo root to resolve correctly;
+4. writes the sanitized Dastan diagnostic back to the control-plane workspace;
+5. requires a non-empty qualified core `acquisition/providers/dastan.csv` before copying it into the production acquisition workspace;
+6. preserves `continue-on-error`, H1-only shadow status, no serving fallback, no blending and no authority change.
+
+A regression contract in `ops_tests/test_apex_v2_shadow_provider_workflow.py` requires those exact boundaries. Runtime acceptance is still required after exact-head CI/ops checks and governed merge; until then do not claim Dastan has been restored.
 
 ---
 
@@ -368,7 +416,7 @@ Both exact and final `latest` JSON bytes share SHA-256:
 
 `e50c4ebde19a2c68bfa4c38f33a6dd81f1d0922851f1e932bae522a898609d60`
 
-This gate is **closed**. Do not reopen it without a new reproducible query/authority defect.
+This strategy-query acceptance gate is **closed**. The separate projection-request freshness defect was fixed by private PR #8 and did not invalidate owner-state acceptance.
 
 ---
 
@@ -532,15 +580,15 @@ Replay portability, reproducibility investigations, canaries, deterministic succ
 
 Temporary one-shot production dispatches were deliberately added/removed around controlled runs. Snapshot/core mismatch diagnostics isolated production issues. **#146** permanently eliminated duplicate production optimisation and made publication witness-only. **#147** promoted exact core `c0ae9f6e…`. Production run #9 succeeded. **#149** restored normal Deadline Watch and removed temporary dispatch hygiene.
 
-### Era K — continuity and private-query operational closure (#150 public; private #4–#6)
+### Era K — continuity and private-query operational closure (#150 public; private #4–#8)
 
 - Public PR #150 established the canonical human continuity ledger, agent startup contracts and same-change CI enforcement and merged successfully at `a00f0a45d8e74d834f79cbc473a6482656b9feda`.
 - Post-merge Apex CI `33870475132` completed successfully.
 - Private PR #4 created the private continuity companion, migrated private workflows to zero-cost self-hosted execution, and proved the dedicated runner.
 - Private PR #5 executed/accepted exact immutable-run strategy querying.
-- Private PR #6 restored and accepted authority-selected `latest` querying.
-- Both modes returned byte-identical authority-correct owner state.
-- Private operational closure was recorded on private `main` commit `9e55ee8e98fb15eeb0a5189c7e65b88c5a6467af`.
+- Private PR #6 restored and accepted authority-selected `latest` strategy querying.
+- Private PR #7 completed public-registry semantic binding in private CI.
+- Private PR #8 repaired the stale projection request and proved authority-current PITCHSIDE access without altering serving authority.
 
 ### Era L — capability/documentation constitution and private binding closure
 
@@ -590,18 +638,26 @@ Decision D032 records the public constitution. This sequence is closed documenta
 15. **Do not copy movable serving/current state into the capability registry or architecture map.** Reference authority instead.
 16. **Do not leave state-changing code undocumented.** CI requires this ledger to move with substantive changes.
 17. **Do not create an active workflow or `scripts/apex_v2_*.py` surface without registering its capability.**
-18. **Do not reopen exact/latest query acceptance without a new reproducible defect or authority change.**
+18. **Do not reopen exact/latest strategy-query acceptance without a new reproducible defect or authority change.**
 19. **Do not reopen the public/private capability-binding closure merely because subordinate prose still contains historical future-tense wording.** This ledger and verified live GitHub state outrank that prose.
+20. **Do not launch production-core helper scripts from the mutable control-plane working directory when those helpers resolve repo-relative locks/config/scripts.** Execute them against the authority-selected production-core root and explicitly materialize only their validated output into the production workspace.
 
 ---
 
-## 11. Next actions — normal operations, not unfinished closure
+## 11. Next actions — bounded Dastan runtime closure, then normal operations
 
-The production/query system is accepted and the documentation/continuity constitution is closed. There is no outstanding production architectural, private-query, capability-registry or ChatGPT-continuity acceptance blocker in this closure sequence.
+The production/query system remains accepted. The only current engineering closure is the newly reproduced Dastan orchestration defect; it must not expand into a model redesign or serving-authority change.
 
-PR #152 is the final ledger-only closure PR. Its initial exact head `0422e345f75f5e5418169ddf27ff67b806fb82cb` passed Apex V2 Ops Contract `33877369641` and Apex CI `33877369646`, including authority-selected production-core readiness. After recording this evidence, the final exact head must pass the same required checks before merge. No documentation/continuity follow-up remains after that merge.
+For the bounded Dastan repair:
 
-Normal operations remain:
+1. exact-head Apex CI and Apex V2 Ops Contract must pass on the repair PR;
+2. merge only with an exact-head check and no authority/registry drift;
+3. run the canonical production workflow from the merged control plane while the GW3 predeadline window is still valid, so the repair is tested on the same real production boundary rather than by hindsight reconstruction;
+4. require the new sanitized Dastan diagnostic to show a healthy H1 acquisition and require the matching private evaluation archive to contain Dastan rows before calling the repair complete;
+5. re-run the narrow private authority-selected projection query and verify same-run AIrsenal/Dastan plus matching PITCHSIDE surfaces;
+6. use those coherent current surfaces only as diagnostic challenges around the AIrsenal-serving multi-week owner strategy.
+
+Normal operations then remain:
 
 1. keep `fpl-apex-private-mac` service healthy for private query execution;
 2. keep public Deadline Watch/auth keepalive/production workflows healthy;
@@ -653,6 +709,20 @@ Editing this file, the capability registry, decision index or architecture map c
 
 ## 13. Changelog for this ledger
 
+### 2026-09-04 — current-provider query fixed; Dastan core-root defect reproduced and repair staged
+
+- private PR #8 changed only the narrow projection request/ledger so the query uses authority-selected `latest` instead of historical run `33719526625-1`;
+- PR #8 exact-head contract `33880335918`, post-merge contract `33880420453` and projection query `33880420585` passed;
+- projection artifact `9939639578` resolved current immutable run `33850307770-1` and exposed matching current PITCHSIDE rows;
+- same-run provider archive exposed AIrsenal only, proving Dastan was absent upstream of the query bridge;
+- canonical production diagnostic artifact `9928201488` then proved Dastan had failed with non-transient `KeyError: 'dastan'` while the serving production run remained valid because Dastan is optional/non-serving;
+- code inspection proved the frozen Dastan helper was executing with repo root `.` from the mutable control-plane checkout rather than the authority-selected production-core worktree;
+- staged bounded repair executes the unchanged wrapper/frozen runner from `$APEX_CORE_PATH`, verifies exact core SHA, removes stale Dastan output, and copies only newly qualified `dastan.csv` into the workspace;
+- regression workflow contract added;
+- affected capabilities: `GOV-002`, `PROD-001`, `PROD-007`, `OPS-006`;
+- machine authority, production core, frozen PR #90, AIrsenal serving H1–H8, Dastan H1-only research status, PITCHSIDE research status, owner state, authentication, private persistence and billing/spend are unchanged;
+- exact-head CI/ops and live post-merge production/provider-query evidence remain required before Dastan is called restored.
+
 ### 2026-09-04 — documentation/continuity constitution closed
 
 - public PR #151 exact-head Apex CI `33873835393` and Apex V2 Ops Contract `33873835399` passed;
@@ -660,11 +730,8 @@ Editing this file, the capability registry, decision index or architecture map c
 - private PR #7 consumed/validated the single public `PRIV-*` capability semantics without creating a private registry;
 - private PR #7 final exact-head contract `33876581770` passed on `fpl-apex-private-mac`;
 - private PR #7 merged as `459427fe1e90565d61f8a9f6547f3876c4f3ec9a` and post-merge private contract `33876640309` passed;
-- final public master-only PR #152 initial exact head `0422e345f75f5e5418169ddf27ff67b806fb82cb` passed Apex V2 Ops Contract `33877369641` and Apex CI `33877369646`, including readiness;
-- stale future-tense continuation instructions were removed from the canonical ledger;
-- affected capability for this final ledger correction: `GOV-002` only;
-- machine authority, PR #90 policy, production core, serving provider/horizons, model/research behavior, production workflow semantics, private owner/auth state and billing/spend were unchanged;
-- after the final evidence-recording head passes the same exact-head checks and merges, the documentation/continuity closure sequence has no remaining action beyond normal operations.
+- final public master-only PR #152 passed its exact-head gates and merged as `620ad5d305008c018c9ea3ccd887c9de8b510b9c`;
+- machine authority, PR #90 policy, production core, serving provider/horizons, model/research behavior, private owner/auth state and billing/spend were unchanged.
 
 ### 2026-09-04 — capability/documentation constitution staged (historical staging record)
 
