@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib.util
 import json
 import os
@@ -261,8 +260,8 @@ def _stage_refresh_rotation(
     parent_refresh_token: str,
     next_refresh_token: str,
     env: Mapping[str, str],
-) -> str:
-    """Durably stage the rotated child as a PRIVATE draft before owner proof."""
+) -> tuple[str, int, dict[str, str]]:
+    """Durably stage a PRIVATE child and retain its exact GitHub release identity."""
 
     parent_fingerprint = module._refresh_transaction_fingerprint(parent_refresh_token)
     tag = module._rotation_tag(parent_fingerprint)
@@ -286,7 +285,7 @@ def _stage_refresh_rotation(
     with tempfile.TemporaryDirectory(prefix="apex-fpl-auth-stage-") as tmp:
         path = Path(tmp) / module.AUTH_ASSET
         path.write_bytes(encrypted)
-        store._create_draft_and_upload(
+        release_id, uploaded = store._create_draft_and_upload(
             tag,
             {module.AUTH_ASSET: path},
             target_commitish=None,
@@ -296,7 +295,7 @@ def _stage_refresh_rotation(
                 "until exact owner identity verification succeeds."
             ),
         )
-    return tag
+    return tag, int(release_id), dict(uploaded)
 
 
 def _recover_pending_chain(
@@ -333,26 +332,28 @@ def _recover_pending_chain(
     return current, tuple(tags)
 
 
-def _activate_staged_rotation(module: ModuleType, store, tag: str) -> None:
-    """Digest-verify and publish exactly the already-staged encrypted child."""
+def _activate_staged_rotation(
+    store,
+    *,
+    tag: str,
+    release_id: int,
+    uploaded: Mapping[str, str],
+) -> None:
+    """Verify and publish the exact draft returned by the successful stage call.
 
-    draft = _find_staged_draft(store, tag)
-    if draft is None:
-        raise RefreshRotationIndeterminate("Verified staged FPL refresh child disappeared")
-    with tempfile.TemporaryDirectory(prefix="apex-fpl-auth-activate-") as tmp:
-        path = module.download_release_asset(
-            store,
-            draft,
-            module.AUTH_ASSET,
-            Path(tmp) / module.AUTH_ASSET,
-        )
-        digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-        store._publish_draft(
-            tag,
-            int(draft["id"]),
-            {module.AUTH_ASSET: digest},
-            require_immutable=True,
-        )
+    Same-run activation deliberately does not rediscover the just-created draft
+    through GitHub's eventually-consistent release listing. `_publish_draft`
+    verifies the exact release ID, asset set and GitHub SHA-256 digests against
+    the upload result before immutable publication. Crash recovery still uses
+    authenticated draft listing plus re-download/decryption before reuse.
+    """
+
+    store._publish_draft(
+        tag,
+        int(release_id),
+        dict(uploaded),
+        require_immutable=True,
+    )
 
 
 def _cleanup_superseded_drafts(store, tags: tuple[str, ...]) -> None:
@@ -369,8 +370,20 @@ def _cleanup_superseded_drafts(store, tags: tuple[str, ...]) -> None:
             pass
 
 
+def _discard_exact_wrong_manager_draft(store, *, tag: str, release_id: int) -> None:
+    """Strictly purge the exact same-run draft proved to belong to another owner."""
+
+    try:
+        store._cleanup_mutable_release(int(release_id), tag)
+    except Exception as exc:
+        raise AuthOpsError(
+            "Wrong-manager FPL refresh state could not be discarded; "
+            "manual private-store cleanup is required"
+        ) from exc
+
+
 def _discard_wrong_manager_drafts(store, tags: tuple[str, ...]) -> None:
-    """Strictly purge staged state proved to belong to the wrong manager.
+    """Strictly purge recovered staged state proved to belong to the wrong manager.
 
     Unlike post-success cleanup, failure here cannot be ignored: a surviving
     wrong-manager staged child would be eligible for recovery on the next run.
@@ -435,7 +448,7 @@ def _rotate_refresh_parent(
         ) from exc
 
     try:
-        staged_tag = _stage_refresh_rotation(
+        staged_tag, staged_release_id, staged_uploaded = _stage_refresh_rotation(
             module,
             store,
             fernet,
@@ -460,7 +473,12 @@ def _rotate_refresh_parent(
         ) from exc
 
     if status == "wrong_manager":
-        _discard_wrong_manager_drafts(store, recovered_tags + (staged_tag,))
+        _discard_exact_wrong_manager_draft(
+            store,
+            tag=staged_tag,
+            release_id=staged_release_id,
+        )
+        _discard_wrong_manager_drafts(store, recovered_tags)
         raise AuthOpsError(
             "Official FPL refreshed owner credential belongs to a different manager entry"
         )
@@ -471,9 +489,12 @@ def _rotate_refresh_parent(
         )
 
     try:
-        _activate_staged_rotation(module, store, staged_tag)
-    except RefreshRotationIndeterminate:
-        raise
+        _activate_staged_rotation(
+            store,
+            tag=staged_tag,
+            release_id=staged_release_id,
+            uploaded=staged_uploaded,
+        )
     except Exception as exc:
         raise RefreshRotationIndeterminate(
             "Official FPL owner identity matched but the staged refresh child could not "
