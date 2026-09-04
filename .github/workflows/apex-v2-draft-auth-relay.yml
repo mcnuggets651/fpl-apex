@@ -79,6 +79,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
 
       - name: Acquire certified owner credential
+        id: owner_auth
         env:
           FPL_REFRESH_TOKEN: ${{ secrets.FPL_REFRESH_TOKEN }}
           FPL_REFRESH_WRAP_KEY: ${{ secrets.FPL_REFRESH_WRAP_KEY }}
@@ -94,6 +95,98 @@ jobs:
             --preflight-script scripts/preflight_fpl_auth.py \
             --config config/apex_v2.yaml \
             --github-env "$GITHUB_ENV"
+
+      - name: Diagnose Official FPL owner endpoint status after auth failure
+        if: ${{ failure() && steps.owner_auth.outcome == 'failure' }}
+        env:
+          FPL_X_API_AUTHORIZATION: ${{ secrets.FPL_X_API_AUTHORIZATION }}
+          FPL_SESSION_COOKIE: ${{ secrets.FPL_SESSION_COOKIE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+
+          import requests
+
+          url = "https://fantasy.premierleague.com/api/me/"
+          common = {
+              "Accept": "application/json",
+              "Referer": "https://fantasy.premierleague.com/",
+              "User-Agent": "fpl-apex-v2-owner-status-diagnostic/1",
+          }
+
+          def bearer(raw: str) -> str:
+              value = raw.strip()
+              if not value:
+                  return ""
+              return value if value.casefold().startswith("bearer ") else f"Bearer {value}"
+
+          def classify(code: int) -> str:
+              if code == 200:
+                  return "ok"
+              if code in {401, 403}:
+                  return "rejected"
+              if code == 429:
+                  return "rate_limited"
+              if 500 <= code < 600:
+                  return "upstream_5xx"
+              if 300 <= code < 400:
+                  return "redirect"
+              if 400 <= code < 500:
+                  return "other_4xx"
+              return "unexpected"
+
+          probes = []
+          token = bearer(os.environ.get("FPL_X_API_AUTHORIZATION", ""))
+          cookie = os.environ.get("FPL_SESSION_COOKIE", "").strip()
+          if token:
+              probes.append(("token", {**common, "X-API-Authorization": token}))
+          if cookie:
+              probes.append(("cookie", {**common, "Cookie": cookie}))
+
+          results = []
+          for mode, headers in probes:
+              try:
+                  response = requests.get(
+                      url,
+                      headers=headers,
+                      timeout=20,
+                      stream=True,
+                  )
+                  try:
+                      code = int(response.status_code)
+                  finally:
+                      response.close()
+                  results.append(
+                      {
+                          "mode": mode,
+                          "http_status": code,
+                          "status_class": classify(code),
+                      }
+                  )
+              except requests.RequestException as exc:
+                  results.append(
+                      {
+                          "mode": mode,
+                          "status_class": "network_error",
+                          "error_type": type(exc).__name__,
+                      }
+                  )
+
+          print(
+              json.dumps(
+                  {
+                      "probe": "official_fpl_owner_me_direct_status",
+                      "body_read": False,
+                      "configured_transports": len(probes),
+                      "results": results,
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
 
       - name: Query authenticated Draft transactions and relay privately
         env:
@@ -113,6 +206,7 @@ jobs:
             --max-rows 100
 
       - name: Prove frozen worktree stayed untouched
+        if: ${{ always() }}
         shell: bash
         run: |
           set -euo pipefail
