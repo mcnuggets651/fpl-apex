@@ -6,17 +6,27 @@
 
 ## Current closure status
 
-**PRODUCTION PIPELINE PASSED; PRIVATE QUERY ACCEPTANCE BLOCKED BY GITHUB BILLING**
+# **APEX OPERATIONAL**
 
-Canonical production run #9 (`33850307770`, immutable run `33850307770-1`) completed successfully for GW3 under the then-current authority-declared serving core. Authentication, Official FPL acquisition, AIrsenal H1–H8 generation, frozen solve, deterministic publication witness and matched immutable public/private publication all passed. Exact historical core identity is preserved in immutable release evidence and the canonical master ledger, not copied here as a movable current pointer.
+Canonical production run #9 (`33850307770`, immutable run `33850307770-1`) completed successfully for GW3. Authentication, Official FPL acquisition, AIrsenal H1–H8 generation, frozen solve, deterministic publication witness and matched immutable public/private publication all passed.
 
-The only remaining acceptance gate is execution of the private strategy-query bridge in exact and `latest` modes. GitHub rejected both jobs before runner allocation because of account billing/spending state; a second retry of `latest` on 4 September again produced zero job steps and `runner_id=0`. This is not bridge-code failure. Do not reopen model development because of it.
+The former private strategy-query acceptance gate is now closed. The private repository has a dedicated zero-cost self-hosted runner (`fpl-apex-private-mac`) and all active private query/continuity workflows use `[self-hosted, macOS, ARM64]` with no GitHub-hosted fallback.
+
+Acceptance sequence:
+
+- post-private-control-plane `latest` run `33867975181`: success;
+- explicit exact strategy run for `33850307770-1`: `33868412431`, success;
+- restored final authority-selected `latest`: `33868662109`, success;
+- exact and final-latest JSON were byte-identical at SHA-256 `e50c4ebde19a2c68bfa4c38f33a6dd81f1d0922851f1e932bae522a898609d60`;
+- final private master-state contract `33868662187`: success.
+
+Both query modes resolved immutable run `33850307770-1`, entry `63984`, exactly 15 unique players, £0.5m bank, 1 free transfer, complete purchase/selling prices and complete transfer state. Historical zero-step billing failures remain provenance only.
 
 Canonical machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`; at this closure snapshot it is `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
 
 ## Production now
 
@@ -43,6 +53,16 @@ Daily Production proves that `production_core_sha` descends from `frozen_engine_
 If authentication, factual authority, provider qualification, snapshot identity, serving-core provenance or immutable publication is unsafe, production fails closed. Research output cannot substitute for a missing serving release.
 
 Legacy `scripts/run_apex.py`, Pinnacle/Elite flows and repository-generated recommendation files are historical/test compatibility surfaces, not current production authority.
+
+## Owner-private query contract
+
+Owner-specific state comes only from the private repository/query boundary. A fresh connected agent must not reconstruct a squad from memory or an old screenshot.
+
+`latest` is authority-first: the bridge fetches current public production authority, selects only private manager evidence linked to that public attempt, verifies release digests and Apex attestations, and fails closed when no authority-correct private state exists.
+
+The accepted private strategy snapshot contains the exact persisted 15-player TeamState, bank, FT state, purchase/selling prices, chip state, canonical forecast rows and narrow strategy/alternative surfaces while excluding auth credentials and unfiltered private payloads.
+
+`APEX OPERATIONAL` means the system can recover and verify that owner state reproducibly. It does not waive normal production freshness/deadline rules; an old immutable decision is not automatically a fresh recommendation after material FPL/news changes.
 
 ## GW3 prospective research — ACCEPTED
 
@@ -75,18 +95,17 @@ Structurally healthy:
 - deadline watcher;
 - daily prospective evaluation;
 - prospective tournament;
-- immutable private release store boundaries;
+- immutable public/private release boundaries;
+- owner-private exact/latest query bridge on self-hosted Mac;
 - Decision Quality parallel/resumable exact-task runtime;
 - Node-24-native GitHub Actions execution surface;
 - independently governed immutable-base and serving-core authority;
 - lock-aware production/readiness installation;
 - single-solve production and deterministic publication witness.
 
-Executable workflows use exact commit pins for the certified Node-24-native generations of `actions/checkout`, `actions/setup-python`, `actions/cache` and `actions/upload-artifact`. A dedicated operations regression rejects stale/mutable action references, and Dependabot proposes future GitHub Actions updates weekly through the normal protected pull-request path.
+Executable public workflows use exact commit pins for certified Node-24-native generations of `actions/checkout`, `actions/setup-python`, `actions/cache` and `actions/upload-artifact`. A dedicated operations regression rejects stale/mutable action references, and Dependabot proposes future GitHub Actions updates weekly through the normal protected pull-request path.
 
-The historical `archive/workflows/` directory is forensic evidence. The V2 Ops Contract rejects any change to that archive while separately rejecting any resurrection of retired publishers into `.github/workflows`.
-
-The OpenFPL current-history observer deliberately resolves its moving upstream history ref to a full immutable commit before reading rows and records that resolved SHA. This is an audited non-serving exception to static pinning: freezing the observer to an old history baseline would prevent new completed Gameweeks from becoming observable.
+The historical `archive/workflows/` directory is forensic evidence. The V2 Ops Contract rejects any change to that archive while separately rejecting resurrection of retired publishers into `.github/workflows`.
 
 ## Source of truth for continuation
 
@@ -97,6 +116,7 @@ For substantive work:
 3. read this file and `APEX_OPERATING_MANUAL.md`;
 4. read the relevant V2 implementation/research runbook;
 5. verify live `main`, PR #90, `production_core_sha`, main ruleset and relevant workflow/release state before changing anything;
-6. update `FPL_APEX_MASTER_STATE.md` in the same change as every tracked repository change, as enforced by CI.
+6. for owner-specific state, use the private query boundary;
+7. update `FPL_APEX_MASTER_STATE.md` in the same change as every tracked repository change, as enforced by CI.
 
-Do not use an old GW1 squad or historical generated recommendation as current manager state. Do not invent a squad from memory. Owner-specific state is recovered through the private repository/query boundary.
+Do not use an old GW1 squad or historical generated recommendation as current manager state. Do not invent a squad from memory.
