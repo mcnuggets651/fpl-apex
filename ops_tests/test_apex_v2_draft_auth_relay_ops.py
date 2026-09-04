@@ -232,13 +232,21 @@ class DraftAuthRelayTests(unittest.TestCase):
         self.assertNotIn("actions/upload-artifact", text)
         self.assertNotIn("contents: write", text)
 
-    def test_workflow_keeps_frozen_auth_worktree_and_current_controller_separate(self):
+    def test_workflow_resolves_authority_selected_auth_core_without_advancing_frozen_base(self):
         text = WORKFLOW_PATH.read_text(encoding="utf-8")
-        self.assertIn('FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"', text)
-        self.assertIn("scripts/apex_v2_auth_ops.py", text)
-        self.assertIn("scripts/apex_v2_draft_auth_relay_ops.py", text)
-        self.assertIn("git show \"$CONTROL_PLANE_SHA:scripts/apex_v2_auth_ops.py\"", text)
-        self.assertIn("test \"$(git rev-parse HEAD)\" = \"$FROZEN_APEX_SHA\"", text)
+        self.assertIn(
+            'FROZEN_APEX_BASE_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"',
+            text,
+        )
+        self.assertIn('authority["production_core_sha"]', text)
+        self.assertIn('authority["frozen_engine_sha"]', text)
+        self.assertIn('git merge-base --is-ancestor "$FROZEN_ENGINE_SHA" "$PRODUCTION_CORE_SHA"', text)
+        self.assertIn('git worktree add --detach "$CORE" "$PRODUCTION_CORE_SHA"', text)
+        self.assertIn('--preflight-script "$APEX_CORE_PATH/scripts/preflight_fpl_auth.py"', text)
+        self.assertIn('--config "$APEX_CORE_PATH/config/apex_v2.yaml"', text)
+        self.assertIn("cp scripts/apex_v2_auth_ops.py", text)
+        self.assertIn("cp scripts/apex_v2_draft_auth_relay_ops.py", text)
+        self.assertNotIn("ref: ${{ env.FROZEN_APEX", text)
 
     def test_workflow_auth_failure_diagnostic_is_nonrecovering_status_only(self):
         text = WORKFLOW_PATH.read_text(encoding="utf-8")
