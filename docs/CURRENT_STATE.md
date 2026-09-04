@@ -26,7 +26,7 @@ Canonical machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`; at this closure snapshot it is `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 ## Production now
 
