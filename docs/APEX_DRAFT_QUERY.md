@@ -92,6 +92,23 @@ Therefore:
 
 This distinction is required because “authenticated transaction history works” and “current pending queue works” are different claims.
 
+## Owner-auth incident status diagnostic
+
+The authenticated Draft relay depends on the same certified Official FPL owner-auth boundary as Classic production. If that certification fails with the frozen preflight's generic **unexpected status** error, the relay must remain failed and must not enter a new recovery path merely to keep Draft querying alive.
+
+A bounded status-only diagnostic is permitted **after** that failed auth step:
+
+- it uses only the already-configured static direct bearer/cookie transport;
+- it performs one read-only GET to Official FPL `/api/me/` per configured direct transport;
+- it uses streaming mode, records only the final HTTP status code and a coarse class (`ok`, `rejected`, `rate_limited`, `upstream_5xx`, `redirect`, `other_4xx`, `unexpected`, or `network_error`), and closes the response without reading its body;
+- it emits no response body, response headers, credential value, refresh token, private-repository token or manager payload;
+- it does not parse manager identity and therefore cannot certify authentication;
+- it does not retry, exchange, rotate or persist refresh state;
+- it does not convert the failed owner-auth step into success and cannot unlock the Draft query/dispatch step;
+- frozen PR #90 and the frozen preflight remain untouched.
+
+This diagnostic exists only to distinguish upstream rate limiting/service failure/endpoint behavior from credential rejection while preserving the existing fail-closed recovery constitution.
+
 ## Fresh-session ChatGPT rule
 
 For a Draft owner question, a fresh connected agent must:
@@ -106,7 +123,7 @@ For a Draft owner question, a fresh connected agent must:
 8. reconcile Draft↔Classic identities by name + club + position;
 9. fail closed and state the exact missing surface if freshness, authentication, identity, transaction semantics or relay integrity cannot be verified.
 
-A successful authenticated transaction-history response proves connectivity, not by itself the semantics of an open queue. `auth_required`, `auth_rejected`, endpoint failure, a stale receipt or ambiguous resolved/unresolved semantics must never be presented as “no open waivers.”
+A successful authenticated transaction-history response proves connectivity, not by itself the semantics of an open queue. `auth_required`, `auth_rejected`, endpoint failure, a stale receipt or ambiguous resolved/unresolved semantics must never be presented as “no open waivers.” A status-only owner-auth diagnostic is incident evidence only and must never be treated as an authenticated manager-state query.
 
 ## Project-instruction handoff
 
@@ -122,6 +139,7 @@ Until those runtime gates pass, the owner should leave existing Project instruct
 - reusable FPL credentials are not duplicated into the private Draft query workflow;
 - authenticated raw Draft response bodies are not logged or published;
 - schema diagnostics contain no owner scalar values;
+- owner-auth incident diagnostics contain only status code/class metadata and never read the response body;
 - public control plane sends only the bounded credential-free relay contract;
 - private owner transaction rows remain private;
 - the stable private receipt is accessible only inside the private owner repository;
@@ -143,7 +161,7 @@ Fail closed when:
 - private receiver validation fails;
 - the current private artifact/receipt cannot be retrieved or verified.
 
-Do not solve these failures by exposing credentials, copying raw authenticated responses, guessing result-code meanings, weakening validation, moving owner state public, submitting a test waiver without explicit governed write authorization or falling back to chat memory.
+Do not solve these failures by exposing credentials, copying raw authenticated responses, guessing result-code meanings, weakening validation, moving owner state public, submitting a test waiver without explicit governed write authorization or falling back to chat memory. A diagnostic status code may explain a failure; it never authorizes bypassing it.
 
 ## Runtime acceptance
 

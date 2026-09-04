@@ -240,6 +240,29 @@ class DraftAuthRelayTests(unittest.TestCase):
         self.assertIn("git show \"$CONTROL_PLANE_SHA:scripts/apex_v2_auth_ops.py\"", text)
         self.assertIn("test \"$(git rev-parse HEAD)\" = \"$FROZEN_APEX_SHA\"", text)
 
+    def test_workflow_auth_failure_diagnostic_is_nonrecovering_status_only(self):
+        text = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("id: owner_auth", text)
+        self.assertIn("steps.owner_auth.outcome == 'failure'", text)
+        self.assertIn("official_fpl_owner_me_direct_status", text)
+        self.assertIn("stream=True", text)
+        self.assertIn("response.status_code", text)
+        self.assertIn("response.close()", text)
+        self.assertIn('"body_read": False', text)
+        self.assertIn('"rate_limited"', text)
+        self.assertIn('"upstream_5xx"', text)
+        self.assertNotIn("response.text", text)
+        self.assertNotIn("response.content", text)
+        self.assertNotIn("response.json", text)
+        block = text.split(
+            "- name: Diagnose Official FPL owner endpoint status after auth failure",
+            1,
+        )[1].split("- name: Query authenticated Draft transactions", 1)[0]
+        self.assertNotIn("FPL_REFRESH_TOKEN", block)
+        self.assertNotIn("FPL_REFRESH_WRAP_KEY", block)
+        self.assertNotIn("APEX_PRIVATE_GITHUB_TOKEN", block)
+        self.assertNotIn("--mode production", block)
+
     def test_workflow_is_read_only_against_draft_and_dispatches_only_privately(self):
         text = WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertIn("--league-id 33160", text)
