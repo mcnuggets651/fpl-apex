@@ -599,7 +599,7 @@ Decision D032 records the public constitution. This sequence is closed documenta
 
 The production/query system is accepted and the documentation/continuity constitution is closed. There is no outstanding production architectural, private-query, capability-registry or ChatGPT-continuity acceptance blocker in this closure sequence.
 
-The only remaining gate for the branch containing this ledger update is the normal exact-head CI required before merging the ledger-only correction itself. Once that one-file correction is merged green, there is no follow-on documentation architecture project.
+PR #152 is the final ledger-only closure PR. Its initial exact head `0422e345f75f5e5418169ddf27ff67b806fb82cb` passed Apex V2 Ops Contract `33877369641` and Apex CI `33877369646`, including authority-selected production-core readiness. After recording this evidence, the final exact head must pass the same required checks before merge. No documentation/continuity follow-up remains after that merge.
 
 Normal operations remain:
 
@@ -660,10 +660,11 @@ Editing this file, the capability registry, decision index or architecture map c
 - private PR #7 consumed/validated the single public `PRIV-*` capability semantics without creating a private registry;
 - private PR #7 final exact-head contract `33876581770` passed on `fpl-apex-private-mac`;
 - private PR #7 merged as `459427fe1e90565d61f8a9f6547f3876c4f3ec9a` and post-merge private contract `33876640309` passed;
+- final public master-only PR #152 initial exact head `0422e345f75f5e5418169ddf27ff67b806fb82cb` passed Apex V2 Ops Contract `33877369641` and Apex CI `33877369646`, including readiness;
 - stale future-tense continuation instructions were removed from the canonical ledger;
 - affected capability for this final ledger correction: `GOV-002` only;
 - machine authority, PR #90 policy, production core, serving provider/horizons, model/research behavior, production workflow semantics, private owner/auth state and billing/spend were unchanged;
-- after this ledger-only PR passes exact-head checks and merges, the documentation/continuity closure sequence has no remaining action beyond normal operations.
+- after the final evidence-recording head passes the same exact-head checks and merges, the documentation/continuity closure sequence has no remaining action beyond normal operations.
 
 ### 2026-09-04 — capability/documentation constitution staged (historical staging record)
 
