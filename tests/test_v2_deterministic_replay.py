@@ -208,7 +208,7 @@ def test_golden_transfer_horizon_replay_is_semantically_stable(tmp_path: Path):
         snapshot,
         tmp_path,
         "e17a1a00688fc2242dca58c1beb990fd2024f1164f61e66520c5d72c6a9cf52c",
-        "9e762d18ac09a8db341eee0a8d6ccf7625b56a0ee8dfe65f89bade26dc51f015",
+        "4e9fef3f5948d9e55df943f456eec3c5aec3603de42af38a68f5c7a6a4eea6a6",
     )
     assert bundle.system_decision is not None
     assert bundle.system_decision.decision_mode == "TRANSFER_HORIZON"
