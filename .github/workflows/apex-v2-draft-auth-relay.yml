@@ -134,6 +134,166 @@ jobs:
             --config "$APEX_CORE_PATH/config/apex_v2.yaml" \
             --github-env "$GITHUB_ENV"
 
+      - name: Inspect Official Draft open-transaction semantics read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from typing import Any
+
+          import requests
+
+          root = "https://draft.premierleague.com/api"
+          common = {
+              "Accept": "application/json",
+              "Referer": "https://draft.premierleague.com/",
+              "User-Agent": "fpl-apex-draft-semantic-probe/1",
+          }
+
+          def bearer(raw: str) -> str:
+              value = raw.strip()
+              if not value:
+                  return ""
+              return value if value.casefold().startswith("bearer ") else f"Bearer {value}"
+
+          token = bearer(os.environ.get("FPL_X_API_AUTHORIZATION", ""))
+          cookie = os.environ.get("FPL_SESSION_COOKIE", "").strip()
+          if token:
+              auth = {**common, "X-API-Authorization": token}
+              auth_mode = "token"
+          elif cookie:
+              auth = {**common, "Cookie": cookie}
+              auth_mode = "cookie"
+          else:
+              raise SystemExit("certified owner credential missing from runtime environment")
+
+          def fetch(path: str, headers: dict[str, str]) -> tuple[int, Any | None]:
+              response = requests.get(f"{root}/{path}", headers=headers, timeout=20)
+              try:
+                  status = int(response.status_code)
+                  if status != 200:
+                      return status, None
+                  return status, response.json()
+              finally:
+                  response.close()
+
+          def schema_only(payload: Any) -> dict[str, Any]:
+              fragments = ("transaction", "waiver", "request", "pending", "trade", "watch", "signing")
+              result = {
+                  "type": "object" if isinstance(payload, dict) else type(payload).__name__,
+                  "top_level_keys": sorted(str(key) for key in payload) if isinstance(payload, dict) else [],
+                  "interesting_paths": [],
+              }
+
+              def walk(value: Any, path: str, depth: int) -> None:
+                  if depth > 5:
+                      return
+                  if isinstance(value, dict):
+                      for key, child in value.items():
+                          text = str(key)
+                          child_path = f"{path}.{text}" if path else text
+                          if any(fragment in text.casefold() for fragment in fragments):
+                              item = {"path": child_path}
+                              if isinstance(child, list):
+                                  fields = set()
+                                  for sample in child[:3]:
+                                      if isinstance(sample, dict):
+                                          fields.update(str(k) for k in sample)
+                                  item.update({"type": "list", "count": len(child), "sample_fields": sorted(fields)})
+                              elif isinstance(child, dict):
+                                  item.update({"type": "object", "keys": sorted(str(k) for k in child)})
+                              else:
+                                  item["type"] = type(child).__name__
+                              result["interesting_paths"].append(item)
+                          walk(child, child_path, depth + 1)
+                  elif isinstance(value, list):
+                      for child in value[:3]:
+                          walk(child, f"{path}[]" if path else "[]", depth + 1)
+
+              walk(payload, "", 0)
+              return result
+
+          details_status, details = fetch("league/33160/details", common)
+          if details_status != 200 or not isinstance(details, dict):
+              raise SystemExit(f"league identity probe failed: HTTP {details_status}")
+          matches = []
+          for row in details.get("league_entries") or []:
+              if not isinstance(row, dict):
+                  continue
+              if str(row.get("entry_name") or "").strip().casefold() != "mcnuggets":
+                  continue
+              raw = row.get("entry_id", row.get("id"))
+              try:
+                  value = int(raw)
+              except (TypeError, ValueError):
+                  continue
+              if value > 0:
+                  matches.append(value)
+          if len(matches) != 1:
+              raise SystemExit("configured Draft entry did not resolve uniquely")
+          team_entry_id = matches[0]
+
+          game_status, game = fetch("game", common)
+          safe_game = {"http_status": game_status}
+          if game_status == 200 and isinstance(game, dict):
+              for key in (
+                  "current_event",
+                  "next_event",
+                  "current_event_finished",
+                  "waivers_processed",
+                  "processing_status",
+                  "trades_time_for_approval",
+              ):
+                  value = game.get(key)
+                  if value is None or isinstance(value, (str, int, float, bool)):
+                      safe_game[key] = value
+
+          dynamic_status, dynamic = fetch("bootstrap-dynamic", auth)
+          dynamic_schema = (
+              schema_only(dynamic)
+              if dynamic_status == 200
+              else {"type": "unavailable", "top_level_keys": [], "interesting_paths": []}
+          )
+
+          tx_status, transactions = fetch(f"draft/entry/{team_entry_id}/transactions", auth)
+          rows = []
+          if tx_status == 200:
+              candidate = transactions.get("transactions") if isinstance(transactions, dict) else transactions
+              if isinstance(candidate, list):
+                  rows = [row for row in candidate if isinstance(row, dict)]
+          resolved = 0
+          unresolved = 0
+          fields = set()
+          for row in rows:
+              fields.update(str(key) for key in row)
+              value = row.get("result")
+              if value is None or not str(value).strip():
+                  unresolved += 1
+              else:
+                  resolved += 1
+
+          print(json.dumps({
+              "probe": "official_fpl_draft_open_transaction_semantics",
+              "body_values_emitted": False,
+              "auth_mode": auth_mode,
+              "team_entry_id": team_entry_id,
+              "game": safe_game,
+              "bootstrap_dynamic": {
+                  "http_status": dynamic_status,
+                  "schema": dynamic_schema,
+              },
+              "entry_transactions": {
+                  "http_status": tx_status,
+                  "row_count": len(rows),
+                  "resolved_count": resolved,
+                  "unresolved_count": unresolved,
+                  "sample_fields": sorted(fields),
+              },
+          }, sort_keys=True))
+          PY
+
       - name: Diagnose Official FPL owner endpoint status after auth failure
         if: ${{ failure() && steps.owner_auth.outcome == 'failure' }}
         env:
