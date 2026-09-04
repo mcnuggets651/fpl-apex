@@ -4,7 +4,9 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "apex_v2_draft_auth_relay_ops.py"
+ROOT = Path(__file__).resolve().parents[1]
+MODULE_PATH = ROOT / "scripts" / "apex_v2_draft_auth_relay_ops.py"
+WORKFLOW_PATH = ROOT / ".github" / "workflows" / "apex-v2-draft-auth-relay.yml"
 spec = importlib.util.spec_from_file_location("draft_relay", MODULE_PATH)
 assert spec and spec.loader
 relay = importlib.util.module_from_spec(spec)
@@ -141,6 +143,33 @@ class DraftAuthRelayTests(unittest.TestCase):
     def test_dispatch_payload_limit_is_bounded(self):
         self.assertLess(relay.MAX_DISPATCH_BYTES, 65536)
         self.assertEqual(relay.MAX_ROWS, 100)
+
+    def test_workflow_reuses_serialized_auth_boundary_and_has_no_public_artifact(self):
+        text = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("group: apex-v2-fpl-auth", text)
+        self.assertIn("cancel-in-progress: false", text)
+        self.assertIn("permissions:\n  contents: read", text)
+        self.assertIn("--mode production", text)
+        self.assertIn("--github-env \"$GITHUB_ENV\"", text)
+        self.assertIn("APEX_V2_PRIVATE_REPO_TOKEN", text)
+        self.assertNotIn("actions/upload-artifact", text)
+        self.assertNotIn("contents: write", text)
+
+    def test_workflow_keeps_frozen_auth_worktree_and_current_controller_separate(self):
+        text = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn('FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"', text)
+        self.assertIn("scripts/apex_v2_auth_ops.py", text)
+        self.assertIn("scripts/apex_v2_draft_auth_relay_ops.py", text)
+        self.assertIn("git show \"$CONTROL_PLANE_SHA:scripts/apex_v2_auth_ops.py\"", text)
+        self.assertIn("test \"$(git rev-parse HEAD)\" = \"$FROZEN_APEX_SHA\"", text)
+
+    def test_workflow_is_read_only_against_draft_and_dispatches_only_privately(self):
+        text = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("--league-id 33160", text)
+        self.assertIn("--entry-name mcnuggets", text)
+        self.assertIn("--private-repository \"$APEX_PRIVATE_GITHUB_REPOSITORY\"", text)
+        self.assertNotIn("/waiver", text.casefold())
+        self.assertNotIn("method: post", text.casefold())
 
 
 if __name__ == "__main__":
