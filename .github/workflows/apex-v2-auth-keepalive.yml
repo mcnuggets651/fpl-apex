@@ -9,6 +9,7 @@ on:
       - ".github/workflows/apex-v2-auth-keepalive.yml"
       - ".github/workflows/apex-v2-daily-production.yml"
       - "scripts/apex_v2_auth_ops.py"
+      - "docs/APEX_V2_AUTHORITY.json"
   schedule:
     - cron: "22 */6 * * *"
 
@@ -20,34 +21,73 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FROZEN_APEX_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
+  FROZEN_APEX_BASE_SHA: "99cc7b51b0cff45462b567084cb1844cfe0a456f"
 
 jobs:
   refresh:
-    if: vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true'
+    if: vars.APEX_V2_PRIVATE_MANAGER_ENABLED == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.FROZEN_APEX_SHA }}
           fetch-depth: 0
 
-      - name: Verify frozen keepalive identity
+      - name: Resolve authority-selected authentication core
+        id: core
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
-          echo "Apex V2 auth keepalive pinned to $FROZEN_APEX_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          readarray -t AUTHORITY < <(python - <<'PY'
+          import json
+          authority = json.load(open("docs/APEX_V2_AUTHORITY.json", encoding="utf-8"))
+          print(authority["production_core_sha"])
+          print(authority["frozen_engine_sha"])
+          PY
+          )
+          PRODUCTION_CORE_SHA="${AUTHORITY[0]}"
+          FROZEN_ENGINE_SHA="${AUTHORITY[1]}"
+          [[ "$PRODUCTION_CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$FROZEN_ENGINE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$FROZEN_ENGINE_SHA" = "$FROZEN_APEX_BASE_SHA"
+          git fetch --no-tags origin "$FROZEN_ENGINE_SHA" "$PRODUCTION_CORE_SHA"
+          git merge-base --is-ancestor "$FROZEN_ENGINE_SHA" "$PRODUCTION_CORE_SHA"
+          CORE="$RUNNER_TEMP/apex-v2-auth-core"
+          rm -rf "$CORE"
+          git worktree add --detach "$CORE" "$PRODUCTION_CORE_SHA"
+          test "$(git -C "$CORE" rev-parse HEAD)" = "$PRODUCTION_CORE_SHA"
+          test -f "$CORE/scripts/preflight_fpl_auth.py"
+          test -f "$CORE/config/apex_v2.yaml"
+          echo "sha=$PRODUCTION_CORE_SHA" >> "$GITHUB_OUTPUT"
+          echo "path=$CORE" >> "$GITHUB_OUTPUT"
+          echo "APEX_CODE_SHA=$PRODUCTION_CORE_SHA" >> "$GITHUB_ENV"
+          echo "APEX_CORE_PATH=$CORE" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
 
-      - name: Install frozen Apex V2 tooling
-        run: pip install -e '.[dev]'
+      - name: Install exact authority-selected Apex V2 core
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$APEX_CORE_PATH/requirements-v2.lock" ]; then
+            PIP_PIN="$(grep -E '^pip==' "$APEX_CORE_PATH/requirements-v2.lock")"
+            SETUPTOOLS_PIN="$(grep -E '^setuptools==' "$APEX_CORE_PATH/requirements-v2.lock")"
+            WHEEL_PIN="$(grep -E '^wheel==' "$APEX_CORE_PATH/requirements-v2.lock")"
+            test -n "$PIP_PIN"
+            test -n "$SETUPTOOLS_PIN"
+            test -n "$WHEEL_PIN"
+            python -m pip install "$PIP_PIN" "$SETUPTOOLS_PIN" "$WHEEL_PIN"
+            python -m pip install --no-build-isolation \
+              -c "$APEX_CORE_PATH/requirements-v2.lock" -e "$APEX_CORE_PATH[dev]"
+          else
+            python -m pip install -e "$APEX_CORE_PATH[dev]"
+          fi
+          python -m pip check
 
       - name: Preflight private auth store
         env:
@@ -62,18 +102,13 @@ jobs:
           apex-v2 private-store-preflight
 
       - name: Materialize exact operations auth controller
-        env:
-          CONTROL_PLANE_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/main"
-          test -n "$CONTROL_PLANE_SHA"
-          git fetch --no-tags origin "$CONTROL_PLANE_SHA"
-          test "$(git rev-parse FETCH_HEAD)" = "$CONTROL_PLANE_SHA"
-          git show "$CONTROL_PLANE_SHA:scripts/apex_v2_auth_ops.py" > "$RUNNER_TEMP/apex_v2_auth_ops.py"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          cp scripts/apex_v2_auth_ops.py "$RUNNER_TEMP/apex_v2_auth_ops.py"
           test -s "$RUNNER_TEMP/apex_v2_auth_ops.py"
-          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test "$(git -C "$APEX_CORE_PATH" rev-parse HEAD)" = "$APEX_CODE_SHA"
 
       - name: Rotate and persist owner refresh state
         env:
@@ -86,12 +121,15 @@ jobs:
           set -euo pipefail
           python "$RUNNER_TEMP/apex_v2_auth_ops.py" \
             --mode keepalive \
-            --preflight-script scripts/preflight_fpl_auth.py \
-            --config config/apex_v2.yaml
+            --preflight-script "$APEX_CORE_PATH/scripts/preflight_fpl_auth.py" \
+            --config "$APEX_CORE_PATH/config/apex_v2.yaml"
 
-      - name: Prove frozen worktree stayed untouched
+      - name: Prove control-plane and authority core stayed untouched
+        if: ${{ always() }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=no)"
+          test "$(git -C "$APEX_CORE_PATH" rev-parse HEAD)" = "$APEX_CODE_SHA"
+          test -z "$(git -C "$APEX_CORE_PATH" status --porcelain --untracked-files=no)"

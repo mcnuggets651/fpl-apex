@@ -48,7 +48,8 @@ Public producer:
 
 - workflow: `.github/workflows/apex-v2-draft-auth-relay.yml`;
 - controller: `scripts/apex_v2_draft_auth_relay_ops.py`;
-- authentication controller: `scripts/apex_v2_auth_ops.py` plus the frozen preflight;
+- authentication controller: current `main:scripts/apex_v2_auth_ops.py` using auth preflight/config/helpers resolved from machine authority `production_core_sha`;
+- immutable `frozen_engine_sha`: ancestry/forensic proof only, never assumed to be the live auth implementation;
 - concurrency: existing non-cancelling `apex-v2-fpl-auth` boundary;
 - schedule: every 15 minutes plus manual and bounded push execution on `main`;
 - authenticated transaction endpoint: Official Draft `draft/entry/<live_team_entry_id>/transactions`;
@@ -56,16 +57,17 @@ Public producer:
 
 The producer:
 
-1. materializes the exact current control-plane relay/auth controllers while keeping the frozen auth worktree untouched;
-2. authenticates through the existing manager-identity/refresh/private-store boundary;
-3. resolves the live Draft team-entry ID from public Official Draft league details;
-4. fetches the authenticated entry transaction surface using the certified owner transport;
-5. strips transaction output to at most 100 scalar allowlisted rows and adds safe player names from public Draft bootstrap data;
-6. classifies transaction rows only as **resolved** (non-empty upstream `result`) or **unresolved** (missing/empty upstream `result`); unresolved is deliberately not renamed `pending` until runtime evidence proves that exact upstream semantic;
-7. reads the authenticated `my-team` surface only for a **schema-only** diagnostic consisting of key names, container types, list counts and sample field names for transaction/waiver/request/pending/trade-like paths; it emits no owner scalar values from that surface;
-8. recursively rejects credential-bearing keys;
-9. sends the credential-free `apex-private-draft-auth-relay-v1` payload to private `mcnuggets651/fpl` via repository dispatch;
-10. writes no owner transaction artifact to the public repository.
+1. resolves `production_core_sha` and `frozen_engine_sha` from machine authority, proves the selected core descends from the immutable forensic base and materializes that core separately from `main`;
+2. materializes the exact current control-plane relay/auth controllers and runs the auth controller against the authority-selected core preflight/config;
+3. authenticates through the one serialized manager-identity/refresh/private-store boundary;
+4. resolves the live Draft team-entry ID from public Official Draft league details;
+5. fetches the authenticated entry transaction surface using the certified owner transport;
+6. strips transaction output to at most 100 scalar allowlisted rows and adds safe player names from public Draft bootstrap data;
+7. classifies transaction rows only as **resolved** (non-empty upstream `result`) or **unresolved** (missing/empty upstream `result`); unresolved is deliberately not renamed `pending` until runtime evidence proves that exact upstream semantic;
+8. reads the authenticated `my-team` surface only for a **schema-only** diagnostic consisting of key names, container types, list counts and sample field names for transaction/waiver/request/pending/trade-like paths; it emits no owner scalar values from that surface;
+9. recursively rejects credential-bearing keys;
+10. sends the credential-free `apex-private-draft-auth-relay-v1` payload to private `mcnuggets651/fpl` via repository dispatch;
+11. writes no owner transaction artifact to the public repository.
 
 Private receiver:
 
@@ -92,22 +94,41 @@ Therefore:
 
 This distinction is required because “authenticated transaction history works” and “current pending queue works” are different claims.
 
-## Owner-auth incident status diagnostic
+## Current owner-auth incident and permanent repair boundary
 
-The authenticated Draft relay depends on the same certified Official FPL owner-auth boundary as Classic production. If that certification fails with the frozen preflight's generic **unexpected status** error, the relay must remain failed and must not enter a new recovery path merely to keep Draft querying alive.
+After PR #155 merged, authenticated Draft semantic discovery stopped before any Draft endpoint because owner authentication was unhealthy. Public PR #156 added only a failure-gated status probe and merged without changing recovery semantics. Its merged diagnostic established the exact current direct transport result: Official FPL `/api/me/` returned **HTTP 401 / `rejected`** for the configured static bearer. The rotating private refresh state and configured bootstrap refresh were also rejected. This is credential exhaustion/rejection evidence, not rate limiting or a 5xx incident.
 
-A bounded status-only diagnostic is permitted **after** that failed auth step:
+The diagnosis also exposed a permanent crash/verification window in the prior refresh lifecycle: an identity-provider exchange could consume the parent refresh token before `/api/me/` manager verification, while the rotated child was not yet durable. A verification failure could therefore strand the refresh chain.
 
-- it uses only the already-configured static direct bearer/cookie transport;
-- it performs one read-only GET to Official FPL `/api/me/` per configured direct transport;
-- it uses streaming mode, records only the final HTTP status code and a coarse class (`ok`, `rejected`, `rate_limited`, `upstream_5xx`, `redirect`, `other_4xx`, `unexpected`, or `network_error`), and closes the response without reading its body;
+The governed repair is two-phase and remains inside existing `PROD-002` owner authentication:
+
+1. recover any already-staged encrypted child for the current parent from authenticated private release listing before attempting a new exchange;
+2. exchange the current refresh token once;
+3. encrypt and upload the rotated child as a **private draft before** `/api/me/` verification;
+4. treat that draft as inactive recovery evidence;
+5. verify exact Classic manager identity;
+6. only on exact match, re-download/digest-check and immutably publish the staged child as active refresh state;
+7. on any indeterminate post-exchange verification result, retain the child staged and prohibit parent retry/bootstrap/direct fallback;
+8. on explicit wrong-manager proof, strictly purge the wrong-manager staged chain or fail for manual private-store cleanup.
+
+Production, Keepalive and Draft Relay must all use the same authority-selected production-core auth preflight/config and the same serialized `apex-v2-fpl-auth` concurrency group. The frozen PR #90 SHA remains forensic lineage and is never modified to fix authentication.
+
+Because all currently configured durable credentials are rejected, one browser-issued refresh re-seed will still be required **after** this permanent repair is merged and exact-head accepted. The credential must be placed directly into the approved GitHub Actions secret and must never be pasted into chat, an issue, logs or documentation.
+
+## Failure-only owner status diagnostic
+
+The status-only probe retained after PR #156 is incident evidence, not authentication:
+
+- it runs only after the owner-auth step has failed;
+- it uses only already-configured static direct bearer/cookie transport;
+- it performs one read-only streamed GET to Official FPL `/api/me/` per configured direct transport;
+- it records only final HTTP status code and coarse class;
 - it emits no response body, response headers, credential value, refresh token, private-repository token or manager payload;
 - it does not parse manager identity and therefore cannot certify authentication;
 - it does not retry, exchange, rotate or persist refresh state;
-- it does not convert the failed owner-auth step into success and cannot unlock the Draft query/dispatch step;
-- frozen PR #90 and the frozen preflight remain untouched.
+- it does not convert the failed owner-auth step into success and cannot unlock Draft query/dispatch.
 
-This diagnostic exists only to distinguish upstream rate limiting/service failure/endpoint behavior from credential rejection while preserving the existing fail-closed recovery constitution.
+The accepted diagnostic result for the current incident is 401/rejected. Do not keep probing or refreshing merely to reproduce that fact.
 
 ## Fresh-session ChatGPT rule
 
@@ -137,6 +158,9 @@ Until those runtime gates pass, the owner should leave existing Project instruct
 
 - reusable FPL credentials never enter public artifacts, docs or logs;
 - reusable FPL credentials are not duplicated into the private Draft query workflow;
+- rotated refresh children are encrypted and staged only in the private auth release store;
+- a staged child is never active until exact owner identity matches;
+- consumed refresh parents are never blindly retried when a staged child exists;
 - authenticated raw Draft response bodies are not logged or published;
 - schema diagnostics contain no owner scalar values;
 - owner-auth incident diagnostics contain only status code/class metadata and never read the response body;
@@ -152,6 +176,8 @@ Until those runtime gates pass, the owner should leave existing Project instruct
 Fail closed when:
 
 - manager authentication cannot be certified;
+- a post-exchange refresh child cannot be durably staged, verified or activated;
+- wrong-manager staged state cannot be purged;
 - league/entry identity does not resolve uniquely;
 - the authenticated transaction endpoint returns rejection/not-found/unexpected status;
 - exact pending/open semantics are ambiguous;
@@ -161,20 +187,23 @@ Fail closed when:
 - private receiver validation fails;
 - the current private artifact/receipt cannot be retrieved or verified.
 
-Do not solve these failures by exposing credentials, copying raw authenticated responses, guessing result-code meanings, weakening validation, moving owner state public, submitting a test waiver without explicit governed write authorization or falling back to chat memory. A diagnostic status code may explain a failure; it never authorizes bypassing it.
+Do not solve these failures by exposing credentials, copying raw authenticated responses, guessing result-code meanings, weakening validation, moving owner state public, submitting a test waiver without explicit governed write authorization, retrying a consumed refresh parent, falling back after an indeterminate staged rotation or falling back to chat memory.
 
 ## Runtime acceptance
 
-CI proves structure. Connectivity acceptance already proved authenticated read/dispatch/private publication, but **pending/open-waiver acceptance remains separate**.
+CI proves structure. Historical connectivity already proved authenticated read/dispatch/private publication, but current authentication must be restored and **pending/open-waiver acceptance remains separate**.
 
-For full pending/open acceptance:
+Required closure order:
 
-1. exact-head public Apex CI and Apex V2 Ops Contract pass for the semantic-discovery/final extraction change;
-2. the public producer executes from merged `main` and successfully authenticates;
-3. schema-only diagnostics identify the exact authenticated current-request surface, or transaction rows are independently proven to represent unresolved current requests;
-4. the producer extracts only the proven current-request surface through an explicit allowlist;
-5. the private repository receives that state on merged receiver code and exposes a successful private artifact/stable receipt;
-6. the private receipt is inspected and shown to represent the current pending/open queue, including a valid empty list only when the exact proven current-request surface itself is empty;
-7. private public-capability binding validation passes against the final public registry/runbook state.
+1. exact-head public Apex CI and Apex V2 Ops Contract pass for the two-phase auth/control-plane repair;
+2. the exact repair head merges with machine authority and PR #90 unchanged;
+3. a fresh browser-issued refresh credential is re-seeded directly into the approved GitHub Actions secret, never through chat;
+4. merged Keepalive executes successfully and proves the two-phase rotation/private activation path;
+5. merged `OPS-008` executes successfully, authenticates through the same path and dispatches a fresh credential-free private receipt;
+6. schema-only diagnostics identify the exact authenticated current-request surface, or transaction rows are independently proven to represent unresolved current requests;
+7. the producer extracts only the proven current-request surface through an explicit allowlist;
+8. the private repository receives that state on merged receiver code and exposes a successful private artifact/stable receipt;
+9. the private receipt is inspected and shown to represent the current pending/open queue, including a valid empty list only when the exact proven current-request surface itself is empty;
+10. private public-capability binding validation passes against the final public runbook state.
 
 Only after those gates are true may a fresh-session pending/open-waiver query be called permanently accepted.
