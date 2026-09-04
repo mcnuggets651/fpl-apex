@@ -8,7 +8,7 @@
 
 **PRODUCTION PIPELINE PASSED; PRIVATE QUERY ACCEPTANCE BLOCKED BY GITHUB BILLING**
 
-Canonical production run #9 (`33850307770`, immutable run `33850307770-1`) completed successfully for GW3 using production core `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`. Authentication, Official FPL acquisition, AIrsenal H1–H8 generation, frozen solve, deterministic publication witness and matched immutable public/private publication all passed.
+Canonical production run #9 (`33850307770`, immutable run `33850307770-1`) completed successfully for GW3 under the then-current authority-declared serving core. Authentication, Official FPL acquisition, AIrsenal H1–H8 generation, frozen solve, deterministic publication witness and matched immutable public/private publication all passed. Exact historical core identity is preserved in immutable release evidence and the canonical master ledger, not copied here as a movable current pointer.
 
 The only remaining acceptance gate is execution of the private strategy-query bridge in exact and `latest` modes. GitHub rejected both jobs before runner allocation because of account billing/spending state; a second retry of `latest` on 4 September again produced zero job steps and `runner_id=0`. This is not bridge-code failure. Do not reopen model development because of it.
 
@@ -16,7 +16,7 @@ Canonical machine authority: [`APEX_V2_AUTHORITY.json`](APEX_V2_AUTHORITY.json).
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json` and verify it live. At this snapshot it is `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
 
 ## Production now
 
