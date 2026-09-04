@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 4 September 2026, after private FPL Draft relay-receiver acceptance and during governed public authenticated Draft relay staging  
+**State snapshot:** 4 September 2026, after authenticated Draft relay and stable private-receipt runtime acceptance, during bounded open-waiver semantic discovery  
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -48,7 +48,7 @@ Before changing code, workflows, governance, model behavior, production operatio
 
 # **APEX OPERATIONAL**
 
-The serving production chain and accepted Classic owner-private query chain have completed their required acceptance. The public/live portion of the FPL Draft owner query is also runtime-proven. The final authenticated pending/open Draft transaction transport is in governed closure and must not be called complete until its real merged runtime evidence exists.
+The serving production chain and accepted Classic owner-private query chain have completed their required acceptance. The live FPL Draft roster/market connection and the authenticated transaction relay are also runtime-proven. One narrower Draft claim remains deliberately uncertified: the exact **current open/pending waiver-request semantics**. The first authenticated stable receipt proved that the known entry transaction endpoint includes processed history, so resolved history must not be mislabeled as the current open queue.
 
 Canonical production run `33850307770-1` proved AIrsenal serving and the owner decision path. A later bounded Dastan H1 shadow orchestration repair merged through public PR #153; Dastan and PITCHSIDE remain research-only and none of the Draft work changes serving authority.
 
@@ -105,7 +105,7 @@ Private PR #8 repaired the chat-facing projection request that was still explici
 
 That query resolved exact current immutable run `33850307770-1`, the matching private evaluation namespace and the matching private PITCHSIDE tournament namespace. It exposed current PITCHSIDE rows for the requested strategy universe. The same-run provider archive contained AIrsenal only because Dastan had failed earlier during production acquisition; the private query bridge itself was no longer the Dastan blocker.
 
-### FPL Draft owner-query closure — public/live portion accepted; authenticated portion in final closure
+### FPL Draft owner-query closure — connection/relay accepted; exact open-waiver semantics under bounded discovery
 
 The live Draft connection itself is proven and does not depend on chat memory.
 
@@ -123,7 +123,7 @@ Post-merge private Draft workflow `33889278311` succeeded on the self-hosted Mac
 - public league trades: readable;
 - entry-specific transaction endpoint: `auth_required`.
 
-That result proved the league/account/roster/waiver-pool connection is healthy and isolated the remaining defect to authenticated transport for the private entry transaction queue. It also proved reusable FPL authentication is not present in the private Draft workflow environment and therefore must not be guessed or silently treated as an empty queue.
+That result proved the league/account/roster/waiver-pool connection is healthy and isolated the remaining defect at that point to authenticated transport. It also proved reusable FPL authentication is not present in the private Draft workflow environment and therefore must not be guessed or silently treated as an empty queue.
 
 Private PR #10 then added the credential-free authenticated-relay receiver:
 
@@ -132,35 +132,58 @@ Private PR #10 then added the credential-free authenticated-relay receiver:
 - exact-head `Apex Private Master State Contract` run `33892177813`: success;
 - merge commit: `e215785fdfecd37cee967ffec9a66cf45e6e9d85`.
 
-The merged private receiver:
+Public PR #154, **Complete governed FPL Draft authenticated owner-query relay**, then closed the authenticated transport and semantic registration:
 
-- accepts repository dispatch action `apex-draft-auth-snapshot`;
-- validates contract `apex-private-draft-auth-relay-v1`;
-- accepts only exact league `33160`, entry `mcnuggets`, valid producer identity/run/SHA and a successful authenticated transaction status;
-- allows at most 100 scalar allowlisted rows;
-- recursively rejects token/cookie/authorization/secret/credential keys;
-- runs on `[self-hosted, macOS, ARM64]` with no hosted fallback;
-- stores only a seven-day private `apex-private-draft-auth-*` artifact.
+- exact head: `10728ba721e325639a71e4e998960c9c32a49fde`;
+- exact-head Apex CI `33896311945`: success;
+- exact-head Apex V2 Ops Contract `33896311949`: success;
+- merge commit/current public relay baseline: `4a37729b7cf38a72a48a511fbeb60c7decb89af4`;
+- `OPS-008` authenticated Draft transaction relay registered;
+- `PRIV-009` live Draft owner query registered;
+- `INT-001` depends on `PRIV-009`.
 
-The public control-plane branch `agent/draft-auth-relay` is now staging the producer and formal semantic registration:
+The merged public relay successfully authenticated and queried the real entry transaction endpoint. Public run `33896772261` passed certified owner credential acquisition, authenticated Draft transaction acquisition, private dispatch and frozen-worktree proof.
 
-- `scripts/apex_v2_draft_auth_relay_ops.py` — authenticated read-only Draft transaction producer;
-- `.github/workflows/apex-v2-draft-auth-relay.yml` — serialized on the existing `apex-v2-fpl-auth` concurrency group;
-- `ops_tests/test_apex_v2_draft_auth_relay_ops.py` — credential/identity/allowlist/fail-closed regressions;
-- `docs/APEX_DRAFT_QUERY.md` — permanent Draft owner-query runbook;
-- `OPS-008` — authenticated FPL Draft transaction relay;
-- `PRIV-009` — live FPL Draft owner query;
-- `INT-001` now depends on `PRIV-009` so fresh ChatGPT sessions discover the governed Draft surface.
+Private PR #12, **Certify stable private FPL Draft owner query surface**, then closed the connected-session read target:
 
-The public producer deliberately reuses the existing certified owner-auth lifecycle. It resolves the current Draft team-entry ID from live league details, reads only the Official authenticated entry transaction endpoint, strips the response to the narrow credential-free relay, and dispatches it to private `mcnuggets651/fpl`. It creates no public owner transaction artifact and performs no Draft write.
+- exact head: `6c7eedb301958dff79d26be9363db3f96b76b7dc`;
+- exact-head private Draft run `33897979229`: success;
+- exact-head private master/public-capability contract `33897979355`: success;
+- merge commit/current private baseline: `e089b31be4bea257a27964fd52951822d68dc324`;
+- stable private machine-managed receipt: private `mcnuggets651/fpl` issue #11;
+- private event-class concurrency was separated so PR certification, scheduled pool queries and authenticated relay ingestion wait rather than cancel each other.
 
-**Do not call pending/open waiver retrieval accepted yet.** Full acceptance still requires exact-head public governance checks, merge, a successful real authenticated producer run, a successful private repository-dispatch receiver run, inspection of the resulting private artifact, and final private public-capability binding acceptance.
+A fresh post-merge public relay rerun `33897685281` successfully dispatched into current private `main`. Private repository-dispatch run `33898312773` then passed:
+
+- relay validation;
+- private artifact upload;
+- stable private issue #11 publication.
+
+Private artifact:
+
+- `apex-private-draft-auth-33898312773`;
+- artifact ID `9946749382`;
+- digest `sha256:4d2b41366c350eb96042cdd6037d660c5d0828139cd4d8722416eaaca6a503b1`.
+
+The stable receipt proved authenticated connectivity for live Draft team-entry ID `172178` and returned four event-3 waiver rows. Every returned row had a non-empty upstream `result` code. Two successful incoming players were already present in the subsequently observed roster. This proves that `draft/entry/<team_entry_id>/transactions` includes **processed/resolved transaction history**.
+
+Therefore the four rows in the first receipt are not evidence of the current open queue. Result-bearing history must not be described as pending. Upstream result codes such as `a`, `di` and `do` must not be assigned guessed meanings without verified semantics.
+
+Current bounded branch `agent/draft-open-waiver-semantics` adds only read-only semantic discovery:
+
+- transaction rows are classified as `resolved` when upstream `result` is non-empty and `unresolved` when it is absent/empty;
+- `unresolved` is deliberately not renamed `pending` until runtime evidence proves that exact relationship;
+- authenticated `entry/<live_team_entry_id>/my-team` is queried only for a **schema-only** diagnostic;
+- the diagnostic may expose key names, container types, list counts and sample field names for transaction/waiver/request/pending/trade-like paths, but never owner scalar values;
+- no Draft POST/DELETE/write path is introduced.
+
+**Do not call current pending/open waiver retrieval certified yet.** The connection, authentication, transaction-history relay, private artifact and fresh-session stable receipt are accepted. The remaining gate is exact current-request semantics: identify and runtime-prove the Official authenticated surface that represents unresolved/open waiver requests, then expose only that allowlisted surface privately and validate a real current queue or proven empty queue.
 
 ### Operational qualification
 
-`APEX OPERATIONAL` means a fresh connected agent can reproducibly recover and verify the authority-correct immutable Classic owner state without relying on remembered squad information. It can also recover current Draft roster/available/locked state from the accepted private Draft query.
+`APEX OPERATIONAL` means a fresh connected agent can reproducibly recover and verify the authority-correct immutable Classic owner state without relying on remembered squad information. It can also recover current Draft roster/available/locked state and authenticated private transaction-history evidence through the accepted Draft query/relay path.
 
-It does **not** yet mean a fresh session may assert personal pending/open Draft waiver state without the authenticated relay artifact described above. It also does not mean a historical immutable Classic decision is automatically fresh forever. Normal production freshness, deadline, authentication, Official FPL and provider-qualification gates continue to determine whether a new manager-facing recommendation is actionable.
+It does **not** yet mean a fresh session may assert personal pending/open Draft waiver requests solely from result-bearing historical transaction rows. Normal production freshness, deadline, authentication, Official FPL, exact Draft transaction semantics and provider-qualification gates continue to determine whether a new manager-facing recommendation is actionable.
 
 ---
 
@@ -177,13 +200,14 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - post-merge Apex CI `33870475132`: success;
 - capability/documentation constitution PR #151 merged at `6a1509f766e6438a43d296e8e900518a18967959` after exact-head Apex CI `33873835393` and Ops Contract `33873835399`; post-merge Apex CI `33874537255`: success;
 - PR #152 closed the final documentation-only loop and merged at `620ad5d305008c018c9ea3ccd887c9de8b510b9c` after exact-head Apex CI `33877989903` and Apex V2 Ops Contract `33877990068` passed;
-- PR #153, **repair Dastan shadow acquisition core-root wiring**, merged at current public `main` `adf7c22058ef9b384793fabdad6853259d23a648`;
-- bounded Draft auth-relay branch `agent/draft-auth-relay` was created from that exact `main` after private PR #10 receiver acceptance;
+- PR #153, **repair Dastan shadow acquisition core-root wiring**, merged at `adf7c22058ef9b384793fabdad6853259d23a648`;
+- PR #154, **Complete governed FPL Draft authenticated owner-query relay**, merged at current authenticated-relay public baseline `4a37729b7cf38a72a48a511fbeb60c7decb89af4` after exact-head Apex CI `33896311945` and Ops Contract `33896311949` passed;
+- bounded semantic-discovery branch: `agent/draft-open-waiver-semantics`;
 - protected control plane; historical ruleset identifier `21759706` — verify live before relying on it.
 
 ### Machine authority
 
-`docs/APEX_V2_AUTHORITY.json` was re-read before the Draft relay change and remains unchanged:
+`docs/APEX_V2_AUTHORITY.json` was re-read before the Draft semantic-discovery change and remains unchanged:
 
 - `schema_version`: `1`;
 - `season`: `2026-2027`;
@@ -202,7 +226,7 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - automatic promotion: `false`;
 - legacy status: `HISTORICAL_NON_SERVING`.
 
-The Draft owner-query/relay work does not change machine authority.
+The Draft owner-query/relay/semantic-discovery work does not change machine authority.
 
 ### Frozen PR #90
 
@@ -217,9 +241,9 @@ The immutable authority anchor is forensic SHA `99cc7b51b0cff45462b567084cb1844c
 - private capability/documentation binding PR #7 merged at `459427fe1e90565d61f8a9f6547f3876c4f3ec9a`;
 - current-provider query PR #8 merged at `2f4ac141224f1fe222de6893a544abfbf685ea6a`;
 - live Draft query PR #9 merged at `6474254554b3b5f2500fdad2005ee90fb7c0656f`; post-merge Draft query `33889278311`: success;
-- authenticated Draft relay receiver PR #10 exact-head Draft query `33892177717`: success;
-- PR #10 exact-head private master contract `33892177813`: success;
-- PR #10 merged at current private `main` `e215785fdfecd37cee967ffec9a66cf45e6e9d85`;
+- authenticated Draft relay receiver PR #10 merged at `e215785fdfecd37cee967ffec9a66cf45e6e9d85` after exact-head Draft query `33892177717` and private master contract `33892177813` succeeded;
+- stable connected-session Draft surface PR #12 merged at current private baseline `e089b31be4bea257a27964fd52951822d68dc324` after exact-head Draft run `33897979229` and private master/public-capability contract `33897979355` succeeded;
+- current-main repository-dispatch `33898312773` successfully validated the authenticated relay, uploaded artifact `9946749382` and published stable private issue #11;
 - private CI consumes and validates the single public capability registry and rejects a competing private registry;
 - owner-private payloads, exact manager commitments, Draft owner transactions and authentication material remain private.
 
@@ -351,10 +375,13 @@ For current roster/market questions:
 - use available/locked rows from that same retrieval;
 - never reconstruct from memory or screenshots.
 
-For current pending/open personal transactions:
+For authenticated transaction evidence:
 
-- require the authenticated `PRIV-009` relay artifact;
-- a successful authenticated endpoint with zero rows is a valid empty queue;
+- use `OPS-008` plus private `PRIV-009` evidence;
+- stable private issue #11 is the deterministic fresh-session receipt for the latest revalidated credential-free snapshot;
+- result-bearing rows are resolved transaction history and must not be called pending;
+- missing/empty result rows are only `unresolved` until exact pending/open semantics are runtime-proven;
+- a successful transaction-history endpoint with zero rows does not by itself prove there are no open waivers unless that endpoint/current-state semantic has been established;
 - missing/auth-required/auth-rejected/endpoint-failed evidence is **not** an empty queue;
 - Draft↔Classic projection joins use name + club + position, never raw numeric ID equality.
 
@@ -395,7 +422,7 @@ AIrsenal is current production champion and sole serving provider H1–H8. Shado
 
 ### Privacy
 
-Public releases must not contain manager-private squad state, exact commitments, credentials, authenticated Draft owner transaction rows or unfiltered private provider material. Private-auth releases are never query data.
+Public releases must not contain manager-private squad state, exact commitments, credentials, authenticated Draft owner transaction rows or unfiltered private provider material. Private-auth releases are never query data. Schema-only Draft diagnostics may expose key names/types/counts/sample field names but never authenticated owner scalar values.
 
 ### Frozen engine separation
 
@@ -424,7 +451,7 @@ Canonical public documentation surfaces have separated responsibilities:
 Primary live surfaces include machine authority, canonical production, auth keepalive, deadline watch, evaluation/research, Apex CI/Ops Contract and semantic governance. Draft-specific additions are:
 
 - `.github/workflows/apex-v2-draft-auth-relay.yml` — authenticated read-only Draft transaction relay;
-- `scripts/apex_v2_draft_auth_relay_ops.py` — credential-stripping relay controller;
+- `scripts/apex_v2_draft_auth_relay_ops.py` — credential-stripping relay controller plus bounded schema-only authenticated diagnostics;
 - `docs/APEX_DRAFT_QUERY.md` — Draft owner-query runbook.
 
 The Draft relay is not a serving production workflow. It shares auth concurrency but cannot solve, publish or submit Draft transactions.
@@ -436,7 +463,9 @@ Key surfaces include Classic manager/provider persistence/query, plus:
 - `apex-query/draft_request.json` — Draft roster/pool request;
 - `tools/apex_draft_query.py` — live public Official Draft query;
 - `tools/apex_draft_relay_ingest.py` — authenticated relay validator;
+- `tools/apex_draft_issue_publish.py` — revalidating stable private receipt publisher;
 - `.github/workflows/apex-draft-query.yml` — live Draft query and repository-dispatch receiver;
+- private issue #11 — stable machine-managed latest authenticated Draft receipt;
 - short-retention private Draft query/auth artifacts;
 - `fpl-apex-private-mac` — dedicated repository-level self-hosted execution surface.
 
@@ -500,13 +529,16 @@ Public PR #150 established the canonical continuity ledger and same-change enfor
 
 Public PR #151 added the single semantic capability registry and decision index, repurposed `APEX_ARCHITECTURE.md` as the current cross-repository map, added semantic CI enforcement and merged with exact-head/post-merge green evidence. Private PR #7 then consumed/validated the public `PRIV-*` bindings without creating a second registry. Public PR #152 closed the final documentation loop.
 
-### Era M — Draft fresh-session owner query and authenticated relay
+### Era M — Draft fresh-session owner query, authenticated relay and open-waiver semantic hardening
 
 - private PR #9 merged the governed live Draft roster/available/locked query and runtime-proved exact current state in `33889278311`;
 - that runtime isolated entry-specific transactions as auth-required rather than a broken Draft connection;
 - private PR #10 added/accepted the credential-free authenticated relay receiver and merged at `e215785fdfecd37cee967ffec9a66cf45e6e9d85`;
-- public `OPS-008` / private `PRIV-009` now define the permanent auth-relay/query semantics;
-- public authenticated producer/runtime acceptance is the remaining closure gate before fresh-session pending/open waiver state is certified.
+- public PR #154 merged the governed `OPS-008` authenticated relay and `PRIV-009` semantics at `4a37729b7cf38a72a48a511fbeb60c7decb89af4` after exact-head public gates passed;
+- private PR #12 merged the stable private issue-#11 query target, revalidation publisher, mandatory `PRIV-009` binding and isolated event-class concurrency at `e089b31be4bea257a27964fd52951822d68dc324`;
+- public relay `33897685281` → private dispatch `33898312773` runtime-proved authenticated acquisition, credential-free relay, private artifact and stable receipt publication;
+- inspection proved the first four result-bearing event-3 rows are resolved transaction history, not a current open queue;
+- bounded read-only schema discovery is now the remaining step before pending/open waiver semantics can be certified.
 
 ---
 
@@ -531,26 +563,29 @@ Public PR #151 added the single semantic capability registry and decision index,
 17. **Do not create an active workflow or `scripts/apex_v2_*.py` surface without registering its capability.**
 18. **Do not reopen exact/latest strategy-query acceptance without a new reproducible defect or authority change.**
 19. **Do not launch production-core helpers from the mutable control-plane root when they resolve repo-relative core inputs.**
-20. **Do not interpret `auth_required`, missing relay evidence or a failed authenticated Draft endpoint as “no pending waivers.”** Only `status=ok` plus an empty authenticated result means an empty queue.
-21. **Do not copy FPL credentials into the private Draft workflow.** The public governed auth owner must relay only a credential-free allowlist.
-22. **Do not assume Draft and Classic element IDs are equal.** Reconcile name + club + position.
+20. **Do not describe result-bearing Draft transaction rows as pending/open waivers.** They are resolved history unless exact upstream semantics prove otherwise.
+21. **Do not treat `auth_required`, missing relay evidence, a failed authenticated Draft endpoint, ambiguous unresolved semantics or an unproven empty transaction-history list as “no pending waivers.”**
+22. **Do not copy FPL credentials into the private Draft workflow.** The public governed auth owner must relay only a credential-free allowlist.
+23. **Do not assume Draft and Classic element IDs are equal.** Reconcile name + club + position.
+24. **Do not submit a test waiver/free-agent/trade merely to manufacture semantic evidence.** No Draft write capability exists; discovery remains read-only unless an explicit governed write capability is separately authorized.
 
 ---
 
-## 11. Next actions — Draft authenticated runtime closure is the immediate owner-query priority
+## 11. Next actions — exact open/pending Draft semantics are the immediate owner-query priority
 
-The serving production and Classic owner-query system remain accepted. The Draft live roster/pool connection and private authenticated receiver are accepted. The immediate bounded closure is the public authenticated producer and end-to-end pending/open transaction proof.
+The serving production and Classic owner-query system remain accepted. Draft live roster/pool access, governed authentication, transaction-history relay, private artifact and stable connected-session receipt are accepted. The remaining bounded closure is to identify and prove the exact Official authenticated surface for unresolved/open waiver requests.
 
 For Draft closure:
 
-1. exact-head Apex CI and Apex V2 Ops Contract must pass on the public `agent/draft-auth-relay` PR;
-2. merge only with an exact-head check and no authority/provider/PR #90 drift;
-3. require the merged `.github/workflows/apex-v2-draft-auth-relay.yml` to authenticate through the existing owner-auth boundary and return a successful private repository dispatch;
-4. require private `mcnuggets651/fpl` to receive that dispatch on merged PR #10 receiver code and produce a successful `apex-private-draft-auth-*` artifact;
-5. inspect that private artifact and verify exact league/entry identity plus the real authenticated transaction queue; an empty list is accepted only if `status=ok`;
-6. update the private master/bridge with the exact public producer run, private receiver run/artifact and final `PRIV-009` binding status;
-7. run the private master/public-capability binding contract against public `main` containing `PRIV-009`;
-8. only after those gates, call the Draft connection **CERTIFIED COMPLETE** for fresh-session roster, market and pending/open waiver queries.
+1. complete exact-head tests and docs for `agent/draft-open-waiver-semantics`;
+2. merge only after Apex CI and Apex V2 Ops Contract are green on the exact head and no authority/provider/PR #90 drift exists;
+3. run the merged `OPS-008` relay and inspect only schema-safe diagnostics from authenticated `entry/<team_entry_id>/my-team` plus resolved/unresolved transaction counts;
+4. if `my-team` exposes a distinct waiver/request/pending list, implement an explicit allowlisted extractor for that proven list; if it does not, continue only with bounded authenticated GET discovery and do not guess;
+5. if the entry transaction endpoint exposes result-less rows, establish from runtime/upstream evidence whether those rows are the frontend's unresolved current requests before naming them `pending`;
+6. update the private relay contract/stable issue only after the exact current-request surface is proven;
+7. inspect a resulting current pending/open queue, or a proven empty queue from that exact current-request surface;
+8. rerun private public-capability binding validation and record exact final acceptance in public/private continuity docs;
+9. only then call the Draft connection **CERTIFIED COMPLETE** for fresh-session roster, market and pending/open waiver queries and provide the owner the final Project-instruction block.
 
 Separately, Dastan remains a non-serving runtime-health item after PR #153; its current shadow health can be verified independently without blocking the Draft owner-query closure or changing AIrsenal serving authority.
 
@@ -596,16 +631,27 @@ Editing this file, the capability registry, decision index, Draft runbook or arc
 
 ## 13. Changelog for this ledger
 
+### 2026-09-04 — authenticated Draft connection accepted; open-waiver semantics hardened
+
+- public PR #154 exact head `10728ba721e325639a71e4e998960c9c32a49fde` passed Apex CI `33896311945` and Ops Contract `33896311949` and merged at `4a37729b7cf38a72a48a511fbeb60c7decb89af4`;
+- merged public `OPS-008` successfully acquired certified owner authentication, queried Official Draft entry transactions and dispatched a credential-free relay privately;
+- private PR #12 exact head `6c7eedb301958dff79d26be9363db3f96b76b7dc` passed Draft run `33897979229` and private master/public-capability contract `33897979355` and merged at `e089b31be4bea257a27964fd52951822d68dc324`;
+- private PR #12 added stable private issue #11 plus a revalidation publisher and corrected Draft event-class concurrency so PR/schedule/dispatch runs wait rather than cancel one another;
+- fresh public relay `33897685281` produced current-private repository dispatch `33898312773`, whose relay validator, artifact upload and stable issue publisher all succeeded;
+- artifact `9946749382`, digest `sha256:4d2b41366c350eb96042cdd6037d660c5d0828139cd4d8722416eaaca6a503b1`, proves the private credential-free path;
+- first stable receipt contained four event-3 waiver rows with non-empty result codes and therefore demonstrated processed transaction history rather than a certified current open queue;
+- current bounded change adds resolved/unresolved classification plus schema-only authenticated `my-team` discovery; no owner scalar values, credentials or Draft writes are exposed;
+- machine authority, AIrsenal serving, frozen PR #90, Classic owner state, optimiser/research semantics and billing policy remain unchanged.
+
 ### 2026-09-04 — governed FPL Draft fresh-session query and authenticated relay staged
 
 - private PR #9 merged at `6474254554b3b5f2500fdad2005ee90fb7c0656f` and post-merge Draft run `33889278311` proved exact 15-player roster, 478 available, 24 locked and healthy public Draft history while correctly reporting entry transactions `auth_required`;
 - private PR #10 exact head `8dcef5e3c961e5fe3408a523526db1b0ec3f942f` passed Draft query run `33892177717` and master-state contract `33892177813` and merged at `e215785fdfecd37cee967ffec9a66cf45e6e9d85`;
 - PR #10 receiver accepts only credential-free `apex-private-draft-auth-relay-v1` repository dispatches and stores a seven-day private artifact on the self-hosted Mac;
-- public branch `agent/draft-auth-relay` adds the existing-auth-backed Draft transaction producer, workflow, adversarial tests and `docs/APEX_DRAFT_QUERY.md`;
-- capability registry adds `OPS-008` authenticated Draft transaction relay and `PRIV-009` live FPL Draft owner query; `INT-001` now depends on `PRIV-009`;
+- public branch `agent/draft-auth-relay` added the existing-auth-backed Draft transaction producer, workflow, adversarial tests and `docs/APEX_DRAFT_QUERY.md`;
+- capability registry added `OPS-008` authenticated Draft transaction relay and `PRIV-009` live FPL Draft owner query; `INT-001` depends on `PRIV-009`;
 - ChatGPT policy and architecture explicitly route fresh Draft questions through this governed path rather than screenshots/chat memory;
-- machine authority, production core, AIrsenal serving role, frozen PR #90, Classic owner state, optimiser/research semantics and billing policy are unchanged;
-- exact-head public CI, merge, real authenticated producer→private receiver runtime proof and final private binding acceptance remain required before pending/open waiver retrieval is certified complete.
+- machine authority, production core, AIrsenal serving role, frozen PR #90, Classic owner state, optimiser/research semantics and billing policy were unchanged.
 
 ### 2026-09-04 — current-provider query fixed; Dastan core-root repair merged
 
