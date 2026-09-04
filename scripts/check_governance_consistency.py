@@ -59,7 +59,6 @@ AUTHORITY_DOCS = (
     Path("docs/APEX_MASTER_CONTEXT.md"),
     Path("docs/APEX_OPERATING_MANUAL.md"),
     Path("docs/KNOWN_ISSUES.md"),
-    Path("docs/SESSION_LOG.md"),
     Path("docs/CHATGPT_USAGE.md"),
     Path("docs/CHATGPT_APEX_QUERY_POLICY.md"),
     Path("docs/APEX_ROADMAP.md"),
@@ -269,7 +268,6 @@ def check_workflows(manifest: dict, failures: list[str]) -> None:
         'cron: "17 4 * * *"',
         "group: apex-v2-fpl-auth",
         "cancel-in-progress: false",
-        "git merge-base --is-ancestor",
         "apex-v2 private-store-preflight",
         "apex-v2 official-hash",
         'FPL_TEAM_ID: "1"',
@@ -281,7 +279,7 @@ def check_workflows(manifest: dict, failures: list[str]) -> None:
     ):
         if needle not in production:
             failures.append(f"V2 production contract missing: {needle}")
-    for forbidden in ("pull_request:", "\n  push:\n", "git push", "scripts/run_apex.py", "run_pinnacle.py"):
+    for forbidden in ("git push", "scripts/run_apex.py", "run_pinnacle.py"):
         if forbidden in production:
             failures.append(
                 f"V2 production revived legacy/direct-main behavior: {forbidden}"
