@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 4 September 2026, after successful production and completed exact/latest private-query acceptance  
+**State snapshot:** 4 September 2026, after public continuity PR #150 merge and during bounded capability/documentation constitution implementation  
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -22,8 +22,9 @@ When sources disagree, use this order:
 1. **Immutable release evidence and current GitHub facts** — immutable release payloads/attestations/digests, current branch/PR/workflow state and live Official FPL facts.
 2. **Machine production authority** — `docs/APEX_V2_AUTHORITY.json`.
 3. **This master state ledger** — the canonical human continuity/history/next-step record.
-4. **Supporting Project Brain documents** — `CURRENT_STATE.md`, `APEX_MASTER_CONTEXT.md`, `APEX_OPERATING_MANUAL.md`, `APEX_DECISIONS.md`, operational runbooks and architecture documents.
-5. **Conversation/project memory** — useful context only; never authority for squad, prices, transfers, SHAs, release identity, model state or production readiness.
+4. **Capability registry** — `docs/APEX_CAPABILITY_REGISTRY.yaml`, the semantic index of capabilities/change surfaces; it is not serving authority.
+5. **Current system map and supporting Project Brain documents** — `docs/APEX_ARCHITECTURE.md`, `CURRENT_STATE.md`, `APEX_MASTER_CONTEXT.md`, `APEX_OPERATING_MANUAL.md`, `APEX_DECISIONS.md` and operational runbooks.
+6. **Conversation/project memory** — useful context only; never authority for squad, prices, transfers, SHAs, release identity, model state or production readiness.
 
 If a fresh session cannot reconcile tiers 1–3, it must stop before making a manager recommendation or changing production and resolve the discrepancy from GitHub/release evidence.
 
@@ -34,11 +35,12 @@ Before changing code, workflows, governance, model behavior, production operatio
 1. read this file completely;
 2. read `docs/APEX_V2_AUTHORITY.json`;
 3. read `docs/CURRENT_STATE.md` and `docs/APEX_OPERATING_MANUAL.md`;
-4. read the specific runbook/contract for the surface being touched;
-5. verify live GitHub `main`, relevant PRs, required checks/ruleset and immutable release/workflow state;
-6. for owner-specific questions, use the private query boundary — never reconstruct manager state from chat memory.
+4. read `docs/APEX_CAPABILITY_REGISTRY.yaml` and `docs/APEX_ARCHITECTURE.md`;
+5. read the specific runbook/contract/tests referenced by the registry for the capability being touched;
+6. verify live GitHub `main`, relevant PRs, required checks/ruleset and immutable release/workflow state;
+7. for owner-specific questions, use the private query boundary — never reconstruct manager state from chat memory.
 
-`AGENTS.md` and `CLAUDE.md` encode this startup contract for automated agents. CI enforces that meaningful repository changes update this file in the same change.
+`AGENTS.md` and `CLAUDE.md` encode this startup contract for automated agents. CI enforces both same-change master continuity and semantic capability/change-surface coverage.
 
 ---
 
@@ -106,6 +108,8 @@ The final `latest` run re-read public authority and selected the authority-corre
 
 It does **not** mean a historical immutable decision is automatically fresh forever. Normal production freshness, deadline, authentication, Official FPL and provider-qualification gates continue to determine whether a new manager-facing recommendation is actionable.
 
+The capability/documentation constitution described below changes documentation/governance only and does not alter this production acceptance.
+
 ---
 
 ## 2. Current live repository/authority snapshot
@@ -115,13 +119,17 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 ### Public repository
 
 - repository: `mcnuggets651/fpl-apex`;
-- `main` immediately before public continuity PR #150: `ae251a31b245d17869fc9e2301376af7c456b635`;
-- that head is merge PR #149, restoring normal Deadline Watch after the one-shot production dispatch;
+- public continuity PR #150 merged successfully on 4 September 2026;
+- merge commit / verified `main` at the start of the capability-constitution implementation: `a00f0a45d8e74d834f79cbc473a6482656b9feda`;
+- PR #150 exact-head Apex CI `33870084591`: success;
+- PR #150 exact-head Apex V2 Ops Contract `33870084665`: success;
+- post-merge Apex CI `33870475132`: completed successfully, including continuity, operations regressions, authority/upstream validation and final production-core readiness;
+- capability/documentation implementation branch: `agent/apex-capability-constitution`, created from that exact `main` SHA;
 - protected control plane; historical ruleset identifier `21759706` — verify live before relying on it.
 
 ### Machine authority
 
-`docs/APEX_V2_AUTHORITY.json` was re-read after final private acceptance and declares:
+`docs/APEX_V2_AUTHORITY.json` was re-read before the capability/documentation implementation and remains unchanged:
 
 - `schema_version`: `1`;
 - `season`: `2026-2027`;
@@ -137,6 +145,8 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - research production influence: `NONE`;
 - automatic promotion: `false`;
 - legacy status: `HISTORICAL_NON_SERVING`.
+
+The capability/documentation PR must not change this file.
 
 ### Frozen PR #90
 
@@ -157,6 +167,8 @@ The immutable authority anchor is forensic SHA `99cc7b51b0cff45462b567084cb1844c
 - private operational-ledger closure commit: `9e55ee8e98fb15eeb0a5189c7e65b88c5a6467af`;
 - current request: schema 1, `run_id="latest"`, `top_n=12`;
 - owner-private payloads, exact manager commitments and authentication material remain private.
+
+This public capability-constitution PR does not modify the private repository. A separate bounded follow-up may make private CI consume/validate the public semantic registry; it must not create a second private capability registry.
 
 ---
 
@@ -403,6 +415,19 @@ Public releases must not contain manager-private squad state, exact commitments,
 
 ## 8. Repository architecture and important surfaces
 
+### Documentation constitution
+
+Canonical public documentation surfaces now have separated responsibilities:
+
+- `docs/APEX_V2_AUTHORITY.json` — machine serving authority;
+- `docs/FPL_APEX_MASTER_STATE.md` — human continuity/evidence ledger;
+- `docs/APEX_CAPABILITY_REGISTRY.yaml` — semantic capability/change-surface index, not serving authority;
+- `docs/APEX_ARCHITECTURE.md` — single current cross-repository V2 system map;
+- `docs/APEX_DECISION_INDEX.yaml` — machine-readable decision status/supersession;
+- `docs/APEX_DECISIONS.md` — append-only rationale/history.
+
+`docs/ARCHITECTURE.md` and `docs/APEX_CANONICAL_DECISION_POLICY.md` are explicitly historical/non-serving. Do not create a second current architecture map, second semantic registry or separate prose runbook index.
+
 ### Public control plane (`fpl-apex`)
 
 Primary live surfaces:
@@ -415,11 +440,15 @@ Primary live surfaces:
 - `.github/workflows/apex-v2-prospective-tournament.yml` — non-serving champion/challenger evidence;
 - `.github/workflows/apex-v2-decision-quality.yml` — non-serving decision-edge research;
 - `.github/workflows/apex.yml` — required Apex CI/control-plane contract/readiness;
+- `.github/workflows/apex-v2-ops-contract.yml` — operations/governance contract;
+- `scripts/check_capability_registry.py` — semantic capability/change-surface enforcement;
 - `ops_tests/` — mutable control-plane/operations regressions;
 - `scripts/` — public control-plane checkers/orchestration;
 - `archive/workflows/` — forensic history; operations contract rejects modification/resurrection.
 
 Serving implementation is materialized from the exact authority-declared production core. `src/apex` is V2 lineage; legacy `src/apex_fpl`/old publishers are historical/non-serving and may not silently re-enter production.
+
+Capability path validation is ref-aware: serving-core entry points are checked against `production_core_sha`; forensic evaluator entry points are checked against `frozen_engine_sha`; mutable `main` alone is not used to decide whether a live capability exists.
 
 ### Private persistence/query plane (`fpl`)
 
@@ -436,6 +465,8 @@ Key surfaces:
 - `.github/workflows/apex-master-state-contract.yml` — private continuity contract;
 - `fpl-apex-private-mac` — dedicated repository-level self-hosted execution surface;
 - private immutable releases — owner state/evaluation/presentation/auth separation.
+
+Public registry `PRIV-*` capabilities document these boundaries semantically. Full private path validation remains a separate private-CI follow-up; there is no second private registry.
 
 ---
 
@@ -495,14 +526,29 @@ Temporary one-shot production dispatches were deliberately added/removed around 
 
 ### Era K — continuity and private-query operational closure (#150 public; private #4–#6)
 
-- Public PR #150 established the canonical human continuity ledger, agent startup contracts and same-change CI enforcement.
+- Public PR #150 established the canonical human continuity ledger, agent startup contracts and same-change CI enforcement and merged successfully at `a00f0a45d8e74d834f79cbc473a6482656b9feda`.
+- Post-merge Apex CI `33870475132` completed successfully.
 - Private PR #4 created the private continuity companion, migrated private workflows to zero-cost self-hosted execution, and proved the dedicated runner.
 - Private PR #5 executed/accepted exact immutable-run strategy querying.
 - Private PR #6 restored and accepted authority-selected `latest` querying.
 - Both modes returned byte-identical authority-correct owner state.
 - Private operational closure was recorded on private `main` commit `9e55ee8e98fb15eeb0a5189c7e65b88c5a6467af`.
 
-This is a finite operational closure, not an invitation to start another model-development loop.
+### Era L — capability/documentation constitution
+
+The bounded public governance implementation on branch `agent/apex-capability-constitution` adds:
+
+- `docs/APEX_CAPABILITY_REGISTRY.yaml` as the one semantic index across governance/production/operations/research/private/interaction/legacy capabilities;
+- `docs/APEX_DECISION_INDEX.yaml` as machine-readable decision status/supersession while preserving `APEX_DECISIONS.md` rationale;
+- `docs/APEX_ARCHITECTURE.md` as the single current V2 cross-repository system map;
+- explicit historical classification for `docs/ARCHITECTURE.md` and `docs/APEX_CANONICAL_DECISION_POLICY.md`;
+- `scripts/check_capability_registry.py` plus adversarial `ops_tests/test_capability_registry_contract.py`;
+- semantic PR metadata and changed-path ↔ capability enforcement;
+- checker wiring into existing Apex CI and Apex V2 Ops Contract, not a new workflow.
+
+Decision D032 records the constitution. Exact-head CI/Ops acceptance for this new PR is pending until the PR is opened; it must be recorded here before merge if additional evidence is required.
+
+This is documentation/governance closure, not another model-development loop.
 
 ---
 
@@ -521,24 +567,32 @@ This is a finite operational closure, not an invitation to start another model-d
 11. **Do not resurrect archived legacy publishers.** Archive is forensic only.
 12. **Do not put private manager payloads or credentials into public docs/releases/logs.**
 13. **Do not create another competing master document.** Update this ledger and machine authority/supporting docs as appropriate.
-14. **Do not leave state-changing code undocumented.** CI requires this ledger to move with substantive changes.
-15. **Do not reopen exact/latest query acceptance without a new reproducible defect or authority change.**
+14. **Do not create a competing capability registry, current system map or prose runbook index.** Use the registry and `APEX_ARCHITECTURE.md`.
+15. **Do not copy movable serving/current state into the capability registry or architecture map.** Reference authority instead.
+16. **Do not leave state-changing code undocumented.** CI requires this ledger to move with substantive changes.
+17. **Do not create an active workflow or `scripts/apex_v2_*.py` surface without registering its capability.**
+18. **Do not reopen exact/latest query acceptance without a new reproducible defect or authority change.**
 
 ---
 
 ## 11. Next actions — normal operations, not unfinished closure
 
-The production/query system is accepted. There is no outstanding architectural acceptance blocker in this closure sequence.
+The production/query system is accepted. There is no outstanding production architectural acceptance blocker in this closure sequence.
 
-Normal next actions are operational:
+Immediate bounded governance action:
 
-1. keep `fpl-apex-private-mac` service healthy for private query execution;
-2. keep public Deadline Watch/auth keepalive/production workflows healthy;
-3. at each new deadline, obtain fresh Official FPL/auth/provider state through the production chain before making an actionable recommendation;
-4. use private `latest` query for owner-specific retrieval and fail closed if it returns `REFRESH_REQUIRED`;
-5. continue prospective research/evaluation without serving influence unless explicitly promoted through governance;
-6. keep PR #90 frozen/open/draft/unmerged;
-7. update this ledger whenever substantive public state changes and the private companion whenever private state changes.
+1. finish exact-head validation of the capability/documentation constitution PR and merge it only if Apex CI and Apex V2 Ops Contract are green;
+2. after public merge, perform one **separate bounded private PR** so private CI consumes the public registry semantics, validates private bindings locally and removes stale procedural status from the private Query Bridge; do not create a private registry.
+
+Normal operations remain:
+
+3. keep `fpl-apex-private-mac` service healthy for private query execution;
+4. keep public Deadline Watch/auth keepalive/production workflows healthy;
+5. at each new deadline, obtain fresh Official FPL/auth/provider state through the production chain before making an actionable recommendation;
+6. use private `latest` query for owner-specific retrieval and fail closed if it returns `REFRESH_REQUIRED`;
+7. continue prospective research/evaluation without serving influence unless explicitly promoted through governance;
+8. keep PR #90 frozen/open/draft/unmerged;
+9. update this ledger whenever substantive public state changes and the private companion whenever private state changes.
 
 ---
 
@@ -548,11 +602,23 @@ Every substantive repository change must answer, in this ledger or the private c
 
 - **What changed?**
 - **Why?**
+- **Which `Apex-Capabilities` does it affect?**
 - **Which authority/invariant does it affect?**
 - **What exact tests/CI/release evidence prove it?**
 - **What did not change?**
 - **What is the new next action, if any?**
 - **Does a previously closed decision need to be reopened? If yes, what new evidence justifies that?**
+
+### Capability declaration rule
+
+Public PRs declare machine-readable semantic metadata:
+
+- `Apex-Capabilities: <comma-separated registry IDs>`;
+- `Apex-Authority-Changed: yes|no`;
+- `Apex-Invariants-Changed: <description|none>`;
+- `Apex-Decisions-Reopened: <IDs|none>`.
+
+`scripts/check_capability_registry.py` compares those declarations with actual registered change surfaces; it is not a checkbox-only convention.
 
 ### Same-change rule
 
@@ -562,13 +628,26 @@ For the private repo, its analogous companion/CI rule applies.
 
 This is intentionally strict. Automated dependency updates, documentation edits, workflow edits, test changes and code changes all alter project state and therefore must leave a continuity breadcrumb.
 
-### Master-state edits are not authority promotions
+### Master-state/registry edits are not authority promotions
 
-Editing this file cannot promote a serving core, merge the frozen engine, change provider authorization, publish an attempt or establish a manager decision. Those require their existing machine/release/governance mechanisms.
+Editing this file, the capability registry, decision index or architecture map cannot promote a serving core, merge the frozen engine, change provider authorization, publish an attempt or establish a manager decision. Those require their existing machine/release/governance mechanisms.
 
 ---
 
 ## 13. Changelog for this ledger
+
+### 2026-09-04 — capability/documentation constitution staged
+
+- verified public PR #150 merged at `a00f0a45d8e74d834f79cbc473a6482656b9feda` and post-merge Apex CI `33870475132` completed successfully;
+- created bounded branch `agent/apex-capability-constitution` from that exact head;
+- added one semantic capability registry and one decision status index without copying movable authority/current-state values;
+- repurposed `APEX_ARCHITECTURE.md` as the single current cross-repository V2 map;
+- reclassified older architecture and `scripts/run_apex.py` canonical-policy material as historical/non-serving rather than deleting history;
+- added ref-aware capability/change-surface checker and adversarial contract tests;
+- wired semantic enforcement into existing Apex CI and Apex V2 Ops Contract;
+- recorded decision D032;
+- machine authority, PR #90, production core, provider roles/horizons, production workflow semantics, model/research behavior, owner-private state and spending/billing policy were not changed;
+- exact-head PR checks are the remaining acceptance gate for this bounded governance change.
 
 ### 2026-09-04 — APEX OPERATIONAL closure
 
