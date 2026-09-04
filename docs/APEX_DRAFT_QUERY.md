@@ -87,6 +87,14 @@ For a Draft owner question, a fresh connected agent must:
 
 An empty authenticated transaction row list is valid only when the Official authenticated endpoint itself returned success and the private relay artifact records `status = ok`. `auth_required`, `auth_rejected`, endpoint failure or a missing relay artifact must never be presented as “no open waivers.”
 
+## Project-instruction handoff
+
+The ChatGPT Project instructions must not encode a provisional Draft query path. GitHub remains the durable source of truth while runtime acceptance is incomplete.
+
+After **all five** runtime-acceptance gates below have passed, the connected ChatGPT session must explicitly tell the owner that the Draft connection is certified and provide the exact Project-instruction text to add. That final instruction must bind Draft owner questions to `PRIV-009`, require `OPS-008` for authenticated pending/open transaction state, preserve the live league/entry resolution and Draft↔Classic identity rules in this runbook, forbid credential exposure or duplication, and fail closed when current authenticated evidence cannot be verified.
+
+Until those runtime gates pass, the owner should leave existing Project instructions unchanged rather than paste provisional capability wording.
+
 ## Privacy and security invariants
 
 - reusable FPL credentials never enter public artifacts, docs or logs;
