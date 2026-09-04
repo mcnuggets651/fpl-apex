@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -38,9 +39,13 @@ class FakeStore:
         self.drafts = {}
         self.published = []
         self.next_id = 1
+        self.fail_cleanup = False
 
     def get_draft_by_tag(self, tag):
         return self.drafts.get(tag)
+
+    def list_releases(self, per_page=100):
+        return [*self.drafts.values(), *self.published]
 
     def _create_draft_and_upload(
         self,
@@ -66,10 +71,29 @@ class FakeStore:
         }
         self.next_id += 1
         self.drafts[tag] = release
-        return release["id"], {asset_name: "fake-digest"}
+        return release["id"], {asset_name: hashlib.sha256(release["raw"]).hexdigest()}
+
+    def _publish_draft(self, tag, release_id, uploaded, *, require_immutable):
+        self.events.append("publish")
+        draft = self.drafts.get(tag)
+        if draft is None or int(draft["id"]) != int(release_id):
+            raise RuntimeError("missing draft")
+        expected = hashlib.sha256(draft["raw"]).hexdigest()
+        if uploaded != {draft["asset_name"]: expected}:
+            raise RuntimeError("digest mismatch")
+        draft = self.drafts.pop(tag)
+        draft["draft"] = False
+        draft["immutable"] = bool(require_immutable)
+        self.published.append(draft)
+        return SimpleNamespace(tag=tag, immutable=bool(require_immutable))
 
     def _cleanup_mutable_release(self, release_id, tag):
         self.events.append("cleanup")
+        if self.fail_cleanup:
+            raise RuntimeError("cleanup failed with secret-looking detail")
+        draft = self.drafts.get(tag)
+        if draft is not None and int(draft["id"]) != int(release_id):
+            raise RuntimeError("wrong release id")
         self.drafts.pop(tag, None)
 
 
@@ -109,6 +133,13 @@ class FakeAuthModule:
         draft = store.drafts.pop(tag)
         draft["draft"] = False
         store.published.append(draft)
+
+    @staticmethod
+    def download_release_asset(store, draft, name, destination):
+        if name != draft["asset_name"]:
+            raise RuntimeError("unknown asset")
+        Path(destination).write_bytes(draft["raw"])
+        return Path(destination)
 
     def _exchange_refresh_token(self, token):
         self.events.append("exchange")
@@ -228,9 +259,10 @@ class AuthOperationsTests(unittest.TestCase):
         self.assertEqual(len(store.drafts), 1)
         self.assertFalse(store.published)
 
-    def test_wrong_manager_never_activates_staged_child(self):
-        store = FakeStore()
-        module = FakeAuthModule(store)
+    def test_wrong_manager_discards_staged_chain_and_never_activates_it(self):
+        events = []
+        store = FakeStore(events)
+        module = FakeAuthModule(store, events)
         module.exchange_results = [("access", "wrong-manager-child")]
         module.verify_results = ["wrong_manager"]
 
@@ -243,8 +275,31 @@ class AuthOperationsTests(unittest.TestCase):
                 parent_refresh_token="parent",
                 env=self.env,
             )
+        self.assertEqual(events, ["exchange", "stage", "verify", "cleanup"])
+        self.assertFalse(store.drafts)
+        self.assertFalse(store.published)
+
+    def test_wrong_manager_cleanup_failure_requires_manual_cleanup_and_stays_secret_free(self):
+        store = FakeStore()
+        store.fail_cleanup = True
+        module = FakeAuthModule(store)
+        module.exchange_results = [("access", "wrong-manager-child")]
+        module.verify_results = ["wrong_manager"]
+
+        with self.assertRaisesRegex(
+            ops.AuthOpsError, "manual private-store cleanup is required"
+        ) as exc_info:
+            ops._rotate_refresh_parent(
+                module,
+                entry_id=63984,
+                store=store,
+                fernet=FakeFernet(),
+                parent_refresh_token="parent",
+                env=self.env,
+            )
         self.assertEqual(len(store.drafts), 1)
         self.assertFalse(store.published)
+        self.assertNotIn("secret-looking", str(exc_info.exception))
 
     def test_stage_failure_after_exchange_is_indeterminate_and_not_generic_rejection(self):
         store = FakeStore()
@@ -468,10 +523,15 @@ class AuthOperationsTests(unittest.TestCase):
             rendered = output.read_text(encoding="utf-8")
             self.assertIn("auth_mode=refresh", rendered)
             self.assertIn("auth_recovery=none", rendered)
-            self.assertIn("FPL_X_API_AUTHORIZATION=masked-access", env_file.read_text(encoding="utf-8"))
+            self.assertIn(
+                "FPL_X_API_AUTHORIZATION=masked-access",
+                env_file.read_text(encoding="utf-8"),
+            )
 
     def test_wrapper_suppresses_arbitrary_exception_detail(self):
-        rendered = ops._format_wrapper_error(RuntimeError("super-secret-token-material"))
+        rendered = ops._format_wrapper_error(
+            RuntimeError("super-secret-token-material")
+        )
         self.assertIn("RuntimeError", rendered)
         self.assertNotIn("super-secret-token-material", rendered)
         safe = ops._format_wrapper_error(ops.AuthOpsError("static safe failure"))
