@@ -218,7 +218,10 @@ def test_infeasible_transfer_is_persisted_as_blocked_diagnostic(
     snapshot = builder.freeze(tmp_path / "snapshots")
     output = tmp_path / "decision.json"
 
+    called = {}
+
     def infeasible(*args, **kwargs):
+        called.update(kwargs)
         return TransferOptimisationResult(
             None,
             (),
@@ -234,6 +237,7 @@ def test_infeasible_transfer_is_persisted_as_blocked_diagnostic(
     bundle = solve_snapshot(snapshot.root, output, now=TEST_NOW)
     diagnostics = bundle.provider_diagnostics["decision_optimisation"]
 
+    assert called["candidate_limit"] == 1
     assert bundle.certification.actionable is False
     assert bundle.certification.state.value == "BLOCKED"
     assert ReasonCode.DECISION_ILLEGAL in bundle.certification.reasons

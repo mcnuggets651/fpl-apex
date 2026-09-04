@@ -74,9 +74,11 @@ The following remain inside the semantic replay commitment and must reproduce ex
 
 A frozen solve must not sample wall clock implicitly. Production snapshots seal `frozen_at` in both `run.json` and snapshot metadata; the two values must agree. `solve_snapshot(..., now=None)` evaluates provider freshness and deadline certification at that sealed instant, with deterministic fallbacks to sealed acquisition/start timestamps only for older synthetic fixtures. An explicit `now` remains available for adversarial and point-in-time tests.
 
-Publication has a separate responsibility. Deterministic replay answers “does this exact snapshot reproduce this exact decision?” and therefore uses the sealed snapshot clock. Immediately before any immutable private or public release is created, the production CLI evaluates real wall clock and refuses an actionable decision if its FPL deadline has passed or the sealed serving champion has crossed its configured freshness SLA. This separation prevents elapsed CI/runtime duration from becoming false replay nondeterminism without weakening deadline or freshness safety.
+Publication has a separate responsibility. It does not run the expensive optimiser a second time. It verifies the optimiser's witness deterministically against the sealed snapshot: snapshot and serving identity, canonical projection hash, legal FPL mechanics, recomputed H1 lineup/objective, and independently reconstructed certification. Exact repeated optimisation remains a CI/golden-replay test; wall-clock-bounded solver search telemetry is not a production publication boundary. Immediately before any immutable private or public release is created, the production CLI evaluates real wall clock and refuses an actionable decision if its FPL deadline has passed or the sealed serving champion has crossed its configured freshness SLA.
 
-Regression coverage must include a deadline between snapshot freeze and replay execution: sealed replay must remain identical, while the independent live publication gate must reject release once the deadline is actually reached.
+The live transfer policy executes one primary max-xP MILP and decodes that exact incumbent. Candidate-limit one is a real single-solve path: it must not run secondary or excluded-path MILPs, and it must not substitute a secondary solution while labelling it the primary fallback. Multi-candidate exact-contingency experiments remain available only through an explicit `candidate_limit > 1` call.
+
+Regression coverage must include a deadline between snapshot freeze and publication: the sealed witness must remain valid, while the independent live publication gate must reject release once the deadline is actually reached.
 
 ## Promotion rule
 

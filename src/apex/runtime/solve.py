@@ -305,6 +305,7 @@ def solve_snapshot(
                 team,
                 max_horizon=contingency_horizon,
                 excluded_h1=excluded,
+                candidate_limit=1,
             )
             decision = transfer_result.decision
             decision_optimisation = {

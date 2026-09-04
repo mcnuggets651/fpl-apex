@@ -39,10 +39,10 @@ MUTATIONS = (
         ("tests/test_v2_adversarial_snapshot_integrity.py::test_open_snapshot_recomputes_content_addressed_snapshot_identity",),
     ),
     Mutation(
-        "publication-replay-bypass",
+        "publication-witness-bypass",
         "src/apex/runtime/publication.py",
-        "    _assert_decision_matches_frozen_replay(snapshot, decision)\n",
-        "    pass  # MUTANT: replay disabled\n",
+        "    _assert_decision_witness(snapshot, decision)\n",
+        "    pass  # MUTANT: witness verification disabled\n",
         (
             "tests/test_v2_adversarial_publication_binding.py::test_publication_rejects_tampered_certification_with_same_snapshot",
             "tests/test_v2_adversarial_publication_binding.py::test_publication_rejects_tampered_system_decision_with_same_snapshot",
