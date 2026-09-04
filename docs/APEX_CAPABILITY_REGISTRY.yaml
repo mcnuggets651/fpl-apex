@@ -1,0 +1,450 @@
+{
+  "schema_version": 1,
+  "registry_id": "fpl-apex-capabilities",
+  "purpose": "Canonical semantic index of FPL Apex capabilities. This registry maps capabilities to authority, code/workflows, runbooks, tests, privacy boundaries and change surfaces. It is not serving authority and must not contain movable serving state.",
+  "machine_authority": "docs/APEX_V2_AUTHORITY.json",
+  "master_state": "docs/FPL_APEX_MASTER_STATE.md",
+  "decision_index": "docs/APEX_DECISION_INDEX.yaml",
+  "system_map": "docs/APEX_ARCHITECTURE.md",
+  "ref_resolvers": {
+    "main": {"repository": "mcnuggets651/fpl-apex", "source": "working_tree"},
+    "authority:production_core_sha": {"repository": "mcnuggets651/fpl-apex", "source": "docs/APEX_V2_AUTHORITY.json#production_core_sha"},
+    "authority:frozen_engine_sha": {"repository": "mcnuggets651/fpl-apex", "source": "docs/APEX_V2_AUTHORITY.json#frozen_engine_sha"},
+    "private:main": {"repository": "mcnuggets651/fpl", "source": "private repository default branch", "external_validation": true}
+  },
+  "enums": {
+    "lifecycle": ["active", "historical", "retired"],
+    "plane": ["governance", "production", "operations", "research", "private", "interaction", "legacy"],
+    "visibility": ["public", "private"]
+  },
+  "capabilities": [
+    {
+      "id": "GOV-001", "name": "Machine serving authority", "purpose": "Declare the only machine-readable serving constitution and movable production-core pointer.",
+      "lifecycle": "active", "plane": "governance", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"],
+      "entry_points": [{"ref": "main", "path": "docs/APEX_V2_AUTHORITY.json", "kind": "authority"}],
+      "inputs": ["explicit governance promotion"], "outputs": ["serving constitution"], "dependencies": [], "private_data": "none",
+      "invariants": ["machine authority outranks prose", "frozen PR lineage is never advanced implicitly"],
+      "failure_behavior": "Fail closed on malformed or contradictory authority.",
+      "runbooks": ["docs/APEX_OPERATING_MANUAL.md", "docs/APEX_V2_DAILY_OPERATIONS.md"],
+      "tests": ["ops_tests/test_v2_post_promotion_authority.py", "ops_tests/test_apex_v2_authority_decision_register.py"],
+      "runtime_acceptance": ["Apex CI authority/upstream contract", "Apex V2 Ops Contract"],
+      "change_surface": ["docs/APEX_V2_AUTHORITY.json", "scripts/check_governance_consistency.py", ".github/workflows/apex.yml", ".github/workflows/apex-v2-ops-contract.yml"],
+      "change_control": "Explicit authority/promotion PR only; never incidental documentation drift.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "GOV-002", "name": "Canonical human continuity", "purpose": "Give fresh agents and maintainers one human continuity ledger and startup order.",
+      "lifecycle": "active", "plane": "governance", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/FPL_APEX_MASTER_STATE.md", "docs/APEX_V2_AUTHORITY.json"],
+      "entry_points": [{"ref": "main", "path": "docs/FPL_APEX_MASTER_STATE.md", "kind": "ledger"}, {"ref": "main", "path": "AGENTS.md", "kind": "agent_contract"}, {"ref": "main", "path": "CLAUDE.md", "kind": "agent_contract"}],
+      "inputs": ["accepted project changes", "immutable evidence"], "outputs": ["recoverable project state"], "dependencies": ["GOV-001"], "private_data": "none",
+      "invariants": ["conversation memory is not authority", "same-change master update for tracked changes"],
+      "failure_behavior": "Stop substantive work if tiers 1-3 cannot be reconciled.",
+      "runbooks": ["docs/FPL_APEX_MASTER_STATE.md", "docs/README.md"],
+      "tests": ["ops_tests/test_master_state_contract.py"], "runtime_acceptance": ["Apex CI continuity guard"],
+      "change_surface": ["docs/FPL_APEX_MASTER_STATE.md", "docs/README.md", "AGENTS.md", "CLAUDE.md", "scripts/check_master_state_sync.py", "ops_tests/test_master_state_contract.py"],
+      "change_control": "Update in the same PR as every tracked repository change.", "decision_refs": ["D016", "D031", "D032"], "known_limitations": ["Dated snapshots require live verification."], "replacement": null
+    },
+    {
+      "id": "GOV-003", "name": "Capability and change-surface governance", "purpose": "Ensure every active capability is discoverable and repository changes declare the semantic capability surface they affect.",
+      "lifecycle": "active", "plane": "governance", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_CAPABILITY_REGISTRY.yaml", "docs/APEX_V2_AUTHORITY.json"],
+      "entry_points": [{"ref": "main", "path": "docs/APEX_CAPABILITY_REGISTRY.yaml", "kind": "registry"}, {"ref": "main", "path": "scripts/check_capability_registry.py", "kind": "checker"}, {"ref": "main", "path": ".github/pull_request_template.md", "kind": "change_contract"}],
+      "inputs": ["repository tree", "PR changed paths", "PR capability declaration"], "outputs": ["semantic coverage verdict"], "dependencies": ["GOV-001", "GOV-002"], "private_data": "none",
+      "invariants": ["registry is not serving authority", "active workflows cannot be unregistered", "movable production state is referenced, not copied"],
+      "failure_behavior": "Fail CI when semantic coverage, path resolution or declared change surface is incomplete.",
+      "runbooks": ["docs/README.md", "docs/APEX_ARCHITECTURE.md"],
+      "tests": ["ops_tests/test_capability_registry_contract.py"], "runtime_acceptance": ["Apex CI capability registry", "Apex V2 Ops Contract capability registry"],
+      "change_surface": ["docs/APEX_CAPABILITY_REGISTRY.yaml", "docs/APEX_DECISION_INDEX.yaml", "docs/APEX_ARCHITECTURE.md", ".github/pull_request_template.md", "scripts/check_capability_registry.py", "ops_tests/test_capability_registry_contract.py", ".github/workflows/apex.yml", ".github/workflows/apex-v2-ops-contract.yml"],
+      "change_control": "Registry/schema changes require adversarial contract tests and a master-state update.", "decision_refs": ["D032"], "known_limitations": ["Private repository bindings are fully validated by private CI in a later bounded change."], "replacement": null
+    },
+    {
+      "id": "GOV-004", "name": "Generic CI and authority-selected core verification", "purpose": "Verify control-plane contracts and the exact authority-selected production core without publishing.",
+      "lifecycle": "active", "plane": "governance", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#production_core_sha"],
+      "entry_points": [{"ref": "main", "path": ".github/workflows/apex.yml", "kind": "workflow"}],
+      "inputs": ["authority", "repository changes"], "outputs": ["CI/readiness verdict"], "dependencies": ["GOV-001", "GOV-003"], "private_data": "none",
+      "invariants": ["no production publication path", "materialise exact declared core"], "failure_behavior": "Fail without changing production state.",
+      "runbooks": ["docs/APEX_OPERATING_MANUAL.md"], "tests": ["ops_tests/test_github_actions_contract.py"], "runtime_acceptance": ["Apex CI"],
+      "change_surface": [".github/workflows/apex.yml", "ops_tests/**", "scripts/check_governance_consistency.py"], "change_control": "Governance PR with exact-head CI.", "decision_refs": ["D031", "D032"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "GOV-005", "name": "Production-core successor readiness audit", "purpose": "Audit an authority or candidate production core without changing serving authority.",
+      "lifecycle": "active", "plane": "governance", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"],
+      "entry_points": [{"ref": "main", "path": ".github/workflows/production-readiness.yml", "kind": "workflow"}, {"ref": "authority:production_core_sha", "path": "scripts/check_v2_architecture.py", "kind": "core_checker"}],
+      "inputs": ["candidate or authority core SHA"], "outputs": ["readiness verdict"], "dependencies": ["GOV-001"], "private_data": "none",
+      "invariants": ["read-only", "no publish", "frozen lineage verified"], "failure_behavior": "Reject candidate/readiness.",
+      "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["tests/test_v2_*.py"], "runtime_acceptance": ["Production Readiness"],
+      "change_surface": [".github/workflows/production-readiness.yml"], "change_control": "Bounded governance/promotion review.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "GOV-006", "name": "Frozen PR 90 forensic lineage", "purpose": "Preserve the immutable forensic base used by V2 operations/research without treating it as a branch to merge or advance.",
+      "lifecycle": "active", "plane": "governance", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#frozen_engine_sha", "docs/APEX_V2_AUTHORITY.json#frozen_engine_pr_policy"],
+      "entry_points": [{"ref": "authority:frozen_engine_sha", "path": "src/apex/governance/evaluation.py", "kind": "forensic_source"}],
+      "inputs": ["machine authority"], "outputs": ["forensic evaluator lineage"], "dependencies": ["GOV-001"], "private_data": "none",
+      "invariants": ["NEVER_MERGE_OR_ADVANCE"], "failure_behavior": "Fail governance if frozen anchor changes outside explicit constitutional change.",
+      "runbooks": ["docs/FPL_APEX_MASTER_STATE.md"], "tests": ["ops_tests/test_v2_post_promotion_authority.py"], "runtime_acceptance": ["Apex V2 Ops Contract"],
+      "change_surface": ["docs/APEX_V2_AUTHORITY.json", "ops_tests/test_v2_post_promotion_authority.py"], "change_control": "Constitutional authority change only.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+
+    {
+      "id": "PROD-001", "name": "Canonical daily production orchestration", "purpose": "Run the sole authority-declared production acquisition, frozen solve and immutable publication chain.",
+      "lifecycle": "active", "plane": "production", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#canonical_production_workflow"],
+      "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-daily-production.yml", "kind": "workflow"}],
+      "inputs": ["owner auth/state", "Official FPL", "provider forecasts"], "outputs": ["immutable public/private production attempts"], "dependencies": ["GOV-001", "PROD-002", "PROD-003", "PROD-004", "PROD-005", "PROD-010", "PROD-011", "PROD-012", "PROD-013", "PROD-014", "PROD-015"], "private_data": "narrow_private_boundary",
+      "invariants": ["one authority-declared workflow", "one frozen snapshot", "network disabled during solve", "publication does not rerun optimiser"],
+      "failure_behavior": "Fail closed; do not publish a final if any production gate fails.",
+      "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md", "docs/APEX_OPERATING_MANUAL.md"], "tests": ["ops_tests/test_github_actions_contract.py", "tests/test_production_publication_contract.py"], "runtime_acceptance": ["successful canonical production attempt plus immutable witness"],
+      "change_surface": [".github/workflows/apex-v2-daily-production.yml"], "change_control": "Authority/governance-reviewed production change.", "decision_refs": ["D031"], "known_limitations": ["Requires healthy external authentication and providers."], "replacement": null
+    },
+    {
+      "id": "PROD-002", "name": "Owner authentication and recovery", "purpose": "Authenticate the production owner state through the approved rotating private boundary.",
+      "lifecycle": "active", "plane": "production", "visibility": "private", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"], "entry_points": [{"ref": "main", "path": "scripts/apex_v2_auth_ops.py", "kind": "operations_script"}],
+      "inputs": ["encrypted credentials/private rotating state"], "outputs": ["authenticated production session"], "dependencies": ["PROD-015"], "private_data": "credentials",
+      "invariants": ["credentials never enter public artifacts", "auth failures are fail-closed"], "failure_behavior": "Block production and use bounded recovery runbook.",
+      "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["ops_tests/test_apex_v2_auth_ops.py"], "runtime_acceptance": ["private-store preflight and auth gate"],
+      "change_surface": ["scripts/apex_v2_auth_ops.py", ".github/workflows/apex-v2-auth-keepalive.yml", ".github/workflows/apex-v2-direct-auth-diagnostic.yml", ".github/workflows/apex-v2-daily-production.yml"], "change_control": "Security-sensitive operations PR.", "decision_refs": ["D031"], "known_limitations": ["External FPL credentials can expire."], "replacement": null
+    },
+    {
+      "id": "PROD-003", "name": "Official FPL factual authority acquisition", "purpose": "Acquire the factual player/fixture/availability universe from Official FPL.",
+      "lifecycle": "active", "plane": "production", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#official_fpl_authority"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-daily-production.yml", "kind": "workflow"}],
+      "inputs": ["Official FPL"], "outputs": ["canonical factual universe"], "dependencies": ["GOV-001"], "private_data": "none",
+      "invariants": ["Official FPL owns identity, club, position, price, status/availability and fixtures"], "failure_behavior": "Fail production on unavailable or invalid factual authority.",
+      "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["ops_tests/test_github_actions_contract.py"], "runtime_acceptance": ["Official hash/acquisition production gate"],
+      "change_surface": [".github/workflows/apex-v2-daily-production.yml", "docs/APEX_DATA_SOURCES.md"], "change_control": "Production/governance review.", "decision_refs": ["D001", "D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PROD-004", "name": "Frozen Official snapshot boundary", "purpose": "Seal one immutable production input snapshot before solve.",
+      "lifecycle": "active", "plane": "production", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"], "entry_points": [{"ref": "authority:production_core_sha", "path": "src/apex/runtime/solve.py", "kind": "production_core"}],
+      "inputs": ["canonical factual universe", "qualified provider forecasts", "owner state"], "outputs": ["frozen solve snapshot"], "dependencies": ["PROD-003", "PROD-005"], "private_data": "contains_owner_state_privately",
+      "invariants": ["solve consumes one frozen snapshot", "no network during solve"], "failure_behavior": "Reject solve if snapshot identity/integrity is inconsistent.",
+      "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["tests/test_v2_*.py"], "runtime_acceptance": ["production snapshot/certification gates"],
+      "change_surface": [".github/workflows/apex-v2-daily-production.yml"], "change_control": "Production-core promotion or control-plane contract change.", "decision_refs": ["D029", "D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PROD-005", "name": "AIrsenal serving forecast acquisition", "purpose": "Acquire the sole authority-declared serving forecast H1-H8.",
+      "lifecycle": "active", "plane": "production", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#serving_provider", "docs/APEX_V2_AUTHORITY.json#provider_constitution/airsenal"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-daily-production.yml", "kind": "workflow"}],
+      "inputs": ["frozen Official universe"], "outputs": ["qualified AIrsenal H1-H8 forecast"], "dependencies": ["PROD-003"], "private_data": "none",
+      "invariants": ["no silent blend/vote/fallback", "provider coverage/freshness gates apply"], "failure_behavior": "Fail serving production rather than substitute a shadow provider.",
+      "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["tests/test_airsenal_source_absence_policy.py", "tests/test_airsenal_workflow_contract.py"], "runtime_acceptance": ["production provider qualification gate"],
+      "change_surface": [".github/workflows/apex-v2-daily-production.yml", "tests/test_airsenal_source_absence_policy.py", "tests/test_airsenal_workflow_contract.py"], "change_control": "Serving-provider authority change requires explicit governance.", "decision_refs": ["D031"], "known_limitations": ["External provider availability/freshness."], "replacement": null
+    },
+    {
+      "id": "PROD-006", "name": "Apex Proprietary shadow provider", "purpose": "Produce Apex proprietary H1-H8 forecasts for research comparison only.",
+      "lifecycle": "active", "plane": "research", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#provider_constitution/apex_proprietary"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-prospective-tournament.yml", "kind": "workflow"}],
+      "inputs": ["common pre-deadline snapshot"], "outputs": ["shadow forecast"], "dependencies": ["RES-001"], "private_data": "none",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["research only"], "failure_behavior": "Record shadow DNS/health; never substitute into serving.", "runbooks": ["docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md"], "tests": ["ops_tests/test_apex_v2_tournament_ops.py"], "runtime_acceptance": ["prospective tournament contract"],
+      "change_surface": [".github/workflows/apex-v2-prospective-tournament.yml", "scripts/apex_v2_tournament_*.py"], "change_control": "Research-only PR; serving authority unchanged.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PROD-007", "name": "Dastan shadow provider", "purpose": "Collect Dastan H1 research forecasts under reliability/freshness gates.",
+      "lifecycle": "active", "plane": "research", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#provider_constitution/dastan"], "entry_points": [{"ref": "main", "path": "scripts/apex_v2_shadow_provider_ops.py", "kind": "operations_script"}],
+      "inputs": ["provider source"], "outputs": ["H1 shadow forecast/health"], "dependencies": ["OPS-006"], "private_data": "none",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["H1 only", "research only"], "failure_behavior": "Mark unhealthy/DNS without serving fallback.", "runbooks": ["docs/operations/SHADOW_PROVIDER_RELIABILITY.md"], "tests": ["ops_tests/test_apex_v2_shadow_provider_ops.py"], "runtime_acceptance": ["shadow-health contract"],
+      "change_surface": ["scripts/apex_v2_shadow_provider_ops.py", ".github/workflows/apex-v2-shadow-health.yml"], "change_control": "Research reliability PR.", "decision_refs": ["D031"], "known_limitations": ["H1 horizon only."], "replacement": null
+    },
+    {
+      "id": "PROD-008", "name": "PITCHSIDE external shadow provider", "purpose": "Collect PITCHSIDE H1-H8 research forecasts under universe/freshness checks.",
+      "lifecycle": "active", "plane": "research", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#provider_constitution/pitchside"], "entry_points": [{"ref": "main", "path": "scripts/apex_v2_shadow_provider_ops.py", "kind": "operations_script"}],
+      "inputs": ["provider source"], "outputs": ["H1-H8 shadow forecast/health"], "dependencies": ["OPS-006"], "private_data": "none",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["research only"], "failure_behavior": "Mark unhealthy/DNS without serving fallback.", "runbooks": ["docs/operations/SHADOW_PROVIDER_RELIABILITY.md"], "tests": ["ops_tests/test_apex_v2_shadow_provider_ops.py"], "runtime_acceptance": ["shadow-health contract"],
+      "change_surface": ["scripts/apex_v2_shadow_provider_ops.py", ".github/workflows/apex-v2-shadow-health.yml"], "change_control": "Research reliability PR.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PROD-009", "name": "OpenFPL shadow readiness/provider", "purpose": "Assess and collect OpenFPL H1 research output only when exact-rule readiness is satisfied.",
+      "lifecycle": "active", "plane": "research", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#provider_constitution/openfpl"], "entry_points": [{"ref": "main", "path": "scripts/apex_v2_shadow_provider_ops.py", "kind": "operations_script"}],
+      "inputs": ["provider source/readiness"], "outputs": ["H1 readiness/forecast"], "dependencies": ["OPS-006"], "private_data": "none",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["H1 only", "research only", "exact-rule readiness required"], "failure_behavior": "Remain non-ready/DNS; no serving fallback.", "runbooks": ["docs/operations/SHADOW_PROVIDER_RELIABILITY.md"], "tests": ["ops_tests/test_apex_v2_shadow_provider_ops.py"], "runtime_acceptance": ["shadow-health contract"],
+      "change_surface": ["scripts/apex_v2_shadow_provider_ops.py", ".github/workflows/apex-v2-shadow-health.yml"], "change_control": "Research reliability PR.", "decision_refs": ["D031"], "known_limitations": ["H1 horizon only."], "replacement": null
+    },
+    {
+      "id": "PROD-010", "name": "Frozen max-EV solve", "purpose": "Compute the legal maximum-EV production decision once from the frozen snapshot.",
+      "lifecycle": "active", "plane": "production", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#production_core_sha"], "entry_points": [{"ref": "authority:production_core_sha", "path": "src/apex/runtime/solve.py", "kind": "production_core"}],
+      "inputs": ["frozen snapshot"], "outputs": ["canonical legal decision"], "dependencies": ["PROD-004", "PROD-005"], "private_data": "manager_state_internal",
+      "invariants": ["single production solve", "max-EV legal objective", "candidate_limit=1 production semantics"], "failure_behavior": "No final publication on solve/certification failure.",
+      "runbooks": ["docs/FPL_APEX_MASTER_STATE.md", "docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["tests/test_v2_*.py"], "runtime_acceptance": ["production-core readiness", "production solve gate"],
+      "change_surface": ["docs/APEX_V2_AUTHORITY.json"], "change_control": "Production-core successor promotion only; not edited on control-plane main.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PROD-011", "name": "Exact FPL mechanics", "purpose": "Apply exact squad, transfer, XI, captain, vice, bench and autosub mechanics to production decisions.",
+      "lifecycle": "active", "plane": "production", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#production_core_sha"], "entry_points": [{"ref": "authority:production_core_sha", "path": "src/apex/decision/transfers.py", "kind": "production_core"}],
+      "inputs": ["owner TeamState", "frozen forecasts"], "outputs": ["legal exact mechanics"], "dependencies": ["PROD-010", "PROD-015"], "private_data": "manager_state_internal",
+      "invariants": ["exact FPL legality", "owner transfer state is never reconstructed from memory"], "failure_behavior": "Reject uncertifiable decision.",
+      "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["tests/test_v2_*.py"], "runtime_acceptance": ["production certification gate"],
+      "change_surface": ["docs/APEX_V2_AUTHORITY.json"], "change_control": "Production-core successor promotion only.", "decision_refs": ["D012", "D027", "D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PROD-012", "name": "Production certification and architecture gate", "purpose": "Certify the frozen production decision against architecture, identity, freshness and legality contracts.",
+      "lifecycle": "active", "plane": "production", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#production_core_sha"], "entry_points": [{"ref": "authority:production_core_sha", "path": "scripts/check_v2_architecture.py", "kind": "production_core_checker"}],
+      "inputs": ["solve artifacts", "frozen snapshot"], "outputs": ["certification verdict"], "dependencies": ["PROD-010", "PROD-011"], "private_data": "narrow_internal",
+      "invariants": ["fail closed", "architecture and identity gates must agree"], "failure_behavior": "Block final publication.",
+      "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["tests/test_v2_*.py"], "runtime_acceptance": ["production-core readiness", "production certification"],
+      "change_surface": ["docs/APEX_V2_AUTHORITY.json"], "change_control": "Production-core successor promotion only.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PROD-013", "name": "Immutable attempt and publication chain", "purpose": "Publish immutable research-safe public attempt/final evidence with linked private manager persistence.",
+      "lifecycle": "active", "plane": "production", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#canonical_release_prefix"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-daily-production.yml", "kind": "workflow"}],
+      "inputs": ["certified canonical decision", "publication witness"], "outputs": ["immutable public final", "linked private final"], "dependencies": ["PROD-012", "PROD-014", "PROD-015"], "private_data": "public_redacted_private_linked",
+      "invariants": ["immutable release identity", "public payload contains no private manager state"], "failure_behavior": "No final authority if publication chain is incomplete or mismatched.",
+      "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["tests/test_production_publication_contract.py"], "runtime_acceptance": ["immutable publication witness/final gates"],
+      "change_surface": [".github/workflows/apex-v2-daily-production.yml", "tests/test_production_publication_contract.py"], "change_control": "Production/governance review.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PROD-014", "name": "Deterministic publication witness", "purpose": "Verify a frozen decision deterministically during publication without rerunning optimisation.",
+      "lifecycle": "active", "plane": "production", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#production_core_sha"], "entry_points": [{"ref": "authority:production_core_sha", "path": "src/apex/runtime/solve.py", "kind": "production_core"}],
+      "inputs": ["frozen decision artifacts"], "outputs": ["publication witness verdict"], "dependencies": ["PROD-010", "PROD-012"], "private_data": "narrow_internal",
+      "invariants": ["publication never reruns optimiser", "witness verifies snapshot/run/provider/mechanics/certification identity"], "failure_behavior": "Block release writes.",
+      "runbooks": ["docs/FPL_APEX_MASTER_STATE.md", "docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["tests/test_production_publication_contract.py", "tests/test_core_candidate_publication.py"], "runtime_acceptance": ["publication witness production gate"],
+      "change_surface": ["docs/APEX_V2_AUTHORITY.json", "tests/test_production_publication_contract.py", "tests/test_core_candidate_publication.py"], "change_control": "Production-core successor promotion only.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PROD-015", "name": "Private-first manager and provider persistence", "purpose": "Persist owner-private state and provider material outside the public repository before/alongside public finalization.",
+      "lifecycle": "active", "plane": "production", "visibility": "private", "owning_repo": "mcnuggets651/fpl", "serving_authorized": true,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json", "docs/FPL_APEX_MASTER_STATE.md"], "entry_points": [{"ref": "private:main", "path": "FPL_APEX_PRIVATE_MASTER_STATE.md", "kind": "private_ledger"}],
+      "inputs": ["authenticated manager state", "private provider payloads"], "outputs": ["immutable private releases"], "dependencies": ["GOV-001"], "private_data": "owner_state",
+      "invariants": ["private state never copied to public repo", "public/private attempt identity must link"], "failure_behavior": "Fail production/private query when persistence or linkage is incomplete.",
+      "runbooks": ["FPL_APEX_PRIVATE_MASTER_STATE.md (private repo)"], "tests": ["private repository contract tests"], "runtime_acceptance": ["private persistence acceptance"],
+      "change_surface": [], "change_control": "Private-repository change only; public registry binding validated separately.", "decision_refs": ["D031", "D032"], "known_limitations": ["Full path validation occurs in private CI."], "replacement": null
+    },
+
+    {
+      "id": "OPS-001", "name": "Authentication keepalive", "purpose": "Maintain rotating authentication health without solving or publishing.",
+      "lifecycle": "active", "plane": "operations", "visibility": "private", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-auth-keepalive.yml", "kind": "workflow"}, {"ref": "main", "path": "scripts/apex_v2_auth_ops.py", "kind": "operations_script"}],
+      "inputs": ["private auth state"], "outputs": ["rotated auth health"], "dependencies": ["PROD-002"], "private_data": "credentials",
+      "invariants": ["no acquire/solve/publish", "no contents write"], "failure_behavior": "Alert/block future production; do not serve.", "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["ops_tests/test_apex_v2_auth_ops.py"], "runtime_acceptance": ["Apex V2 Ops Contract"],
+      "change_surface": [".github/workflows/apex-v2-auth-keepalive.yml", "scripts/apex_v2_auth_ops.py"], "change_control": "Operations-only PR.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "OPS-002", "name": "Direct-auth incident diagnostic", "purpose": "Run manual incident-only credential diagnostics without becoming a scheduled or serving path.",
+      "lifecycle": "active", "plane": "operations", "visibility": "private", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-direct-auth-diagnostic.yml", "kind": "workflow"}, {"ref": "main", "path": "scripts/apex_v2_auth_ops.py", "kind": "operations_script"}],
+      "inputs": ["direct credential"], "outputs": ["incident diagnostic"], "dependencies": ["PROD-002"], "private_data": "credentials",
+      "invariants": ["workflow_dispatch only", "no serving authority"], "failure_behavior": "Diagnostic failure only; no production fallback.", "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["ops_tests/test_apex_v2_auth_ops.py"], "runtime_acceptance": ["Apex V2 Ops Contract"],
+      "change_surface": [".github/workflows/apex-v2-direct-auth-diagnostic.yml", "scripts/apex_v2_auth_ops.py"], "change_control": "Operations/security PR.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "OPS-003", "name": "Deadline watch", "purpose": "Detect real FPL deadlines and dispatch production only inside the governed window.",
+      "lifecycle": "active", "plane": "operations", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#canonical_production_workflow"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-deadline-watch.yml", "kind": "workflow"}, {"ref": "main", "path": "scripts/apex_v2_deadline_ops.py", "kind": "operations_script"}],
+      "inputs": ["Official deadline metadata"], "outputs": ["bounded production dispatch"], "dependencies": ["PROD-001"], "private_data": "none",
+      "invariants": ["no credentials", "no solve/publish", "dispatch only canonical production workflow"], "failure_behavior": "Do not dispatch outside governed window.", "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["ops_tests/test_apex_v2_deadline_ops.py"], "runtime_acceptance": ["Apex V2 Ops Contract"],
+      "change_surface": [".github/workflows/apex-v2-deadline-watch.yml", "scripts/apex_v2_deadline_ops.py"], "change_control": "Operations PR.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "OPS-004", "name": "Daily prospective evaluation", "purpose": "Score completed immutable forecasts/decisions prospectively after outcomes are available.",
+      "lifecycle": "active", "plane": "operations", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#frozen_engine_sha"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-daily-evaluation.yml", "kind": "workflow"}, {"ref": "authority:frozen_engine_sha", "path": "src/apex/governance/evaluation.py", "kind": "forensic_evaluator"}],
+      "inputs": ["immutable pre-deadline evidence", "completed Official outcomes"], "outputs": ["evaluation/standings"], "dependencies": ["GOV-006", "RES-001"], "private_data": "none",
+      "invariants": ["no hindsight into sealed decisions", "no serving authority"], "failure_behavior": "Evaluation failure does not change serving decision.", "runbooks": ["docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md"], "tests": ["ops_tests/test_apex_v2_tournament_scoring.py"], "runtime_acceptance": ["Apex V2 Ops Contract"],
+      "change_surface": [".github/workflows/apex-v2-daily-evaluation.yml", "scripts/apex_v2_tournament_scoring.py"], "change_control": "Evaluation/research operations PR.", "decision_refs": ["D014", "D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "OPS-005", "name": "Immutable owner brief", "purpose": "Create a narrow owner-facing presentation from an immutable completed production attempt.",
+      "lifecycle": "active", "plane": "operations", "visibility": "private", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-owner-brief.yml", "kind": "workflow"}, {"ref": "main", "path": "scripts/apex_v2_owner_brief_ops.py", "kind": "operations_script"}],
+      "inputs": ["immutable production attempt", "private manager final"], "outputs": ["immutable private presentation"], "dependencies": ["PROD-013", "PROD-015"], "private_data": "owner_presentation",
+      "invariants": ["presentation cannot create a new serving decision"], "failure_behavior": "Brief may fail independently; immutable production remains authority.", "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["ops_tests/test_apex_v2_owner_brief_ops.py"], "runtime_acceptance": ["owner-brief integrity checks"],
+      "change_surface": [".github/workflows/apex-v2-owner-brief.yml", "scripts/apex_v2_owner_brief_ops.py"], "change_control": "Operations/private-boundary PR.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "OPS-006", "name": "External shadow health", "purpose": "Assess Dastan/PITCHSIDE/OpenFPL health and readiness without serving influence.",
+      "lifecycle": "active", "plane": "operations", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#provider_constitution"], "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-shadow-health.yml", "kind": "workflow"}, {"ref": "main", "path": "scripts/apex_v2_shadow_provider_ops.py", "kind": "operations_script"}],
+      "inputs": ["shadow provider sources"], "outputs": ["health/readiness evidence"], "dependencies": ["GOV-001"], "private_data": "none",
+      "invariants": ["health cannot promote or serve"], "failure_behavior": "Mark provider unhealthy; serving chain unchanged.", "runbooks": ["docs/operations/SHADOW_PROVIDER_RELIABILITY.md"], "tests": ["ops_tests/test_apex_v2_shadow_provider_ops.py"], "runtime_acceptance": ["Apex V2 Ops Contract"],
+      "change_surface": [".github/workflows/apex-v2-shadow-health.yml", "scripts/apex_v2_shadow_provider_ops.py", "docs/operations/SHADOW_PROVIDER_RELIABILITY.md"], "change_control": "Research-operations PR.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "OPS-007", "name": "Orphan and failed-attempt audit", "purpose": "Audit incomplete/orphaned production attempts without manufacturing a serving final.",
+      "lifecycle": "active", "plane": "operations", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"], "entry_points": [{"ref": "main", "path": "scripts/apex_v2_attempt_audit_ops.py", "kind": "operations_script"}],
+      "inputs": ["workflow/release attempts"], "outputs": ["attempt classification"], "dependencies": ["PROD-013"], "private_data": "none",
+      "invariants": ["never fabricate finality"], "failure_behavior": "Report orphan/failed state; do not alter authority.", "runbooks": ["docs/APEX_V2_DAILY_OPERATIONS.md"], "tests": ["ops_tests/test_apex_v2_attempt_audit_ops.py"], "runtime_acceptance": ["Apex V2 Ops Contract"],
+      "change_surface": ["scripts/apex_v2_attempt_audit_ops.py"], "change_control": "Operations PR.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+
+    {
+      "id": "RES-001", "name": "Prospective provider tournament", "purpose": "Compare champion and shadow forecasts prospectively from common immutable pre-deadline snapshots.",
+      "lifecycle": "active", "plane": "research", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#research", "docs/APEX_V2_AUTHORITY.json#provider_constitution"],
+      "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-prospective-tournament.yml", "kind": "workflow"}, {"ref": "main", "path": "scripts/apex_v2_tournament_ops.py", "kind": "operations_script"}, {"ref": "main", "path": "scripts/apex_v2_tournament_common.py", "kind": "library"}, {"ref": "main", "path": "scripts/apex_v2_tournament_contract.py", "kind": "contract"}, {"ref": "main", "path": "scripts/apex_v2_tournament_scoring.py", "kind": "scoring"}],
+      "inputs": ["immutable production/common pre-deadline seal"], "outputs": ["prospective provider evidence"], "dependencies": ["PROD-006", "PROD-007", "PROD-008", "PROD-009"], "private_data": "public_research_private_companion",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["no hindsight", "common snapshot", "DNS explicit", "no automatic promotion"], "failure_behavior": "Record research failure/DNS; production unaffected.",
+      "runbooks": ["docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md"], "tests": ["ops_tests/test_apex_v2_tournament_ops.py", "ops_tests/test_apex_v2_tournament_scoring.py"], "runtime_acceptance": ["Apex V2 Ops Contract"],
+      "change_surface": [".github/workflows/apex-v2-prospective-tournament.yml", "scripts/apex_v2_tournament_*.py", "docs/APEX_V2_PROSPECTIVE_TOURNAMENT.md"], "change_control": "Research-only PR; authority unchanged.", "decision_refs": ["D014", "D025", "D026", "D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "RES-002", "name": "Parallel decision-quality lab", "purpose": "Evaluate bounded decision alternatives in parallel from immutable production evidence.",
+      "lifecycle": "active", "plane": "research", "visibility": "private", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#research/decision_quality_workflow"],
+      "entry_points": [{"ref": "main", "path": ".github/workflows/apex-v2-decision-quality.yml", "kind": "workflow"}, {"ref": "main", "path": "scripts/apex_v2_decision_quality_ops.py", "kind": "operations_script"}, {"ref": "main", "path": "scripts/apex_v2_decision_lab_parallel.py", "kind": "parallel_solver"}],
+      "inputs": ["immutable production evidence"], "outputs": ["decision-quality research packet"], "dependencies": ["PROD-013"], "private_data": "private_research_store",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["bounded runtime", "no publish serving", "immutable task planning"], "failure_behavior": "Research task may fail; serving authority unchanged.",
+      "runbooks": ["docs/operations/PARALLEL_DECISION_LAB.md"], "tests": ["ops_tests/test_apex_v2_decision_quality_ops.py", "ops_tests/test_apex_v2_decision_lab_parallel.py"], "runtime_acceptance": ["Apex V2 Ops Contract"],
+      "change_surface": [".github/workflows/apex-v2-decision-quality.yml", "scripts/apex_v2_decision_quality_ops.py", "scripts/apex_v2_decision_lab_parallel.py", "docs/operations/PARALLEL_DECISION_LAB.md"], "change_control": "Research-only PR.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "RES-003", "name": "Post-outcome decision-quality scoring", "purpose": "Attach outcomes after immutable decisions are sealed to evaluate decision quality without hindsight contamination.",
+      "lifecycle": "active", "plane": "research", "visibility": "private", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#research"], "entry_points": [{"ref": "main", "path": "scripts/apex_v2_decision_quality_ops.py", "kind": "operations_script"}],
+      "inputs": ["sealed decision-quality packet", "completed outcomes"], "outputs": ["post-outcome scores"], "dependencies": ["RES-002"], "private_data": "private_research_store",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["outcomes join only after decision seal"], "failure_behavior": "Scoring failure does not affect serving.", "runbooks": ["docs/operations/PARALLEL_DECISION_LAB.md"], "tests": ["ops_tests/test_apex_v2_decision_quality_ops.py"], "runtime_acceptance": ["decision-quality postoutcome contract"],
+      "change_surface": ["scripts/apex_v2_decision_quality_ops.py", ".github/workflows/apex-v2-decision-quality.yml"], "change_control": "Research-only PR.", "decision_refs": ["D014", "D025", "D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "RES-004", "name": "Sequential specialist learning", "purpose": "Turn accumulated specialist/shadow evidence into review evidence only, never an automatic serving change.",
+      "lifecycle": "active", "plane": "research", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#research"], "entry_points": [{"ref": "main", "path": "docs/operations/SHADOW_PROVIDER_RELIABILITY.md", "kind": "runbook"}],
+      "inputs": ["prospective provider/reliability evidence"], "outputs": ["human governance review evidence"], "dependencies": ["RES-001", "OPS-006"], "private_data": "none",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["review evidence only"], "failure_behavior": "No serving change.", "runbooks": ["docs/operations/SHADOW_PROVIDER_RELIABILITY.md"], "tests": ["ops_tests/test_apex_v2_shadow_provider_ops.py"], "runtime_acceptance": ["governance review only"],
+      "change_surface": ["docs/operations/SHADOW_PROVIDER_RELIABILITY.md"], "change_control": "Research documentation/governance PR.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "RES-005", "name": "Projection-policy validation", "purpose": "Retain legacy-model projection-policy validation as executable non-serving research.",
+      "lifecycle": "active", "plane": "research", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#legacy/status", "docs/APEX_V2_AUTHORITY.json#research"], "entry_points": [{"ref": "main", "path": ".github/workflows/projection-policy-audit.yml", "kind": "workflow"}],
+      "inputs": ["legacy model research inputs"], "outputs": ["validation report"], "dependencies": ["GOV-001"], "private_data": "none",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["cannot modify serving authority"], "failure_behavior": "Research validation failure only.", "runbooks": ["docs/APEX_MODEL_SPEC.md"], "tests": ["workflow-local validation tests"], "runtime_acceptance": ["Projection Policy Audit"],
+      "change_surface": [".github/workflows/projection-policy-audit.yml", "src/apex_fpl/**", "tests/**"], "change_control": "Research-only; any promotion requires separate governance.", "decision_refs": ["D031"], "known_limitations": ["Uses legacy apex_fpl research surface, not V2 serving core."], "replacement": null
+    },
+    {
+      "id": "RES-006", "name": "Team-strength validation", "purpose": "Retain legacy-model team-strength validation as executable non-serving research.",
+      "lifecycle": "active", "plane": "research", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#legacy/status", "docs/APEX_V2_AUTHORITY.json#research"], "entry_points": [{"ref": "main", "path": ".github/workflows/team-strength-validation.yml", "kind": "workflow"}],
+      "inputs": ["legacy model research inputs"], "outputs": ["validation report"], "dependencies": ["GOV-001"], "private_data": "none",
+      "production_boundary": {"production_influence": "NONE", "serve_authorized": false, "automatic_promotion": false},
+      "invariants": ["production_changed=false", "cannot modify serving authority"], "failure_behavior": "Research validation failure only.", "runbooks": ["docs/APEX_MODEL_SPEC.md"], "tests": ["workflow-local validation tests"], "runtime_acceptance": ["Team Strength Validation"],
+      "change_surface": [".github/workflows/team-strength-validation.yml", "src/apex_fpl/**", "tests/**"], "change_control": "Research-only; any promotion requires separate governance.", "decision_refs": ["D031"], "known_limitations": ["Uses legacy apex_fpl research surface, not V2 serving core."], "replacement": null
+    },
+
+    {
+      "id": "PRIV-001", "name": "Immutable private manager/provider store", "purpose": "Persist exact owner TeamState and private provider payloads as immutable private releases.",
+      "lifecycle": "active", "plane": "private", "visibility": "private", "owning_repo": "mcnuggets651/fpl",
+      "authority_refs": ["docs/FPL_APEX_MASTER_STATE.md"], "entry_points": [{"ref": "private:main", "path": "FPL_APEX_PRIVATE_MASTER_STATE.md", "kind": "private_ledger"}],
+      "inputs": ["production private payloads"], "outputs": ["immutable private releases"], "dependencies": ["PROD-015"], "private_data": "owner_state",
+      "invariants": ["immutable", "digest/attestation linked"], "failure_behavior": "Private queries fail closed on integrity mismatch.", "runbooks": ["FPL_APEX_PRIVATE_MASTER_STATE.md (private repo)"], "tests": ["private repository tests"], "runtime_acceptance": ["private release integrity"],
+      "change_surface": [], "change_control": "Private repo only.", "decision_refs": ["D031"], "known_limitations": ["Validated in private CI."], "replacement": null
+    },
+    {
+      "id": "PRIV-002", "name": "Narrow owner projection query", "purpose": "Expose only approved projection/query fields from an authority-correct private release.",
+      "lifecycle": "active", "plane": "private", "visibility": "private", "owning_repo": "mcnuggets651/fpl",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"], "entry_points": [{"ref": "private:main", "path": "tools/apex_private_query.py", "kind": "private_query"}, {"ref": "private:main", "path": ".github/workflows/apex-private-query.yml", "kind": "private_workflow"}],
+      "inputs": ["run selector", "immutable private releases", "public authority"], "outputs": ["narrow safe projection response"], "dependencies": ["PRIV-001", "PRIV-004"], "private_data": "narrow_owner_output",
+      "invariants": ["no private-auth namespace", "no unfiltered private payload"], "failure_behavior": "REFRESH_REQUIRED or integrity error.", "runbooks": ["APEX_PRIVATE_QUERY_BRIDGE.md (private repo)"], "tests": ["private repository tests"], "runtime_acceptance": ["private query contract"],
+      "change_surface": [], "change_control": "Private repo only.", "decision_refs": ["D031"], "known_limitations": ["Public CI validates semantics only; private CI validates paths."], "replacement": null
+    },
+    {
+      "id": "PRIV-003", "name": "Multi-week strategy query", "purpose": "Return exact TeamState plus narrow multi-week production strategy evidence from immutable releases.",
+      "lifecycle": "active", "plane": "private", "visibility": "private", "owning_repo": "mcnuggets651/fpl",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"], "entry_points": [{"ref": "private:main", "path": "tools/apex_strategy_query.py", "kind": "private_query"}, {"ref": "private:main", "path": ".github/workflows/apex-strategy-query.yml", "kind": "private_workflow"}],
+      "inputs": ["run selector", "immutable manager/provider releases"], "outputs": ["narrow strategy snapshot"], "dependencies": ["PRIV-001", "PRIV-004"], "private_data": "owner_team_state_and_strategy",
+      "invariants": ["exact 15 unique TeamState", "complete bank/FT/purchase/selling/transfer state"], "failure_behavior": "Fail closed on incomplete TeamState or authority mismatch.", "runbooks": ["APEX_PRIVATE_QUERY_BRIDGE.md (private repo)"], "tests": ["private repository tests"], "runtime_acceptance": ["private strategy-query contract"],
+      "change_surface": [], "change_control": "Private repo only.", "decision_refs": ["D031"], "known_limitations": ["Public CI validates semantics only; private CI validates paths."], "replacement": null
+    },
+    {
+      "id": "PRIV-004", "name": "Authority-first latest resolution", "purpose": "Resolve latest by current public authority linkage, never publication timestamp alone.",
+      "lifecycle": "active", "plane": "private", "visibility": "private", "owning_repo": "mcnuggets651/fpl",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json"], "entry_points": [{"ref": "private:main", "path": "tools/apex_private_query.py", "kind": "private_query"}],
+      "inputs": ["public final authority", "private release candidates"], "outputs": ["authority-correct private release"], "dependencies": ["PRIV-001"], "private_data": "owner_state",
+      "invariants": ["timestamp only breaks ties among authority-correct candidates"], "failure_behavior": "REFRESH_REQUIRED if no matching private release exists.", "runbooks": ["APEX_PRIVATE_QUERY_BRIDGE.md (private repo)"], "tests": ["tests/test_authority_selection.py (private repo)"], "runtime_acceptance": ["private exact/latest acceptance"],
+      "change_surface": [], "change_control": "Private repo only.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PRIV-005", "name": "Explicit immutable historical query", "purpose": "Resolve an explicitly requested historical immutable run without pretending it is current authority.",
+      "lifecycle": "active", "plane": "private", "visibility": "private", "owning_repo": "mcnuggets651/fpl",
+      "authority_refs": ["docs/FPL_APEX_MASTER_STATE.md"], "entry_points": [{"ref": "private:main", "path": "tools/apex_private_query.py", "kind": "private_query"}],
+      "inputs": ["explicit run_id"], "outputs": ["integrity-checked historical response"], "dependencies": ["PRIV-001"], "private_data": "owner_state",
+      "invariants": ["historical response is not current authority"], "failure_behavior": "Fail on missing/mismatched immutable evidence.", "runbooks": ["APEX_PRIVATE_QUERY_BRIDGE.md (private repo)"], "tests": ["tests/test_authority_selection.py (private repo)"], "runtime_acceptance": ["private exact-run acceptance"],
+      "change_surface": [], "change_control": "Private repo only.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PRIV-006", "name": "Safe manager-state shape diagnostic", "purpose": "Expose only schema/shape/type diagnostics for latest private manager state.",
+      "lifecycle": "active", "plane": "private", "visibility": "private", "owning_repo": "mcnuggets651/fpl",
+      "authority_refs": ["docs/FPL_APEX_MASTER_STATE.md"], "entry_points": [{"ref": "private:main", "path": ".github/workflows/apex-manager-shape.yml", "kind": "private_workflow"}],
+      "inputs": ["latest private release"], "outputs": ["shape/types only"], "dependencies": ["PRIV-001"], "private_data": "schema_only",
+      "invariants": ["no values/credentials"], "failure_behavior": "Diagnostic failure only.", "runbooks": ["FPL_APEX_PRIVATE_MASTER_STATE.md (private repo)"], "tests": ["private repository tests"], "runtime_acceptance": ["private manager-shape contract"],
+      "change_surface": [], "change_control": "Private repo only.", "decision_refs": ["D031"], "known_limitations": [], "replacement": null
+    },
+    {
+      "id": "PRIV-007", "name": "Private documentation continuity contract", "purpose": "Enforce the private repository's own canonical continuity ledger and query-plane invariants.",
+      "lifecycle": "active", "plane": "private", "visibility": "private", "owning_repo": "mcnuggets651/fpl",
+      "authority_refs": ["docs/FPL_APEX_MASTER_STATE.md"], "entry_points": [{"ref": "private:main", "path": ".github/workflows/apex-master-state-contract.yml", "kind": "private_workflow"}],
+      "inputs": ["private repo changes"], "outputs": ["private continuity verdict"], "dependencies": ["PRIV-001"], "private_data": "none",
+      "invariants": ["private master is subordinate to public serving authority"], "failure_behavior": "Fail private CI.", "runbooks": ["FPL_APEX_PRIVATE_MASTER_STATE.md (private repo)"], "tests": ["private repository tests"], "runtime_acceptance": ["private master-state contract"],
+      "change_surface": [], "change_control": "Private repo only.", "decision_refs": ["D032"], "known_limitations": ["Public registry is canonical semantic index; no second private registry."], "replacement": null
+    },
+    {
+      "id": "PRIV-008", "name": "Repository-scoped self-hosted Mac execution", "purpose": "Execute private query/control workflows on the dedicated repository-level Mac runner without hosted fallback.",
+      "lifecycle": "active", "plane": "private", "visibility": "private", "owning_repo": "mcnuggets651/fpl",
+      "authority_refs": ["docs/FPL_APEX_MASTER_STATE.md"], "entry_points": [{"ref": "private:main", "path": ".github/workflows/apex-strategy-query.yml", "kind": "private_workflow"}],
+      "inputs": ["private workflow jobs"], "outputs": ["zero-hosted-runner execution"], "dependencies": ["PRIV-007"], "private_data": "private_execution",
+      "invariants": ["self-hosted macOS ARM64 labels", "no ubuntu-latest fallback"], "failure_behavior": "Queue/fail rather than fall back to hosted spend.", "runbooks": ["FPL_APEX_PRIVATE_MASTER_STATE.md (private repo)"], "tests": ["private workflow contract tests"], "runtime_acceptance": ["private self-hosted runner acceptance"],
+      "change_surface": [], "change_control": "Private repo only; no billing/spend authority change.", "decision_refs": ["D032"], "known_limitations": ["Runner availability is external operational state and is not copied into this registry."], "replacement": null
+    },
+
+    {
+      "id": "INT-001", "name": "ChatGPT/Apex production-query contract", "purpose": "Route manager questions through current machine authority and the approved private query boundary rather than stale generated files or memory.",
+      "lifecycle": "active", "plane": "interaction", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex",
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json", "docs/FPL_APEX_MASTER_STATE.md"], "entry_points": [{"ref": "main", "path": "docs/CHATGPT_APEX_QUERY_POLICY.md", "kind": "query_policy"}],
+      "inputs": ["user question", "public authority", "private narrow query"], "outputs": ["grounded manager-facing answer"], "dependencies": ["GOV-001", "GOV-002", "PRIV-002", "PRIV-003", "PRIV-004"], "private_data": "narrow_owner_output",
+      "invariants": ["never reconstruct owner state from memory", "current authority first", "research is clearly non-serving"], "failure_behavior": "Report refresh/blocker rather than invent a team or transfer.",
+      "runbooks": ["docs/CHATGPT_APEX_QUERY_POLICY.md", "docs/APEX_OPERATING_MANUAL.md"], "tests": ["ops_tests/test_apex_v2_authority_decision_register.py"], "runtime_acceptance": ["public authority plus private-query integrity"],
+      "change_surface": ["docs/CHATGPT_APEX_QUERY_POLICY.md", "docs/CHATGPT_USAGE.md", "docs/README.md", "AGENTS.md", "CLAUDE.md"], "change_control": "Documentation/query-boundary review.", "decision_refs": ["D031", "D032"], "known_limitations": [], "replacement": null
+    },
+
+    {
+      "id": "LEG-001", "name": "Pre-V2 standalone production publishers", "purpose": "Preserve retired workflow source for forensic history only.",
+      "lifecycle": "retired", "plane": "legacy", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#legacy"], "entry_points": [{"ref": "main", "path": "archive/workflows/pinnacle.yml", "kind": "archive"}, {"ref": "main", "path": "archive/workflows/airsenal.yml", "kind": "archive"}],
+      "inputs": [], "outputs": ["forensic source only"], "dependencies": [], "private_data": "none", "invariants": ["must not be executable from .github/workflows"], "failure_behavior": "Governance fails if retired publisher returns to active workflows.",
+      "runbooks": ["archive/workflows/README.md"], "tests": ["Apex V2 Ops Contract retirement checks"], "runtime_acceptance": ["none"], "change_surface": ["archive/workflows/**"], "change_control": "Archive is immutable except governed one-time retirement.", "decision_refs": ["D031"], "known_limitations": [], "replacement": "PROD-001"
+    },
+    {
+      "id": "LEG-002", "name": "run_apex V1/V1.5 authority path", "purpose": "Retain the old runner as historical/non-serving code, never current production authority.",
+      "lifecycle": "historical", "plane": "legacy", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#legacy/runner"], "entry_points": [{"ref": "main", "path": "scripts/run_apex.py", "kind": "historical_runner"}],
+      "inputs": [], "outputs": ["historical generated artifacts"], "dependencies": [], "private_data": "none", "invariants": ["cannot be invoked by canonical V2 production workflow"], "failure_behavior": "Governance fails if reintroduced as serving path.",
+      "runbooks": ["docs/APEX_CANONICAL_DECISION_POLICY.md"], "tests": ["ops_tests/test_apex_v2_authority_decision_register.py"], "runtime_acceptance": ["none"], "change_surface": ["scripts/run_apex.py", "docs/APEX_CANONICAL_DECISION_POLICY.md"], "change_control": "Historical maintenance only; serving promotion requires explicit new decision/authority change.", "decision_refs": ["D023", "D031"], "known_limitations": [], "replacement": "PROD-001"
+    },
+    {
+      "id": "LEG-003", "name": "Pinnacle/Elite/static diagnostic authority", "purpose": "Preserve pre-V2 selector/diagnostic history without granting current production authority.",
+      "lifecycle": "historical", "plane": "legacy", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#legacy"], "entry_points": [{"ref": "main", "path": "docs/ARCHITECTURE.md", "kind": "historical_doc"}],
+      "inputs": [], "outputs": ["historical design context"], "dependencies": [], "private_data": "none", "invariants": ["no current serving authority"], "failure_behavior": "Do not route current decisions through legacy selectors.",
+      "runbooks": ["docs/ARCHITECTURE.md", "docs/APEX_DECISIONS.md"], "tests": ["ops_tests/test_apex_v2_authority_decision_register.py"], "runtime_acceptance": ["none"], "change_surface": ["docs/ARCHITECTURE.md", "docs/APEX_CANONICAL_DECISION_POLICY.md", "src/apex_fpl/**"], "change_control": "Historical/research only.", "decision_refs": ["D004", "D006", "D007", "D018", "D021", "D022", "D031"], "known_limitations": [], "replacement": "PROD-010"
+    },
+    {
+      "id": "LEG-004", "name": "Generated recommendation/answer-context contract", "purpose": "Classify pre-V2 generated repository recommendation files as historical non-serving outputs.",
+      "lifecycle": "historical", "plane": "legacy", "visibility": "public", "owning_repo": "mcnuggets651/fpl-apex", "serving_authorized": false,
+      "authority_refs": ["docs/APEX_V2_AUTHORITY.json#legacy/generated_repository_recommendations"], "entry_points": [{"ref": "main", "path": "docs/APEX_CANONICAL_DECISION_POLICY.md", "kind": "historical_doc"}],
+      "inputs": [], "outputs": ["historical generated recommendation files"], "dependencies": [], "private_data": "none", "invariants": ["not current user-facing authority"], "failure_behavior": "Current interaction contract must use public V2 authority plus private query boundary instead.",
+      "runbooks": ["docs/APEX_CANONICAL_DECISION_POLICY.md"], "tests": ["ops_tests/test_apex_v2_authority_decision_register.py"], "runtime_acceptance": ["none"], "change_surface": ["docs/APEX_CANONICAL_DECISION_POLICY.md", "data/generated/**"], "change_control": "Historical only.", "decision_refs": ["D023", "D031"], "known_limitations": [], "replacement": "INT-001"
+    }
+  ]
+}
