@@ -6,19 +6,28 @@
 
 ## Current verdict
 
-**PRODUCTION PIPELINE PASSED; PRIVATE QUERY ACCEPTANCE BLOCKED BY GITHUB BILLING**
+# **APEX OPERATIONAL**
 
-Apex V2 is the production FPL system for season **2026/27** and entry **63984**. Canonical production run #9 (`33850307770`; immutable run `33850307770-1`) completed successfully for GW3 and published a matching immutable public/private run pair under the then-current authority-declared serving core. Exact historical core identity remains in immutable release evidence and the canonical continuity ledger rather than being copied here as a movable current pointer.
+Apex V2 is the production FPL system for season **2026/27** and entry **63984**. Canonical production run #9 (`33850307770`; immutable run `33850307770-1`) completed successfully for GW3 and published a matching immutable public/private run pair under the authority-declared serving core.
 
-The only remaining acceptance gate is owner-private strategy query execution in explicit-run and authority-selected `latest` modes. GitHub rejected both jobs before runner allocation because of account billing/spending state. A 4 September retry of `latest` again had zero steps and `runner_id=0`; this is not evidence of query code failure.
+The previously outstanding owner-private query gate is now closed. A dedicated private self-hosted macOS ARM64 runner (`fpl-apex-private-mac`) executes private query/continuity workflows with no `ubuntu-latest` fallback and no GitHub-hosted runner spend.
 
-Do not reopen model/architecture development because of this external gate. The exact closure procedure is in the master ledger.
+Private acceptance evidence:
+
+- post-PR-#4 private strategy `latest` run `33867975181`: success;
+- explicit exact run `33850307770-1`: strategy run `33868412431`, success;
+- final restored authority-selected `latest`: strategy run `33868662109`, success;
+- exact and final-latest narrow JSON outputs were byte-for-byte identical at SHA-256 `e50c4ebde19a2c68bfa4c38f33a6dd81f1d0922851f1e932bae522a898609d60`;
+- both resolved immutable run `33850307770-1`, entry `63984`, exact 15-player TeamState, £0.5m bank, 1 free transfer and complete purchase/selling-price transfer state;
+- final private post-merge master-state contract `33868662187`: success.
+
+The historical GitHub-hosted billing failures remain provenance only and are not current blockers.
 
 ## Production authority
 
 Immutable forensic base (`frozen_engine_sha`): `99cc7b51b0cff45462b567084cb1844cfe0a456f`
 
-Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`.
+Current serving core: read `production_core_sha` from `APEX_V2_AUTHORITY.json`. At this closure snapshot it is `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
 
 - Frozen engine PR: **#90**, draft/open/unmerged, policy `NEVER_MERGE_OR_ADVANCE`.
 - Operations/research control plane: `main`; verify the current head live rather than treating a prose SHA as permanent.
@@ -47,9 +56,17 @@ Public final:
 
 `apex-v2/final/2026-2027/33850307770-1`
 
-Release ID `382559137`, immutable, published `2026-09-04T07:51:49Z`. The immutable release/attestation records the exact serving-core identity; this canonical status document deliberately does not duplicate the movable `production_core_sha` value.
+Release ID `382559137`, immutable, published `2026-09-04T07:51:49Z`.
 
 Matching owner-private manager/evaluation/presentation releases share run identity `33850307770-1`; private payload details stay in the private repository and its companion master ledger.
+
+## Owner-private query capability
+
+The private repository is the approved owner-state/query plane. `latest` is authority-first, not publication-time-first: it resolves current public production authority, filters private manager releases by the exact linked `public_attempt_id`, verifies GitHub asset digests and Apex attestations, and fails closed if no authority-correct private release exists.
+
+A fresh connected agent can therefore recover exact current persisted owner state without reconstructing the squad from chat memory. Private query output remains narrow and does not expose `private-auth`, credentials, commitment keys or unfiltered private provider payloads.
+
+Operational does not mean a historical immutable recommendation remains fresh indefinitely. Production deadline/freshness/auth/source gates still govern whether a new manager-facing recommendation is actionable.
 
 ## Current operations
 
@@ -74,6 +91,7 @@ Before substantive work:
 3. read `docs/CURRENT_STATE.md` and `docs/APEX_OPERATING_MANUAL.md`;
 4. verify live `main`, PR #90, ruleset/checks, relevant workflow runs and immutable releases;
 5. never reconstruct the manager squad from conversation memory;
-6. update the canonical master ledger in the same change as every tracked repository change.
+6. use the private query boundary for owner-specific state;
+7. update the canonical master ledger in the same change as every tracked repository change.
 
 `AGENTS.md`, `CLAUDE.md`, `scripts/check_master_state_sync.py` and required Apex CI encode/enforce this continuity contract.
