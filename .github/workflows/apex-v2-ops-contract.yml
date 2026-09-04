@@ -36,6 +36,7 @@ on:
       - "docs/SESSION_LOG.md"
       - "docs/CHATGPT_USAGE.md"
       - "docs/CHATGPT_APEX_QUERY_POLICY.md"
+      - "docs/APEX_DRAFT_QUERY.md"
       - "docs/APEX_ROADMAP.md"
       - "docs/APEX_DECISIONS.md"
       - "docs/APEX_CHANGELOG.md"
@@ -89,6 +90,7 @@ jobs:
               ".github/workflows/apex-v2-deadline-watch.yml",
               ".github/workflows/apex-v2-decision-quality.yml",
               ".github/workflows/apex-v2-direct-auth-diagnostic.yml",
+              ".github/workflows/apex-v2-draft-auth-relay.yml",
               ".github/workflows/apex-v2-ops-contract.yml",
               ".github/workflows/apex-v2-owner-brief.yml",
               ".github/workflows/apex-v2-prospective-tournament.yml",
@@ -102,6 +104,7 @@ jobs:
               "scripts/apex_v2_auth_ops.py",
               "scripts/apex_v2_attempt_audit_ops.py",
               "scripts/apex_v2_deadline_ops.py",
+              "scripts/apex_v2_draft_auth_relay_ops.py",
               "scripts/apex_v2_owner_brief_ops.py",
               "scripts/apex_v2_decision_quality_ops.py",
               "scripts/apex_v2_decision_lab_parallel.py",
@@ -135,6 +138,7 @@ jobs:
               "docs/SESSION_LOG.md",
               "docs/CHATGPT_USAGE.md",
               "docs/CHATGPT_APEX_QUERY_POLICY.md",
+              "docs/APEX_DRAFT_QUERY.md",
               "docs/APEX_ROADMAP.md",
               "docs/APEX_DECISIONS.md",
               "docs/APEX_CHANGELOG.md",
@@ -325,6 +329,26 @@ jobs:
           ):
               if forbidden in keepalive:
                   raise SystemExit(f"auth keepalive crossed safety boundary: {forbidden}")
+
+          draft_relay = Path(".github/workflows/apex-v2-draft-auth-relay.yml").read_text(encoding="utf-8")
+          for needle in (
+              "group: apex-v2-fpl-auth",
+              "cancel-in-progress: false",
+              "--mode production",
+              "--league-id 33160",
+              "--entry-name mcnuggets",
+              "APEX_V2_PRIVATE_REPO_TOKEN",
+          ):
+              if needle not in draft_relay:
+                  raise SystemExit(f"Draft auth relay contract missing: {needle}")
+          for forbidden in (
+              "actions/upload-artifact",
+              "contents: write",
+              "apex-v2 solve",
+              "apex-v2 publish",
+          ):
+              if forbidden in draft_relay:
+                  raise SystemExit(f"Draft auth relay crossed safety boundary: {forbidden}")
 
           deadline = Path(".github/workflows/apex-v2-deadline-watch.yml").read_text(encoding="utf-8")
           for needle in (
