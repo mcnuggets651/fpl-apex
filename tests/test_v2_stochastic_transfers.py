@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-import pytest
-
 from apex.decision.price_scenarios import PriceScenario
 from apex.decision.price_transitions import DeterministicMarketPricePath
 from apex.decision.stochastic_transfers import optimise_stochastic_transfer_policy
