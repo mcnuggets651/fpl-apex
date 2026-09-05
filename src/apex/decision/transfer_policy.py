@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import isclose
+from math import isclose, isfinite
 
 from .price_transitions import PriceStateError
 
@@ -74,10 +74,10 @@ def summarise_transfer_policy(
 
     actions = sorted({row.action_id for row in values})
     scenarios = sorted({row.scenario_id for row in values})
-    if any(not action.strip() for action in actions):
-        raise PriceStateError("transfer action IDs must be non-empty")
-    if any(not scenario.strip() for scenario in scenarios):
-        raise PriceStateError("price scenario IDs must be non-empty")
+    if any(not isinstance(action, str) or not action.strip() for action in actions):
+        raise PriceStateError("transfer action IDs must be non-empty strings")
+    if any(not isinstance(scenario, str) or not scenario.strip() for scenario in scenarios):
+        raise PriceStateError("price scenario IDs must be non-empty strings")
 
     by_pair: dict[tuple[str, str], ScenarioActionValue] = {}
     scenario_probability: dict[str, float] = {}
@@ -88,16 +88,32 @@ def summarise_transfer_policy(
                 f"duplicate transfer-policy value for action/scenario {key}"
             )
         probability = float(row.probability)
-        if not 0.0 <= probability <= 1.0:
-            raise PriceStateError("scenario probabilities must be between 0 and 1")
+        if not isfinite(probability) or not 0.0 <= probability <= 1.0:
+            raise PriceStateError("scenario probabilities must be finite values in [0, 1]")
+        expected_points = float(row.expected_points)
+        if not isfinite(expected_points):
+            raise PriceStateError("scenario continuation expected points must be finite")
         previous = scenario_probability.setdefault(row.scenario_id, probability)
         if not isclose(previous, probability, rel_tol=0.0, abs_tol=1e-12):
             raise PriceStateError(
                 f"scenario probability disagrees across actions: {row.scenario_id}"
             )
-        if row.route_survives and row.end_bank_tenths is None:
+        if row.route_survives:
+            if row.end_bank_tenths is None:
+                raise PriceStateError(
+                    "surviving transfer route must report its exact end bank"
+                )
+            if (
+                isinstance(row.end_bank_tenths, bool)
+                or not isinstance(row.end_bank_tenths, int)
+                or row.end_bank_tenths < 0
+            ):
+                raise PriceStateError(
+                    "surviving transfer route end bank must be a non-negative integer"
+                )
+        elif row.end_bank_tenths is not None:
             raise PriceStateError(
-                "surviving transfer route must report its exact end bank"
+                "priced-out transfer route must not report a terminal end bank"
             )
         by_pair[key] = row
 
