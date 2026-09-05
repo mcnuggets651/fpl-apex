@@ -38,12 +38,37 @@ class TransferWeek:
 
 
 @dataclass(frozen=True)
+class TransferCandidateRoute:
+    """Manager-private in-memory near-optimal transfer route.
+
+    Candidate routes contain exact squad/player IDs and are deliberately kept
+    out of the public solver diagnostics. They exist so a successor policy can
+    price-stress already-computed routes without rerunning the MILP merely to
+    recover route details.
+    """
+
+    generation_rank: int
+    approximate_objective: float
+    exact_objective: float
+    weeks: tuple[TransferWeek, ...]
+    baseline_selected: bool = False
+
+    @property
+    def root_action(self) -> tuple[tuple[int, ...], tuple[int, ...], int]:
+        if not self.weeks:
+            raise RuntimeError("transfer candidate route has no weeks")
+        first = self.weeks[0]
+        return first.transfers_in, first.transfers_out, first.hits
+
+
+@dataclass(frozen=True)
 class TransferOptimisationResult:
     decision: SystemDecision | None
     weeks: tuple[TransferWeek, ...]
     status: str
     primary_objective: float | None
     solver: dict
+    candidate_routes: tuple[TransferCandidateRoute, ...] = ()
 
 
 def optimise_transfer_horizon(
@@ -709,10 +734,25 @@ def optimise_transfer_horizon(
     if reason:
         solver["reason"] = reason
 
+    candidate_routes = tuple(
+        TransferCandidateRoute(
+            generation_rank=int(candidate["generation_rank"]),
+            approximate_objective=float(candidate["approximate_objective"]),
+            exact_objective=float(candidate["exact_objective"]),
+            weeks=tuple(candidate["weeks"]),
+            baseline_selected=(
+                int(candidate["generation_rank"])
+                == int(selected["generation_rank"])
+            ),
+        )
+        for candidate in candidates
+    )
+
     return TransferOptimisationResult(
         decision,
         tuple(weeks),
         "OPTIMAL",
         primary_optimum,
         solver,
+        candidate_routes,
     )
