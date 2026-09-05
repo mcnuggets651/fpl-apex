@@ -176,9 +176,53 @@ class GitHubReleaseStore:
         name: str,
         body: str = "",
         require_immutable: bool = True,
+        resume_draft: bool = False,
     ) -> ReleaseRef:
-        if self._get_by_tag(tag) is not None:
-            raise RuntimeError(f"immutable release tag already exists: {tag}")
+        """Create, upload and publish an immutable release exactly once.
+
+        ``resume_draft=True`` is narrowly for recovery of the caller's own
+        durable unpublished release. Ordinary callers retain the historical
+        fail-closed behavior for pre-existing tags. Fresh attempts also retain
+        best-effort cleanup on ordinary handled failures; process termination
+        after upload still leaves the durable draft that the refresh-rotation
+        recovery path can discover on the next run.
+        """
+        existing = self._get_by_tag(tag)
+        resumed = existing is not None
+        if resumed:
+            if not resume_draft or not bool(existing.get("draft", False)):
+                raise RuntimeError(f"immutable release tag already exists: {tag}")
+            release_id = int(existing["id"])
+            uploaded = self._verify_uploaded_assets(release_id, files)
+        else:
+            release_id, uploaded = self._create_draft_and_upload(
+                tag,
+                files,
+                target_commitish=target_commitish,
+                name=name,
+                body=body,
+            )
+        try:
+            return self._publish_draft(
+                tag,
+                release_id,
+                uploaded,
+                require_immutable=require_immutable,
+            )
+        except Exception:
+            if not resumed:
+                self._cleanup_mutable_release(release_id, tag)
+            raise
+
+    def _create_draft_and_upload(
+        self,
+        tag: str,
+        files: dict[str, Path],
+        *,
+        target_commitish: str | None,
+        name: str,
+        body: str,
+    ) -> tuple[int, dict[str, str]]:
         create_payload = {
             "tag_name": tag,
             "name": name,
@@ -218,49 +262,77 @@ class GitHubReleaseStore:
                         f"GitHub asset digest mismatch for {asset_name}: {github_digest}"
                     )
                 uploaded[asset_name] = expected
-            assets_response = self.http.get(
-                f"{self.api}/repos/{self.repo}/releases/{release_id}/assets",
-                headers=self.headers,
-                timeout=30,
-            )
-            assets_response.raise_for_status()
-            assets = assets_response.json()
-            names = {asset["name"] for asset in assets}
-            if names != set(files):
-                raise RuntimeError(
-                    f"release asset set mismatch: {names} != {set(files)}"
-                )
-            for asset in assets:
-                expected = uploaded[asset["name"]]
-                digest = str(asset.get("digest") or "")
-                if digest and digest != f"sha256:{expected}":
-                    raise RuntimeError(
-                        f"release asset digest mismatch for {asset['name']}: {digest}"
-                    )
-            publish = self.http.patch(
-                f"{self.api}/repos/{self.repo}/releases/{release_id}",
-                headers=self.headers,
-                json={"draft": False},
-                timeout=30,
-            )
-            publish.raise_for_status()
-            published = publish.json()
-            immutable = bool(published.get("immutable", False))
-            if require_immutable and not immutable:
-                raise RuntimeError(
-                    "GitHub published the release as mutable. Enable repository "
-                    "release immutability before any Apex V2 production attempt."
-                )
-            return ReleaseRef(
-                tag,
-                release_id,
-                published.get("html_url", ""),
-                uploaded,
-                immutable,
-            )
         except Exception:
             self._cleanup_mutable_release(release_id, tag)
             raise
+        return release_id, uploaded
+
+    def _verify_uploaded_assets(
+        self, release_id: int, files: dict[str, Path]
+    ) -> dict[str, str]:
+        """Recompute expected digests for a resumed draft's own prior upload.
+
+        No bytes are re-uploaded. The existing draft must contain exactly the
+        assets the caller expects; verification occurs in ``_publish_draft``.
+        """
+        return {name: _sha(Path(path)) for name, path in files.items()}
+
+    def _publish_draft(
+        self,
+        tag: str,
+        release_id: int,
+        uploaded: dict[str, str],
+        *,
+        require_immutable: bool,
+    ) -> ReleaseRef:
+        assets_response = self.http.get(
+            f"{self.api}/repos/{self.repo}/releases/{release_id}/assets",
+            headers=self.headers,
+            timeout=30,
+        )
+        assets_response.raise_for_status()
+        assets = assets_response.json()
+        names = {asset["name"] for asset in assets}
+        if names != set(uploaded):
+            raise RuntimeError(
+                f"release asset set mismatch: {names} != {set(uploaded)}"
+            )
+        for asset in assets:
+            expected = uploaded[asset["name"]]
+            digest = str(asset.get("digest") or "")
+            if digest and digest != f"sha256:{expected}":
+                raise RuntimeError(
+                    f"release asset digest mismatch for {asset['name']}: {digest}"
+                )
+        publish = self.http.patch(
+            f"{self.api}/repos/{self.repo}/releases/{release_id}",
+            headers=self.headers,
+            json={"draft": False},
+            timeout=30,
+        )
+        publish.raise_for_status()
+        published = publish.json()
+        immutable = bool(published.get("immutable", False))
+        if require_immutable and not immutable:
+            self._cleanup_mutable_release(release_id, tag)
+            raise RuntimeError(
+                "GitHub published the release as mutable. Enable repository "
+                "release immutability before any Apex V2 production attempt."
+            )
+        return ReleaseRef(
+            tag,
+            release_id,
+            published.get("html_url", ""),
+            uploaded,
+            immutable,
+        )
+
+    def get_draft_by_tag(self, tag: str) -> dict | None:
+        """Return the release at ``tag`` only if it still exists as a draft."""
+        release = self._get_by_tag(tag)
+        if release is None or not bool(release.get("draft", False)):
+            return None
+        return release
 
     def list_releases(self, per_page: int = 100):
         """Return the complete release history, not only GitHub's first page."""

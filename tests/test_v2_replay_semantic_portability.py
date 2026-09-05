@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from apex.runtime.publication import replay_security_payload
+from apex.runtime.publication import _replay_mismatch_paths, replay_security_payload
 from apex.runtime.publication_impl import canonical_json_bytes
 
 
@@ -93,3 +93,28 @@ def test_decision_driving_optimisation_state_remains_part_of_replay_identity():
     changed_decision = deepcopy(baseline)
     changed_decision["system_decision"]["captain_id"] = 3
     assert _semantic_bytes(changed_decision) != expected
+
+
+def test_replay_mismatch_diagnostic_reports_paths_without_values():
+    observed = {
+        "system_decision": {"captain_id": 7},
+        "solver": {"candidate_objectives": [{"exact": 12.5}]},
+    }
+    expected = {
+        "system_decision": {"captain_id": 9},
+        "solver": {
+            "candidate_objectives": [{"exact": 13.0}, {"exact": 11.0}],
+        },
+    }
+
+    paths = _replay_mismatch_paths(observed, expected)
+
+    assert paths == [
+        "$.solver.candidate_objectives.length",
+        "$.solver.candidate_objectives[0].exact",
+        "$.system_decision.captain_id",
+    ]
+    rendered = " ".join(paths)
+    assert "12.5" not in rendered
+    assert "13.0" not in rendered
+    assert "captain_id" in rendered

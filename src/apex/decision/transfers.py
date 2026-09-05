@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
@@ -38,12 +38,37 @@ class TransferWeek:
 
 
 @dataclass(frozen=True)
+class TransferCandidateRoute:
+    """Manager-private in-memory near-optimal transfer route.
+
+    Candidate routes contain exact squad/player IDs and are deliberately kept
+    out of the public solver diagnostics. They exist so a successor policy can
+    price-stress already-computed routes without rerunning the MILP merely to
+    recover route details.
+    """
+
+    generation_rank: int
+    approximate_objective: float
+    exact_objective: float
+    weeks: tuple[TransferWeek, ...]
+    baseline_selected: bool = False
+
+    @property
+    def root_action(self) -> tuple[tuple[int, ...], tuple[int, ...], int]:
+        if not self.weeks:
+            raise RuntimeError("transfer candidate route has no weeks")
+        first = self.weeks[0]
+        return first.transfers_in, first.transfers_out, first.hits
+
+
+@dataclass(frozen=True)
 class TransferOptimisationResult:
     decision: SystemDecision | None
     weeks: tuple[TransferWeek, ...]
     status: str
     primary_objective: float | None
     solver: dict
+    candidate_routes: tuple[TransferCandidateRoute, ...] = ()
 
 
 def optimise_transfer_horizon(
@@ -557,7 +582,29 @@ def optimise_transfer_horizon(
     shortlist_complete = False
     next_message = None
 
-    for generation_rank in range(1, int(candidate_limit) + 1):
+    # Production uses one primary max-xP solve. With a one-candidate policy there
+    # is nothing to shortlist: decoding the primary incumbent directly is both
+    # faster and faithful to the documented fallback. The old path unnecessarily
+    # ran a secondary MILP plus an excluded-path MILP, then returned the secondary
+    # solution while claiming the primary path was retained.
+    if int(candidate_limit) == 1:
+        weeks, exact_objective = decode(first.x)
+        candidates.append(
+            {
+                "generation_rank": 1,
+                "approximate_objective": primary_optimum,
+                "exact_objective": exact_objective,
+                "weeks": weeks,
+                "solution": first.x,
+                "path_key": tuple(week.squad_ids for week in weeks),
+                "primary_message": str(first.message),
+                "secondary_message": "not run: single primary candidate policy",
+            }
+        )
+
+    for generation_rank in (
+        range(1, int(candidate_limit) + 1) if int(candidate_limit) > 1 else ()
+    ):
         if current.x is None:
             shortlist_complete = True
             break
@@ -652,6 +699,9 @@ def optimise_transfer_horizon(
         decision_mode="TRANSFER_HORIZON",
         xi_excluded=excluded_h1,
     )
+    # The submitted action is evaluated on H1, while the decision horizon records
+    # how many qualified weeks governed the transfer path.
+    decision = replace(decision, horizon=int(max_horizon))
 
     solver = {
         "primary_message": str(first.message),
@@ -684,10 +734,25 @@ def optimise_transfer_horizon(
     if reason:
         solver["reason"] = reason
 
+    candidate_routes = tuple(
+        TransferCandidateRoute(
+            generation_rank=int(candidate["generation_rank"]),
+            approximate_objective=float(candidate["approximate_objective"]),
+            exact_objective=float(candidate["exact_objective"]),
+            weeks=tuple(candidate["weeks"]),
+            baseline_selected=(
+                int(candidate["generation_rank"])
+                == int(selected["generation_rank"])
+            ),
+        )
+        for candidate in candidates
+    )
+
     return TransferOptimisationResult(
         decision,
         tuple(weeks),
         "OPTIMAL",
         primary_optimum,
         solver,
+        candidate_routes,
     )

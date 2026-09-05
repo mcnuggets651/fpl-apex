@@ -70,6 +70,16 @@ The following remain inside the semantic replay commitment and must reproduce ex
 - runtime serving health;
 - evidence manifest.
 
+### Clock contract
+
+A frozen solve must not sample wall clock implicitly. Production snapshots seal `frozen_at` in both `run.json` and snapshot metadata; the two values must agree. `solve_snapshot(..., now=None)` evaluates provider freshness and deadline certification at that sealed instant, with deterministic fallbacks to sealed acquisition/start timestamps only for older synthetic fixtures. An explicit `now` remains available for adversarial and point-in-time tests.
+
+Publication has a separate responsibility. It does not run the expensive optimiser a second time. It verifies the optimiser's witness deterministically against the sealed snapshot: snapshot and serving identity, canonical projection hash, legal FPL mechanics, recomputed H1 lineup/objective, and independently reconstructed certification. Exact repeated optimisation remains a CI/golden-replay test; wall-clock-bounded solver search telemetry is not a production publication boundary. Immediately before any immutable private or public release is created, the production CLI evaluates real wall clock and refuses an actionable decision if its FPL deadline has passed or the sealed serving champion has crossed its configured freshness SLA.
+
+The live transfer policy executes one primary max-xP MILP and decodes that exact incumbent. Candidate-limit one is a real single-solve path: it must not run secondary or excluded-path MILPs, and it must not substitute a secondary solution while labelling it the primary fallback. Multi-candidate exact-contingency experiments remain available only through an explicit `candidate_limit > 1` call.
+
+Regression coverage must include a deadline between snapshot freeze and publication: the sealed witness must remain valid, while the independent live publication gate must reject release once the deadline is actually reached.
+
 ## Promotion rule
 
 A successor engine SHA is not eligible for the production pin until:

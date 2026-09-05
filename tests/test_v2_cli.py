@@ -92,6 +92,14 @@ def _evaluation_files(tmp_path: Path):
     return files
 
 
+def _allow_live_publication(monkeypatch):
+    monkeypatch.setattr(
+        publication,
+        "assert_publication_safe_now",
+        lambda *args, **kwargs: None,
+    )
+
+
 def test_publish_exposes_only_six_public_assets(tmp_path: Path, monkeypatch):
     store = _FakeStore()
     monkeypatch.setattr(cli, "_store", lambda: store)
@@ -101,6 +109,7 @@ def test_publish_exposes_only_six_public_assets(tmp_path: Path, monkeypatch):
         "build_publication_materials",
         lambda *args, **kwargs: material,
     )
+    _allow_live_publication(monkeypatch)
 
     result = runner.invoke(
         cli.app,
@@ -131,6 +140,47 @@ def test_publish_exposes_only_six_public_assets(tmp_path: Path, monkeypatch):
     assert kwargs["target_commitish"] == "abc123"
 
 
+def test_publish_live_safety_failure_blocks_every_release(tmp_path: Path, monkeypatch):
+    public_store = _FakeStore()
+    private_store = _FakeStore()
+    monkeypatch.setattr(cli, "_store", lambda: public_store)
+    monkeypatch.setattr(cli, "_private_store", lambda: private_store)
+    material = _material(tmp_path, authenticated=True)
+    monkeypatch.setattr(
+        publication,
+        "build_publication_materials",
+        lambda *args, **kwargs: material,
+    )
+
+    def reject(*args, **kwargs):
+        raise RuntimeError("publication refused: actionable decision deadline has passed")
+
+    monkeypatch.setattr(publication, "assert_publication_safe_now", reject)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "publish",
+            str(tmp_path / "snapshot"),
+            str(tmp_path / "decision_bundle.json"),
+            "--season",
+            "2026-2027",
+            "--gameweek",
+            "3",
+            "--run-id",
+            "run-1",
+            "--code-sha",
+            "abc123",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, RuntimeError)
+    assert "deadline" in str(result.exception)
+    assert private_store.calls == []
+    assert public_store.calls == []
+
+
 def test_authenticated_publish_fails_before_public_if_private_store_missing(
     tmp_path: Path,
     monkeypatch,
@@ -143,6 +193,7 @@ def test_authenticated_publish_fails_before_public_if_private_store_missing(
         "build_publication_materials",
         lambda *args, **kwargs: material,
     )
+    _allow_live_publication(monkeypatch)
     monkeypatch.delenv("APEX_PRIVATE_GITHUB_REPOSITORY", raising=False)
     monkeypatch.delenv("APEX_PRIVATE_GITHUB_TOKEN", raising=False)
 
@@ -182,6 +233,7 @@ def test_authenticated_publish_persists_manager_and_provider_inputs_before_publi
         "build_publication_materials",
         lambda *args, **kwargs: material,
     )
+    _allow_live_publication(monkeypatch)
     monkeypatch.setattr(
         evaluation_archive,
         "build_private_provider_evaluation_material",
@@ -234,6 +286,7 @@ def test_private_provider_archive_failure_blocks_public_final(
         "build_publication_materials",
         lambda *args, **kwargs: material,
     )
+    _allow_live_publication(monkeypatch)
 
     def fail(*args, **kwargs):
         raise RuntimeError("provider archive failed")

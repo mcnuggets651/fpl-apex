@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import tempfile
@@ -19,6 +20,33 @@ DEFAULT_OIDC_CLIENT_ID = "bfcbaf69-aade-4c1b-8f00-c1cb8a193030"
 DEFAULT_TOKEN_URL = "https://account.premierleague.com/as/token"
 AUTH_TAG_PREFIX = "apex-v2/private-auth/"
 AUTH_ASSET = "fpl_refresh_state.enc"
+
+
+class FPLRefreshRotationIndeterminate(RuntimeError):
+    """The OIDC exchange for a rotation may have already consumed its parent
+    refresh token, but no durable evidence of the resulting next token could
+    be found (neither a published release nor a recoverable draft).
+
+    This is deliberately a distinct exception type from a rejected/expired
+    credential. A rejected credential means the parent token itself is
+    invalid and it is safe to require a fresh bootstrap. An indeterminate
+    rotation means the parent MAY already be dead at the identity provider
+    even though nothing durable was ever produced from it — hammering the
+    same parent again is not a safe retry, and the caller must not silently
+    fall back to treating this like an ordinary rejection.
+    """
+
+
+def _refresh_transaction_fingerprint(parent_refresh_token: str) -> str:
+    """Deterministic, non-secret identity for a single rotation attempt.
+
+    Derived from the parent token so that a crashed-and-retried attempt
+    against the SAME parent finds its own prior work instead of creating an
+    unrelated run-id-keyed release each time. This is intentionally not
+    reversible to the parent token: it is a fingerprint, not the credential.
+    """
+    digest = hashlib.sha256(f"apex-v2-fpl-refresh-rotation:{parent_refresh_token}".encode("utf-8"))
+    return digest.hexdigest()[:32]
 
 
 def _bearer_header(raw: str) -> str:
@@ -162,17 +190,67 @@ def _latest_private_refresh_token(store: GitHubReleaseStore, fernet: Fernet) -> 
     return token
 
 
+def _rotation_tag(parent_fingerprint: str) -> str:
+    return f"{AUTH_TAG_PREFIX}rotation/{parent_fingerprint}"
+
+
+def _recover_pending_rotation(
+    store: GitHubReleaseStore,
+    fernet: Fernet,
+    parent_refresh_token: str,
+) -> tuple[str, str] | None:
+    """Look for a prior attempt's own unpublished draft for this exact parent.
+
+    If a previous process already completed the OIDC exchange and durably
+    uploaded the encrypted next-token asset to GitHub, but died before the
+    publish step, that draft is sitting on GitHub right now holding the only
+    surviving copy of the rotated token. This must be checked and resumed
+    BEFORE ever attempting a fresh exchange against the same parent, because
+    the parent may already be invalid at the identity provider.
+
+    Returns the decrypted (refresh_token, tag) if a matching, decryptable
+    draft exists; None if there is nothing to recover (safe to proceed with
+    a fresh exchange).
+    """
+    parent_fingerprint = _refresh_transaction_fingerprint(parent_refresh_token)
+    tag = _rotation_tag(parent_fingerprint)
+    draft = store.get_draft_by_tag(tag)
+    if draft is None:
+        return None
+    with tempfile.TemporaryDirectory(prefix="apex-fpl-auth-recover-") as tmp:
+        path = download_release_asset(store, draft, AUTH_ASSET, Path(tmp) / AUTH_ASSET)
+        try:
+            plaintext = fernet.decrypt(path.read_bytes())
+        except InvalidToken as exc:
+            raise RuntimeError(
+                "recoverable FPL refresh rotation draft could not be decrypted"
+            ) from exc
+    payload = json.loads(plaintext.decode("utf-8"))
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        raise RuntimeError("recoverable FPL refresh rotation draft has an invalid schema")
+    if payload.get("parent_fingerprint") != parent_fingerprint:
+        raise RuntimeError(
+            "recoverable FPL refresh rotation draft does not match the current parent"
+        )
+    token = str(payload.get("refresh_token") or "").strip()
+    if not token:
+        raise RuntimeError("recoverable FPL refresh rotation draft omitted refresh_token")
+    return token, tag
+
+
 def _persist_private_refresh_token(
     store: GitHubReleaseStore,
     fernet: Fernet,
     refresh_token: str,
+    *,
+    parent_refresh_token: str,
 ) -> None:
-    run_id = os.getenv("GITHUB_RUN_ID", "local").strip() or "local"
-    attempt = os.getenv("GITHUB_RUN_ATTEMPT", "1").strip() or "1"
-    tag = f"{AUTH_TAG_PREFIX}{run_id}-{attempt}"
+    parent_fingerprint = _refresh_transaction_fingerprint(parent_refresh_token)
+    tag = _rotation_tag(parent_fingerprint)
     payload = {
         "schema_version": 1,
         "refresh_token": refresh_token,
+        "parent_fingerprint": parent_fingerprint,
         "stored_at": datetime.now(timezone.utc).isoformat(),
         "issuer": "https://account.premierleague.com/as",
         "client_id": os.getenv("FPL_OIDC_CLIENT_ID", DEFAULT_OIDC_CLIENT_ID),
@@ -183,11 +261,15 @@ def _persist_private_refresh_token(
     with tempfile.TemporaryDirectory(prefix="apex-fpl-auth-") as tmp:
         path = Path(tmp) / AUTH_ASSET
         path.write_bytes(encrypted)
+        # Not resumable: this call always creates a fresh rotation transaction
+        # for the given parent. The recoverable-draft case is handled entirely
+        # by `_publish_pending_rotation`, which republishes an EXISTING draft's
+        # own bytes rather than persisting new plaintext through this path.
         store.create_once(
             tag,
             {AUTH_ASSET: path},
             target_commitish=None,
-            name=f"Apex V2 encrypted FPL auth state {run_id}-{attempt}",
+            name=f"Apex V2 encrypted FPL auth rotation {parent_fingerprint}",
             body=(
                 "Encrypted rotating FPL refresh-token state. Plaintext credentials "
                 "must never be published or logged."
@@ -254,11 +336,41 @@ def _refresh_owner_credential(
     if not current:
         return None
 
-    access_token, next_refresh = _exchange_refresh_token(
-        current,
-        http=http,
-        timeout=timeout,
-    )
+    # Recovery MUST be attempted before any fresh exchange against `current`.
+    # If a prior attempt already exchanged this exact parent and durably
+    # uploaded the rotated token as an unpublished draft before crashing,
+    # `current` may already be dead at the identity provider. Re-exchanging
+    # it here would either fail (parent invalid, and we'd wrongly treat this
+    # as an ordinary rejected-credential case) or, worse, succeed against an
+    # IdP reuse/grace window and mint a second, divergent "next" token that
+    # can never be reconciled with the one already sitting in the draft.
+    #
+    # Recovery only PUBLISHES the pre-existing draft: it never mints a new
+    # rotation for that parent. Once published, the recovered token becomes
+    # this call's `current` and falls through to the ordinary exchange+
+    # persist path below, so it gets its OWN correctly-persisted rotation
+    # rather than being silently re-burned by a separate, discarding code
+    # path.
+    recovered = _recover_pending_rotation(store, fernet, current)
+    if recovered is not None:
+        recovered_refresh, tag = recovered
+        _publish_pending_rotation(store, tag)
+        current = recovered_refresh
+
+    try:
+        access_token, next_refresh = _exchange_refresh_token(
+            current,
+            http=http,
+            timeout=timeout,
+        )
+    except RuntimeError:
+        # The exchange itself failed (rejected/expired/network/etc). No
+        # durable next-token evidence was ever created for this parent, so
+        # there is nothing to recover and no ambiguity: `current` is simply
+        # not usable. This is the one case where re-raising the ordinary
+        # rejected/expired error is correct.
+        raise
+
     status = _verify_headers(
         entry_id,
         headers={
@@ -275,11 +387,51 @@ def _refresh_owner_credential(
     if status != "match":
         raise RuntimeError("Official FPL refreshed owner credential was rejected")
 
-    # Persist the rotated refresh token before allowing the access token to escape
-    # this boundary. If persistence fails, fail closed rather than consume rotation
-    # state and strand the next production run.
-    _persist_private_refresh_token(store, fernet, next_refresh)
+    # From this point on, the OIDC exchange has already succeeded and
+    # `current` may already be consumed at the identity provider. Any
+    # failure from here forward is NOT an ordinary rejected-credential
+    # failure: it must be reported as indeterminate so the caller never
+    # collapses "the parent was invalid" and "the parent may have just been
+    # burned with no durable result" into the same retry behaviour.
+    try:
+        _persist_private_refresh_token(
+            store,
+            fernet,
+            next_refresh,
+            parent_refresh_token=current,
+        )
+    except Exception as exc:
+        raise FPLRefreshRotationIndeterminate(
+            "Official FPL refresh rotation may have succeeded at the identity "
+            "provider, but the rotated token could not be durably persisted. "
+            "Do not retry against the same parent credential; a human must "
+            "verify recovery via the pending-rotation draft or re-bootstrap."
+        ) from exc
     return access_token, next_refresh
+
+
+def _publish_pending_rotation(store: GitHubReleaseStore, tag: str) -> None:
+    """Publish a recoverable draft using ONLY its own already-uploaded bytes.
+
+    Downloads the existing encrypted asset back from the draft and re-passes
+    it to ``create_once(resume_draft=True)`` so the digest check verifies the
+    draft's own content against itself -- no new plaintext is ever encrypted
+    or uploaded here. This is deliberately incapable of publishing anything
+    other than exactly what a prior attempt already made durable.
+    """
+    draft = store.get_draft_by_tag(tag)
+    if draft is None:
+        raise RuntimeError(f"pending FPL refresh rotation draft disappeared: {tag}")
+    with tempfile.TemporaryDirectory(prefix="apex-fpl-auth-publish-") as tmp:
+        path = download_release_asset(store, draft, AUTH_ASSET, Path(tmp) / AUTH_ASSET)
+        store.create_once(
+            tag,
+            {AUTH_ASSET: path},
+            target_commitish=None,
+            name=str(draft.get("name") or tag),
+            body=str(draft.get("body") or ""),
+            resume_draft=True,
+        )
 
 
 def _write_runtime_env(path: Path, *, token: str = "", cookie: str = "") -> None:

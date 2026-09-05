@@ -195,8 +195,20 @@ def _transfer_fixture():
     return official, team, surface
 
 
-def test_transfer_shortlist_falls_back_when_candidate_cap_prevents_proof() -> None:
+def test_transfer_shortlist_falls_back_when_candidate_cap_prevents_proof(
+    monkeypatch,
+) -> None:
     official, team, surface = _transfer_fixture()
+    from apex.decision import transfers
+
+    real_milp = transfers.milp
+    calls = []
+
+    def counted_milp(*args, **kwargs):
+        calls.append(1)
+        return real_milp(*args, **kwargs)
+
+    monkeypatch.setattr(transfers, "milp", counted_milp)
     result = optimise_transfer_horizon(
         official,
         surface,
@@ -215,3 +227,61 @@ def test_transfer_shortlist_falls_back_when_candidate_cap_prevents_proof() -> No
     )
     assert result.solver["selected_generation_rank"] == 1
     assert "candidate limit" in result.solver["reason"]
+    assert len(calls) == 1
+    assert result.decision.horizon == 2
+
+    # Exposing the already-decoded route must not add another MILP call.
+    assert len(result.candidate_routes) == 1
+    route = result.candidate_routes[0]
+    assert route.generation_rank == 1
+    assert route.baseline_selected is True
+    assert route.weeks == result.weeks
+    assert route.root_action == (
+        result.decision.transfers_in,
+        result.decision.transfers_out,
+        result.decision.transfer_hits,
+    )
+
+
+def test_transfer_shortlist_exposes_all_already_computed_candidate_routes() -> None:
+    official, team, surface = _transfer_fixture()
+    result = optimise_transfer_horizon(
+        official,
+        surface,
+        team,
+        max_horizon=2,
+        candidate_limit=3,
+        candidate_regret_fraction=0.05,
+    )
+
+    assert result.status == "OPTIMAL"
+    assert result.decision is not None
+    assert len(result.candidate_routes) == result.solver["candidate_count"]
+    assert len(result.candidate_routes) >= 2
+    assert [route.generation_rank for route in result.candidate_routes] == list(
+        range(1, len(result.candidate_routes) + 1)
+    )
+    assert sum(route.baseline_selected for route in result.candidate_routes) == 1
+
+    selected = next(
+        route for route in result.candidate_routes if route.baseline_selected
+    )
+    assert selected.generation_rank == result.solver["selected_generation_rank"]
+    assert selected.weeks == result.weeks
+
+    path_keys = {
+        tuple(week.squad_ids for week in route.weeks)
+        for route in result.candidate_routes
+    }
+    assert len(path_keys) == len(result.candidate_routes)
+
+    # The public-safe solver summary continues to expose objectives only, not
+    # manager-private route/squad/player IDs.
+    assert all(
+        set(row) == {
+            "generation_rank",
+            "approximate_objective",
+            "exact_objective",
+        }
+        for row in result.solver["candidate_objectives"]
+    )
