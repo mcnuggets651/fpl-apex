@@ -183,7 +183,6 @@ def test_counterfactual_can_pin_exact_transfer_root() -> None:
     assert result.decision.transfers_in == (18,)
     assert result.decision.transfers_out == (8,)
     assert result.solver["counterfactual_root_transfer_count"] == 1
-    # Manager-private element IDs must not be copied into public solver diagnostics.
     assert "root_transfers_in" not in result.solver
     assert "root_transfers_out" not in result.solver
     assert not any(isinstance(value, (tuple, list, set, dict)) for value in result.solver.values())
@@ -267,16 +266,14 @@ def test_counterfactual_fails_closed_on_incomplete_exact_price_state(monkeypatch
         raise AssertionError("no MILP may run with incomplete exact owner price state")
 
     monkeypatch.setattr(stochastic_transfers, "milp", forbidden)
-    result = optimise_stochastic_transfer_policy_for_root_action(
-        official,
-        surface,
-        incomplete,
-        _stress_scenarios(),
-        max_horizon=2,
-        root_transfers_in=(),
-        root_transfers_out=(),
-    )
-
-    assert result.status == "WITHHELD_TEAM_STATE_INCOMPLETE"
-    assert result.solver["counterfactual_root_pinned"] is True
-    assert result.solver["counterfactual_diagnostic_only"] is True
+    with pytest.raises(PriceStateError, match="TeamState is incomplete"):
+        optimise_stochastic_transfer_policy_for_root_action(
+            official,
+            surface,
+            incomplete,
+            _stress_scenarios(),
+            max_horizon=2,
+            root_transfers_in=(),
+            root_transfers_out=(),
+        )
+    assert stochastic_transfers.milp is forbidden
