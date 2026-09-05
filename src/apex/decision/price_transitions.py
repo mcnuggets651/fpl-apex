@@ -42,9 +42,11 @@ def fpl_selling_price_tenths(
 class DeterministicMarketPricePath:
     """Sparse deterministic future market-price path used for replay/scenarios.
 
-    Horizon overrides are immutable and sparse. A player without an override at
-    a horizon keeps the supplied current market price. This makes an empty path
-    exactly equivalent to today's deterministic-price production semantics.
+    Horizon overrides are immutable state transitions. Once a player's price is
+    overridden, that market price carries forward through later horizons until a
+    later override changes it again. Players never overridden keep the supplied
+    current market price. An empty path is therefore exactly equivalent to
+    today's deterministic-price production semantics.
     """
 
     overrides: tuple[tuple[int, tuple[tuple[int, int], ...]], ...] = ()
@@ -85,7 +87,7 @@ class DeterministicMarketPricePath:
         if horizon < 1:
             raise PriceStateError("price-path horizons must be positive")
         try:
-            current = _price_tenths(
+            price = _price_tenths(
                 int(current_market_prices_tenths[element_id]),
                 field="current market price",
             )
@@ -94,10 +96,12 @@ class DeterministicMarketPricePath:
                 f"current market price missing for element {element_id}"
             ) from exc
         for candidate_horizon, pairs in self.overrides:
-            if candidate_horizon != horizon:
-                continue
-            return dict(pairs).get(element_id, current)
-        return current
+            if candidate_horizon > horizon:
+                break
+            candidate_prices = dict(pairs)
+            if element_id in candidate_prices:
+                price = candidate_prices[element_id]
+        return price
 
     def materialise_horizon(
         self,
