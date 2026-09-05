@@ -707,6 +707,17 @@ Editing this file, the capability registry, decision index, Draft runbook or arc
 
 ## 13. Changelog for this ledger
 
+### 2026-09-05 — Apex Proprietary shadow export restoration staged in PR #171
+
+- prospective tournament evidence repeatedly recorded Apex Proprietary as `PROVIDER_EXPORT_MISSING` even though machine authority declares it a non-serving H1–H8 shadow;
+- root-cause review found that the canonical Daily Production workflow generated AIrsenal and attempted Dastan but did not invoke the already-existing authority-selected-core `scripts/acquire_apex_proprietary_shadow.py`; no evidence showed that the proprietary model implementation itself was the primary failure;
+- PR #171 now invokes that exporter after the Official pre-provider hash is sealed and before the single immutable acquisition freeze, binds it to the exact `production_core_sha` worktree and expected Official hash, requests H1–H8, and writes `acquisition/providers/apex_proprietary.csv`;
+- the Apex Proprietary step remains `continue-on-error: true`; AIrsenal remains sole serving H1–H8 provider, and a shadow failure cannot block production or silently substitute into serving;
+- `ops_tests/test_apex_proprietary_production_wiring.py` asserts pre-freeze ordering, exact-core binding, expected Official-hash binding, canonical export path and non-serving failure semantics;
+- the first PR head `2c986a1f94a79a0cb31dfb633c92c60c96340531` failed only the governance continuity/capability gates because this ledger/test closure and precise capability metadata were not yet present; those failures were not accepted as a reason to weaken any gate;
+- machine authority, `production_core_sha`, AIrsenal serving authorization, optimiser/mechanics/publication semantics, research `production_influence=NONE` and frozen PR #90 are unchanged;
+- remaining acceptance is exact-head Apex CI + Apex V2 Ops Contract, governed merge only if green, then one real canonical Daily Production/tournament cycle proving a non-empty Apex Proprietary export is frozen prospectively and visible to the tournament.
+
 ### 2026-09-05 — owner-auth refresh amplification isolated; cached-access repair staged
 
 - Daily Production `33944494956` failed before fresh owner/provider acquisition because both rotating private refresh state and configured bootstrap refresh were rejected; later keepalive/current-secrets rerun `33966364289` reproduced the failure;
