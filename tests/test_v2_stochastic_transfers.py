@@ -92,7 +92,11 @@ def _fixture(*, max_horizon: int = 2) -> tuple[
             elif player.element_id == 20:
                 points = 0.0 if horizon == 1 else 20.0
             elif player.element_id == 21:
-                points = 0.0 if horizon == 1 else 8.0
+                # Deliberately useful as an H2 fallback, but not valuable enough
+                # to justify paying an H1 hit merely to pre-own it. This keeps
+                # the adaptation test focused on information timing rather than
+                # accidentally rewarding a rational early-buy policy.
+                points = 0.0 if horizon == 1 else 6.0
             rows.append(
                 ProjectionRow(
                     player.element_id,
@@ -204,11 +208,14 @@ def test_nonflat_policy_executes_exactly_one_stochastic_milp(monkeypatch) -> Non
 
 def test_future_action_adapts_only_after_target_price_is_observed() -> None:
     official, team, surface = _fixture()
+    # The rise branch is intentionally low enough probability that paying an H1
+    # hit to pre-buy P20 is inferior to waiting. Once H2 arrives, the realised
+    # price state can legitimately change the optimal continuation.
     scenarios = (
-        PriceScenario("flat", 0.5),
+        PriceScenario("flat", 0.8),
         PriceScenario(
             "target-rises",
-            0.5,
+            0.2,
             DeterministicMarketPricePath.from_mapping({2: {20: 51}}),
         ),
     )
