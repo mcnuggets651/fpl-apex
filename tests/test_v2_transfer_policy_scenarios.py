@@ -78,3 +78,24 @@ def test_policy_rejects_surviving_route_without_exact_bank() -> None:
 
     with pytest.raises(PriceStateError, match="must report its exact end bank"):
         summarise_transfer_policy(values)
+
+
+def test_policy_rejects_nonfinite_continuation_points() -> None:
+    values = (ScenarioActionValue("ROLL", "flat", 1.0, float("nan"), True, 0),)
+
+    with pytest.raises(PriceStateError, match="expected points must be finite"):
+        summarise_transfer_policy(values)
+
+
+def test_policy_rejects_negative_surviving_bank() -> None:
+    values = (ScenarioActionValue("ROLL", "flat", 1.0, 10.0, True, -1),)
+
+    with pytest.raises(PriceStateError, match="non-negative integer"):
+        summarise_transfer_policy(values)
+
+
+def test_policy_rejects_terminal_bank_for_priced_out_route() -> None:
+    values = (ScenarioActionValue("BUY", "rise", 1.0, 9.0, False, 0),)
+
+    with pytest.raises(PriceStateError, match="must not report a terminal end bank"):
+        summarise_transfer_policy(values)
