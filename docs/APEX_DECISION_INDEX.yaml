@@ -35,6 +35,7 @@
     {"id":"D029","status":"partially_superseded","capabilities":["PROD-004","PROD-013","PROD-014"],"superseded_by":["D031"],"note":"Single sealed-surface principle remains, while old Pinnacle/Elite publication references are superseded."},
     {"id":"D030","status":"historical","capabilities":["RES-005"],"superseded_by":[],"note":"Missing-evidence semantics remain model history; V2 core is implementation authority."},
     {"id":"D031","status":"active","capabilities":["GOV-001","GOV-006","PROD-001","PROD-005","RES-001","RES-002","INT-001","LEG-001","LEG-002","LEG-003","LEG-004"],"superseded_by":[],"note":"V2 production authority cutover and research/legacy boundary."},
-    {"id":"D032","status":"active","capabilities":["GOV-002","GOV-003","INT-001","PRIV-007","PRIV-008"],"superseded_by":[],"note":"Capability/documentation constitution: one semantic registry, one current system map, ref-aware enforcement, no duplicated movable authority/state."}
+    {"id":"D032","status":"active","capabilities":["GOV-002","GOV-003","INT-001","PRIV-007","PRIV-008"],"superseded_by":[],"note":"Capability/documentation constitution: one semantic registry, one current system map, ref-aware enforcement, no duplicated movable authority/state."},
+    {"id":"D033","status":"active","capabilities":["GOV-002","GOV-003","PROD-010","PROD-011","PRIV-003"],"superseded_by":[],"note":"Transfer policy is the owner-facing product; price-aware receding-horizon planning is a required production-core successor destination, with shadow/canary use only as a temporary certification gate."}
   ]
 }
