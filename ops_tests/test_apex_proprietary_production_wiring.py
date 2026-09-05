@@ -20,6 +20,12 @@ class ApexProprietaryProductionWiringTests(unittest.TestCase):
             self.assertIn(needle, self.text)
         self.assertLess(self.text.index(step), self.text.index(freeze))
 
+    def test_shadow_export_must_be_nonempty(self) -> None:
+        self.assertIn(
+            'test -s "$GITHUB_WORKSPACE/acquisition/providers/apex_proprietary.csv"',
+            self.text,
+        )
+
     def test_shadow_failure_cannot_replace_serving_airsenal(self) -> None:
         start = self.text.index("- name: Generate Apex Proprietary H1-H8 shadow")
         end = self.text.index("- name: Acquire Dastan H1 shadow", start)
