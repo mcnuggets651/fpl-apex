@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 4 September 2026, after PR #158 merged the exact-ID auth activation-race repair and the GW3 PITCHSIDE postmortem exposed a bounded prospective-tournament reseal defect now being repaired on `agent/pitchside-predeadline-recovery`
+**State snapshot:** 5 September 2026, after PR #160 merged the PITCHSIDE predeadline-recovery repair and the project committed price-aware receding-horizon transfer planning as a required production-core successor destination under D033
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -56,7 +56,9 @@ After #157 merged, one fresh browser-issued refresh credential was re-seeded dir
 
 That failure did **not** require another token. PR #158, **Fix same-run FPL refresh draft activation race**, merged at `8efaa70b1172b0a0c6d20357d5d528a5a65ac8b7` from exact head `4528715a625adc94a60a249e1fb4df42c5811bae` after Apex CI `33913733476` and Apex V2 Ops Contract `33913733468` passed. Same-run activation now uses the exact staged release ID/upload digests; cross-run recovery remains list + re-download/decrypt based. Any remaining auth health claim must come from fresh runtime evidence rather than the pre-merge failure.
 
-Canonical production run `33850307770-1` remains the accepted serving proof. AIrsenal remains sole serving provider H1–H8. Dastan and PITCHSIDE remain research-only. The GW3 postmortem identified a separate research-only defect: one immutable tournament candidate per production `run_id` plus schedule-only maintenance meant a PITCHSIDE DNS could not recover automatically if the external source became complete later before deadline. `agent/pitchside-predeadline-recovery` makes external seals content-addressed, lets the existing hourly schedule reseal the same immutable production run when evidence changes, and selects the latest valid `tournament_sealed_at`. Production authority, optimiser semantics, research influence and frozen PR #90 remain unchanged.
+Canonical production run `33850307770-1` remains the accepted serving proof. AIrsenal remains sole serving provider H1–H8. Dastan and PITCHSIDE remain research-only. The GW3 PITCHSIDE recoverability defect is now closed in code by PR #160: exact head `f7b67d0a79acef82ee4fa0b0b858a207810f5521` passed Apex CI `33927262385` and Apex V2 Ops Contract `33927262342`, then merged at `4e02c315509f41865198dd3cc1ea6098c5bd2f73`. Materially changed predeadline PITCHSIDE evidence can now create a content-addressed reseal for the same immutable production run, the hourly schedule participates in resealing, unchanged evidence stays idempotent, and canonical selection uses latest valid `tournament_sealed_at`. Production authority, optimiser semantics, research influence, no-hindsight and frozen PR #90 remain unchanged.
+
+A separate manager-decision architecture decision is now explicit under D033: Apex's primary product is the owner transfer/squad-management decision, not projection tables. Price-aware receding-horizon transfer planning is a required production-core successor destination. Any research/shadow/canary implementation is temporary certification evidence only; it is not an acceptable permanent terminal state. This documentation decision does **not** change current machine authority or production output. Implementation and promotion remain separately gated.
 
 ### Production acceptance
 
@@ -145,7 +147,7 @@ Public PR #154, **Complete governed FPL Draft authenticated owner-query relay**,
 - exact-head Apex V2 Ops Contract `33896311949`: success;
 - merge commit/authenticated-relay public baseline: `4a37729b7cf38a72a48a511fbeb60c7decb89af4`;
 - `OPS-008` authenticated Draft transaction relay registered;
-- `PRIV-009` live Draft owner query registered;
+- `PRIV-009` live FPL Draft owner query registered;
 - `INT-001` depends on `PRIV-009`.
 
 The merged public relay successfully authenticated and queried the real entry transaction endpoint. Public run `33896772261` passed certified owner credential acquisition, authenticated Draft transaction acquisition, private dispatch and frozen-worktree proof.
@@ -204,9 +206,9 @@ PR #157 then permanently moved rotation durability ahead of manager verification
 
 After a fresh browser refresh re-seed, Keepalive rerun job `101151219540` proved the new bootstrap credential exchanged successfully and exact manager verification completed. It failed only at immediate post-verification activation because `_activate_staged_rotation` re-listed releases and did not yet see the just-created private draft. The new child remains staged private recovery evidence; no fallback was attempted and the authority core stayed untouched.
 
-Bounded branch `agent/auth-stage-activation-race` now retains the exact private draft release ID plus upload SHA-256 map from staging and uses those values for same-run activation. Recovery from a prior process/run continues to use authenticated draft listing and re-download/decryption. Wrong-manager same-run state is purged by exact release ID. This is an activation-race correction inside the already accepted two-phase design, not a new auth architecture.
+PR #158 removed that eventual-consistency dependency by retaining the exact private draft release ID plus upload SHA-256 map from staging and using those values for same-run activation. Recovery from a prior process/run continues to use authenticated draft listing and re-download/decryption. Wrong-manager same-run state is purged by exact release ID. This is an activation-race correction inside the already accepted two-phase design, not a new auth architecture.
 
-**Do not call current pending/open waiver retrieval certified yet.** Historical connection/relay/private receipt evidence remains valid. Finish exact-ID activation acceptance, recover the already-staged valid child through one merged Keepalive run, then resume `OPS-008` and exact `my-team`/open-waiver semantic discovery.
+**Do not call current pending/open waiver retrieval certified yet.** Historical connection/relay/private receipt evidence remains valid. Current certification still requires fresh runtime evidence after the merged auth repair plus exact `my-team`/open-waiver semantic discovery.
 
 ### Operational qualification
 
@@ -235,13 +237,13 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - PR #156, **Diagnose unexpected Official FPL owner status safely**, exact head `174790f7cea7d0b2f235f0a607630d0c974b76a9`, passed Apex CI `33902899716` and Ops Contract `33902899673`, merged at `cd5bd12eda187c372b8d389260768667d0e26234`;
 - PR #157, **Harden FPL owner-auth refresh rotation durability**, exact head `e0a0f5c4a62f07ef10ad17f544bd7b08b63f19f7`, passed Apex CI `33911107334` and Ops Contract `33911107378`, merged at `1219861f3b9c3d707f6c80f94fa6f26325bab4a1`;
 - fresh browser re-seed acceptance attempt: Keepalive run `33911608442`, attempt-2 job `101151219540`, reached verified staged-child activation and failed only on immediate release-list rediscovery;
-- PR #158, **Fix same-run FPL refresh draft activation race**, exact head `4528715a625adc94a60a249e1fb4df42c5811bae`, passed Apex CI `33913733476` and Ops Contract `33913733468`, merged at current public `main` `8efaa70b1172b0a0c6d20357d5d528a5a65ac8b7`;
-- active bounded research-operations repair branch: `agent/pitchside-predeadline-recovery`;
+- PR #158, **Fix same-run FPL refresh draft activation race**, exact head `4528715a625adc94a60a249e1fb4df42c5811bae`, passed Apex CI `33913733476` and Ops Contract `33913733468`, merged at `8efaa70b1172b0a0c6d20357d5d528a5a65ac8b7`;
+- PR #160, **Fix PITCHSIDE predeadline tournament recovery**, exact head `f7b67d0a79acef82ee4fa0b0b858a207810f5521`, passed Apex CI `33927262385` and Apex V2 Ops Contract `33927262342`, merged at current public `main` `4e02c315509f41865198dd3cc1ea6098c5bd2f73`;
 - protected control plane; historical ruleset identifier `21759706` — verify live before relying on it.
 
 ### Machine authority
 
-`docs/APEX_V2_AUTHORITY.json` was re-read before this activation-race repair and remains unchanged:
+`docs/APEX_V2_AUTHORITY.json` was re-read before this transfer-policy architecture decision and remains unchanged:
 
 - `schema_version`: `1`;
 - `season`: `2026-2027`;
@@ -260,7 +262,7 @@ These values are a dated continuity snapshot. At session start verify live GitHu
 - automatic promotion: `false`;
 - legacy status: `HISTORICAL_NON_SERVING`.
 
-The Draft owner-query/relay/status-diagnostic/two-phase auth and exact-ID activation repairs do not change machine authority.
+The transfer-policy architecture decision and PR #160 research-operations repair do not change machine authority.
 
 ### Frozen PR #90
 
@@ -372,7 +374,7 @@ PR #157 then closed the exchange-before-durable-child defect. It merged at `1219
 
 The owner then re-seeded `FPL_REFRESH_TOKEN` once with a fresh browser-issued refresh token directly in GitHub Actions. Keepalive run `33911608442` attempt-2 job `101151219540` is the accepted proof that this credential is valid: the bootstrap exchange succeeded, a rotated child was staged, manager verification succeeded, and the workflow reached activation. It failed only because same-run activation tried to rediscover the newly created draft via `list_releases()` and received no immediate match. The child was not discarded or exposed; fail-closed behavior preserved it as private staged recovery evidence.
 
-Bounded `agent/auth-stage-activation-race` removes that eventual-consistency dependency:
+PR #158 removed that eventual-consistency dependency:
 
 1. `_stage_refresh_rotation` returns the exact GitHub draft release ID and upload SHA-256 map together with its tag;
 2. after exact manager match, same-run activation passes that exact release ID/map to the existing private-store `_publish_draft`, which verifies the release asset set and GitHub SHA-256 digests before immutable publication;
@@ -380,7 +382,7 @@ Bounded `agent/auth-stage-activation-race` removes that eventual-consistency dep
 4. same-run wrong-manager state is deleted using the exact returned release ID, while recovered wrong-manager state retains strict list-based purge;
 5. regression tests model a draft that exists by ID but is invisible to `list_releases()` and require both matched-owner activation and wrong-manager purge to succeed.
 
-Do **not** request another browser token merely because attempt 2 failed activation. The evidence proves the submitted credential was valid and generated a staged child. After this race fix merges, run one Keepalive to recover that staged chain and activate forward. Ask for another re-seed only if the merged recovery run proves the existing staged child is genuinely unrecoverable and the consumed bootstrap parent cannot be reused.
+Do **not** request another browser token merely because attempt 2 failed activation. The evidence proves the submitted credential was valid and generated a staged child. Ask for another re-seed only if fresh governed runtime evidence proves the existing staged child/credential path is genuinely unrecoverable.
 
 ---
 
@@ -438,6 +440,12 @@ Official FPL is authoritative for player identity/element ID, club, FPL position
 ### Serving forecasts
 
 AIrsenal is current production champion and sole serving provider H1–H8. Shadow/challenger disagreement is diagnostic/research evidence only unless promoted through explicit governance. Draft query state does not change serving forecasts.
+
+### Manager-decision objective
+
+Apex's owner-facing product is the legal squad-management decision. Forecasts are inputs to that decision. Receding-horizon transfer planning must compare ROLL against strong legal transfer paths from the exact owner state and carry future optionality rather than merely rank non-owned players by standalone xP.
+
+Price-aware transfer planning is a required future production-core successor capability under D033. Future price uncertainty must alter route feasibility/continuation value only; it must not manufacture fantasy points or add an arbitrary team-value reward. Research/canary operation is transitional certification evidence, not a terminal non-serving home for this capability.
 
 ### Research isolation
 
@@ -585,8 +593,15 @@ Public PR #151 added the single semantic capability registry and decision index,
 - public PR #157 merged the two-phase rotation durability repair at `1219861f3b9c3d707f6c80f94fa6f26325bab4a1` after exact-head Apex CI `33911107334` and Ops Contract `33911107378`;
 - a fresh browser refresh re-seed then runtime-proved successful bootstrap exchange, private child staging and exact manager verification in Keepalive job `101151219540`;
 - that same run exposed only an eventual-consistency race between just-created draft release ID and immediate `list_releases()` rediscovery before activation;
-- bounded `agent/auth-stage-activation-race` now activates the exact returned release ID/digest map while preserving list + re-download recovery across runs;
-- pending/open-waiver semantics remain deliberately uncertified until exact-ID activation is accepted live, current authenticated `my-team` semantics are proven and the private fresh-session receipt is revalidated.
+- PR #158 then removed the same-run list-visibility dependency while preserving list + re-download recovery across runs;
+- pending/open-waiver semantics remain deliberately uncertified until fresh auth/current `my-team` semantics are proven and the private fresh-session receipt is revalidated.
+
+### Era N — PITCHSIDE recoverability closure and transfer-policy product commitment
+
+- PR #160 merged the bounded PITCHSIDE predeadline reseal recovery with exact-head Apex CI/Ops Contract green while preserving research-only/no-hindsight boundaries;
+- D033 then made the owner transfer/squad-management decision the explicit product objective and made price-aware receding-horizon transfer planning a required production-core successor destination;
+- research/shadow/canary execution for the transfer policy is explicitly transitional certification evidence, not an acceptable permanent destination;
+- current machine authority, AIrsenal serving role, exact production core and frozen PR #90 remain unchanged until a future certified successor is explicitly promoted.
 
 ---
 
@@ -625,25 +640,30 @@ Public PR #151 added the single semantic capability registry and decision index,
 31. **Do not retain staged credentials proven to belong to another manager.** Purge the wrong-manager staged chain or stop for manual private-store cleanup.
 32. **Do not ask for another browser re-seed after the accepted 4 September attempt merely because same-run draft activation failed.** The new credential already exchanged and verified the manager; first recover the durable staged child.
 33. **Do not make same-run activation depend on immediate `list_releases()` visibility.** Use the exact release ID/upload digests returned by the successful stage call; reserve list + re-download for cross-run recovery.
-34. **Do not treat an external-provider DNS as terminal before the deadline.** PITCHSIDE must be re-captured prospectively against the same Official hash and a materially changed source must be allowed to create a new immutable seal for the same production run.
+34. **Do not treat an external-provider DNS as terminal before the deadline.** PITCHSIDE may be re-captured prospectively against the same Official hash and a materially changed source may create a new immutable seal for the same production run.
 35. **Do not select repeated external captures by `snapshot_frozen_at`.** Canonical prospective selection is by latest valid `tournament_sealed_at`; the production snapshot timestamp remains immutable evidence, not a reseal clock.
+36. **Do not treat standalone player xP rankings as transfer strategy.** Owner decisions must compare legal routes from the exact TeamState, with ROLL as a real candidate and FT/bank/future-path effects carried forward.
+37. **Do not permanently park price-aware transfer planning in shadow/research.** Shadow/canary is a promotion gate only. The committed destination is a certified production-core successor, and price movement may change affordability/continuation value but may not manufacture fantasy points.
 
 ---
 
-## 11. Next actions — close PITCHSIDE reseal recovery and verify live runtime state from evidence
+## 11. Next actions — implement the price-aware transfer-policy successor and verify live owner runtime state
 
-The serving production and Classic owner-query system remain accepted. PR #158 has merged the bounded exact-ID auth activation code. Current auth/Draft runtime health must be verified from fresh runs before making new owner-specific claims; do not infer it from the earlier pre-merge failure.
+The serving production and Classic owner-query system remain accepted. PR #160 has closed the bounded PITCHSIDE predeadline recoverability code defect. Current auth/Draft runtime health must still be established from fresh governed evidence before making new owner-specific claims; do not infer it from historical pre-repair failures.
 
-Immediate bounded PITCHSIDE closure:
+The primary product-development programme is now D033:
 
-1. finish `agent/pitchside-predeadline-recovery` with `GOV-002`, `GOV-004`, `PROD-006` and `RES-001` only if the exact changed-path semantic checker agrees;
-2. require regression proof that unchanged PITCHSIDE bytes are idempotent, DNS→healthy evidence creates a distinct seal, scheduled hourly execution participates in sealing and canonical selection uses `tournament_sealed_at`;
-3. require Apex CI and Apex V2 Ops Contract to pass on the exact final PR head; do not weaken no-hindsight, immutability, privacy, common-Official-hash or research-only gates;
-4. merge only after live `main`, machine authority and frozen PR #90 are reverified unchanged;
-5. accept live recovery on the next still-predeadline Gameweek only when the scheduled tournament path can retain an earlier DNS and later seal a materially changed valid PITCHSIDE publication against the same immutable production run/hash;
-6. never backfill GW3 after the deadline; its already-sealed/canonical evidence remains immutable historical prospective evidence.
+1. specify the successor transfer-policy state contract from the exact current production core: exact TeamState, bank, FT rollover, purchase/selling prices, legal squad mechanics and AIrsenal H1–H8 remain the baseline inputs;
+2. add a deterministic, replayable price-transition evidence layer that stores timestamped pre-change inputs and produces calibrated uncertainty for future price movement without reverse-engineering or inventing hidden FPL rules;
+3. represent future price uncertainty as route-feasibility scenarios/distributions, not as a synthetic points or team-value bonus;
+4. compare ROLL, materially strong one-transfer moves, legal multi-transfer combinations, chained future routes and justified hits by expected continuation value, including route-survival probability, price-out risk, wait regret, information regret, FT option value and policy stability;
+5. require zero-price-variance/no-price-change cases to reproduce the existing optimiser semantics, and require exact selling-price/purchase-price/FT/hit/squad-legality mechanics under adversarial tests;
+6. keep research/shadow/canary execution strictly transitional and non-serving while collecting prospective predeadline evidence; no hindsight, no automatic promotion and no weakening of privacy/replay/certification gates;
+7. once the descendant successor passes exact-head CI, readiness, deterministic replay, adversarial mechanics tests and prospective/canary acceptance, promote only by the existing explicit `production_core_sha` governance path; never merge or advance frozen PR #90;
+8. after promotion, extend the private `PRIV-003` strategy query to expose the authority-correct route comparison/timing evidence without solving independently or creating a second authority;
+9. update the capability registry only when actual capability ownership, entry points, dependencies, runbooks, tests or change surfaces are introduced/changed; D033 itself does not invent unimplemented capability IDs.
 
-Normal operations remain: keep the private runner healthy, verify current auth/Draft state from governed runtime evidence, keep Deadline Watch/auth/production workflows healthy, obtain fresh Official FPL/provider state each deadline, use private `latest` for Classic owner retrieval, keep research non-serving, keep PR #90 frozen and update this ledger whenever substantive state changes.
+Normal operations remain: keep the private runner healthy, verify current auth/Draft state from governed runtime evidence, keep Deadline Watch/auth/production workflows healthy, obtain fresh Official FPL/provider state each deadline, use private `latest` for Classic owner retrieval, keep research non-serving until explicit promotion, keep PR #90 frozen and update this ledger whenever substantive state changes.
 
 ---
 
@@ -684,6 +704,23 @@ Editing this file, the capability registry, decision index, Draft runbook or arc
 ---
 
 ## 13. Changelog for this ledger
+
+### 2026-09-05 — transfer policy committed as required production destination
+
+- D033 records that Apex's primary owner-facing product is the legal transfer/squad-management decision; forecasts are inputs, not the end product;
+- `docs/APEX_ARCHITECTURE.md` now makes price-aware receding-horizon transfer planning a required production-core successor destination;
+- the successor must compare ROLL and legal transfer paths from exact owner TeamState, preserve exact FT/bank/purchase/selling-price mechanics and quantify route survival, price-out risk, wait/information regret and policy stability where supportable;
+- price movement may alter affordability/continuation value but must never create an arbitrary team-value/xP bonus;
+- research/shadow/canary execution is explicitly a temporary certification/promotion gate, not an acceptable permanent home for this capability;
+- no new unimplemented registry capability was invented: the registry changes only when actual ownership/entry points/dependencies/runbooks/tests/change surfaces change;
+- this decision does not change `production_core_sha`, AIrsenal serving authority, current production output, research production influence, private owner state or frozen PR #90.
+
+### 2026-09-05 — master reconciled after PR #160 merge
+
+- PR #160 exact head `f7b67d0a79acef82ee4fa0b0b858a207810f5521` passed Apex CI `33927262385` and Apex V2 Ops Contract `33927262342`;
+- PR #160 merged at `4e02c315509f41865198dd3cc1ea6098c5bd2f73`, replacing the stale master statement that PITCHSIDE predeadline recovery was still an active branch;
+- materially distinct external evidence can be resealed before deadline against one immutable production run/Official hash, unchanged evidence remains idempotent, the hourly schedule participates, and selection uses latest valid `tournament_sealed_at`;
+- AIrsenal serving authority, machine authority, no-hindsight, privacy, OpenFPL readiness policy and frozen PR #90 remain unchanged.
 
 ### 2026-09-04 — PITCHSIDE same-run predeadline recovery defect bounded after PR #158 merge
 
