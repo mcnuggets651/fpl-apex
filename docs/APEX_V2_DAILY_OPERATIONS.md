@@ -30,7 +30,7 @@ Workflow: `.github/workflows/apex-v2-auth-keepalive.yml`
 
 Schedule: `22 */6 * * *` UTC.
 
-The keepalive resolves the authority-selected production core, verifies its ancestry to the frozen forensic base, validates/rotates durable FPL owner credentials through the two-phase transaction described below, and verifies exact manager identity. It cannot acquire providers, solve or publish a recommendation. It shares the non-cancelling `apex-v2-fpl-auth` concurrency boundary with production and the Draft relay.
+The keepalive resolves the authority-selected production core, verifies its ancestry to the frozen forensic base, validates the newest encrypted manager-verified access token when one exists, and rotates durable FPL refresh state only after Official FPL explicitly rejects that cached access (or when legacy state has no cached access). It cannot acquire providers, solve or publish a recommendation. It shares the non-cancelling `apex-v2-fpl-auth` concurrency boundary with production and the Draft relay.
 
 ### Authenticated FPL Draft transaction relay
 
@@ -40,7 +40,7 @@ Runbook: [`APEX_DRAFT_QUERY.md`](APEX_DRAFT_QUERY.md).
 
 Schedule: `7,22,37,52 * * * *` UTC plus manual dispatch and bounded `main` push execution for relay-contract changes.
 
-The relay is an owner-query operation, not a serving path. It shares the same non-cancelling `apex-v2-fpl-auth` concurrency boundary as production/keepalive so refresh-state rotation cannot race. It:
+The relay is an owner-query operation, not a serving path. It shares the same non-cancelling `apex-v2-fpl-auth` concurrency boundary as production/keepalive so refresh-state rotation cannot race. Its frequent read cadence does **not** grant permission to exchange a one-time refresh credential on every poll: it must reuse a still-valid manager-verified cached access token and enter refresh rotation only after explicit cached-access rejection. It:
 
 1. resolves the same authority-selected production-core auth preflight/config used by production and proves that core descends from the immutable forensic base;
 2. runs the current control-plane `scripts/apex_v2_auth_ops.py` transaction controller against those core-owned auth primitives;
@@ -104,24 +104,39 @@ It audits immutable attempt/final state, prospectively scores newly completed Ga
 
 ## Authentication recovery
 
-The rotating owner credential is a serialized two-phase private transaction:
+Owner authentication is a serialized private state machine with two credential layers: a short-lived access token for ordinary authenticated reads and a one-time rotating refresh token used only to renew access.
 
-1. load the newest active encrypted private refresh state, or the explicitly configured bootstrap refresh only when bounded recovery permits it;
+For active auth state created by the current controller, the encrypted private payload may contain both the rotated refresh child and the access token that was proved against the configured manager before activation. Legacy schema-v1 payloads containing only a refresh token remain valid and simply enter the existing refresh transaction once.
+
+Normal authentication now proceeds in this order:
+
+1. load the newest active encrypted private auth state;
+2. if that active state contains a cached access token, call Official FPL `/api/me/` through the authority-selected preflight semantics and require exact entry `63984`;
+3. if cached access still matches, reuse it for the current workflow and **do not exchange the refresh token**;
+4. if Official FPL explicitly returns cached access as `rejected`, continue to the rotating refresh transaction below;
+5. if cached access proves `wrong_manager`, stop immediately; if its verification has a network/unclassified/unexpected failure, fail closed **without consuming the refresh token**;
+6. if no current cached access exists (for example a legacy private auth payload), continue to refresh rotation.
+
+The rotating refresh transaction remains the same durable two-phase boundary:
+
+1. load the current refresh parent from the newest active encrypted state, or the explicitly configured bootstrap refresh only when bounded recovery permits it;
 2. before exchanging a parent, recover any already-staged encrypted child for that exact parent from authenticated private release listing, so a consumed parent is never blindly retried;
 3. exchange the current refresh token once;
-4. immediately encrypt and durably upload the rotated child as a **private draft** before making `/api/me/` manager verification a success prerequisite, retaining the exact GitHub release ID and upload SHA-256 map returned by that successful stage call;
+4. immediately encrypt and durably upload the rotated child **together with the newly issued access token** as a private draft before making `/api/me/` manager verification a success prerequisite, retaining the exact GitHub release ID and upload SHA-256 map returned by that successful stage call;
 5. verify the returned access token against the configured manager entry;
-6. only after an exact manager match, activate that exact same-run release ID after the private store re-verifies its asset set and GitHub SHA-256 digests against the upload map, then publish it immutably as active refresh state;
-7. for crash recovery on a later serialized run, discover the staged child through authenticated private release listing and re-download/decrypt/validate it before using it to recover forward;
+6. only after an exact manager match, activate that exact same-run release ID after the private store re-verifies its asset set and GitHub SHA-256 digests against the upload map, then publish it immutably as active auth state;
+7. for crash recovery on a later serialized run, discover the staged child through authenticated private release listing and re-download/decrypt/validate it before using the refresh child to recover forward; an access token inside an inactive staged draft is never treated as certified reusable access;
 8. after successful activation, best-effort clean consumed intermediate staged drafts.
 
 Same-run activation must not depend on immediate visibility through GitHub's release-list endpoint: the just-created draft's exact release ID and upload digests are already authoritative transaction evidence and avoid an eventual-consistency race. Recovery after process loss is different and deliberately uses authenticated draft listing plus re-download/decryption before the staged child is reused.
 
-A staged draft is durable recovery evidence, **not active auth state**. Any network/unclassified/rejected access result after a successful exchange is `RefreshRotationIndeterminate`: leave the child staged, do not retry the consumed parent and do not fall through to bootstrap or direct authentication. The next serialized run must recover forward from that staged child. Explicit wrong-manager proof is different: the exact same-run draft is purged by its returned release ID, recovered wrong-manager staged state is also strictly discarded, and failure to purge requires manual private-store cleanup and remains a hard failure.
+A staged draft is durable recovery evidence, **not active auth state**. Any network/unclassified/rejected access result after a successful refresh exchange is `RefreshRotationIndeterminate`: leave the child staged, do not retry the consumed parent and do not fall through to bootstrap or direct authentication. The next serialized run must recover forward from that staged child. Explicit wrong-manager proof is different: the exact same-run draft is purged by its returned release ID, recovered wrong-manager staged state is also strictly discarded, and failure to purge requires manual private-store cleanup and remains a hard failure.
 
 The bounded recovery ladder is entered only when the refresh **exchange itself** is explicitly rejected/expired before a new child is staged. It may then try a configured bootstrap refresh token through the same two-phase transaction. For production only, direct bearer/cookie verification is allowed after both rotating and bootstrap refresh exchanges are explicitly rejected. Keepalive cannot substitute direct auth for a dead durable refresh chain.
 
-If a browser-issued refresh credential is genuinely required because both durable refresh sources are expired, it must be re-seeded explicitly in GitHub Actions secrets; automation cannot manufacture a Premier League login. Never paste that credential into chat, logs, documentation or an issue.
+The 5 September 2026 auth incident exposed why cached access is required operationally: the 15-minute authenticated Draft relay was serialized correctly but still invoked the refresh grant on every successful poll, creating unnecessary refresh-token amplification. Frequent read cadence must be served by cached access; it must not imply frequent refresh rotation.
+
+If a browser-issued refresh credential is genuinely required because both durable refresh sources are expired, it must be re-seeded explicitly in GitHub Actions secrets; automation cannot manufacture a Premier League login. Never paste that credential into chat, logs, documentation or an issue. After an auth-lifecycle repair that changes rotation/reuse behavior, runtime acceptance requires one successful re-seed/rotation followed by repeated authenticated runs that demonstrably reuse cached access before the next explicit access rejection causes exactly one new refresh exchange.
 
 The Draft relay deliberately reuses this one certified owner-auth lifecycle. It may not read/decrypt private refresh state independently, create a second refresh-token owner or bind itself permanently to the frozen forensic preflight.
 
@@ -152,6 +167,8 @@ Fail closed on:
 - any change to the immutable PR #90 forensic SHA;
 - a production core that is not descended from the immutable base;
 - private store/authentication/manager identity failure;
+- cached-access wrong-manager proof;
+- cached-access verification transport/unclassified failure (without consuming refresh state);
 - staged refresh rotation that cannot be durably created, recovered, verified or activated;
 - any attempt to fall back after an indeterminate post-exchange refresh state;
 - wrong-manager staged state that cannot be purged;
@@ -172,12 +189,14 @@ Workflow: `.github/workflows/apex-v2-ops-contract.yml`
 
 It runs operations/research regressions against the exact frozen evaluator, separately verifies the authority-declared production core and its ancestry, rejects operations changes to engine `src/`/`config/`, verifies production/auth/evaluation/research safety boundaries, enforces Decision Quality runtime/no-hindsight contracts and verifies retired publishers remain archived/inert.
 
-Generic `Apex CI` resolves the same authority-declared production core. The auth regression suite additionally verifies that production, keepalive and Draft relay all pass the authority-selected core preflight/config to the one current operations auth controller and remain inside the same non-cancelling auth concurrency group.
+Generic `Apex CI` resolves the same authority-declared production core. The auth regression suite additionally verifies that production, keepalive and Draft relay all pass the authority-selected core preflight/config to the one current operations auth controller and remain inside the same non-cancelling auth concurrency group. Auth-specific adversarial tests also require manager-verified cached access to bypass refresh exchange, explicit cached-access rejection to permit one refresh rotation, legacy no-cache state to remain compatible and any ambiguous cached-access failure to preserve the refresh parent.
 
 Operations or authority-reconciliation changes may touch only explicit allowlisted governance/workflow/documentation paths. Moving `production_core_sha` requires the separate deliberate successor certification/readiness/canary process; moving `frozen_engine_sha` is prohibited. Durable docs intentionally do not copy the movable serving SHA, so a future promotion can remain a one-file authority change.
 
 ## Runtime acceptance
 
-CI is necessary but live state matters. An authentication repair is accepted only when the exact merged head receives a real secret/private-store runtime proof of the two-phase rotation after any required browser re-seed. A successor promotion requires exact-head assurance plus the read-only core readiness/canary proof before `production_core_sha` can change. For Decision Quality, see [`operations/PARALLEL_DECISION_LAB.md`](operations/PARALLEL_DECISION_LAB.md).
+CI is necessary but live state matters. An authentication repair is accepted only when the exact merged head receives a real secret/private-store runtime proof after any required browser re-seed. For the cached-access lifecycle, acceptance requires: one successful bootstrap/rotation, at least two subsequent serialized authenticated workflow executions proving `auth_recovery=cached_access` without a refresh exchange, and a later explicit access rejection proving exactly one new refresh rotation followed by cached-access reuse again. Until that sequence is observed, the code may be merged after green CI but the live owner-auth incident is not closed.
+
+A successor promotion requires exact-head assurance plus the read-only core readiness/canary proof before `production_core_sha` can change. For Decision Quality, see [`operations/PARALLEL_DECISION_LAB.md`](operations/PARALLEL_DECISION_LAB.md).
 
 For authenticated Draft owner transactions, acceptance additionally requires a successful merged public relay run, a successful private repository-dispatch receiver run, inspection of the resulting credential-free private artifact and final private public-capability binding acceptance. Current open/pending waiver semantics remain separately fail-closed until `APEX_DRAFT_QUERY.md`'s exact current-request surface is runtime-proven.
