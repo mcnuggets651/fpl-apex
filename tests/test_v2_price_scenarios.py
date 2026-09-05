@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from apex.decision.price_scenarios import (
@@ -164,6 +166,50 @@ def test_scenario_summary_reports_route_survival_and_price_out_probability() -> 
     assert summary.priced_out_probability == pytest.approx(0.4)
     assert summary.expected_end_bank_tenths_given_survival == pytest.approx(0.0)
     assert summary.minimum_end_bank_tenths_given_survival == 0
+
+
+def test_inconsistent_owner_price_state_fails_closed_not_as_price_out() -> None:
+    official, team = _fixture()
+    selling = dict(team.selling_prices_tenths)
+    selling[1] = 49
+    inconsistent = replace(team, selling_prices_tenths=selling)
+
+    with pytest.raises(PriceStateError, match="observed selling price disagrees"):
+        evaluate_transfer_route_price_scenarios(
+            official,
+            inconsistent,
+            _two_week_route(),
+            (PriceScenario("flat", 1.0),),
+        )
+
+
+def test_invalid_route_sequence_fails_closed_not_as_price_out() -> None:
+    official, team = _fixture()
+    route = _two_week_route()
+    invalid = (route[1], route[0])
+
+    with pytest.raises(PriceStateError, match="strictly increasing"):
+        evaluate_transfer_route_prices(
+            official,
+            team,
+            invalid,
+            scenario=PriceScenario("flat", 1.0),
+        )
+
+
+def test_baseline_bank_mismatch_fails_closed() -> None:
+    official, team = _fixture()
+    route = list(_two_week_route())
+    route[0] = replace(route[0], bank_tenths=1)
+
+    with pytest.raises(PriceStateError, match="disagrees with optimiser bank"):
+        evaluate_transfer_route_prices(
+            official,
+            team,
+            tuple(route),
+            scenario=PriceScenario("flat", 1.0),
+            require_baseline_bank_match=True,
+        )
 
 
 def test_scenario_probabilities_must_sum_to_one() -> None:
