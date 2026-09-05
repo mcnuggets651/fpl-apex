@@ -110,6 +110,18 @@ def optimise_stochastic_transfer_policy_for_root_action(
         root_transfers_in,
         root_transfers_out,
     )
+
+    owned = set(map(int, team.squad_ids))
+    if (
+        not team.state_complete_for_transfers
+        or len(owned) != 15
+        or set(map(int, team.purchase_prices_tenths)) != owned
+        or set(map(int, team.selling_prices_tenths)) != owned
+    ):
+        raise PriceStateError(
+            "exact owner purchase/selling-price TeamState is incomplete for counterfactual"
+        )
+
     player_ids, transact, tree, flat_tree = _solver_players_and_tree(
         official,
         surface,
@@ -122,7 +134,6 @@ def optimise_stochastic_transfer_policy_for_root_action(
             "root-action counterfactuals require a non-flat stochastic price tree"
         )
 
-    owned = set(map(int, team.squad_ids))
     unknown = sorted((set(incoming) | set(outgoing)) - set(player_ids))
     if unknown:
         raise PriceStateError("root action references elements outside solver universe")
