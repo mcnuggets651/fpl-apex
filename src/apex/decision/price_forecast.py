@@ -94,6 +94,35 @@ class PriceChangeDistribution:
         if not isclose(sum(values), 1.0, rel_tol=0.0, abs_tol=1e-9):
             raise PriceStateError("price probabilities must sum to 1")
 
+    @property
+    def expected_delta_tenths(self) -> float:
+        return float(self.p_rise) - float(self.p_fall)
+
+    @property
+    def variance_delta_tenths2(self) -> float:
+        mean = self.expected_delta_tenths
+        return (
+            float(self.p_fall) * (-1.0 - mean) ** 2
+            + float(self.p_flat) * (0.0 - mean) ** 2
+            + float(self.p_rise) * (1.0 - mean) ** 2
+        )
+
+    def delta_quantile_tenths(self, quantile: float) -> int:
+        q = float(quantile)
+        if not 0.0 <= q <= 1.0:
+            raise PriceStateError("price quantile must be between 0 and 1")
+        if q <= float(self.p_fall) + 1e-12:
+            return -1
+        if q <= float(self.p_fall) + float(self.p_flat) + 1e-12:
+            return 0
+        return 1
+
+    def price_quantile_tenths(self, current_price_tenths: int, quantile: float) -> int:
+        current = int(current_price_tenths)
+        if current < 0:
+            raise PriceStateError("current price must be non-negative")
+        return current + self.delta_quantile_tenths(quantile)
+
 
 @dataclass(frozen=True)
 class IsotonicProbabilityKnot:
