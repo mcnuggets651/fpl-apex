@@ -123,3 +123,17 @@ FPL Apex uses one discoverable documentation hierarchy: immutable evidence → m
 Repository changes declare `Apex-Capabilities`, authority impact, invariant impact and reopened decisions. `scripts/check_capability_registry.py` compares that declaration with the actual diff, validates ref-aware entry points, active workflow/`scripts/apex_v2_*.py` coverage, serving/research boundaries and decision-index completeness. The checker is wired into existing Apex CI and Apex V2 Ops Contract rather than creating a new required workflow.
 
 This constitution changes documentation/governance only. It does not change PR #90 policy, `production_core_sha`, serving provider/horizons, production solve/publication semantics, models, research methodology, private owner state, runner spending/billing policy or any production recommendation.
+
+## D033 — Transfer policy is the product; price-aware receding-horizon planning is a required production successor
+
+Apex exists to make the best legal FPL manager decision for the owner. Expected-points forecasts are necessary inputs, not the end product. Production therefore must ultimately optimise the owner action from the exact TeamState rather than merely rank attractive non-owned players by standalone projected points.
+
+The required production direction is a receding-horizon transfer policy that compares ROLL, legal one-transfer moves, legal multi-transfer combinations, chained future routes and justified hits while carrying exact bank, free-transfer, purchase-price, selling-price and squad-legality state. Future moves remain contingencies: only the current action is executed, then Apex refreshes and re-solves at the next decision point.
+
+Price uncertainty belongs inside the future state transition. It must be represented as calibrated probability over future market-price movement and used to determine affordability and continuation value. Price movement does **not** create fantasy points and must never be converted into an arbitrary team-value bonus. The useful outputs are route survival, probability of being priced out, downside bank, price regret from waiting, information regret from acting early, probability each serious root action is optimal and selection/policy stability when alternatives are near-tied.
+
+A temporary research/shadow/canary implementation is permitted only as the evidence-gathering and certification bridge to a production-core successor. It is not an acceptable permanent destination. The feature must not be left indefinitely non-serving while production continues to expose shallow player rankings.
+
+Promotion still follows the existing constitution: implement on a descendant successor, preserve deterministic replay/no-hindsight/exact mechanics/privacy/fail-closed gates, run adversarial and prospective/canary validation, and change `production_core_sha` only through explicit governance after acceptance. Frozen PR #90 remains `NEVER_MERGE_OR_ADVANCE`, AIrsenal remains the serving forecast provider unless separately changed by authority, and this decision alone does not alter current machine authority or production output.
+
+Once a successor is promoted, the private `PRIV-003` strategy query should expose the authority-correct route comparison and timing/risk evidence without becoming an independent optimiser or second serving authority.

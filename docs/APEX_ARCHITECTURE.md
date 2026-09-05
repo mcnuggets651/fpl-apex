@@ -171,6 +171,37 @@ The Draft query/relay path is **outside** the production solve/publish chain. It
 
 Current provider roles/horizons are intentionally **not copied here**; read `docs/APEX_V2_AUTHORITY.json`.
 
+### Manager-decision product contract
+
+Apex exists to make the best owner decision, not to generate expected-points tables for their own sake. Forecasts are inputs to one manager objective: maximise expected FPL points through legal receding-horizon squad-management decisions.
+
+The production architecture must therefore treat transfer policy as a first-class serving concern. The manager decision surface must compare, as applicable, **ROLL**, legal one-transfer moves, legal multi-transfer combinations, chained multi-Gameweek routes and points hits from the exact owner TeamState. It must preserve exact bank, free-transfer rollover, purchase-price, selling-price and squad-legality mechanics and re-solve at every deadline rather than treating a future path as a commitment.
+
+Price movement is a state-transition constraint, not a source of fantasy points. A future price model may change which routes remain affordable and therefore their continuation value, but it must never add an arbitrary team-value bonus to the football objective.
+
+### Required price-aware transfer-policy successor
+
+The current authority-selected core remains the only serving implementation until an explicitly certified descendant successor is promoted through the existing governance path. However, the **required production destination** is a price-aware multi-week transfer policy with calibrated uncertainty around future market prices.
+
+The successor should extend the future-state model so relevant players carry a calibrated transition distribution such as `P(+0.1)`, `P(no change)` and `P(-0.1)` over the actionable horizon, with wider uncertainty further from the present. Scenario state must preserve market price together with the owner's purchase price and derived selling price so future affordability obeys exact FPL mechanics.
+
+The planner should expose route-level decision evidence rather than merely standalone player rankings, including where supportable:
+
+- Gameweek-by-Gameweek and cumulative expected-points delta versus ROLL;
+- resulting bank and free-transfer state;
+- probability a preferred route remains affordable;
+- probability of being priced out by target rises and/or seller falls;
+- expected continuation-value loss from waiting (`price regret`);
+- expected continuation-value loss from acting before additional injury/role/news information (`information regret`);
+- probability each serious root action is optimal under the scenario set;
+- policy stability / selection regret when alternatives are near-tied.
+
+A research/shadow or canary implementation of this policy is a **temporary certification and promotion gate only**. It is not an acceptable terminal architecture and must not become a permanently non-serving feature that is forgotten while production continues to present shallow transfer rankings. Promotion remains deliberate and evidence-gated: no automatic authority change, no weakening of no-hindsight/replay/mechanics/privacy gates, and no change to frozen PR #90.
+
+The private `PRIV-003` strategy surface must ultimately expose the richer authority-correct production route evidence; it must not become an independent optimiser or second serving authority.
+
+This architecture commitment does not itself change `production_core_sha`, provider authorization or current production output. Implementation requires a governed successor change, tests, prospective/canary evidence and explicit authority promotion.
+
 ## 4. Operations plane
 
 ```text
