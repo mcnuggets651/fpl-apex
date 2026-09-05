@@ -245,6 +245,26 @@ jobs:
             --db "$AIRSENAL_DB_FILE" --horizon 8 \
             --output "$GITHUB_WORKSPACE/acquisition/providers/airsenal.csv")
 
+      - name: Generate Apex Proprietary H1-H8 shadow
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C "$APEX_CORE_PATH" rev-parse HEAD)" = "$APEX_CODE_SHA"
+          test -f "$APEX_CORE_PATH/scripts/acquire_apex_proprietary_shadow.py"
+          rm -f "$GITHUB_WORKSPACE/acquisition/providers/apex_proprietary.csv"
+          (
+            cd "$APEX_CORE_PATH"
+            python "$APEX_CORE_PATH/scripts/acquire_apex_proprietary_shadow.py" \
+              --expected-official-hash '${{ steps.official_seal.outputs.hash }}' \
+              --code-sha "$APEX_CODE_SHA" \
+              --season 2026-2027 \
+              --horizon 8 \
+              --output "$GITHUB_WORKSPACE/acquisition/providers/apex_proprietary.csv" \
+              --workdir "$GITHUB_WORKSPACE/artifacts/v2/challengers/apex_proprietary"
+          )
+          test -s "$GITHUB_WORKSPACE/acquisition/providers/apex_proprietary.csv"
+
       - name: Acquire Dastan H1 shadow with bounded transient retry
         continue-on-error: true
         shell: bash
