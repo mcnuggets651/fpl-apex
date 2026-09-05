@@ -43,11 +43,17 @@ def _fixture(*, max_horizon: int = 2) -> tuple[
         20: Position.MID,
         21: Position.MID,
     }
+    # Incumbents 8/9/10 and future candidates 18/20/21 share one club.
+    # The initial squad therefore already has the maximum three players from
+    # that club. Any candidate buy must sell one of those three. Players 9/10
+    # are made deliberately indispensable below, which prevents a second H1
+    # speculative pre-buy while still allowing 8 -> 18 and then 18 -> 20/21.
+    constrained_club_ids = {8, 9, 10, 18, 20, 21}
     players = tuple(
         OfficialPlayer(
             element_id,
             f"P{element_id}",
-            element_id,
+            99 if element_id in constrained_club_ids else element_id,
             position,
             50,
             "a",
@@ -87,15 +93,13 @@ def _fixture(*, max_horizon: int = 2) -> tuple[
     for player in players:
         for horizon in range(1, max_horizon + 1):
             points = 3.0
-            if player.element_id == 18:
+            if player.element_id in {9, 10}:
+                points = 30.0
+            elif player.element_id == 18:
                 points = 20.0 if horizon == 1 else 0.0
             elif player.element_id == 20:
                 points = 0.0 if horizon == 1 else 20.0
             elif player.element_id == 21:
-                # Deliberately useful as an H2 fallback, but not valuable enough
-                # to justify paying an H1 hit merely to pre-own it. This keeps
-                # the adaptation test focused on information timing rather than
-                # accidentally rewarding a rational early-buy policy.
                 points = 0.0 if horizon == 1 else 6.0
             rows.append(
                 ProjectionRow(
@@ -208,9 +212,6 @@ def test_nonflat_policy_executes_exactly_one_stochastic_milp(monkeypatch) -> Non
 
 def test_future_action_adapts_only_after_target_price_is_observed() -> None:
     official, team, surface = _fixture()
-    # The rise branch is intentionally low enough probability that paying an H1
-    # hit to pre-buy P20 is inferior to waiting. Once H2 arrives, the realised
-    # price state can legitimately change the optimal continuation.
     scenarios = (
         PriceScenario("flat", 0.8),
         PriceScenario(
