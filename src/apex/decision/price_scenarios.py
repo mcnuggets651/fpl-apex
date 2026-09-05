@@ -81,34 +81,21 @@ def evaluate_transfer_route_prices(
     Football expected points are intentionally absent. This evaluator only
     determines whether the already-generated legal route remains affordable and
     what exact bank/purchase-price state results under the scenario.
+
+    Only `InsufficientBudgetError` is classified as a genuine price-out. Any
+    invalid TeamState, illegal transfer sequence or deterministic baseline
+    mismatch is a mechanics defect and fails closed with `PriceStateError`.
     """
     current_prices = _official_current_prices(official)
-    try:
-        state = TransferPriceState.from_team_state(team, current_prices)
-    except PriceStateError as exc:
-        return RoutePriceEvaluation(
-            scenario.scenario_id,
-            float(scenario.probability),
-            False,
-            (),
-            None,
-            None,
-            str(exc),
-        )
+    state = TransferPriceState.from_team_state(team, current_prices)
 
     observed_steps: list[RoutePriceStep] = []
     previous_horizon = 0
     for week in weeks:
         horizon = int(week.horizon)
         if horizon <= previous_horizon:
-            return RoutePriceEvaluation(
-                scenario.scenario_id,
-                float(scenario.probability),
-                False,
-                tuple(observed_steps),
-                None,
-                horizon,
-                "transfer route horizons must be strictly increasing",
+            raise PriceStateError(
+                "transfer route horizons must be strictly increasing"
             )
         previous_horizon = horizon
         market_prices = scenario.path.materialise_horizon(horizon, current_prices)
@@ -121,16 +108,6 @@ def evaluate_transfer_route_prices(
                 market_prices_tenths=market_prices,
             )
         except InsufficientBudgetError as exc:
-            return RoutePriceEvaluation(
-                scenario.scenario_id,
-                float(scenario.probability),
-                False,
-                tuple(observed_steps),
-                None,
-                horizon,
-                str(exc),
-            )
-        except PriceStateError as exc:
             return RoutePriceEvaluation(
                 scenario.scenario_id,
                 float(scenario.probability),
@@ -154,15 +131,9 @@ def evaluate_transfer_route_prices(
         )
         observed_steps.append(step)
         if require_baseline_bank_match and state.bank_tenths != int(week.bank_tenths):
-            return RoutePriceEvaluation(
-                scenario.scenario_id,
-                float(scenario.probability),
-                False,
-                tuple(observed_steps),
-                None,
-                horizon,
+            raise PriceStateError(
                 "empty/current-price route replay disagrees with optimiser bank: "
-                f"replayed={state.bank_tenths}, optimiser={week.bank_tenths}",
+                f"replayed={state.bank_tenths}, optimiser={week.bank_tenths}"
             )
 
     return RoutePriceEvaluation(
