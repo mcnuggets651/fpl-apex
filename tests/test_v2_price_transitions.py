@@ -80,6 +80,18 @@ def test_price_path_sparse_override_does_not_mutate_other_players() -> None:
     assert path.market_price_tenths(1, 2, current) == 50
 
 
+def test_price_path_sparse_change_carries_forward_until_next_override() -> None:
+    current = _current_prices()
+    path = DeterministicMarketPricePath.from_mapping({1: {16: 51}, 4: {16: 52}})
+
+    assert path.market_price_tenths(16, 1, current) == 51
+    assert path.market_price_tenths(16, 2, current) == 51
+    assert path.market_price_tenths(16, 3, current) == 51
+    assert path.market_price_tenths(16, 4, current) == 52
+    assert path.market_price_tenths(16, 8, current) == 52
+    assert path.market_price_tenths(17, 8, current) == 50
+
+
 def test_initial_price_state_verifies_exact_observed_selling_prices() -> None:
     team = _team_state()
     state = TransferPriceState.from_team_state(team, _current_prices())
