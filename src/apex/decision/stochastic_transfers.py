@@ -205,6 +205,40 @@ def optimise_stochastic_transfer_policy(
     )
     current_prices = _current_prices(official)
 
+    # Price-aware planning requires the exact owner purchase basis even when the
+    # realised future price path is flat. Do not silently fall back to the older
+    # solver on malformed owner price state.
+    if (
+        not team.state_complete_for_transfers
+        or set(team.purchase_prices_tenths) != set(map(int, team.squad_ids))
+        or set(team.selling_prices_tenths) != set(map(int, team.squad_ids))
+    ):
+        hold = decision_from_fixed_squad(
+            official,
+            surface,
+            team.squad_ids,
+            horizon=1,
+            decision_mode="HOLD_TEAM_STATE_INCOMPLETE",
+            xi_excluded=excluded_h1,
+        )
+        return StochasticTransferOptimisationResult(
+            hold,
+            (),
+            "WITHHELD_TEAM_STATE_INCOMPLETE",
+            hold.objective,
+            {
+                "mode": "STOCHASTIC_WITHHELD",
+                "single_milp": False,
+                "reason": "exact purchase/selling-price state incomplete",
+            },
+            tree,
+        )
+
+    initial_price_state = TransferPriceState.from_team_state(
+        team,
+        current_prices,
+    )
+
     # Preserve the exact accepted deterministic semantics when price variance is
     # absent throughout the decision horizon.
     flat_tree = all(
@@ -230,36 +264,6 @@ def optimise_stochastic_transfer_policy(
             deterministic,
         )
 
-    if (
-        not team.state_complete_for_transfers
-        or len(team.purchase_prices_tenths) != 15
-        or len(team.selling_prices_tenths) != 15
-    ):
-        deterministic = optimise_transfer_horizon(
-            official,
-            surface,
-            team,
-            max_horizon=max_horizon,
-            excluded_h1=excluded_h1,
-            candidate_limit=1,
-        )
-        return StochasticTransferOptimisationResult(
-            deterministic.decision,
-            (),
-            "WITHHELD_TEAM_STATE_INCOMPLETE",
-            deterministic.primary_objective,
-            {
-                "mode": "STOCHASTIC_WITHHELD",
-                "single_milp": False,
-                "reason": "exact purchase/selling-price state incomplete",
-            },
-            tree,
-        )
-
-    initial_price_state = TransferPriceState.from_team_state(
-        team,
-        current_prices,
-    )
     initial_purchase = initial_price_state.purchase_price_map()
 
     rules = season_rules(official.season)
@@ -456,6 +460,8 @@ def optimise_stochastic_transfer_policy(
             add({xi: 1, squad: -1}, -np.inf, 0)
             add({captain: 1, xi: -1}, -np.inf, 0)
             add({transfer_in: 1, transfer_out: 1}, -np.inf, 1)
+            if not players[p_index].can_transact:
+                add({transfer_in: 1}, 0, 0)
 
             if parent_index is None:
                 initial = 1 if player_id in initial_owned else 0
