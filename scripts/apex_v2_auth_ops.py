@@ -218,6 +218,60 @@ def _find_staged_draft(store, tag: str) -> dict | None:
     return matches[0] if matches else None
 
 
+def _latest_private_auth_payload(module: ModuleType, store, fernet) -> dict | None:
+    """Load the newest active encrypted auth state without exposing credentials."""
+
+    prefix = str(getattr(module, "AUTH_TAG_PREFIX", "apex-v2/private-auth/"))
+    releases = [
+        row
+        for row in store.list_releases()
+        if str(row.get("tag_name") or "").startswith(prefix)
+        and not bool(row.get("draft", False))
+    ]
+    if not releases:
+        return None
+
+    def order(row: dict) -> tuple[str, int]:
+        try:
+            release_id = int(row.get("id") or 0)
+        except (TypeError, ValueError):
+            release_id = 0
+        return (
+            str(row.get("created_at") or row.get("published_at") or ""),
+            release_id,
+        )
+
+    release = max(releases, key=order)
+    with tempfile.TemporaryDirectory(prefix="apex-fpl-auth-active-") as tmp:
+        path = module.download_release_asset(
+            store,
+            release,
+            module.AUTH_ASSET,
+            Path(tmp) / module.AUTH_ASSET,
+        )
+        try:
+            plaintext = fernet.decrypt(Path(path).read_bytes())
+        except Exception as exc:
+            raise AuthOpsError("Encrypted FPL auth state could not be decrypted") from exc
+    try:
+        payload = json.loads(plaintext.decode("utf-8"))
+    except Exception as exc:
+        raise AuthOpsError("Encrypted FPL auth state has invalid JSON") from exc
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        raise AuthOpsError("Encrypted FPL auth state has an invalid schema")
+    refresh_token = str(payload.get("refresh_token") or "").strip()
+    if not refresh_token:
+        raise AuthOpsError("Encrypted FPL auth state omitted refresh_token")
+    access_raw = payload.get("access_token")
+    if access_raw is not None and not isinstance(access_raw, str):
+        raise AuthOpsError("Encrypted FPL auth state has invalid access_token material")
+    return {
+        **payload,
+        "refresh_token": refresh_token,
+        "access_token": (access_raw or "").strip(),
+    }
+
+
 def _read_staged_refresh(
     module: ModuleType,
     store,
@@ -260,6 +314,7 @@ def _stage_refresh_rotation(
     parent_refresh_token: str,
     next_refresh_token: str,
     env: Mapping[str, str],
+    access_token: str = "",
 ) -> tuple[str, int, dict[str, str]]:
     """Durably stage a PRIVATE child and retain its exact GitHub release identity."""
 
@@ -279,6 +334,8 @@ def _stage_refresh_rotation(
         "client_id": str(env.get("FPL_OIDC_CLIENT_ID", "")).strip()
         or module.DEFAULT_OIDC_CLIENT_ID,
     }
+    if access_token.strip():
+        payload["access_token"] = access_token.strip()
     encrypted = fernet.encrypt(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     )
@@ -455,6 +512,7 @@ def _rotate_refresh_parent(
             parent_refresh_token=current,
             next_refresh_token=next_refresh,
             env=env,
+            access_token=access_token,
         )
     except RefreshRotationIndeterminate:
         raise
@@ -615,14 +673,52 @@ def _try_private_refresh(
         return False
     _require_two_phase_support(module, store)
     try:
-        parent = module._latest_private_refresh_token(store, fernet)
+        payload = _latest_private_auth_payload(module, store, fernet)
+        parent = (
+            str(payload.get("refresh_token") or "").strip()
+            if payload is not None
+            else module._latest_private_refresh_token(store, fernet)
+        )
     except Exception as exc:
+        if isinstance(exc, AuthOpsError):
+            raise
         raise AuthOpsError(
             "Encrypted private FPL refresh state could not be loaded"
         ) from exc
     if not parent:
         return False
+
     entry_id = module._entry_id(config)
+    cached_access = (
+        str(payload.get("access_token") or "").strip()
+        if payload is not None
+        else ""
+    )
+    if cached_access:
+        try:
+            status = _verify_refreshed_access(module, entry_id, cached_access)
+        except Exception as exc:
+            raise AuthOpsError(
+                "Cached FPL owner access could not be checked; refresh state was not consumed"
+            ) from exc
+        if status == "match":
+            _emit_refresh_success(
+                module,
+                access_token=cached_access,
+                github_output=github_output,
+                github_env=github_env,
+                recovery="cached_access",
+            )
+            return True
+        if status == "wrong_manager":
+            raise AuthOpsError(
+                "Cached FPL owner credential belongs to a different manager entry"
+            )
+        if status != "rejected":
+            raise AuthOpsError(
+                "Cached FPL owner credential could not be certified; refresh state was not consumed"
+            )
+
     access_token, _ = _rotate_refresh_parent(
         module,
         entry_id=entry_id,
