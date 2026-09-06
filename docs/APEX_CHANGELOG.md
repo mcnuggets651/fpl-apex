@@ -2,6 +2,16 @@
 
 This is a human project-level changelog. Git history remains the detailed code record.
 
+## 2026-09-03 — Apex V2 adversarial hardening successor
+- Reproduced and repaired serving-boundary defects across projection/Official coherence, initial-squad budget enforcement, transfer-state certification, season free-transfer rules, snapshot integrity, strict Official/config/serde parsing, solve-time freshness, evidence validation, deterministic publication replay and decision legality.
+- Added fail-closed handling for unknown player IDs at the final decision validator and raised `src/apex/decision/validate.py` to a 100% critical coverage floor.
+- Replaced full-bundle golden hashes with the immutable semantic replay payload used by publication; workflow execution IDs remain provenance metadata and cannot create false nondeterminism alarms.
+- Sealed the assurance environment with an exact Python/build/runtime dependency lock, strict environment verification, machine-readable provenance and a CycloneDX SBOM.
+- Red-teamed V2 acquisition and CI-confirmed four TOCTOU/provenance defects: same-count evidence substitution, unsealed evidence-source configuration, provider mutation during qualification and configuration mutation after parse.
+- Rebuilt acquisition around the documented capture → operate → verify → seal transaction: configuration, evidence sources and provider exports are interpreted from captured bytes, live mutation aborts with stable integrity stages, and those exact captured bytes/hashes are sealed into the snapshot.
+- Added `docs/APEX_V2_ACQUISITION_INTEGRITY.md` plus acquisition integrity/boundary regressions covering credentials, deadlines, evidence manifests, adapter dispatch, missing/broken shadows, stale-attempt forecasts and raw-byte sealing.
+- Production authority was intentionally not moved during hardening; the successor remains in candidate/read-only verification until its full locked CI, coverage, mutation, replay, provenance and exact-head readiness gates are green.
+
 ## 2026-08-11 — Decision-grade evidence ingestion candidate
 - Added structured official-article publication/body extraction and bounded same-host
   HTTPS hydration for official HTML news indexes.

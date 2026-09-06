@@ -324,6 +324,21 @@ def test_required_evidence_failure_has_stable_acquisition_stage(
         ),
         encoding="utf-8",
     )
+    # The acquisition transaction now captures the evidence source configuration
+    # before invoking the collector. Supply a valid immutable source fixture so this
+    # test continues to exercise the collector's classified failure, not a missing-
+    # provenance failure one stage earlier.
+    _sources(
+        tmp_path / "sources.yaml",
+        [
+            {
+                "name": "Official League",
+                "url": "https://official.test/news",
+                "tier": "official_league",
+                "required": True,
+            }
+        ],
+    )
     monkeypatch.setattr(
         acquire_module,
         "collect_v2_evidence",

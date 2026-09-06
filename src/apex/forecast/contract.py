@@ -52,24 +52,68 @@ def validate_projection_surface(
     errors = []
     seen = set()
     horizons = set(required_horizons or surface.supported_horizons)
+    official_gameweeks = {int(gameweek) for gameweek in official.deadlines}
+    official_fixtures = {
+        int(fixture.fixture_id): fixture
+        for fixture in official.fixtures
+    }
+    official_players = official.player_map()
+
     if not surface.provider_id.strip():
         errors.append("provider_id missing")
     if not surface.provider_version.strip():
         errors.append("provider_version missing")
     if surface.season != official.season:
         errors.append(f"season mismatch: {surface.season} != {official.season}")
+    if str(surface.source_snapshot) != str(official.source_hash):
+        errors.append(
+            "provider source snapshot mismatch: "
+            f"{surface.source_snapshot} != {official.source_hash}"
+        )
+
     for row in surface.rows:
-        key = (int(row.element_id), int(row.gameweek), int(row.horizon))
+        element_id = int(row.element_id)
+        gameweek = int(row.gameweek)
+        key = (element_id, gameweek, int(row.horizon))
         if key in seen:
             errors.append(f"duplicate projection row {key}")
             continue
         seen.add(key)
-        if row.element_id not in official.player_ids:
+
+        player = official_players.get(element_id)
+        if player is None:
             errors.append(f"unknown Official FPL id {row.element_id}")
+        if gameweek not in official_gameweeks:
+            errors.append(f"unknown Official FPL gameweek {gameweek} for {key}")
         if row.horizon <= 0:
             errors.append(f"invalid horizon {row.horizon} for {row.element_id}")
         if row.n_fixtures != len(row.fixture_ids):
             errors.append(f"fixture count mismatch for {key}")
+        if len(set(map(int, row.fixture_ids))) != len(row.fixture_ids):
+            errors.append(f"duplicate fixture ids for {key}")
+
+        for raw_fixture_id in row.fixture_ids:
+            fixture_id = int(raw_fixture_id)
+            fixture = official_fixtures.get(fixture_id)
+            if fixture is None:
+                errors.append(
+                    f"unknown Official FPL fixture {fixture_id} for {key}"
+                )
+                continue
+            if fixture.gameweek != gameweek:
+                errors.append(
+                    "fixture gameweek mismatch for "
+                    f"{key}: fixture {fixture_id} belongs to GW{fixture.gameweek}"
+                )
+            if player is not None and player.team_id not in {
+                fixture.home_team_id,
+                fixture.away_team_id,
+            }:
+                errors.append(
+                    "fixture team mismatch for "
+                    f"{key}: player team {player.team_id} not in fixture {fixture_id}"
+                )
+
         if row.coverage_status == CoverageStatus.FORECAST:
             if row.expected_points is None or not math.isfinite(
                 float(row.expected_points)

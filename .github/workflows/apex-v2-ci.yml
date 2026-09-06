@@ -5,9 +5,13 @@ on:
   pull_request:
     paths:
       - 'src/apex/**'
+      - 'tests/test_apex_v2_*.py'
       - 'tests/test_v2_*.py'
-      - 'scripts/check_v2_architecture.py'
+      - 'scripts/check_v2_*.py'
+      - 'scripts/build_v2_provenance.py'
+      - 'scripts/run_v2_mutation_sentinels.py'
       - 'config/apex_v2.yaml'
+      - 'requirements-v2.lock'
       - '.github/workflows/apex-v2-*.yml'
       - 'pyproject.toml'
 
@@ -22,12 +26,59 @@ jobs:
   contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.14"
           cache: pip
-      - run: pip install -e '.[dev]'
-      - run: pytest -q tests/test_apex_v2_core.py tests/test_apex_v2_adapters.py tests/test_v2_*.py
-      - run: python scripts/check_v2_architecture.py
-      - run: ruff check src/apex tests/test_apex_v2_core.py tests/test_apex_v2_adapters.py tests/test_v2_*.py scripts/check_v2_architecture.py
+          cache-dependency-path: requirements-v2.lock
+      - name: Install exact Apex V2 assurance environment
+        run: |
+          python -m pip install 'pip==26.2.1' 'setuptools==80.9.0' 'wheel==0.45.1'
+          python -m pip install --no-build-isolation -c requirements-v2.lock -e '.[dev]'
+          python -m pip check
+          python scripts/check_v2_dependency_lock.py requirements-v2.lock
+      - name: Record complete resolved environment
+        run: |
+          mkdir -p artifacts/v2
+          python -m pip freeze --all | tee artifacts/v2/pip-freeze.txt
+      - name: Build candidate provenance and SBOM
+        env:
+          ENGINE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python scripts/build_v2_provenance.py \
+            --engine-sha "$ENGINE_SHA" \
+            --output-dir artifacts/v2
+          test -s artifacts/v2/provenance.json
+          test -s artifacts/v2/sbom.cdx.json
+          python -m json.tool artifacts/v2/provenance.json >/dev/null
+          python -m json.tool artifacts/v2/sbom.cdx.json >/dev/null
+      - name: Compile Apex V2
+        run: python -m compileall -q src/apex
+      - name: Run V2 suite with branch coverage
+        run: |
+          pytest -q tests/test_apex_v2_*.py tests/test_v2_*.py \
+            --cov=apex \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:artifacts/v2/coverage.json
+      - name: Enforce critical coverage floors
+        run: python scripts/check_v2_critical_coverage.py artifacts/v2/coverage.json
+      - name: Kill critical semantic mutants
+        run: python scripts/run_v2_mutation_sentinels.py
+      - name: Enforce architecture boundaries
+        run: python scripts/check_v2_architecture.py
+      - name: Lint V2 assurance surface
+        run: >-
+          ruff check src/apex tests/test_apex_v2_*.py tests/test_v2_*.py
+          scripts/check_v2_architecture.py scripts/check_v2_critical_coverage.py
+          scripts/check_v2_dependency_lock.py scripts/build_v2_provenance.py
+          scripts/run_v2_mutation_sentinels.py
+      - name: Retain assurance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: apex-v2-assurance-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/v2/
+          if-no-files-found: warn
+          retention-days: 30

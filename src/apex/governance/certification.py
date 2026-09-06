@@ -46,32 +46,34 @@ def certify(
     if not contingency_model_complete:
         reasons.append(ReasonCode.CONTINGENCY_MODEL_INCOMPLETE)
     if official is not None and decision is not None:
-        errs = validate_system_decision(official, decision)
+        errs = validate_system_decision(official, decision, team_state)
         if errs:
             reasons.append(ReasonCode.DECISION_ILLEGAL)
             warnings.extend(errs)
     else:
         reasons.append(ReasonCode.DECISION_ILLEGAL)
-    if (
-        decision
-        and decision.decision_mode == "TRANSFER_HORIZON"
-        and team_state is not None
-        and not team_state.state_complete_for_transfers
+    if decision and decision.decision_mode == "TRANSFER_HORIZON" and (
+        team_state is None or not team_state.state_complete_for_transfers
     ):
         reasons.append(ReasonCode.TEAM_STATE_INCOMPLETE)
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     if valid_until:
-        expiry = datetime.fromisoformat(valid_until.replace("Z", "+00:00"))
-        expiry = expiry if expiry.tzinfo else expiry.replace(tzinfo=timezone.utc)
-        if now >= expiry.astimezone(timezone.utc):
-            return CertificationResult(
-                1,
-                CertificationState.EXPIRED,
-                False,
-                tuple(dict.fromkeys(reasons)),
-                tuple(dict.fromkeys(warnings)),
-                valid_until,
-            )
+        try:
+            expiry = datetime.fromisoformat(valid_until.replace("Z", "+00:00"))
+            expiry = expiry if expiry.tzinfo else expiry.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            reasons.append(ReasonCode.SNAPSHOT_INCOHERENT)
+            warnings.append("certification valid_until is not a valid ISO-8601 deadline")
+        else:
+            if now >= expiry.astimezone(timezone.utc):
+                return CertificationResult(
+                    1,
+                    CertificationState.EXPIRED,
+                    False,
+                    tuple(dict.fromkeys(reasons)),
+                    tuple(dict.fromkeys(warnings)),
+                    valid_until,
+                )
     if reasons:
         return CertificationResult(
             1,

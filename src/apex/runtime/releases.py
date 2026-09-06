@@ -247,7 +247,6 @@ class GitHubReleaseStore:
             published = publish.json()
             immutable = bool(published.get("immutable", False))
             if require_immutable and not immutable:
-                self._cleanup_mutable_release(release_id, tag)
                 raise RuntimeError(
                     "GitHub published the release as mutable. Enable repository "
                     "release immutability before any Apex V2 production attempt."
@@ -260,6 +259,7 @@ class GitHubReleaseStore:
                 immutable,
             )
         except Exception:
+            self._cleanup_mutable_release(release_id, tag)
             raise
 
     def list_releases(self, per_page: int = 100):

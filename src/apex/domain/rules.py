@@ -84,8 +84,14 @@ def validate_xi(players: dict[int, OfficialPlayer], squad_ids, xi_ids) -> tuple[
     errors = []
     if len(xi) != STARTING_XI_SIZE or len(set(xi)) != STARTING_XI_SIZE:
         errors.append('XI must contain 11 unique players')
-    if not set(xi).issubset(squad):
-        return tuple(errors + ['XI contains player outside squad'])
+    unknown = sorted(set(xi) - set(players))
+    outside = not set(xi).issubset(squad)
+    if unknown:
+        errors.append(f'XI contains unknown player ids: {unknown}')
+    if outside:
+        errors.append('XI contains player outside squad')
+    if unknown or outside:
+        return tuple(errors)
     counts = Counter((players[p].position for p in xi))
     for pos in Position:
         if counts[pos] < XI_MIN[pos] or counts[pos] > XI_MAX[pos]:
@@ -98,6 +104,9 @@ def validate_bench_order(players: dict[int, OfficialPlayer], squad_ids, xi_ids, 
     errors = []
     if len(order) != 4 or set(order) != bench:
         return ('bench order must contain exactly the four benched players',)
+    unknown = sorted(set(order) - set(players))
+    if unknown:
+        return (f'bench order contains unknown player ids: {unknown}',)
     if players[order[0]].position != Position.GK:
         errors.append('bench slot 0 must be the reserve goalkeeper')
     if any((players[p].position == Position.GK for p in order[1:])):
