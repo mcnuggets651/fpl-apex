@@ -1,6 +1,7 @@
 # INCIDENT-ONLY, NON-SERVING DIAGNOSTIC.
 # This workflow proves whether the repository's direct FPL bearer/cookie can
-# authenticate the configured manager through the frozen owner preflight.
+# authenticate the configured manager through the authority-selected production
+# core owner preflight. The frozen engine SHA is ancestry/forensic lineage only.
 # It deliberately disables refresh auth and has no schedule, push trigger,
 # write permission, provider acquisition, intent, solve or publication path.
 # It is not a fallback keepalive and cannot rebuild a rotating refresh-token chain.
@@ -23,23 +24,60 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.FROZEN_APEX_SHA }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Verify frozen diagnostic identity
+      - name: Resolve authority-selected diagnostic core
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
-          echo "Apex V2 direct-auth diagnostic pinned to $FROZEN_APEX_SHA"
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          authority = json.loads(Path("docs/APEX_V2_AUTHORITY.json").read_text(encoding="utf-8"))
+          frozen = str(authority.get("frozen_engine_sha") or "").strip()
+          production = str(authority.get("production_core_sha") or "").strip()
+          declared_frozen = os.environ["FROZEN_APEX_SHA"]
+          sha40 = re.compile(r"^[0-9a-f]{40}$")
+
+          if frozen != declared_frozen:
+              raise SystemExit(
+                  f"frozen forensic anchor mismatch: authority={frozen!r} workflow={declared_frozen!r}"
+              )
+          if not sha40.fullmatch(production):
+              raise SystemExit(f"invalid authority production_core_sha: {production!r}")
+
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"PRODUCTION_CORE_SHA={production}\n")
+          PY
+
+      - name: Materialize authority-selected production core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$PRODUCTION_CORE_SHA^{commit}"
+          git merge-base --is-ancestor "$FROZEN_APEX_SHA" "$PRODUCTION_CORE_SHA"
+          CORE_DIR="$RUNNER_TEMP/apex-v2-direct-auth-core"
+          git worktree add --detach "$CORE_DIR" "$PRODUCTION_CORE_SHA"
+          echo "APEX_CORE_DIR=$CORE_DIR" >> "$GITHUB_ENV"
+          test "$(git -C "$CORE_DIR" rev-parse HEAD)" = "$PRODUCTION_CORE_SHA"
+          echo "Apex V2 direct-auth diagnostic core: $PRODUCTION_CORE_SHA"
+          echo "Frozen forensic ancestry anchor: $FROZEN_APEX_SHA"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
 
-      - name: Install frozen Apex V2 tooling
-        run: pip install -e '.[dev]'
+      - name: Install authority-selected Apex V2 tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$APEX_CORE_DIR"
+          pip install -e '.[dev]'
 
       - name: Verify direct owner credential only
         env:
@@ -50,11 +88,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "$APEX_CORE_DIR"
           python scripts/preflight_fpl_auth.py --config config/apex_v2.yaml
 
-      - name: Prove non-serving frozen worktree
+      - name: Prove non-serving worktrees remain unchanged
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$FROZEN_APEX_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C "$APEX_CORE_DIR" rev-parse HEAD)" = "$PRODUCTION_CORE_SHA"
           test -z "$(git status --porcelain --untracked-files=no)"
+          test -z "$(git -C "$APEX_CORE_DIR" status --porcelain --untracked-files=no)"
