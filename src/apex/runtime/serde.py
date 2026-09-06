@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from apex.domain.models import (
     CoverageStatus,
     OfficialFixture,
@@ -12,6 +14,14 @@ from apex.domain.models import (
 )
 
 
+def _strict_bool(value: Any, *, field: str, default: bool | None = None) -> bool:
+    if value is None and default is not None:
+        return default
+    if type(value) is not bool:
+        raise ValueError(f"{field} must be an explicit boolean")
+    return value
+
+
 def official_from_dict(data):
     players = tuple(
         OfficialPlayer(
@@ -21,7 +31,16 @@ def official_from_dict(data):
             Position(player["position"]),
             int(player["price_tenths"]),
             player["status"],
-            bool(player.get("can_transact", True)),
+            _strict_bool(
+                player.get("can_transact"),
+                field=f"player {player['element_id']} can_transact",
+                default=True,
+            ),
+            (
+                int(player["fpl_code"])
+                if player.get("fpl_code") is not None
+                else None
+            ),
         )
         for player in data["players"]
     )
@@ -113,5 +132,9 @@ def team_from_dict(data):
             for key, value in data.get("selling_prices_tenths", {}).items()
         },
         data.get("active_chip"),
-        bool(data.get("state_complete_for_transfers", False)),
+        _strict_bool(
+            data.get("state_complete_for_transfers"),
+            field="state_complete_for_transfers",
+            default=False,
+        ),
     )

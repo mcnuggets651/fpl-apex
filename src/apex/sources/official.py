@@ -120,6 +120,15 @@ def fetch_official_snapshot(
     if not isinstance(fixtures_raw, list):
         raise ValueError("Official FPL fixtures payload malformed")
 
+    teams_raw = bootstrap.get("teams")
+    team_ids: set[int] | None = None
+    if teams_raw is not None:
+        if not isinstance(teams_raw, list):
+            raise ValueError("Official FPL teams payload malformed")
+        team_ids = {int(row["id"]) for row in teams_raw}
+        if len(team_ids) != len(teams_raw):
+            raise ValueError("Official FPL duplicate team IDs")
+
     players = []
     for row in bootstrap["elements"]:
         element_id = int(row["id"])
@@ -131,15 +140,30 @@ def fetch_official_snapshot(
         raw_code = row.get("code")
         if raw_code in (None, ""):
             raise ValueError(f"Official FPL player {element_id} missing stable code")
+        team_id = int(row["team"])
+        if team_ids is not None and team_id not in team_ids:
+            raise ValueError(
+                f"Official FPL player {element_id} references unknown team {team_id}"
+            )
+        price_tenths = int(row["now_cost"])
+        if price_tenths <= 0:
+            raise ValueError(
+                f"Official FPL player {element_id} has nonpositive price {price_tenths}"
+            )
+        can_transact = row.get("can_transact", True)
+        if not isinstance(can_transact, bool):
+            raise ValueError(
+                f"Official FPL player {element_id} has non-boolean can_transact"
+            )
         players.append(
             OfficialPlayer(
                 element_id=element_id,
                 web_name=str(row.get("web_name", element_id)),
-                team_id=int(row["team"]),
+                team_id=team_id,
                 position=_POSITION[element_type],
-                price_tenths=int(row["now_cost"]),
+                price_tenths=price_tenths,
                 status=str(row.get("status", "")),
-                can_transact=bool(row.get("can_transact", True)),
+                can_transact=can_transact,
                 fpl_code=int(raw_code),
             )
         )
@@ -149,16 +173,29 @@ def fetch_official_snapshot(
     if len(set(codes)) != len(codes):
         raise ValueError("Official FPL duplicate stable player codes")
 
-    fixtures = tuple(
-        OfficialFixture(
-            int(row["id"]),
-            int(row["event"]) if row.get("event") is not None else None,
-            int(row["team_h"]),
-            int(row["team_a"]),
-            str(row["kickoff_time"]) if row.get("kickoff_time") else None,
+    fixture_ids: set[int] = set()
+    fixtures: list[OfficialFixture] = []
+    for row in fixtures_raw:
+        fixture_id = int(row["id"])
+        if fixture_id in fixture_ids:
+            raise ValueError(f"Official FPL duplicate fixture ID {fixture_id}")
+        fixture_ids.add(fixture_id)
+        team_h = int(row["team_h"])
+        team_a = int(row["team_a"])
+        if team_ids is not None and (team_h not in team_ids or team_a not in team_ids):
+            raise ValueError(
+                f"Official FPL fixture {fixture_id} references unknown team"
+            )
+        fixtures.append(
+            OfficialFixture(
+                fixture_id,
+                int(row["event"]) if row.get("event") is not None else None,
+                team_h,
+                team_a,
+                str(row["kickoff_time"]) if row.get("kickoff_time") else None,
+            )
         )
-        for row in fixtures_raw
-    )
+
     deadlines = {
         int(event["id"]): str(event["deadline_time"])
         for event in bootstrap.get("events", [])
@@ -178,7 +215,7 @@ def fetch_official_snapshot(
             acquired_at,
             authority_hash,
             tuple(players),
-            fixtures,
+            tuple(fixtures),
             deadlines,
         ),
         {
