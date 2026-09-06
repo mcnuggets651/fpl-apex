@@ -829,3 +829,12 @@ Editing this file, the capability registry, decision index, Draft runbook or arc
 - reconciled older Project Brain documents into one canonical human continuity ledger;
 - added mandatory agent startup instructions and same-change CI enforcement;
 - preserved machine authority and immutable release evidence above prose in the precedence hierarchy.
+
+### 2026-09-06 — evaluation orphan audit reconciled; auth code merged, live credential still fail-closed
+
+- Daily Evaluation `34017557586` failed because immutable failed production intents `33784086615-1` and `33809325241-1` were not in the explicit historical-failure acknowledgement set;
+- both backing Daily Production workflow runs were reverified from GitHub as `completed` with `conclusion=failure`, and neither has a legitimate final release; this change adds only those two exact intent IDs to `scripts/apex_v2_attempt_audit_ops.py`;
+- existing regression coverage still proves the complete acknowledged set passes while any newly unknown missing final remains a hard failure; no final is synthesized, deleted or rewritten;
+- PR #169 cached-access repair is already merged at `482ccacf5c995a3b6d256221fef9e2db69c34f7d` and present in current `main`; the later Keepalive failure `34016839565` is a live credential exhaustion state, not an unmerged code repair;
+- both active rotating refresh state and the configured bootstrap refresh are currently rejected, so owner auth remains fail-closed pending one fresh browser-issued `FPL_REFRESH_TOKEN` re-seed directly in GitHub Actions followed by the existing cached-access runtime acceptance sequence;
+- machine authority, `production_core_sha`, AIrsenal serving H1–H8, research isolation, private owner boundaries and frozen PR #90 remain unchanged.
