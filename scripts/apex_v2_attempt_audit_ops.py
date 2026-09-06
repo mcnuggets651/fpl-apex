@@ -20,6 +20,8 @@ ACKNOWLEDGED_FAILED_INTENTS = frozenset(
         "apex-v2/intent/2026-2027/33265747805-1",
         "apex-v2/intent/2026-2027/33272866621-1",
         "apex-v2/intent/2026-2027/33312221205-1",
+        "apex-v2/intent/2026-2027/33784086615-1",
+        "apex-v2/intent/2026-2027/33809325241-1",
     }
 )
 
