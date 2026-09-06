@@ -97,6 +97,7 @@ The former GitHub-hosted billing blocker has been eliminated without increasing 
 - no `ubuntu-latest` fallback.
 
 Required strategy acceptance modes both executed successfully:
+
 - explicit exact run `33850307770-1`: strategy workflow `33868412431` — **success**;
 - restored authority-selected `latest`: strategy workflow `33868662109` — **success**;
 - final private master-state contract `33868662187` — **success**.
@@ -296,6 +297,7 @@ Tag: `apex-v2/final/2026-2027/33850307770-1`
 - target commitish: `c0ae9f6e1b21c1839f4dc575a3ff14d48d48f437`.
 
 Assets and GitHub release digests:
+
 | Asset | SHA-256 |
 |---|---|
 | `attestation.json` | `0060809dc7701f13e15972ae0678b47e033632a5faf43bae0560002e535f24cd` |
@@ -395,6 +397,7 @@ After this repair is exact-head green and merged, the already-dead chain require
 ### Why the bridge exists
 
 A chat session must be able to answer owner questions without putting manager state in public GitHub and without reconstructing it from memory.
+
 The private repository is the only approved owner-state/query surface. Classic immutable queries and live Draft queries are distinct evidence types but share the same privacy principle.
 
 ### Classic `latest` semantics
@@ -494,6 +497,7 @@ Canonical public documentation surfaces have separated responsibilities:
 - `docs/APEX_DRAFT_QUERY.md` — governed FPL Draft owner-query/relay runbook.
 
 `docs/ARCHITECTURE.md` and `docs/APEX_CANONICAL_DECISION_POLICY.md` are historical/non-serving. Do not create a second current architecture map, second semantic registry or separate prose runbook index.
+
 ### Public control plane (`fpl-apex`)
 
 Primary live surfaces include machine authority, canonical production, auth keepalive, deadline watch, evaluation/research, Apex CI/Ops Contract and semantic governance. Authentication/Draft-specific surfaces are:
@@ -804,7 +808,7 @@ Editing this file, the capability registry, decision index, Draft runbook or arc
 - PR #151 merged as `6a1509f766e6438a43d296e8e900518a18967959` and post-merge Apex CI `33874537255` passed;
 - private PR #7 consumed/validated the single public `PRIV-*` capability semantics without creating a second registry;
 - private PR #7 final exact-head contract `33876581770` passed and merged at `459427fe1e90565d61f8a9f6547f3876c4f3ec9a`;
-- public PR #152 passed its exact-head gates and merged at `620ad5d305008c018c9ea3ccd887c9c32a49fde`;
+- public PR #152 passed its exact-head gates and merged at `620ad5d305008c018c9ea3ccd887c9de8b510b9c`;
 - machine authority and spending/billing policy were unchanged.
 
 ### 2026-09-04 — APEX OPERATIONAL closure
