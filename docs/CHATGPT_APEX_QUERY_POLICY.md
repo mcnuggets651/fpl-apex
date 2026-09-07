@@ -24,18 +24,33 @@ This policy governs ChatGPT answers about Classic FPL players, squads, transfers
 
 Draft is a live read-only interaction surface, not a second serving authority.
 
-For current Draft roster/market questions:
+For **every current Draft waiver, free-agent, drop, available-player ranking or waiver-priority recommendation**, the connected session must fetch private issue `mcnuggets651/fpl#17` before football/model reasoning and require all of the following from the machine payload:
 
-- require a current successful private Official Draft query for league `33160`, entry `mcnuggets`;
-- use its exact roster and available/locked pool rather than chat memory;
-- require `roster_complete = true` before treating the roster as a valid 15-player owner state;
-- use public league transaction/trade history only as history, not as evidence of the current pending queue.
+- contract `apex-private-draft-live-decision-v1`;
+- status `READY` / `decision_preflight.recommendation_ready = true`;
+- league `33160`, entry `mcnuggets`;
+- receipt not expired according to `expires_at`;
+- target Gameweek present;
+- exactly 15 unique owned players with 2 GKP / 5 DEF / 5 MID / 3 FWD;
+- current available and locked sets;
+- valid roster/available/locked/full-state SHA-256 bindings;
+- `memory_fallback_allowed = false`;
+- `same_position_swap_required = true`;
+- `incoming_must_be_available = true`;
+- `outgoing_must_be_owned = true`;
+- `owned_player_can_be_incoming = false`.
 
-For current **open/pending personal waiver or transaction** questions:
+The stable roster/pool receipt is generated from one current Official Draft query, guarded before publication and normally refreshed every 15 minutes; the guarded decision state has a 30-minute TTL. Issue update time alone is not freshness proof: compare current time to the payload's `expires_at`.
 
-- require a current successful authenticated relay artifact from the governed public-auth → private-query path in `APEX_DRAFT_QUERY.md`;
-- treat an empty row list as “no current pending transactions” only when the authenticated endpoint itself succeeded and the private relay records `entry_transactions.status = ok`;
-- never reinterpret `auth_required`, `auth_rejected`, `endpoint_not_found`, missing/stale relay evidence or workflow failure as an empty waiver queue;
+Every proposed waiver/free-agent swap must use the **same #17 state** and prove mechanically that the outgoing player is currently owned, the incoming player is currently available, the incoming player is neither already owned nor locked, and the two players have the same current Official Draft position. A model edge, fixture opinion or AI interpretation can rank only swaps that pass this state/legality gate; it cannot override the gate.
+
+If issue #17 is missing, stale, malformed, wrong-league/wrong-entry, hash-invalid, incomplete or not `READY`, give **no Draft waiver recommendation** and state the live-state blocker. Conversation memory, screenshots, historical squads, old artifacts and previous free-agent lists are never substitutes.
+
+Private issue `mcnuggets651/fpl#11` remains a **separate** authenticated transaction/current-request receipt. It never substitutes for current roster/availability state. When the question depends on current open/pending personal waiver or transaction state:
+
+- require current successful authenticated evidence from the governed public-auth → private-query path in `APEX_DRAFT_QUERY.md`;
+- preserve the resolved-history versus unresolved/current-request distinction;
+- never reinterpret `auth_required`, `auth_rejected`, endpoint failure, stale/missing evidence or ambiguous transaction semantics as an empty current queue;
 - never expose or request reusable authentication material in chat when the governed auth path can recover it.
 
 For Draft player projection comparisons, Draft and Classic IDs are separate namespaces. Reconcile players by **name + club + position**, then use the current authority-correct private Apex projection surface. Never assume raw numeric Draft and Classic element IDs match.
@@ -65,7 +80,7 @@ A missing predeadline forecast/counterfactual remains missing after the Official
 
 If exact authenticated Classic production state, serving projections, serving-core provenance, factual authority or immutable publication is unsafe, say exactly what is missing and withhold an invented Apex production recommendation. Do not fall back to retired Pinnacle/Elite outputs or choose manually among shadow candidates.
 
-If a Draft query is stale, incomplete, unauthenticated where authentication is required, identity-ambiguous or missing its accepted private artifact, state the exact blocker and fail closed rather than reconstructing the squad/waiver queue from memory.
+If Draft issue #17 is stale, incomplete, malformed, identity-invalid, hash-invalid, expired or unavailable, state the exact blocker and fail closed rather than reconstructing the roster/waiver pool from memory. If authenticated current-request state matters, issue #11 and its independent semantic/freshness gate must also pass.
 
 ## Canonical wording
 
