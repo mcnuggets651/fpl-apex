@@ -22,7 +22,7 @@ This policy governs ChatGPT answers about Classic FPL players, squads, transfers
 
 ## FPL Draft owner-query rule
 
-Draft is a live read-only interaction surface, not a second serving authority.
+Draft is a live read-only interaction surface, not a second serving authority. Private issue #17 is the stable `PRIV-009` current-state interaction receipt; its existence does not create a second serving or model authority.
 
 For **every current Draft waiver, free-agent, drop, available-player ranking or waiver-priority recommendation**, the connected session must fetch private issue `mcnuggets651/fpl#17` before football/model reasoning and require all of the following from the machine payload:
 
