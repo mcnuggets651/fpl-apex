@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 6 September 2026, after PR #172/evaluation-orphan repair and live owner-auth reconciliation; direct owner authentication is operational, durable refresh Keepalive remains degraded pending one external secret re-seed  
+**State snapshot:** 7 September 2026, after private PR #18 made Draft roster/pool recommendations mechanically fail closed and live issue #17 passed real runtime acceptance; Classic serving authority remains unchanged  
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -56,9 +56,27 @@ The cached-access repair is already merged in PR #169 at `482ccacf5c995a3b6d2562
 
 The remaining durable-refresh repair is **external-secret state, not another code bypass**: obtain one fresh browser-issued `FPL_REFRESH_TOKEN`, enter it directly into the approved GitHub Actions secret, then run Keepalive once. Never paste the token into chat, repository content, logs or public artifacts. After that bootstrap succeeds, repeated authenticated runs must prove cached-access reuse without unnecessary refresh exchange before durable auth is called fully healthy.
 
-The incident-only direct-auth diagnostic is being corrected so it uses the authority-selected `production_core_sha` for live owner preflight/config while retaining `frozen_engine_sha` only as an ancestry/forensic anchor. It remains manual-only, read-only, non-serving, refresh-disabled and incapable of rebuilding Keepalive state. This is an `OPS-002`/`GOV-002` control-plane correction only; it cannot change machine authority or serving output.
-
 AIrsenal remains sole serving provider H1–H8. Dastan, Apex Proprietary and PITCHSIDE remain non-serving research/challenger surfaces unless formally promoted. Frozen PR #90 remains open/draft/unmerged and must never be merged or advanced.
+
+### FPL Draft live state / legality — ACCEPTED
+
+The Draft interaction path is now mechanically protected against the two concrete state-validation failures that were observed in chat: an illegal cross-position swap and recommending an already-owned player as an incoming waiver target.
+
+Private PR #18, **Make live Draft recommendations fail closed**, passed exact-head Draft regressions, private master/public-capability binding checks and strategy/runtime assurance at head `86b3683133e09d5350b1ae3634cb5a15103e9607`, then merged unchanged at private main SHA `7589aabfeb71b8043e437d90020764e5d1a35d28`.
+
+Post-merge private Draft run `34142054901` completed **SUCCESS** against the real configured Official Draft league. Its live query, fail-closed decision guard, artifact publication and stable private issue publication all succeeded. Private issue `mcnuggets651/fpl#17` became `READY` for GW4 with exactly 15 owned players and a current available/locked pool, with memory fallback forbidden and same-position swap enforcement enabled.
+
+This acceptance is **freshness-bounded**: issue #17 has a 30-minute decision TTL and is normally refreshed every 15 minutes. A fresh connected session must fetch the current issue #17 and validate its identity, expiry, roster composition and hashes every time. Historical counts or a prior `READY` receipt are not current state.
+
+Issue #17 is current roster/available/locked state and transaction-legality evidence only. Private issue #11 remains the separate authenticated transaction/current-request receipt. Pending/open-waiver semantics are not automatically certified by issue #17 or by resolved transaction history.
+
+No Draft POST/DELETE/write capability was introduced.
+
+### Orthogonal private D033 diagnostic state
+
+The same private merge triggered Classic Strategy Query run `34142054905`. Its strategy snapshot path reached the D033 price-policy canary, which failed closed with `synthetic price stress has no feasible future transfer pair for target D033 scenario` for authority-selected run `34011478768-2`.
+
+That failure is **not caused by the Draft repair and does not invalidate the accepted `PRIV-009` live-state path**. It is a separate `PRIV-003` non-serving D033 diagnostic limitation. Do not present that canary as healthy until its own feasible-scenario/runtime condition is repaired or explicitly classified. Classic machine serving authority remains AIrsenal H1–H8 and is unchanged.
 
 ### Historical auth incident context — superseded as current status
 
@@ -95,13 +113,13 @@ Exact/latest narrow strategy JSON was byte-identical at SHA-256 `e50c4ebde19a2c6
 
 Private PR #8 repaired the chat-facing projection request that had remained pinned to historical run `33719526625-1`. It merged at `2f4ac141224f1fe222de6893a544abfbf685ea6a`; post-merge private contract/query runs succeeded and resolved authority-selected immutable evidence. Missing provider exports must remain explicit missing evidence rather than fabricated rows.
 
-### FPL Draft owner-query closure
+### FPL Draft owner-query lineage
 
-The Draft connection is historically runtime-proven and does not depend on chat memory. Private PR #9 merged live roster/available/locked query; private PR #10 added the credential-free authenticated-relay receiver; public PR #154 registered governed authenticated relay capability; private PR #12 established the stable private connected-session surface.
+Private PR #9 merged the first live roster/available/locked query; private PR #10 added the credential-free authenticated-relay receiver; public PR #154 registered governed authenticated relay capability; private PR #12 established the stable authenticated connected-session surface. Private PR #18 then added the permanent current-state/legality guard and stable live issue #17 described above.
 
-The stable receipt proved authenticated connectivity for live Draft team-entry ID `172178`, but result-bearing transaction rows are resolved history, not a certified current open queue. PR #155 hardened resolved/unresolved semantics and schema-only authenticated discovery. No Draft POST/DELETE/write capability was introduced.
+The authenticated receipt proved connectivity for live Draft team-entry ID `172178`, but result-bearing transaction rows are resolved history, not a certified current open queue. PR #155 hardened resolved/unresolved semantics and schema-only authenticated discovery.
 
-Current Draft queries must continue to use live Official Draft evidence through the private boundary. A successful transaction-history endpoint with zero rows does not by itself prove no open waivers unless exact current-state semantics are established.
+Current Draft recommendations must use the current issue #17 live state before model reasoning. A successful transaction-history endpoint with zero rows does not by itself prove no open waivers unless exact current-request semantics are established through the separate authenticated surface.
 
 ---
 
@@ -124,7 +142,8 @@ These values are a dated continuity snapshot. Verify live GitHub at session star
 - PR #160 closed PITCHSIDE predeadline reseal recovery;
 - PR #161/D033 committed price-aware receding-horizon owner transfer planning as the required successor destination;
 - PR #169 merged cached-access auth reuse at `482ccacf5c995a3b6d256221fef9e2db69c34f7d`;
-- PR #172 merged the exact historical failed-attempt acknowledgement repair; main after that merge was `b9cfc0b63918442190eae0d984c9a847860337fe`;
+- PR #172 merged the exact historical failed-attempt acknowledgement repair;
+- PR #173 reconciled direct owner-auth versus durable-refresh health and corrected the direct diagnostic to use authority-selected production-core preflight; current public main before this Draft documentation reconciliation is `41611a3c49a7c36fed265b70742f6f78584404c5`;
 - Daily Evaluation `34026370477` and downstream Decision Quality `34026458104` passed after #172;
 - protected control plane: verify current ruleset live before relying on an old identifier.
 
@@ -149,7 +168,7 @@ These values are a dated continuity snapshot. Verify live GitHub at session star
 - automatic promotion: `false`;
 - legacy status: `HISTORICAL_NON_SERVING`.
 
-Control-plane auth diagnostics and documentation reconciliation do not change machine authority.
+This Draft interaction/documentation reconciliation does not change machine authority.
 
 ### Frozen PR #90
 
@@ -160,7 +179,9 @@ PR #90, **Build Apex V2 clean-room production architecture**, remains deliberate
 - repository: `mcnuggets651/fpl`;
 - owner-private payloads, exact manager commitments, Draft owner transactions and authentication material remain private;
 - accepted self-hosted/private query architecture remains the only approved current-owner query boundary;
-- private Draft workflow does not receive reusable FPL credentials; public governed auth relays only credential-free allowlisted evidence.
+- private Draft workflow does not receive reusable FPL credentials;
+- stable issue #17 is the current roster/available/locked interaction receipt;
+- stable issue #11 is the separate credential-free authenticated transaction/current-request receipt.
 
 ---
 
@@ -230,9 +251,13 @@ A chat session must answer owner questions without putting manager state in publ
 
 Verify immutable private manager release, GitHub asset digests, Apex attestations, season/run identity, public-attempt linkage, entry `63984`, exact 15-player TeamState, bank/FT/prices/chips/transfers and narrow private-safe output. Private-auth releases are never query data.
 
-### Draft query
+### Draft current state and legality
 
-For current Draft roster/market questions use current private Draft query evidence and require exact league/entry plus complete 15-player roster. For authenticated transaction evidence use the governed public relay + private receipt. Result-bearing rows are resolved history; missing/empty result rows are only `unresolved` until exact pending/open semantics are proven. Missing/auth-required/auth-rejected/endpoint-failed evidence is not an empty queue. Draft↔Classic projection joins use name + club + position, never raw numeric ID equality.
+For any current Draft waiver/free-agent/drop/ranking recommendation, fetch private issue #17 first. Require contract `apex-private-draft-live-decision-v1`, `READY`, exact league/entry identity, unexpired `expires_at`, exactly 15 owned players with 2/5/5/3 composition, current available/locked sets, valid state hashes and `memory_fallback_allowed = false`.
+
+Every proposed swap must use that same receipt and prove owned OUT, available IN, IN not owned/locked and exact same current Official Draft position. If issue #17 is missing, stale, malformed or invalid, give no recommendation; memory/screenshots/old artifacts are forbidden fallbacks.
+
+For authenticated transaction/current-request evidence use issue #11 separately. Result-bearing rows are resolved history; missing/empty result rows are only `unresolved` until exact pending/open semantics are proven. Missing/auth-required/auth-rejected/endpoint-failed evidence is not an empty queue. Draft↔Classic projection joins use name + club + position, never raw numeric ID equality.
 
 Detailed procedure: `docs/APEX_DRAFT_QUERY.md`.
 
@@ -310,7 +335,7 @@ The Draft relay is not a serving workflow and cannot submit Draft transactions. 
 
 ### Private persistence/query plane
 
-Key surfaces include immutable Classic manager/provider persistence/query, encrypted auth releases/staged drafts, Draft query/relay ingestion, stable private receipt and the self-hosted runner. The private Draft workflow never receives reusable FPL credentials.
+Key surfaces include immutable Classic manager/provider persistence/query, encrypted auth releases/staged drafts, the fail-closed Draft live-state guard, stable private issues #17/#11 and the self-hosted runner. The private Draft workflow never receives reusable FPL credentials.
 
 ---
 
@@ -330,7 +355,8 @@ GitHub remains the exact per-commit/per-PR archive. This section prevents settle
 - **Era J — production closure (#138–#149):** #146 single-solve witness-only repair, #147 production-core promotion, successful production run #9, Deadline Watch restoration.
 - **Era K/L — continuity/private query constitution (#150–#152 + private work):** master ledger, capability registry, system map, zero-cost private self-hosted query path.
 - **Era M — Draft/auth durability (#153–#158):** Dastan core-root repair, authenticated Draft relay, Draft semantics, auth diagnostics, two-phase refresh staging and same-run activation fix.
-- **Era N — PITCHSIDE/D033/auth cache/evaluation repair (#160–#172):** PITCHSIDE reseal recovery, transfer-policy product commitment, cached-access auth reuse, proprietary shadow wiring work, exact historical failed-attempt acknowledgement and evaluation recovery.
+- **Era N — PITCHSIDE/D033/auth cache/evaluation repair (#160–#173):** PITCHSIDE reseal recovery, transfer-policy product commitment, cached-access auth reuse, proprietary shadow wiring work, exact historical failed-attempt acknowledgement/evaluation recovery and direct-auth diagnostic reconciliation.
+- **Era O — Draft interaction state guard (private PR #18):** current roster/available/locked issue #17, machine legality guard and no-memory fail-closed conversational contract.
 
 Exact historical run/PR evidence remains preserved in repository history and immutable GitHub releases. Do not reinterpret compressed lineage as serving authority.
 
@@ -363,20 +389,22 @@ Exact historical run/PR evidence remains preserved in repository history and imm
 23. Do not run live owner preflight/config from `frozen_engine_sha`; use authority-selected `production_core_sha`, retaining frozen SHA only for ancestry/forensics.
 24. Do not synthesize/delete/rewrite a final release to make historical failed production intents disappear; the attempt audit may acknowledge only verified exact historical failures and must hard-fail on unknown future orphans.
 25. Do not permanently park D033 price-aware transfer planning in research/shadow; canary is a certification gate, not final destination.
+26. Do not make a Draft waiver recommendation without a current valid issue #17 receipt; never use memory to fill ownership/availability/position gaps.
+27. Do not treat issue #17 as proof of current pending/open requests; issue #11/current-request semantics are a separate gate.
 
 ---
 
-## 11. Next actions — durable refresh acceptance, then owner decision work
+## 11. Next actions — durable refresh acceptance, D033 diagnostic closure and owner decision work
 
 Current ordering:
 
-1. merge the direct-auth diagnostic correction only after exact-head Apex CI/Ops Contract are green; it must remain manual/read-only/non-serving/refresh-disabled and use authority-selected `production_core_sha`;
-2. **external secret-side action:** obtain one fresh browser-issued `FPL_REFRESH_TOKEN` and set only the approved GitHub Actions secret; never paste it into chat/repository/logs;
-3. after secret rotation, run exactly one Keepalive verification and require successful durable bootstrap/activation;
-4. require subsequent serialized owner-auth runs to reuse manager-certified cached access with no unnecessary refresh exchange;
-5. only explicit cached-access rejection may cause the next single controlled rotation;
-6. keep canonical Daily Production, Daily Evaluation and Decision Quality healthy; current Daily Evaluation `34026370477` and Decision Quality `34026458104` are green after #172;
-7. use fresh immutable/private owner evidence for any exact TeamState/FT/bank/prices/transfer recommendation;
+1. **external secret-side action:** obtain one fresh browser-issued `FPL_REFRESH_TOKEN` and set only the approved GitHub Actions secret; never paste it into chat/repository/logs;
+2. after secret rotation, run exactly one Keepalive verification and require successful durable bootstrap/activation;
+3. require subsequent serialized owner-auth runs to reuse manager-certified cached access with no unnecessary refresh exchange;
+4. keep canonical Daily Production, Daily Evaluation and Decision Quality healthy;
+5. for Draft recommendation questions, require current issue #17 and legal same-position state before any model ranking; issue #11 remains separate when authenticated request state matters;
+6. classify/repair the orthogonal D033 private canary failure `synthetic price stress has no feasible future transfer pair for target D033 scenario` without weakening fail-closed semantics or changing serving authority;
+7. use fresh immutable/private owner evidence for any exact Classic TeamState/FT/bank/prices/transfer recommendation;
 8. continue D033 price-aware receding-horizon successor implementation/promotion under deterministic replay, mechanics, privacy, price-scenario and canary gates;
 9. keep PR #90 frozen and machine authority unchanged unless a separately governed promotion explicitly changes `production_core_sha`.
 
@@ -418,12 +446,24 @@ Editing this ledger/registry/system map cannot promote serving authority, publis
 
 ## 13. Changelog for this ledger
 
+### 2026-09-07 — Draft live-state conversational guard accepted
+
+- private PR #18 (`PRIV-009`, `PRIV-007`) made current Draft recommendation state mechanically fail closed rather than relying on chat memory;
+- exact-head PR SHA `86b3683133e09d5350b1ae3634cb5a15103e9607` passed Draft regressions `34141826809`, private master/public-capability binding `34141826881` and strategy/runtime assurance `34141827030`;
+- PR #18 merged unchanged at private main `7589aabfeb71b8043e437d90020764e5d1a35d28`;
+- merged real Draft run `34142054901` succeeded end-to-end and published private issue #17 as `READY` from current Official Draft roster/available/locked state;
+- current interaction contract requires owned OUT, available IN, IN not owned/locked and same current Draft position; memory fallback is forbidden;
+- issue #17 has a freshness-bounded 30-minute TTL and must be fetched/validated on every current recommendation;
+- issue #11 remains separate authenticated transaction/current-request evidence; resolved history is not a pending queue;
+- post-merge private Strategy Query `34142054905` separately failed closed in the non-serving D033 price-policy canary because no feasible future transfer pair existed for its synthetic stress scenario; this does not invalidate Draft acceptance and does not change Classic serving authority;
+- no FPL write path, machine authority, production core, serving provider, billing policy or PR #90 state changed.
+
 ### 2026-09-06 — direct auth/durable refresh status reconciled; diagnostic core selection corrected
 
 - live canonical Daily Production `34011478768`, attempt 2, succeeded end-to-end, proving owner access is not globally fail-closed;
 - Auth Keepalive `34016839565`, attempt 2, failed because active rotating and bootstrap refresh credentials were rejected/expired; this is durable refresh degradation, not proof that direct owner bearer/cookie is unusable;
 - Keepalive semantics remain fail-closed and cannot substitute direct auth for a durable refresh chain;
-- `.github/workflows/apex-v2-direct-auth-diagnostic.yml` is corrected to resolve `production_core_sha` from machine authority, verify frozen ancestry, materialize that exact core and run direct-only owner preflight there;
+- `.github/workflows/apex-v2-direct-auth-diagnostic.yml` was corrected to resolve `production_core_sha` from machine authority, verify frozen ancestry, materialize that exact core and run direct-only owner preflight there;
 - the direct diagnostic remains `workflow_dispatch` only, `contents: read`, refresh-disabled, non-serving and without provider/intent/solve/publication paths;
 - `frozen_engine_sha` remains the forensic ancestry anchor only; PR #90 remains untouched;
 - machine authority, `production_core_sha`, AIrsenal serving H1–H8, research influence and private owner boundaries are unchanged;
@@ -461,7 +501,7 @@ Editing this ledger/registry/system map cannot promote serving authority, publis
 ### 2026-09-04 — auth durability and Draft query closure
 
 - PR #154 completed governed authenticated Draft relay;
-- private PR #12 established the stable connected-session Draft receipt;
+- private PR #12 established the stable connected-session authenticated Draft receipt;
 - PR #155 hardened resolved/unresolved/open-waiver semantics;
 - PR #156 classified exhausted owner credentials without leaking auth material;
 - PR #157 merged two-phase refresh durability;
