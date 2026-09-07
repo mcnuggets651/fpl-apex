@@ -10,6 +10,7 @@ The Draft capability supports fresh owner questions about:
 
 - current Draft league and exact 15-player roster;
 - available and locked players;
+- legal waiver/free-agent swap construction from current roster/availability state;
 - public league transaction/trade history;
 - authenticated entry-specific transaction state;
 - current pending/open waiver requests **only after their exact upstream semantics are runtime-proven**;
@@ -34,11 +35,43 @@ The private repository owns the live public Draft query:
 
 - private request: `apex-query/draft_request.json`;
 - private tool: `tools/apex_draft_query.py`;
+- live decision guard: `tools/apex_draft_decision_guard.py`;
+- stable live-state publisher: `tools/apex_draft_live_issue_publish.py`;
 - private workflow: `.github/workflows/apex-draft-query.yml`;
-- private contract/runbook: `APEX_PRIVATE_QUERY_BRIDGE.md`;
+- private contract: `DRAFT_LIVE_DECISION_CONTRACT.md`;
+- stable connected-session roster/pool receipt: private issue `mcnuggets651/fpl#17`;
 - execution: `[self-hosted, macOS, ARM64]`, no hosted fallback.
 
-Private PR #9 merged the first governed bridge. Post-merge workflow `33889278311` proved exact 15-player roster retrieval plus live available/locked pool retrieval. Entry-specific transactions reported `auth_required`, which isolated the authenticated transport requirement.
+Private PR #9 merged the first governed bridge. Private PR #18, **Make live Draft recommendations fail closed**, merged at private SHA `7589aabfeb71b8043e437d90020764e5d1a35d28` on 7 September 2026 and converted the roster/pool query into a mechanically guarded interaction surface.
+
+Merged private Draft run `34142054901` then passed end-to-end against the real Official Draft league: live query, decision guard, private artifact upload and issue #17 publication all succeeded. The accepted receipt was `READY`, target GW4, with exactly 15 owned players, 504 available rows, zero locked rows and `memory_fallback_allowed = false`. Those counts are runtime acceptance evidence only; a connected session must always fetch the **current** issue #17 rather than reuse these historical values.
+
+### Live decision guard
+
+Issue #17 may advance only after one same-run Official Draft query passes all of these checks:
+
+- contract `apex-private-draft-live-decision-v1`;
+- league ID exactly `33160` and entry name exactly `mcnuggets`;
+- underlying query age no more than five minutes when guarded;
+- exactly 15 unique owned players;
+- roster composition exactly 2 GKP / 5 DEF / 5 MID / 3 FWD;
+- current available and locked sets present;
+- owned, available and locked Draft-element sets pairwise disjoint;
+- current Draft position bound to every player row;
+- exactly one current Official FPL `is_next` Gameweek;
+- roster, available, locked and full-state SHA-256 bindings valid;
+- `decision_preflight.recommendation_ready = true`;
+- `memory_fallback_allowed = false`;
+- `same_position_swap_required = true`;
+- `incoming_must_be_available = true`;
+- `outgoing_must_be_owned = true`;
+- `owned_player_can_be_incoming = false`.
+
+The guarded state expires 30 minutes after its live query timestamp; the workflow normally refreshes every 15 minutes. If query or guard publication fails, issue #17 is not advanced and the previous receipt expires naturally.
+
+Every proposed waiver/free-agent swap must be validated against the exact same current issue #17 state: outgoing currently owned, incoming currently available, incoming not already owned or locked, and exact same current Official Draft position. The machine reference is `tools/apex_draft_decision_guard.py::validate_waiver_swap` in the private repository.
+
+A football model, fixture edge or AI interpretation may rank only **already legal** swaps. It cannot override ownership, availability or positional legality.
 
 ## Authenticated transaction path
 
@@ -75,10 +108,12 @@ Private receiver:
 - dispatch event: `apex-draft-auth-snapshot`;
 - private workflow: `.github/workflows/apex-draft-query.yml`;
 - private artifact: `apex-private-draft-auth-<private_workflow_run_id>`;
-- stable private connected-session receipt: private issue `mcnuggets651/fpl#11`;
+- stable private connected-session authenticated receipt: private issue `mcnuggets651/fpl#11`;
 - artifact retention: seven days.
 
 The private receiver validates exact league/entry/producer identity, successful authenticated status, approved auth mode, row count and field allowlist. It rejects keys containing token, cookie, authorization, secret or credential material. Private issue #11 contains only the revalidated allowlisted credential-free receipt and is never a Draft write surface.
+
+**Issue #17 and issue #11 are deliberately separate.** Issue #17 is mandatory current roster/available/locked state and legality evidence. Issue #11 is authenticated transaction/current-request evidence when that state matters. Neither may substitute for the other.
 
 ## Resolved history is not an open waiver queue
 
@@ -94,80 +129,85 @@ Therefore:
 
 This distinction is required because “authenticated transaction history works” and “current pending queue works” are different claims.
 
-## Current owner-auth incident and permanent repair boundary
+## Owner-auth durability boundary
 
-After PR #155 merged, authenticated Draft semantic discovery stopped before any Draft endpoint because owner authentication was unhealthy. Public PR #156 added only a failure-gated status probe and merged without changing recovery semantics. Its merged diagnostic established the exact current direct transport result: Official FPL `/api/me/` returned **HTTP 401 / `rejected`** for the configured static bearer. The rotating private refresh state and configured bootstrap refresh were also rejected. This is credential exhaustion/rejection evidence, not rate limiting or a 5xx incident.
+The 4–5 September credential incident established both a prior refresh-exhaustion condition and a crash/verification window in the old refresh lifecycle. Public PRs #157/#158 repaired refresh durability with staged-child persistence and exact activation; PR #169 subsequently added manager-certified cached-access reuse so frequent Draft relay polling does not rotate a one-time refresh parent on every successful authenticated invocation.
 
-The diagnosis also exposed a permanent crash/verification window in the prior refresh lifecycle: an identity-provider exchange could consume the parent refresh token before `/api/me/` manager verification, while the rotated child was not yet durable. A verification failure could therefore strand the refresh chain.
+Current public master state is authoritative for live auth health. At the 6 September continuity snapshot, direct owner auth was operational through successful canonical production while durable refresh Keepalive remained degraded pending one fresh browser-issued refresh re-seed. Do not collapse those two health dimensions.
 
-The governed repair is two-phase and remains inside existing `PROD-002` owner authentication:
+The governed two-phase refresh boundary remains:
 
-1. recover any already-staged encrypted child for the current parent from authenticated private release listing before attempting a new exchange;
+1. recover any already-staged encrypted child for the current parent before attempting a new exchange;
 2. exchange the current refresh token once;
-3. encrypt and upload the rotated child as a **private draft before** `/api/me/` verification;
+3. encrypt and upload the rotated child as a private draft before manager verification;
 4. treat that draft as inactive recovery evidence;
 5. verify exact Classic manager identity;
 6. only on exact match, re-download/digest-check and immutably publish the staged child as active refresh state;
-7. on any indeterminate post-exchange verification result, retain the child staged and prohibit parent retry/bootstrap/direct fallback;
+7. on indeterminate post-exchange verification, retain the child staged and prohibit parent retry/bootstrap/direct fallback;
 8. on explicit wrong-manager proof, strictly purge the wrong-manager staged chain or fail for manual private-store cleanup.
 
-Production, Keepalive and Draft Relay must all use the same authority-selected production-core auth preflight/config and the same serialized `apex-v2-fpl-auth` concurrency group. The frozen PR #90 SHA remains forensic lineage and is never modified to fix authentication.
-
-Because all currently configured durable credentials are rejected, one browser-issued refresh re-seed will still be required **after** this permanent repair is merged and exact-head accepted. The credential must be placed directly into the approved GitHub Actions secret and must never be pasted into chat, an issue, logs or documentation.
+Production, Keepalive and Draft Relay all use the same authority-selected production-core auth preflight/config and serialized `apex-v2-fpl-auth` concurrency group. Frozen PR #90 remains forensic lineage and is never modified to repair authentication.
 
 ## Failure-only owner status diagnostic
 
-The status-only probe retained after PR #156 is incident evidence, not authentication:
+The status-only diagnostic is incident evidence, not authentication:
 
-- it runs only after the owner-auth step has failed;
-- it uses only already-configured static direct bearer/cookie transport;
-- it performs one read-only streamed GET to Official FPL `/api/me/` per configured direct transport;
-- it records only final HTTP status code and coarse class;
-- it emits no response body, response headers, credential value, refresh token, private-repository token or manager payload;
-- it does not parse manager identity and therefore cannot certify authentication;
-- it does not retry, exchange, rotate or persist refresh state;
-- it does not convert the failed owner-auth step into success and cannot unlock Draft query/dispatch.
+- it uses only configured direct transports;
+- it performs read-only Official FPL identity/status probing;
+- it records only bounded status/mode metadata;
+- it emits no response body, credential value, refresh token, private-repository token or manager payload;
+- it cannot activate refresh state, solve, publish or unlock a failed Draft query.
 
-The accepted diagnostic result for the current incident is 401/rejected. Do not keep probing or refreshing merely to reproduce that fact.
+A status-only diagnostic must never be treated as authenticated manager-state evidence.
 
 ## Fresh-session ChatGPT rule
 
-For a Draft owner question, a fresh connected agent must:
+For **every** Draft waiver/free-agent/drop/available-player/priority question, a fresh connected agent must:
 
 1. read public master state, machine authority, capability registry and this runbook;
-2. use the approved private Draft query surface rather than chat memory or screenshots;
-3. require a current successful public/live Draft result for roster and waiver-pool claims;
-4. use the stable private `PRIV-009` receipt/private artifact for authenticated transaction evidence;
-5. **never label resolved transaction-history rows as pending/open waivers**;
-6. require the exact current-request semantic surface to be runtime-proven before asserting a pending/open queue or a confirmed empty queue;
-7. use the authority-correct private Apex projection query for xP/model comparisons;
-8. reconcile Draft↔Classic identities by name + club + position;
-9. fail closed and state the exact missing surface if freshness, authentication, identity, transaction semantics or relay integrity cannot be verified.
+2. fetch private issue `mcnuggets651/fpl#17` before any model or football reasoning;
+3. require the current #17 machine payload to pass the live-decision contract above, including `READY`, exact identity, expiry, exact roster composition, hashes and `memory_fallback_allowed = false`;
+4. validate each proposed swap against that same #17 state: owned OUT, available IN, IN not owned/locked, same Official Draft position;
+5. never use conversation memory, screenshots, old artifacts, previous squads or historical free-agent lists as a replacement for #17;
+6. if #17 is absent, stale, malformed, identity-invalid, hash-invalid, expired or not `READY`, give **no waiver recommendation** and state the live-state blocker;
+7. when authenticated current-request/pending transaction state matters, fetch private issue #11 separately and apply its independent freshness and semantic rules;
+8. **never label resolved transaction-history rows as pending/open waivers**;
+9. require the exact current-request semantic surface to be runtime-proven before asserting a pending/open queue or confirmed empty queue;
+10. use the authority-correct private Apex projection query for xP/model comparisons only after state/legality gates pass;
+11. reconcile Draft↔Classic identities by name + club + position.
 
-A successful authenticated transaction-history response proves connectivity, not by itself the semantics of an open queue. `auth_required`, `auth_rejected`, endpoint failure, a stale receipt or ambiguous resolved/unresolved semantics must never be presented as “no open waivers.” A status-only owner-auth diagnostic is incident evidence only and must never be treated as an authenticated manager-state query.
+A successful roster/pool receipt certifies current state/legality for its TTL; it does not certify pending/open transaction semantics. A successful authenticated transaction-history response proves connectivity, not by itself the semantics of an open queue.
 
 ## Project-instruction handoff
 
-The ChatGPT Project instructions must not encode a provisional Draft pending-waiver query path. GitHub remains the durable source of truth while exact current-request semantics are incomplete.
+The **roster/available/locked and waiver-legality connection is now runtime-accepted** through `PRIV-009` issue #17. Project instructions may bind current Draft recommendation questions to this stable live-state receipt and require fail-closed behavior when it is not current/valid.
 
-After **all runtime-acceptance gates** below have passed, the connected ChatGPT session must explicitly tell the owner that the Draft connection is certified and provide the exact Project-instruction text to add. That final instruction must bind Draft owner questions to `PRIV-009`, require `OPS-008` for authenticated transaction evidence, preserve the live league/entry resolution and Draft↔Classic identity rules in this runbook, distinguish resolved history from current pending requests, forbid credential exposure or duplication, and fail closed when current authenticated evidence cannot be verified.
+The **pending/open authenticated request queue remains a separate acceptance surface**. Project instructions must not claim that current pending/open waiver semantics are permanently certified until the independent issue #11/current-request runtime gates below are satisfied.
 
-Until those runtime gates pass, the owner should leave existing Project instructions unchanged rather than paste provisional capability wording.
+Any Project instruction must preserve:
+
+- live league `33160` / entry `mcnuggets` resolution;
+- issue #17 as mandatory current state/legality evidence;
+- issue #11/`OPS-008` as separate authenticated transaction/current-request evidence;
+- Draft↔Classic identity by name + club + position;
+- no credential exposure or duplication;
+- no Draft writes;
+- fail closed rather than use memory.
 
 ## Privacy and security invariants
 
 - reusable FPL credentials never enter public artifacts, docs or logs;
-- reusable FPL credentials are not duplicated into the private Draft query workflow;
-- rotated refresh children are encrypted and staged only in the private auth release store;
-- a staged child is never active until exact owner identity matches;
-- consumed refresh parents are never blindly retried when a staged child exists;
+- reusable FPL credentials are not duplicated into the private Draft workflow;
+- rotated refresh children are encrypted/staged only inside the governed private auth store;
 - authenticated raw Draft response bodies are not logged or published;
 - schema diagnostics contain no owner scalar values;
-- owner-auth incident diagnostics contain only status code/class metadata and never read the response body;
-- public control plane sends only the bounded credential-free relay contract;
+- owner-auth diagnostics contain only bounded status/mode metadata;
+- public control plane sends only bounded credential-free relay state;
 - private owner transaction rows remain private;
-- the stable private receipt is accessible only inside the private owner repository;
-- the relay cannot solve, publish, change serving authority or submit Draft transactions;
+- stable private receipts are accessible only inside the private owner repository;
+- issue #17 contains only allowlisted credential-free roster/available/locked decision state;
+- issue #11 contains only validated credential-free authenticated receipt state;
+- neither receipt can solve, publish, change serving authority or submit Draft transactions;
 - PR #90 remains `NEVER_MERGE_OR_ADVANCE`;
 - AIrsenal serving authority is unchanged.
 
@@ -175,35 +215,46 @@ Until those runtime gates pass, the owner should leave existing Project instruct
 
 Fail closed when:
 
-- manager authentication cannot be certified;
-- a post-exchange refresh child cannot be durably staged, verified or activated;
-- wrong-manager staged state cannot be purged;
+- issue #17 cannot be fetched or fails identity/freshness/hash/roster/legality validation;
+- an outgoing player is not currently owned;
+- an incoming player is not currently available, is already owned or is locked;
+- incoming/outgoing Draft positions differ;
+- manager authentication cannot be certified when authenticated state is required;
 - league/entry identity does not resolve uniquely;
 - the authenticated transaction endpoint returns rejection/not-found/unexpected status;
 - exact pending/open semantics are ambiguous;
-- the payload exceeds the bounded dispatch size or row count;
 - sensitive keys appear;
-- private dispatch is rejected;
-- private receiver validation fails;
-- the current private artifact/receipt cannot be retrieved or verified.
+- private dispatch/receiver validation fails;
+- current issue #11 evidence cannot be retrieved or verified when the question depends on it.
 
-Do not solve these failures by exposing credentials, copying raw authenticated responses, guessing result-code meanings, weakening validation, moving owner state public, submitting a test waiver without explicit governed write authorization, retrying a consumed refresh parent, falling back after an indeterminate staged rotation or falling back to chat memory.
+Do not solve these failures by exposing credentials, copying raw authenticated responses, guessing result-code meanings, weakening validation, moving owner state public, submitting a test waiver, or falling back to chat memory.
 
 ## Runtime acceptance
 
-CI proves structure. Historical connectivity already proved authenticated read/dispatch/private publication, but current authentication must be restored and **pending/open-waiver acceptance remains separate**.
+### Roster / available / locked / transaction-legality path — ACCEPTED
 
-Required closure order:
+The current `PRIV-009` live-state interaction path is accepted for roster/pool facts and legal swap construction:
 
-1. exact-head public Apex CI and Apex V2 Ops Contract pass for the two-phase auth/control-plane repair;
-2. the exact repair head merges with machine authority and PR #90 unchanged;
-3. a fresh browser-issued refresh credential is re-seeded directly into the approved GitHub Actions secret, never through chat;
-4. merged Keepalive executes successfully and proves the two-phase rotation/private activation path;
-5. merged `OPS-008` executes successfully, authenticates through the same path and dispatches a fresh credential-free private receipt;
-6. schema-only diagnostics identify the exact authenticated current-request surface, or transaction rows are independently proven to represent unresolved current requests;
-7. the producer extracts only the proven current-request surface through an explicit allowlist;
-8. the private repository receives that state on merged receiver code and exposes a successful private artifact/stable receipt;
-9. the private receipt is inspected and shown to represent the current pending/open queue, including a valid empty list only when the exact proven current-request surface itself is empty;
-10. private public-capability binding validation passes against the final public runbook state.
+1. private PR #18 exact-head Draft regression workflow `34141826809` passed;
+2. private exact-head master/public-capability binding workflow `34141826881` passed;
+3. private exact-head strategy/runtime assurance workflow `34141827030` passed;
+4. PR #18 merged unchanged at private main SHA `7589aabfeb71b8043e437d90020764e5d1a35d28`;
+5. merged live Draft workflow `34142054901` completed **SUCCESS**;
+6. its live query, fail-closed decision guard, artifact publication and stable issue publication all passed against the real configured Draft league;
+7. private issue #17 published `READY` with exact 15-player roster and guarded current available/locked state;
+8. the issue #17 contract mechanically rejects positional mismatches and already-owned incoming players and forbids memory fallback.
 
-Only after those gates are true may a fresh-session pending/open-waiver query be called permanently accepted.
+This acceptance is **freshness-bounded**, not perpetual data. A connected session must still fetch the current issue #17 and enforce `expires_at` every time.
+
+### Pending/open authenticated request semantics — NOT YET PERMANENTLY ACCEPTED
+
+Historical connectivity proves authenticated read/dispatch/private publication, but a current pending/open queue may be asserted only after all of these separate gates pass:
+
+1. current owner authentication required for the surface succeeds through governed `OPS-008`;
+2. schema-only diagnostics identify the exact authenticated current-request surface, or transaction rows are independently proven to represent unresolved current requests;
+3. producer extracts only the proven current-request surface through an explicit allowlist;
+4. private repository receives it on merged receiver code and exposes a current stable issue #11 receipt;
+5. the receipt is inspected and shown to represent the current pending/open queue, including an empty list only when that exact proven surface itself is empty;
+6. private public-capability binding validation passes against the final public runbook state.
+
+Until those gates are true, do not call the pending/open-waiver query permanently accepted merely because roster/pool legality is accepted.
