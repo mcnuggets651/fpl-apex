@@ -44,7 +44,9 @@ The private repository owns the live public Draft query:
 
 Private PR #9 merged the first governed bridge. Private PR #18, **Make live Draft recommendations fail closed**, merged at private SHA `7589aabfeb71b8043e437d90020764e5d1a35d28` on 7 September 2026 and converted the roster/pool query into a mechanically guarded interaction surface.
 
-Merged private Draft run `34142054901` then passed end-to-end against the real Official Draft league: live query, decision guard, private artifact upload and issue #17 publication all succeeded. The accepted receipt was `READY`, target GW4, with exactly 15 owned players, 504 available rows, zero locked rows and `memory_fallback_allowed = false`. Those counts are runtime acceptance evidence only; a connected session must always fetch the **current** issue #17 rather than reuse these historical values.
+Merged private Draft run `34142054901` then passed end-to-end against the real Official Draft league: live query, decision guard, private artifact upload and issue #17 publication all succeeded. The accepted receipt was `READY`, target GW4, with exactly 15 owned players, 504 available rows, zero locked rows and `memory_fallback_allowed = false`. Those counts are historical runtime evidence only.
+
+On 18 September 2026, private PR #32 strengthened the same `PRIV-009` surface with an exact Official Draft source-universe completeness proof and merged at private main `9a35413a4b31edcc35ac1930a87f242b8cee1c8a`. Post-merge Draft run #319 (`35383897465`) succeeded end-to-end and published issue #17 from 659 Official `element-status` IDs: 15 owner-roster IDs, 509 available IDs, zero locked IDs and 135 rival-owned ID-only proof rows, with zero unclassified IDs. Independent recomputation confirmed the source count/hash, partition hash, rival-owned sub-hash, empty-unclassified hash and full decision-state hash. These counts are runtime acceptance evidence only; a connected session must always fetch the **current** unexpired issue #17 rather than reuse historical values.
 
 ### Live decision guard
 
@@ -57,9 +59,12 @@ Issue #17 may advance only after one same-run Official Draft query passes all of
 - roster composition exactly 2 GKP / 5 DEF / 5 MID / 3 FWD;
 - current available and locked sets present;
 - owned, available and locked Draft-element sets pairwise disjoint;
-- current Draft position bound to every player row;
+- every unique Official Draft `element-status` ID is hash-bound into one source universe;
+- that source universe is exhaustively partitioned into owner roster, available, locked and rival-owned Draft element IDs only;
+- the unclassified source-ID bucket is empty and all source/partition counts and SHA-256 values agree;
+- current Draft position bound to every roster/available/locked player row;
 - exactly one current Official FPL `is_next` Gameweek;
-- roster, available, locked and full-state SHA-256 bindings valid;
+- roster, available, locked, source-partition and full-state SHA-256 bindings valid;
 - `decision_preflight.recommendation_ready = true`;
 - `memory_fallback_allowed = false`;
 - `same_position_swap_required = true`;
@@ -180,7 +185,7 @@ A successful roster/pool receipt certifies current state/legality for its TTL; i
 
 ## Project-instruction handoff
 
-The **roster/available/locked and waiver-legality connection is now runtime-accepted** through `PRIV-009` issue #17. Project instructions may bind current Draft recommendation questions to this stable live-state receipt and require fail-closed behavior when it is not current/valid.
+The **roster/available/locked, source-universe completeness and waiver-legality connection is runtime-accepted** through `PRIV-009` issue #17. Project instructions may bind current Draft recommendation questions to this stable live-state receipt only when it is unexpired and its complete source-pool proof validates; incomplete or partially reconstructed state fails closed.
 
 The **pending/open authenticated request queue remains a separate acceptance surface**. Project instructions must not claim that current pending/open waiver semantics are permanently certified until the independent issue #11/current-request runtime gates below are satisfied.
 
@@ -205,7 +210,7 @@ Any Project instruction must preserve:
 - public control plane sends only bounded credential-free relay state;
 - private owner transaction rows remain private;
 - stable private receipts are accessible only inside the private owner repository;
-- issue #17 contains only allowlisted credential-free roster/available/locked decision state;
+- issue #17 contains only allowlisted credential-free roster/available/locked decision state plus the source-pool completeness proof; rival-owned proof uses Draft element IDs only and does not add rival names, clubs, positions or owner identities;
 - issue #11 contains only validated credential-free authenticated receipt state;
 - neither receipt can solve, publish, change serving authority or submit Draft transactions;
 - PR #90 remains `NEVER_MERGE_OR_ADVANCE`;
@@ -216,6 +221,7 @@ Any Project instruction must preserve:
 Fail closed when:
 
 - issue #17 cannot be fetched or fails identity/freshness/hash/roster/legality validation;
+- issue #17 lacks a complete source-pool proof, contains any unclassified Draft element, or its source/partition count or hash does not agree;
 - an outgoing player is not currently owned;
 - an incoming player is not currently available, is already owned or is locked;
 - incoming/outgoing Draft positions differ;
@@ -242,9 +248,11 @@ The current `PRIV-009` live-state interaction path is accepted for roster/pool f
 5. merged live Draft workflow `34142054901` completed **SUCCESS**;
 6. its live query, fail-closed decision guard, artifact publication and stable issue publication all passed against the real configured Draft league;
 7. private issue #17 published `READY` with exact 15-player roster and guarded current available/locked state;
-8. the issue #17 contract mechanically rejects positional mismatches and already-owned incoming players and forbids memory fallback.
+8. the issue #17 contract mechanically rejects positional mismatches and already-owned incoming players and forbids memory fallback;
+9. private PR #32 exact-head tests and governance passed, then merged at `9a35413a4b31edcc35ac1930a87f242b8cee1c8a`;
+10. post-merge Draft run #319 (`35383897465`) completed successfully and published a live issue #17 whose 659 source IDs were independently recomputed as 15 owner + 509 available + 0 locked + 135 rival-owned, with zero unclassified IDs and matching source/partition/full-state hashes.
 
-This acceptance is **freshness-bounded**, not perpetual data. A connected session must still fetch the current issue #17 and enforce `expires_at` every time.
+This acceptance is **freshness-bounded**, not perpetual data. A connected session must still fetch the current issue #17, enforce `expires_at` every time and independently validate the source-pool proof rather than trusting the published boolean.
 
 ### Pending/open authenticated request semantics — NOT YET PERMANENTLY ACCEPTED
 

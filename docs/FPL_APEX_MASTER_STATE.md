@@ -7,7 +7,7 @@
 > It does **not** replace machine authority or immutable evidence. Where this prose conflicts with machine-verifiable state, the precedence rules below apply and this file must be corrected in the same change that discovers the conflict.
 
 **Ledger schema:** 1  
-**State snapshot:** 7 September 2026, after private PR #18 made Draft roster/pool recommendations mechanically fail closed and live issue #17 passed real runtime acceptance; Classic serving authority remains unchanged  
+**State snapshot:** 18 September 2026, after private PR #32 made the complete Official Draft source universe mechanically provable in issue #17 and post-merge run #319 passed live runtime acceptance; Classic serving authority remains unchanged
 **Season:** 2026/27  
 **Public control-plane repository:** `mcnuggets651/fpl-apex`  
 **Private persistence/query repository:** `mcnuggets651/fpl`  
@@ -66,7 +66,9 @@ Private PR #18, **Make live Draft recommendations fail closed**, passed exact-he
 
 Post-merge private Draft run `34142054901` completed **SUCCESS** against the real configured Official Draft league. Its live query, fail-closed decision guard, artifact publication and stable private issue publication all succeeded. Private issue `mcnuggets651/fpl#17` became `READY` for GW4 with exactly 15 owned players and a current available/locked pool, with memory fallback forbidden and same-position swap enforcement enabled.
 
-This acceptance is **freshness-bounded**: issue #17 has a 30-minute decision TTL and is normally refreshed every 15 minutes. A fresh connected session must fetch the current issue #17 and validate its identity, expiry, roster composition and hashes every time. Historical counts or a prior `READY` receipt are not current state.
+Private PR #32 then closed the remaining pool-completeness gap and merged at private main `9a35413a4b31edcc35ac1930a87f242b8cee1c8a`. Post-merge Draft run #319 (`35383897465`) completed **SUCCESS** on that exact code. Its live issue #17 proof contained 659 Official Draft source IDs partitioned as 15 owner-roster, 509 available, 0 locked and 135 rival-owned Draft IDs, with zero unclassified IDs. Independent recomputation from the published machine payload confirmed the source count/hash, full partition hash, rival-owned sub-hash, empty-unclassified hash and full decision-state SHA-256. These exact counts are runtime evidence, not reusable current state.
+
+This acceptance is **freshness-bounded**: issue #17 has a hard 30-minute decision TTL and is normally refreshed every 15 minutes. A fresh connected session must fetch the current issue #17 and validate its identity, expiry, roster composition, source-universe completeness proof and hashes every time. Historical counts or a prior `READY` receipt are not current state.
 
 Issue #17 is current roster/available/locked state and transaction-legality evidence only. Private issue #11 remains the separate authenticated transaction/current-request receipt. Pending/open-waiver semantics are not automatically certified by issue #17 or by resolved transaction history.
 
@@ -253,9 +255,9 @@ Verify immutable private manager release, GitHub asset digests, Apex attestation
 
 ### Draft current state and legality
 
-For any current Draft waiver/free-agent/drop/ranking recommendation, fetch private issue #17 first. Require contract `apex-private-draft-live-decision-v1`, `READY`, exact league/entry identity, unexpired `expires_at`, exactly 15 owned players with 2/5/5/3 composition, current available/locked sets, valid state hashes and `memory_fallback_allowed = false`.
+For any current Draft waiver/free-agent/drop/ranking recommendation, fetch private issue #17 first. Require contract `apex-private-draft-live-decision-v1`, `READY`, exact league/entry identity, unexpired `expires_at`, exactly 15 owned players with 2/5/5/3 composition, current available/locked sets, a complete Official Draft source-universe partition proof with zero unclassified IDs, valid state hashes and `memory_fallback_allowed = false`. The source proof must account for every Draft element-status ID exactly once across owner roster, available, locked or rival-owned ID-only evidence, with matching source and recomputed partition hashes.
 
-Every proposed swap must use that same receipt and prove owned OUT, available IN, IN not owned/locked and exact same current Official Draft position. If issue #17 is missing, stale, malformed or invalid, give no recommendation; memory/screenshots/old artifacts are forbidden fallbacks.
+Every proposed swap must use that same receipt and prove owned OUT, available IN, IN not owned/locked and exact same current Official Draft position. If issue #17 is missing, expired, incomplete, source-pool-invalid, malformed or otherwise invalid, give no recommendation; memory/screenshots/old artifacts are forbidden fallbacks.
 
 For authenticated transaction/current-request evidence use issue #11 separately. Result-bearing rows are resolved history; missing/empty result rows are only `unresolved` until exact pending/open semantics are proven. Missing/auth-required/auth-rejected/endpoint-failed evidence is not an empty queue. Draft↔Classic projection joins use name + club + position, never raw numeric ID equality.
 
@@ -389,7 +391,7 @@ Exact historical run/PR evidence remains preserved in repository history and imm
 23. Do not run live owner preflight/config from `frozen_engine_sha`; use authority-selected `production_core_sha`, retaining frozen SHA only for ancestry/forensics.
 24. Do not synthesize/delete/rewrite a final release to make historical failed production intents disappear; the attempt audit may acknowledge only verified exact historical failures and must hard-fail on unknown future orphans.
 25. Do not permanently park D033 price-aware transfer planning in research/shadow; canary is a certification gate, not final destination.
-26. Do not make a Draft waiver recommendation without a current valid issue #17 receipt; never use memory to fill ownership/availability/position gaps.
+26. Do not make a Draft waiver recommendation without a current unexpired issue #17 receipt whose complete Official Draft source-pool partition proof validates; never use memory to fill ownership/availability/position gaps.
 27. Do not treat issue #17 as proof of current pending/open requests; issue #11/current-request semantics are a separate gate.
 
 ---
@@ -402,7 +404,7 @@ Current ordering:
 2. after secret rotation, run exactly one Keepalive verification and require successful durable bootstrap/activation;
 3. require subsequent serialized owner-auth runs to reuse manager-certified cached access with no unnecessary refresh exchange;
 4. keep canonical Daily Production, Daily Evaluation and Decision Quality healthy;
-5. for Draft recommendation questions, require current issue #17 and legal same-position state before any model ranking; issue #11 remains separate when authenticated request state matters;
+5. for Draft recommendation questions, require current unexpired issue #17, a valid complete source-universe partition proof and legal same-position state before any model ranking; issue #11 remains separate when authenticated request state matters;
 6. classify/repair the orthogonal D033 private canary failure `synthetic price stress has no feasible future transfer pair for target D033 scenario` without weakening fail-closed semantics or changing serving authority;
 7. use fresh immutable/private owner evidence for any exact Classic TeamState/FT/bank/prices/transfer recommendation;
 8. continue D033 price-aware receding-horizon successor implementation/promotion under deterministic replay, mechanics, privacy, price-scenario and canary gates;
@@ -445,6 +447,16 @@ Editing this ledger/registry/system map cannot promote serving authority, publis
 ---
 
 ## 13. Changelog for this ledger
+
+### 2026-09-18 — Draft source-universe completeness runtime accepted
+
+- private PR #32 strengthened existing `PRIV-009` so issue #17 cannot become recommendation-ready unless every unique Official Draft `element-status` ID is accounted for exactly once across owner roster, available, locked or rival-owned ID-only proof;
+- exact private repair head `226d86935118aefe6ee614b26eda6440d9b4aad1` passed all 100 private tests, private master-state continuity and public-capability binding checks, then merged with tree identity at private main `9a35413a4b31edcc35ac1930a87f242b8cee1c8a`;
+- post-merge self-hosted Draft run #319 (`35383897465`) completed successfully: live Official query, fail-closed guard, artifact publication and issue #17 publication all passed;
+- the resulting live receipt contained 659 source IDs partitioned as 15 owner-roster, 509 available, 0 locked and 135 rival-owned Draft IDs, with zero unclassified IDs;
+- independent recomputation from the machine payload proved the source count/hash, partition hash, rival-owned sub-hash, empty-unclassified hash and full decision-state hash;
+- `expires_at` remains a hard recommendation boundary; no frozen-window exception extends an expired Draft receipt;
+- no serving-provider, production-core, Classic decision, billing, credential, FPL-write or PR #90 authority changed.
 
 ### 2026-09-07 — Draft live-state conversational guard accepted
 
